@@ -12,6 +12,7 @@
     "dev:web": "pnpm --filter web dev",
     "dev:api": "pnpm --filter api dev",
     "dev:sales": "pnpm --filter sales dev",
+    "dev:gas": "pnpm --filter gas dev",
     "build:customer": "pnpm --filter customer build",
     "build:rider": "pnpm --filter rider build",
     "build:admin": "pnpm --filter admin build",
@@ -21,6 +22,7 @@
     "build:web": "pnpm --filter web build",
     "build:api": "pnpm --filter api build",
     "build:sales": "pnpm --filter sales build",
+    "build:gas": "pnpm --filter gas build",
     "migrate:api": "pnpm --filter api migrate",
     "seed:api": "pnpm --filter api seed",
     "lint": "pnpm -r lint",
@@ -33,6 +35,7 @@
     "deploy:web:preview": "pnpm --filter web deploy:preview",
     "deploy:api:preview": "pnpm --filter api deploy:preview",
     "deploy:sales:preview": "pnpm --filter sales deploy:preview",
+    "deploy:gas:preview": "pnpm --filter gas deploy:preview",
     "deploy:preview-hub:preview": "pnpm --filter preview-hub deploy:preview",
     "deploy:preview-hub": "pnpm --filter preview-hub deploy"
   },

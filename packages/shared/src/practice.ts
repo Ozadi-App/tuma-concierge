@@ -1,6 +1,6 @@
 export const PRACTICE_MODE_STORAGE_KEY = "peebee_practice_mode";
 
-export type PracticeRole = "customer" | "rider" | "restaurant" | "merchant";
+export type PracticeRole = "customer" | "rider" | "restaurant" | "merchant" | "gas";
 
 export type PracticeStep = {
   title: string;
@@ -76,6 +76,19 @@ export const PRACTICE_JOURNEYS: Record<PracticeRole, PracticeJourney> = {
       { title: "Confirm goods handover", description: "Use dual confirmation to acknowledge that the training rider received the goods.", actionLabel: "Confirm sample handover", resultLabel: "Simulated payment available" },
       { title: "Review the merchant balance", description: "See how a confirmed sale moves into the available merchant balance.", actionLabel: "View sample balance", resultLabel: "Available balance: UGX 28,000" },
       { title: "Request settlement", description: "Run the withdrawal experience against a mock destination. No Mobile Money transfer is sent.", actionLabel: "Simulate settlement", resultLabel: "Practice settlement successful" },
+    ],
+  },
+  gas: {
+    roleLabel: "Fuel Attendant",
+    heading: "Practise dispensing fuel to a rider",
+    introduction: "Scan a rider's code, verify motorcycle plate number, pump fuel and issue a simulated digital receipt.",
+    sampleAmount: "UGX 20,000 (3.67 Litres)",
+    completionMessage: "You completed the fuel dispensing and verification flow without real fuel or money.",
+    steps: [
+      { title: "Scan or enter code", description: "Rider presents a 6-digit PIN or QR code at the pump lane.", actionLabel: "Verify sample code", resultLabel: "Rider Okello Ronald (UFE 429K) verified" },
+      { title: "Select fuel & amount", description: "Choose Unleaded Petrol or Diesel and enter litres or whole UGX.", actionLabel: "Set 3.67 L / UGX 20,000", resultLabel: "Pump calculations confirmed" },
+      { title: "Dispense and confirm", description: "Pump the fuel and tap dispense to generate the digital receipt.", actionLabel: "Complete dispense", resultLabel: "Receipt RCP-GAS generated" },
+      { title: "Review shift summary", description: "Check your station's daily pump shift counter and litre tally.", actionLabel: "View shift report", resultLabel: "Shift total updated with 3.67 Litres" },
     ],
   },
 };

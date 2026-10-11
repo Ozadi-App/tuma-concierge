@@ -1,6 +1,8 @@
 "use client";
 
 import type { OrderRow, SavedMobileNumber, Wallet } from "@peebee/shared";
+import { ChevronRight, Fuel } from "lucide-react";
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, errorMessage } from "../../lib/api";
 import { formatUgx } from "../../lib/order-display";
@@ -248,6 +250,30 @@ export default function WalletPage() {
       </section>
 
       <StageSavingsCard context="wallet" />
+
+      {/* Fuel Voucher Quick Card */}
+      <Link
+        href="/fuel"
+        className="home-card flex items-center justify-between !p-4 transition hover:border-gold/50"
+      >
+        <div className="flex items-center gap-3">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gold/15 text-gold">
+            <Fuel className="h-6 w-6" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-black text-ink">Peebee Gas Voucher</h2>
+              <span className="rounded-full bg-gold/20 px-2 py-0.5 text-[10px] font-bold text-ink-gold">
+                New
+              </span>
+            </div>
+            <p className="mt-0.5 text-xs text-ink-500">
+              Generate 6-digit pump PIN or scan QR at partner petrol stations
+            </p>
+          </div>
+        </div>
+        <ChevronRight className="h-4 w-4 text-ink-500" />
+      </Link>
 
       {wallet && wallet.withdrawals.length > 0 && (
         <section className="space-y-2.5">

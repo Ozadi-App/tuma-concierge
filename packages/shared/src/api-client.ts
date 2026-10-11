@@ -61,6 +61,12 @@ import type {
   DeliverySettings,
   FailedPayment,
   FeeProposal,
+  FuelStationOutlet,
+  FuelProduct,
+  FuelOutletPrice,
+  FuelCode,
+  FuelReceipt,
+  FuelShiftSummary,
   IntegrationsStatus,
   IceServer,
   IncomingCall,
@@ -2241,6 +2247,72 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
     },
     async adminRejectStage(stageId: string, reason: string) {
       return request<{ ok: true }>(`/v1/admin/stages/${stageId}/reject`, { method: "POST", body: JSON.stringify({ reason }) });
+    },
+    // -----------------------------------------------------------------------
+    // Peebee Gas: Fuel merchant network & attendant code redemption
+    // -----------------------------------------------------------------------
+    async gasStatus() {
+      return request<{ ok: boolean; settings: { enabled: boolean; dailyLimitUgx: number; voucherExpiryMinutes: number; platformDiscountPercent: number } }>("/v1/gas/status");
+    },
+    async gasStations() {
+      return request<{ outlets: FuelStationOutlet[] }>("/v1/gas/stations");
+    },
+    async gasProducts() {
+      return request<{ products: FuelProduct[] }>("/v1/gas/products");
+    },
+    async gasOutletPrices(outletId: string) {
+      return request<{ outlet_id: string; prices: FuelOutletPrice[] }>(`/v1/gas/outlets/${outletId}/prices`);
+    },
+    async updateGasOutletPrices(outletId: string, prices: { product_id: string; price_per_unit: number }[]) {
+      return request<{ ok: true; updated: number }>(`/v1/gas/outlets/${outletId}/prices`, {
+        method: "PUT",
+        body: JSON.stringify({ prices }),
+      });
+    },
+    async verifyGasCode(code: string, outletId?: string) {
+      return request<{ valid: boolean; code: FuelCode; outlet_prices: FuelOutletPrice[] }>("/v1/gas/verify-code", {
+        method: "POST",
+        body: JSON.stringify({ code, outletId }),
+      });
+    },
+    async dispenseGas(input: {
+      code: string;
+      outletId: string;
+      productId: string;
+      litres?: number;
+      totalUgx?: number;
+      pumpNumber?: number;
+      attendantName?: string;
+      odometer?: number;
+    }) {
+      return request<{ ok: true; receipt: FuelReceipt }>("/v1/gas/dispense", {
+        method: "POST",
+        body: JSON.stringify(input),
+      });
+    },
+    async gasDispenses(outletId?: string) {
+      const q = outletId ? `?outletId=${encodeURIComponent(outletId)}` : "";
+      return request<{ dispenses: FuelReceipt[] }>(`/v1/gas/dispenses${q}`);
+    },
+    async gasShiftSummary(outletId?: string) {
+      const q = outletId ? `?outletId=${encodeURIComponent(outletId)}` : "";
+      return request<{ summary: FuelShiftSummary }>(`/v1/gas/shift/summary${q}`);
+    },
+    async generateRiderFuelCode(input: {
+      riderId?: string;
+      vehiclePlate?: string;
+      amountUgx: number;
+      productId?: string;
+      outletId?: string;
+    }) {
+      return request<{ ok: true; code: FuelCode }>("/v1/gas/rider/generate-code", {
+        method: "POST",
+        body: JSON.stringify(input),
+      });
+    },
+    async getActiveRiderFuelCode(riderId?: string) {
+      const q = riderId ? `?riderId=${encodeURIComponent(riderId)}` : "";
+      return request<{ code: FuelCode | null }>(`/v1/gas/rider/active-code${q}`);
     },
   };
 }

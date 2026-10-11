@@ -20,6 +20,8 @@ import {
   setBiddingSettings,
   getCarSettings,
   setCarSettings,
+  getGasSettings,
+  setGasSettings,
   getLugandaAudioSettings,
   getMatchingSettings,
   getMonetizationSettings,
@@ -136,6 +138,7 @@ async function fullSettings() {
     jobExpiry: await getJobExpirySettings(),
     bidding: await getBiddingSettings(),
     car: await getCarSettings(),
+    gas: await getGasSettings(),
     ...delivery,
     services,
     ...matching,
@@ -376,6 +379,15 @@ const updateSchema = z.object({
   rideRatePerKm: z.number().positive().max(1_000_000).optional(),
   rideMinimumFare: z.number().int().nonnegative().max(1_000_000).optional(),
   services: z.object({ shopping: z.boolean(), parcel: z.boolean(), ride: z.boolean(), food: z.boolean() }).partial().optional(),
+  gas: z
+    .object({
+      enabled: z.boolean(),
+      dailyLimitUgx: z.number().int().min(0).max(10_000_000),
+      voucherExpiryMinutes: z.number().int().min(5).max(1440),
+      platformDiscountPercent: z.number().min(0).max(100),
+    })
+    .partial()
+    .optional(),
   rideForOtherEnabled: z.boolean().optional(),
   rideForOtherDistanceM: z.number().int().min(50).max(50_000).optional(),
   enabledModes: z.array(z.enum(["first_to_claim", "nearest_window", "customer_selects"])).optional(),
@@ -503,6 +515,7 @@ settingsRoutes.put(
     if (parsed.data.jobExpiry) await setJobExpirySettings(parsed.data.jobExpiry);
     if (parsed.data.bidding) await setBiddingSettings(parsed.data.bidding);
     if (parsed.data.car) await setCarSettings(parsed.data.car);
+    if (parsed.data.gas) await setGasSettings(parsed.data.gas);
 
     if (parsed.data.deliveryRatePerKm != null) {
       await setSetting("delivery_rate_per_km", String(parsed.data.deliveryRatePerKm));

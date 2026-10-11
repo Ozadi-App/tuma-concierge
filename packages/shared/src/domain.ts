@@ -2427,3 +2427,102 @@ export type DriverDeals = {
   requests: Array<{ id: string; vehicleId: string; car: string; ownerName: string; status: "pending" | "accepted" | "declined" | "withdrawn"; terms: DealTermsView; createdAt: string | null }>;
   connections: Array<{ assignmentId: string; vehicleId: string; car: string; plate: string; ownerName: string; ownCar: boolean; terms: DealTermsView | null; rentOwed: number }>;
 };
+
+// ---------------------------------------------------------------------------
+// Peebee Gas: Fuel merchant network & pump attendant redemption
+// ---------------------------------------------------------------------------
+
+export type FuelStation = {
+  id: string;
+  brand_name: string;
+  company_name: string;
+  logo_url?: string | null;
+  status: "active" | "pending_approval" | "suspended";
+  created_at: string;
+};
+
+export type FuelProduct = {
+  id: string;
+  name: string;
+  category: "fuel" | "lubricant";
+  unit: string;
+  defaultPrice?: number;
+};
+
+export type FuelOutletPrice = {
+  product_id: string;
+  product_name: string;
+  category: string;
+  unit: string;
+  price_per_unit: number;
+  updated_at?: string;
+};
+
+export type FuelStationOutlet = {
+  id: string;
+  station_id: string;
+  station_name: string;
+  name: string;
+  code: string;
+  address?: string | null;
+  lat?: number | null;
+  lng?: number | null;
+  phone?: string | null;
+  active_pumps: number;
+  status: "active" | "suspended" | "closed";
+  prices: FuelOutletPrice[];
+};
+
+export type FuelCode = {
+  id: string;
+  code: string;
+  short_code?: string;
+  rider_id: string;
+  rider_name?: string;
+  rider_phone?: string;
+  rider_stage?: string;
+  vehicle_plate: string;
+  vehicle_type?: "car" | "motorcycle";
+  vehicle_desc?: string;
+  authorized_amount_ugx: number;
+  fuel_product_id?: string;
+  outlet_id?: string | null;
+  status: "active" | "scanned" | "dispensed" | "expired" | "cancelled";
+  source: "rider_wallet" | "driver_wallet" | "fuel_advance" | "stage_voucher" | "car_partner";
+  expires_at: string;
+  dispensed_at?: string | null;
+  created_at: string;
+};
+
+export type FuelReceipt = {
+  id: string;
+  receipt_ref: string;
+  code_id?: string;
+  outlet_id: string;
+  outlet_name: string;
+  station_name: string;
+  attendant_id?: string;
+  attendant_name?: string;
+  rider_id: string;
+  rider_name: string;
+  vehicle_plate: string;
+  vehicle_type?: "car" | "motorcycle";
+  vehicle_desc?: string;
+  product_id: string;
+  product_name: string;
+  price_per_litre: number;
+  litres_dispensed: number;
+  total_ugx: number;
+  pump_number: number;
+  status: string;
+  created_at: string;
+};
+
+export type FuelShiftSummary = {
+  outlet_id: string;
+  total_dispenses: number;
+  total_litres: number;
+  total_ugx: number;
+  recent?: FuelReceipt[];
+};
+

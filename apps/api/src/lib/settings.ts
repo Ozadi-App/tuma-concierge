@@ -346,6 +346,11 @@ const DEFAULTS = {
   job_expiry_enabled: "1",
   job_expiry_value: "6",
   job_expiry_unit: "hours",
+  /** Peebee Gas: Fuel merchant network and rider fuel vouchers */
+  service_gas_enabled: "1",
+  gas_rider_daily_limit_ugx: "60000",
+  gas_voucher_expiry_minutes: "60",
+  gas_platform_discount_percent: "0",
 } as const;
 
 export type SettingKey = keyof typeof DEFAULTS;
@@ -1242,3 +1247,35 @@ export const SERVICE_PAUSED_LABEL: Record<ServiceKey, string> = {
   ride: "Rides",
   food: "Food ordering",
 };
+
+export type GasSettings = {
+  enabled: boolean;
+  dailyLimitUgx: number;
+  voucherExpiryMinutes: number;
+  platformDiscountPercent: number;
+};
+
+export async function getGasSettings(): Promise<GasSettings> {
+  const [enabledStr, limitStr, expiryStr, discountStr] = await Promise.all([
+    getSetting("service_gas_enabled"),
+    getSetting("gas_rider_daily_limit_ugx"),
+    getSetting("gas_voucher_expiry_minutes"),
+    getSetting("gas_platform_discount_percent"),
+  ]);
+  return {
+    enabled: enabledStr !== "0",
+    dailyLimitUgx: Math.max(0, Number(limitStr) || 60000),
+    voucherExpiryMinutes: Math.max(5, Number(expiryStr) || 60),
+    platformDiscountPercent: Math.max(0, Math.min(100, Number(discountStr) || 0)),
+  };
+}
+
+export async function setGasSettings(next: Partial<GasSettings>): Promise<void> {
+  const writes: Promise<void>[] = [];
+  if (next.enabled != null) writes.push(setSetting("service_gas_enabled", next.enabled ? "1" : "0"));
+  if (next.dailyLimitUgx != null) writes.push(setSetting("gas_rider_daily_limit_ugx", String(Math.max(0, Math.round(next.dailyLimitUgx)))));
+  if (next.voucherExpiryMinutes != null) writes.push(setSetting("gas_voucher_expiry_minutes", String(Math.max(5, Math.round(next.voucherExpiryMinutes)))));
+  if (next.platformDiscountPercent != null) writes.push(setSetting("gas_platform_discount_percent", String(Math.max(0, Math.min(100, next.platformDiscountPercent)))));
+  await Promise.all(writes);
+}
+

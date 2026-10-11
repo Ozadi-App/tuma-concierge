@@ -3,7 +3,8 @@
 import { Select } from "@peebee/shared/select";
 
 import { CAR_MODEL_CATALOG, type CarCategory, type OwnerDeals } from "@peebee/shared";
-import { Camera, X } from "lucide-react";
+import { Camera, Fuel, X } from "lucide-react";
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { ApplyCard } from "../../components/ApplyCard";
 import { AuthImage } from "../../components/AuthImage";
@@ -183,6 +184,13 @@ export default function VehiclesPage() {
               {v.driver_id === user?.id ? "Stop driving this car" : "Drive this car myself"}
             </button>
           )}
+          <Link
+            href="/fuel"
+            className="flex min-h-10 items-center justify-center gap-2 rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] px-3 text-xs font-bold text-ink hover:bg-gold/15"
+          >
+            <Fuel className="h-3.5 w-3.5 text-gold" />
+            <span>Fuel at partner stations (Peebee Gas) →</span>
+          </Link>
           {dealLimits && dealVehicles.find((d) => d.id === v.id) && (
             <TermsEditor
               key={`${v.id}-${dealVehicles.find((d) => d.id === v.id)?.terms?.open}`}

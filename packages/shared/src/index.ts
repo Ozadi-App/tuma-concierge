@@ -232,6 +232,13 @@ export type {
   StageMemberProfile,
   StageReports,
   LugandaVoice,
+  FuelStation,
+  FuelProduct,
+  FuelOutletPrice,
+  FuelStationOutlet,
+  FuelCode,
+  FuelReceipt,
+  FuelShiftSummary,
 } from "./domain.js";
 
 export { NotificationSnapshots, installNotificationSound, observeNotificationSnapshot, playNotificationSound, resetNotificationSnapshots } from "./notification-sound.js";
