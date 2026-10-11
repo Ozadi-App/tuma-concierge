@@ -3,6 +3,7 @@
 import { Select } from "@peebee/shared/select";
 
 import type { CarDriverActive, CarOwnerRides } from "@peebee/shared";
+import { ChevronRight, Fuel } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { ActiveRide } from "../components/ActiveRide";
@@ -103,6 +104,31 @@ function DriverHome() {
         <Link href="/jobs" className="home-card block text-sm font-semibold text-ink">See ride requests →</Link>
       )}
       <DriverConnections />
+
+      {/* Peebee Gas Quick Shortcut */}
+      <Link
+        href="/fuel"
+        className="home-card flex items-center justify-between !py-3 !px-4 hover:border-gold/50"
+      >
+        <div className="flex items-center gap-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gold/15 text-gold">
+            <Fuel className="h-5 w-5" />
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs font-black text-ink">Peebee Gas</span>
+              <span className="rounded-full bg-gold/20 px-1.5 py-0.2 text-[9px] font-bold text-ink-gold">
+                Fuel PIN
+              </span>
+            </div>
+            <p className="truncate text-[11px] text-ink-500">
+              Pump fuel for your car at partner stations with 6-digit PIN
+            </p>
+          </div>
+        </div>
+        <ChevronRight className="h-4 w-4 shrink-0 text-ink-500" />
+      </Link>
+
       <Link href="/find-car" className="home-card block text-sm font-semibold text-ink">{vehicle ? "Find another car to drive →" : "Find a car to drive →"}</Link>
       <Link href="/vehicles" className="home-card block text-sm font-semibold text-ink">My cars →</Link>
       <section className="home-card">
@@ -175,6 +201,30 @@ function OwnerHome() {
         <p className="text-2xl font-black text-ink">{ugx(data?.totalEarned ?? 0)}</p>
       </section>
       <OwnerDealsPanel />
+
+      {/* Peebee Gas Quick Shortcut */}
+      <Link
+        href="/fuel"
+        className="home-card flex items-center justify-between !py-3 !px-4 hover:border-gold/50"
+      >
+        <div className="flex items-center gap-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gold/15 text-gold">
+            <Fuel className="h-5 w-5" />
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs font-black text-ink">Peebee Gas</span>
+              <span className="rounded-full bg-gold/20 px-1.5 py-0.2 text-[9px] font-bold text-ink-gold">
+                Fuel PIN
+              </span>
+            </div>
+            <p className="truncate text-[11px] text-ink-500">
+              Pump fuel for fleet cars at partner stations with 6-digit PIN
+            </p>
+          </div>
+        </div>
+        <ChevronRight className="h-4 w-4 shrink-0 text-ink-500" />
+      </Link>
       {data?.drivers && data.drivers.length > 0 && (
         <section className="home-card space-y-3">
           <h2 className="font-bold">What your drivers earn</h2>

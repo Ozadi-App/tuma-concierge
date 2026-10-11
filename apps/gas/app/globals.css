@@ -1,0 +1,97 @@
+@import "../../../packages/shared/select.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  /* Text stays inset even when a field has no explicit padding utility.
+     Compound fields share their wrapper's spacing and single fill. */
+  input:where(:not([type="checkbox"], [type="radio"], [type="range"], [type="file"], [type="hidden"], [type="submit"], [type="button"], [type="color"])):where(:not(.field-box *)),
+  textarea:where(:not(.field-box *)) {
+    padding: 0.625rem 0.75rem;
+  }
+}
+
+:root {
+  color-scheme: light;
+  --cream: 247 243 238;
+  --ink: 14 28 50;
+  --ink-muted: 94 108 126;
+  --gold: 201 162 39;
+  --navy: 21 58 117;
+  --green: 27 122 78;
+  --surface: 255 255 255;
+  --surface-muted: 238 234 227;
+  --surface-input: 255 255 255;
+  --surface-card: 255 255 255;
+  --border-faint: rgba(14, 28, 50, 0.1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --cream: 13 32 61;
+    --ink: 247 243 238;
+    --ink-muted: 168 180 200;
+    --navy: 120 155 214;
+    --green: 47 168 106;
+    --surface: 22 48 88;
+    --surface-muted: 40 76 122;
+    --surface-input: 33 63 106;
+    --surface-card: 22 48 88;
+    --border-faint: rgba(247, 243, 238, 0.11);
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --cream: 13 32 61;
+  --ink: 247 243 238;
+  --ink-muted: 168 180 200;
+  --navy: 120 155 214;
+  --green: 47 168 106;
+  --surface: 22 48 88;
+  --surface-muted: 40 76 122;
+  --surface-input: 33 63 106;
+  --surface-card: 22 48 88;
+  --border-faint: rgba(247, 243, 238, 0.11);
+}
+
+html {
+  font-size: 17px;
+}
+
+body {
+  background: rgb(var(--cream));
+  color: rgb(var(--ink));
+  line-height: 1.55;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.home-card {
+  border: 1px solid var(--border-faint);
+  border-radius: 22px;
+  background: rgb(var(--surface));
+  padding: 20px;
+  box-shadow: 0 4px 18px rgba(8, 20, 38, 0.06);
+}
+
+.field-box {
+  background: rgb(var(--surface-input));
+  border: 1px solid var(--border-faint);
+  border-radius: 16px;
+}
+
+.field-box input,
+.field-box select,
+.field-box textarea {
+  background: transparent !important;
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+input, select, textarea {
+  background: rgb(var(--surface-input));
+}

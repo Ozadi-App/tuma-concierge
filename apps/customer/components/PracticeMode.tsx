@@ -13,7 +13,7 @@ import { useEffect, useState } from "react";
 import { api } from "../lib/api";
 
 const ROLE_LABELS: Record<PracticeRole, string> = {
-  customer: "customer", rider: "rider", restaurant: "restaurant", merchant: "merchant",
+  customer: "customer", rider: "rider", restaurant: "restaurant", merchant: "merchant", gas: "fuel attendant",
 };
 
 export function PracticeModeCard({ role }: { role: PracticeRole }) {

@@ -17,10 +17,11 @@ const HINTS: Record<PracticeRole, string> = {
   rider: "Claim the sample job and complete it using the same controls as a live delivery.",
   restaurant: "Use the real Food dashboard to confirm the sample rider payment and explore settlement.",
   merchant: "Use the real merchant dashboard to confirm the sample payment and test settlement.",
+  gas: "Scan or enter a sample code, dispense fuel, and view shift totals.",
 };
 
 const ROLE_LABELS: Record<PracticeRole, string> = {
-  customer: "customer", rider: "rider", restaurant: "Food", merchant: "merchant",
+  customer: "customer", rider: "rider", restaurant: "Food", merchant: "merchant", gas: "fuel attendant",
 };
 
 export function PracticeModeCard({ role }: { role: PracticeRole }) {

@@ -6,7 +6,7 @@ import { observeNotificationSnapshot } from "@peebee/shared";
 
 import type { AvailableJob, OrderRow, Rider } from "@peebee/shared";
 import { isRiderProfileComplete } from "@peebee/shared";
-import { Bike, ChevronRight, MapPin, Package, ShoppingCart, TriangleAlert, Utensils } from "lucide-react";
+import { Bike, ChevronRight, Fuel, MapPin, Package, ShoppingCart, TriangleAlert, Utensils } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -201,6 +201,30 @@ export default function JobsHomePage() {
       {error && <p role="alert" className="rounded-lg bg-gold/10 px-3 py-2 text-sm text-ink">{error}</p>}
 
       <StageSavingsCard compact />
+
+      {/* Peebee Gas Quick Shortcut */}
+      <Link
+        href="/fuel"
+        className="home-card flex items-center justify-between !py-3 !px-4 hover:border-gold/50"
+      >
+        <div className="flex items-center gap-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gold/15 text-gold">
+            <Fuel className="h-5 w-5" />
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs font-black text-ink">Peebee Gas</span>
+              <span className="rounded-full bg-gold/20 px-1.5 py-0.2 text-[9px] font-bold text-ink-gold">
+                Fuel PIN
+              </span>
+            </div>
+            <p className="truncate text-[11px] text-ink-500">
+              Pump fuel at Shell, Total & partner stations with 6-digit code
+            </p>
+          </div>
+        </div>
+        <ChevronRight className="h-4 w-4 shrink-0 text-ink-500" />
+      </Link>
 
       <section className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-2">

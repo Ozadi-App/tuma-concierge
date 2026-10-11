@@ -215,7 +215,7 @@ export function isPracticeMode(): boolean {
 }
 
 export function practiceStartPath(role: PracticeRole): string {
-  return role === "customer" || role === "rider" || role === "merchant" || role === "restaurant" ? "/" : "/account";
+  return role === "customer" || role === "rider" || role === "merchant" || role === "restaurant" || role === "gas" ? "/" : "/account";
 }
 
 export function startPracticeMode(role: PracticeRole): string {
