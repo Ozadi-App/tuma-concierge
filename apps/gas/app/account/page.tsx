@@ -4,6 +4,7 @@ import {
   Briefcase,
   Building2,
   ChevronRight,
+  Download,
   Fuel,
   LogOut,
   ShieldCheck,
@@ -14,7 +15,9 @@ import {
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { BrandLogo } from "../../components/BrandLogo";
+import { isStandalone, PWA_LOGIN_PROMPT_KEY } from "../../components/PwaInstallPrompt";
 import { useAuth } from "../../lib/auth-context";
+import { startPracticeMode } from "@peebee/shared";
 
 export default function AccountPage() {
   const router = useRouter();
@@ -189,6 +192,12 @@ export default function AccountPage() {
       {/* Training / Practice Mode Link */}
       <Link
         href="/practice"
+        onClick={() => {
+          startPracticeMode("gas");
+          if (typeof window !== "undefined") {
+            window.dispatchEvent(new Event("storage"));
+          }
+        }}
         className="home-card flex items-center justify-between p-4 hover:border-gold/50 transition active:scale-[0.99]"
       >
         <div className="flex items-center gap-3">
@@ -202,6 +211,29 @@ export default function AccountPage() {
         </div>
         <ChevronRight className="h-4 w-4 text-ink-500" />
       </Link>
+
+      {/* Install PWA Option if not standalone */}
+      {!isStandalone() && (
+        <button
+          type="button"
+          onClick={() => {
+            sessionStorage.setItem(PWA_LOGIN_PROMPT_KEY, "1");
+            window.location.reload();
+          }}
+          className="home-card flex items-center justify-between p-4 hover:border-gold/50 transition active:scale-[0.99] text-left w-full"
+        >
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gold/15 text-gold">
+              <Download className="h-5 w-5" />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-ink">Install Peebee Gas PWA</h3>
+              <p className="text-xs text-ink-500">Add to home screen for quick offline-ready pump terminal</p>
+            </div>
+          </div>
+          <ChevronRight className="h-4 w-4 text-ink-500" />
+        </button>
+      )}
 
       {/* Sign Out Button */}
       <button

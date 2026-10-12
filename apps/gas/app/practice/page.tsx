@@ -1,6 +1,6 @@
 "use client";
 
-import { PRACTICE_JOURNEYS } from "@peebee/shared";
+import { PRACTICE_JOURNEYS, startPracticeMode, exitPracticeMode } from "@peebee/shared";
 import {
   ArrowLeft,
   ArrowRight,
@@ -20,7 +20,7 @@ import {
   UserCheck,
 } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 const JOURNEY = PRACTICE_JOURNEYS.gas;
 
@@ -61,6 +61,13 @@ export default function GasPracticePage() {
   const [isDispensing, setIsDispensing] = useState(false);
   const [dispenseProgress, setDispenseProgress] = useState(0);
   const [dispenseDone, setDispenseDone] = useState(false);
+
+  useEffect(() => {
+    startPracticeMode("gas");
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new Event("storage"));
+    }
+  }, []);
 
   function switchCustomerType(type: "rider" | "driver") {
     setCustomerType(type);
@@ -106,6 +113,12 @@ export default function GasPracticePage() {
         <div className="flex items-center gap-2">
           <Link
             href="/"
+            onClick={() => {
+              exitPracticeMode("gas");
+              if (typeof window !== "undefined") {
+                window.dispatchEvent(new Event("storage"));
+              }
+            }}
             className="flex h-9 w-9 items-center justify-center rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] text-ink transition hover:border-gold"
             aria-label="Back to Pump"
           >
