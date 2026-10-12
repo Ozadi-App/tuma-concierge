@@ -47,6 +47,7 @@ const DEFAULTS = {
   service_parcel_enabled: "1",
   service_ride_enabled: "1",
   service_food_enabled: "1",
+  service_cargo_enabled: "1",
   ride_for_other_enabled: "1",
   ride_for_other_distance_m: "500",
   /** Ceiling on what a single order may charge into escrow (UGX). Guards
@@ -315,6 +316,8 @@ const DEFAULTS = {
   car_selfdrive_approve_within_hours: "12",
   /** Grace after the agreed return time before extra started hours accrue. */
   car_selfdrive_overtime_grace_hours: "3",
+  /** Whether 360 degree photo walkaround inspections are required at pickup and return. */
+  car_selfdrive_inspections_required: "1",
   /** Photos an owner may attach to one vehicle (at least 6 are supported). */
   car_vehicle_photos_max: "8",
   /** Photos a vehicle needs before an admin can approve it (0 = none required). */
@@ -392,6 +395,7 @@ export type CarSelfDriveSettings = {
   minDeposit: number;
   approveWithinHours: number;
   overtimeGraceHours: number;
+  inspectionsRequired: boolean;
 };
 
 export type CarCarpoolSettings = {
@@ -427,7 +431,7 @@ export async function getCarServicePricing(): Promise<NonNullable<CarSettings["s
 }
 
 export async function getCarSettings(): Promise<CarSettings> {
-  const [enabled, onDemand, mode, owner, driver, platform, maxKm, wdEnabled, wdMin, sEnabled, sMax, sLead, sOpen, sWatch, sNoSig, sSpeed, cpEnabled, cpSeats, cpRepeat, cpCutoff, cpPay, cpRadius, sdEnabled, sdPct, sdDays, sdDeposit, sdApprove, sdGrace, vpMax, vpMin, kycOwner, kycDriverId, kycLicence, dEnabled, dShare, dRent, dMin, dMax, dRentMax] = await Promise.all([
+  const [enabled, onDemand, mode, owner, driver, platform, maxKm, wdEnabled, wdMin, sEnabled, sMax, sLead, sOpen, sWatch, sNoSig, sSpeed, cpEnabled, cpSeats, cpRepeat, cpCutoff, cpPay, cpRadius, sdEnabled, sdPct, sdDays, sdDeposit, sdApprove, sdGrace, sdInspections, vpMax, vpMin, kycOwner, kycDriverId, kycLicence, dEnabled, dShare, dRent, dMin, dMax, dRentMax] = await Promise.all([
     getSetting("car_enabled"),
     getSetting("car_ondemand_enabled"),
     getSetting("car_matching_mode"),
@@ -456,6 +460,7 @@ export async function getCarSettings(): Promise<CarSettings> {
     getSetting("car_selfdrive_min_deposit"),
     getSetting("car_selfdrive_approve_within_hours"),
     getSetting("car_selfdrive_overtime_grace_hours"),
+    getSetting("car_selfdrive_inspections_required"),
     getSetting("car_vehicle_photos_max"),
     getSetting("car_vehicle_photos_min_required"),
     getSetting("car_kyc_owner_id_required"),
@@ -509,6 +514,7 @@ export async function getCarSettings(): Promise<CarSettings> {
       minDeposit: Math.max(0, Math.floor(Number(sdDeposit) || 0)),
       approveWithinHours: clamp(sdApprove, 1, 24 * 14, 12),
       overtimeGraceHours: clamp(sdGrace, 1, 24, 3),
+      inspectionsRequired: sdInspections !== "0",
     },
     vehiclePhotos: (() => {
       // Always room for at least 6; never ask for more photos than can be added.
@@ -573,6 +579,7 @@ export async function setCarSettings(next: CarSettings): Promise<void> {
     await setSetting("car_selfdrive_min_deposit", String(sd.minDeposit));
     await setSetting("car_selfdrive_approve_within_hours", String(sd.approveWithinHours));
     await setSetting("car_selfdrive_overtime_grace_hours", String(sd.overtimeGraceHours));
+    if (sd.inspectionsRequired != null) await setSetting("car_selfdrive_inspections_required", sd.inspectionsRequired ? "1" : "0");
   }
   if (next.vehiclePhotos) {
     await setSetting("car_vehicle_photos_max", String(next.vehiclePhotos.max));
@@ -1221,7 +1228,7 @@ export async function setLugandaAudioSettings(input: Partial<LugandaAudioSetting
 // Services: the customer-facing modules an admin can switch on or off.
 // ---------------------------------------------------------------------------
 
-export const SERVICE_KEYS = ["shopping", "parcel", "ride", "food"] as const;
+export const SERVICE_KEYS = ["shopping", "parcel", "ride", "food", "cargo"] as const;
 export type ServiceKey = (typeof SERVICE_KEYS)[number];
 export type ServiceSwitches = Record<ServiceKey, boolean>;
 
@@ -1246,6 +1253,7 @@ export const SERVICE_PAUSED_LABEL: Record<ServiceKey, string> = {
   parcel: "Parcel delivery",
   ride: "Rides",
   food: "Food ordering",
+  cargo: "Cargo & truck delivery",
 };
 
 export type GasSettings = {

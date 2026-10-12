@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
 import { createClient, type Client, type InArgs } from "@libsql/client/node";
@@ -35,7 +35,9 @@ test("switching a service off stops new orders of that kind only", async (t) => 
   process.env.JWT_SECRET = "local-services-test-secret-only";
   resetSchemaCache();
   const client = createClient({ url: "file::memory:" });
-  const migrations = join(process.cwd(), "src/db/migrations");
+  const migrations = existsSync(join(process.cwd(), "src/db/migrations"))
+    ? join(process.cwd(), "src/db/migrations")
+    : join(process.cwd(), "apps/api/src/db/migrations");
   for (const file of readdirSync(migrations).filter((f) => f.endsWith(".sql")).sort()) {
     for (const sql of splitSqlStatements(readFileSync(join(migrations, file), "utf8"))) await client.execute(sql);
   }
@@ -54,7 +56,7 @@ test("switching a service off stops new orders of that kind only", async (t) => 
   const geo = { pickupLat: 0.3, pickupLng: 32.58, destinationLat: 0.35, destinationLng: 32.58 };
 
   await t.test("everything is on by default", async () => {
-    assert.deepEqual(await getServiceSwitches(), { shopping: true, parcel: true, ride: true, food: true });
+    assert.deepEqual(await getServiceSwitches(), { shopping: true, parcel: true, ride: true, food: true, cargo: true });
   });
 
   await t.test("ride off: rides and car bookings refused, parcels and shopping still work", async () => {

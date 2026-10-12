@@ -33,6 +33,8 @@ import type {
   OwnerRentalVehicle,
   Rental,
   RentalVehicle,
+  RentalInspection,
+  RentalInspectionSubmitInput,
   CarpoolMyTrip,
   CarpoolPublishInput,
   CarpoolTrip,
@@ -1709,6 +1711,19 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
     },
     async returnRental(id: string, damageClaim?: number) {
       return request<{ ok: true; status: string }>(`/v1/car/rentals/${id}/return`, { method: "POST", body: JSON.stringify({ damageClaim }) });
+    },
+    async getRentalInspections(rentalId: string) {
+      return request<{ pickup: RentalInspection | null; return: RentalInspection | null }>(`/v1/car/rentals/${rentalId}/inspections`);
+    },
+    async submitRentalInspection(rentalId: string, input: RentalInspectionSubmitInput | FormData) {
+      if (input instanceof FormData) {
+        const res = await f(`${root}/v1/car/rentals/${rentalId}/inspections`, { method: "POST", headers: authHeaders(), body: input });
+        return json<{ ok: true; inspectionId: string }>(res);
+      }
+      return request<{ ok: true; inspectionId: string }>(`/v1/car/rentals/${rentalId}/inspections`, { method: "POST", body: JSON.stringify(input) });
+    },
+    async getRentalInspectionPhotoUrl(photoId: string) {
+      return `${root}/v1/car/rentals/inspections/photos/${photoId}`;
     },
     async selfDriveRenterProfile() {
       return request<SelfDriveRenterKycProfile>("/v1/car/rentals/renter-profile");

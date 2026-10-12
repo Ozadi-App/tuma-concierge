@@ -10,9 +10,24 @@ import { notifyUser } from "../lib/webpush.js";
 import { creditWallet, debitWallet } from "../wallet/service.js";
 import { baseMimeType, extensionForMime } from "../lib/mime.js";
 import { getR2Bucket, uploadResponseHeaders } from "../storage/r2.js";
+import { postLedgerTransaction } from "../ledger/service.js";
 
 type Row = Record<string, unknown>;
 type Env = "live" | "sandbox";
+
+const INSPECTION_PHOTO_MIME = new Set(["image/jpeg", "image/png", "image/webp"]);
+
+function decodeDataUrl(dataUrl: string): { mime: string; bytes: Uint8Array } | null {
+  const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+  if (!match) return null;
+  const mime = baseMimeType(match[1]);
+  const binary = atob(match[2]);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return { mime, bytes };
+}
 
 /** Self-drive hire. Closed until an admin enables it AND sets Peebee's percentage. */
 export const selfDriveRoutes = new Hono();
@@ -56,7 +71,31 @@ async function envOf(rental: Row): Promise<Env> {
 }
 
 async function refundAll(rental: Row, actorId: string, note: string) {
-  await creditWallet(String(rental.renter_id), Number(rental.rent_amount) + Number(rental.deposit_amount), { type: "adjustment", environment: await envOf(rental), actorId, note });
+  const environment = await envOf(rental);
+  const deposit = Number(rental.deposit_amount ?? 0);
+  if (deposit > 0 && (await hasTable("ledger_transactions"))) {
+    try {
+      await postLedgerTransaction({
+        kind: "rental_deposit_release",
+        idempotencyKey: `rental_deposit_release_${rental.id}`,
+        environment,
+        referenceType: "rental",
+        referenceId: String(rental.id),
+        description: `Self-drive rental deposit release (${rental.id})`,
+        actorId,
+        postings: [
+          { ownerType: "platform", ownerId: "peebee", purpose: "rental_deposit_escrow", environment, amount: -deposit },
+          { ownerType: "customer", ownerId: String(rental.renter_id), purpose: "deposit_escrow", environment, amount: deposit },
+        ],
+      });
+    } catch (err) {
+      console.warn("Ledger deposit release failed:", err);
+    }
+  }
+  if (await hasColumn("rentals", "deposit_status")) {
+    await db.execute({ sql: "UPDATE rentals SET deposit_status = 'released', updated_at = datetime('now') WHERE id = ?", args: [String(rental.id)] }).catch(() => {});
+  }
+  await creditWallet(String(rental.renter_id), Number(rental.rent_amount) + Number(rental.deposit_amount), { type: "adjustment", environment, actorId, note });
 }
 
 /** Pays out a rental once: claims the status flip first, so a retry can never pay twice. */
@@ -70,13 +109,48 @@ export async function completeRental(rentalId: string, from: string[], damage: n
   const overtime = Math.min(Number(rental.deposit_amount), overtimeHours * (Number(rental.hourly_price) || rentalHourlyPrice(Number(rental.daily_price))));
   const parts = settleRental({ rent: Number(rental.rent_amount), deposit: Number(rental.deposit_amount), platformPercent: Number(rental.platform_percent), damage, overtime });
   const placeholders = from.map(() => "?").join(", ");
+  const hasOvertimeCol = await hasColumn("rentals", "overtime_amount");
+  const hasDepositStatusCol = await hasColumn("rentals", "deposit_status");
+  const depositAmount = Number(rental.deposit_amount);
+  let depositStatus = "released";
+  if (depositAmount > 0) {
+    const forfeited = depositAmount - parts.refund;
+    if (forfeited >= depositAmount) depositStatus = "forfeited";
+    else if (forfeited > 0) depositStatus = "partly_forfeited";
+  }
   const claimed = await db.execute({
-    sql: `UPDATE rentals SET status = 'completed', damage_final = ?, owner_amount = ?, platform_amount = ?, refund_amount = ?, ${await hasColumn("rentals", "overtime_amount") ? "overtime_amount = ?, " : ""}settled_at = datetime('now'), updated_at = datetime('now')
+    sql: `UPDATE rentals SET status = 'completed', damage_final = ?, owner_amount = ?, platform_amount = ?, refund_amount = ?, ${hasOvertimeCol ? "overtime_amount = ?, " : ""}${hasDepositStatusCol ? "deposit_status = ?, " : ""}settled_at = datetime('now'), updated_at = datetime('now')
           WHERE id = ? AND status IN (${placeholders})`,
-    args: [parts.damage, parts.owner, parts.platform, parts.refund, ...(await hasColumn("rentals", "overtime_amount") ? [parts.overtime ?? 0] : []), rentalId, ...from],
+    args: [parts.damage, parts.owner, parts.platform, parts.refund, ...(hasOvertimeCol ? [parts.overtime ?? 0] : []), ...(hasDepositStatusCol ? [depositStatus] : []), rentalId, ...from],
   });
   if (claimed.rowsAffected === 0) return false;
   const environment = await envOf(rental);
+  if (depositAmount > 0 && (await hasTable("ledger_transactions"))) {
+    const postings: Array<{ ownerType: "platform" | "customer"; ownerId: string; purpose: string; environment: Env; amount: number }> = [
+      { ownerType: "platform", ownerId: "peebee", purpose: "rental_deposit_escrow", environment, amount: -depositAmount },
+    ];
+    if (parts.refund > 0) {
+      postings.push({ ownerType: "customer", ownerId: String(rental.renter_id), purpose: "deposit_escrow", environment, amount: parts.refund });
+    }
+    const damageOrOvertime = depositAmount - parts.refund;
+    if (damageOrOvertime > 0) {
+      postings.push({ ownerType: "platform", ownerId: "peebee", purpose: "rental_deposit_forfeiture", environment, amount: damageOrOvertime });
+    }
+    try {
+      await postLedgerTransaction({
+        kind: "rental_deposit_settlement",
+        idempotencyKey: `rental_deposit_settlement_${rentalId}`,
+        environment,
+        referenceType: "rental",
+        referenceId: rentalId,
+        description: `Rental deposit escrow settlement (${rentalId})`,
+        actorId,
+        postings,
+      });
+    } catch (err) {
+      console.warn("Ledger deposit settlement failed:", err);
+    }
+  }
   if (parts.owner > 0) await creditWallet(String(rental.owner_id), parts.owner, { type: "adjustment", environment, actorId, note: "Self-drive rental — owner payout" });
   if (parts.refund > 0) await creditWallet(String(rental.renter_id), parts.refund, { type: "adjustment", environment, actorId, note: "Self-drive deposit returned" });
   return true;
@@ -207,6 +281,9 @@ function publicRental(r: Row) {
     starts_at: fromDb(String(r.starts_at)).toISOString(), ends_at: fromDb(String(r.ends_at)).toISOString(), days: r.days,
     rent_amount: r.rent_amount, deposit_amount: r.deposit_amount, status: r.status, damage_claim: r.damage_claim, period_type: r.period_type, handed_over_at: r.handed_over_at ? fromDb(String(r.handed_over_at)).toISOString() : null, overtime_amount: r.overtime_amount,
     licence_number: r.licence_number, licence_expiry: r.licence_expiry, owner_amount: r.owner_amount, refund_amount: r.refund_amount, hourly_price: r.hourly_price,
+    deposit_status: r.deposit_status ?? "held",
+    pickup_inspection_id: r.pickup_inspection_id ?? null,
+    return_inspection_id: r.return_inspection_id ?? null,
   };
 }
 
@@ -233,8 +310,16 @@ selfDriveRoutes.post("/car/rentals/:id/decision", async (c) => {
 selfDriveRoutes.post("/car/rentals/:id/handover", async (c) => {
   const id = c.req.param("id") as string;
   const user = c.get("user");
-  const rental = (await db.execute({ sql: "SELECT starts_at, ends_at FROM rentals WHERE id = ? AND owner_id = ? AND status = 'approved'", args: [id, user.sub] })).rows[0] as Row | undefined;
+  const rental = (await db.execute({ sql: "SELECT starts_at, ends_at, vehicle_id FROM rentals WHERE id = ? AND owner_id = ? AND status = 'approved'", args: [id, user.sub] })).rows[0] as Row | undefined;
   if (!rental) return c.json({ error: "invalid_status", message: "Only an approved rental can be handed over." }, 409);
+  const s = await getCarSettings();
+  const isDemo = String(rental.vehicle_id ?? "").startsWith("demo-rent-");
+  if (s.selfDrive.inspectionsRequired && !isDemo && (await hasTable("rental_inspections"))) {
+    const inspected = (await db.execute({ sql: "SELECT id FROM rental_inspections WHERE rental_id = ? AND phase = 'pickup' LIMIT 1", args: [id] })).rows[0];
+    if (!inspected) {
+      return c.json({ error: "inspection_required", message: "A 360° pickup photo walkaround inspection must be recorded before vehicle handover." }, 409);
+    }
+  }
   const duration = fromDb(String(rental.ends_at)).getTime() - fromDb(String(rental.starts_at)).getTime();
   const handedOver = new Date();
   const flipped = await db.execute({ sql: "UPDATE rentals SET status = 'active', starts_at = ?, ends_at = ?, handed_over_at = ?, updated_at = datetime('now') WHERE id = ? AND owner_id = ? AND status = 'approved'", args: [toDb(handedOver), toDb(new Date(handedOver.getTime() + duration)), toDb(handedOver), id, user.sub] });
@@ -250,6 +335,14 @@ selfDriveRoutes.post("/car/rentals/:id/return", async (c) => {
   if (!parsed.success) return c.json({ error: "invalid_body" }, 400);
   const rental = (await db.execute({ sql: "SELECT * FROM rentals WHERE id = ? AND owner_id = ?", args: [id, user.sub] })).rows[0] as Row | undefined;
   if (!rental) return c.json({ error: "not_found" }, 404);
+  const s = await getCarSettings();
+  const isDemo = String(rental.vehicle_id ?? "").startsWith("demo-rent-");
+  if (s.selfDrive.inspectionsRequired && !isDemo && (await hasTable("rental_inspections"))) {
+    const inspected = (await db.execute({ sql: "SELECT id FROM rental_inspections WHERE rental_id = ? AND phase = 'return' LIMIT 1", args: [id] })).rows[0];
+    if (!inspected) {
+      return c.json({ error: "inspection_required", message: "A 360° return photo walkaround inspection must be recorded before completing return." }, 409);
+    }
+  }
   const claim = Math.min(parsed.data.damageClaim ?? 0, Number(rental.deposit_amount));
   if (claim > 0) {
     const flipped = await db.execute({
@@ -374,6 +467,28 @@ selfDriveRoutes.post("/car/rentals", requireRole("customer"), async (c) => {
     await db.execute({ sql: "DELETE FROM rentals WHERE id = ?", args: [id] });
     return c.json({ error: "insufficient_wallet", message: `You need UGX ${(rent + deposit).toLocaleString("en-UG")} in your wallet (rent plus a refundable deposit). Top up and try again.` }, 402);
   }
+  if (deposit > 0 && (await hasTable("ledger_transactions"))) {
+    try {
+      const tx = await postLedgerTransaction({
+        kind: "rental_deposit_hold",
+        idempotencyKey: `rental_deposit_hold_${id}`,
+        environment,
+        referenceType: "rental",
+        referenceId: id,
+        description: `Rental deposit escrow hold (${id})`,
+        actorId: user.sub,
+        postings: [
+          { ownerType: "customer", ownerId: user.sub, purpose: "deposit_escrow", environment, amount: -deposit },
+          { ownerType: "platform", ownerId: "peebee", purpose: "rental_deposit_escrow", environment, amount: deposit },
+        ],
+      });
+      if (await hasColumn("rentals", "deposit_ledger_tx")) {
+        await db.execute({ sql: "UPDATE rentals SET deposit_ledger_tx = ?, deposit_status = 'held' WHERE id = ?", args: [tx.id, id] }).catch(() => {});
+      }
+    } catch (err) {
+      console.warn("Ledger deposit hold failed:", err);
+    }
+  }
   if (!isSandboxDemo) notifyUser(String(listing.owner_id), { title: "New car rental request", body: `${period.replace("_", " ")} · UGX ${rent.toLocaleString("en-UG")}. Approve or decline it.`, url: "/rentals", tag: `rental-${id}` }).catch(() => {});
   return c.json({ id, days, rent, deposit, periodType: period, status: isSandboxDemo ? "active" : "requested" }, 201);
 });
@@ -411,6 +526,228 @@ selfDriveRoutes.post("/car/rentals/:id/demo-return", async (c) => {
   const done = await completeRental(id, ["active"], 0, user.sub);
   if (!done) return c.json({ error: "invalid_status", message: "This demo rental has already ended." }, 409);
   return c.json({ ok: true, status: "completed" });
+});
+
+// ---- Photo Walkaround Inspections (Pickup & Return 360°) -------------------------
+
+const inspectionSchema = z.object({
+  phase: z.enum(["pickup", "return"]),
+  odometerKm: z.number().int().min(0).max(2_000_000).optional(),
+  fuelLevelPercent: z.number().int().min(0).max(100).optional(),
+  notes: z.string().trim().max(1000).optional(),
+  deviceTimestamp: z.string().max(50).optional(),
+  photos: z.array(z.object({
+    slot: z.enum(["front", "rear", "left", "right", "interior", "odometer", "fuel", "damage_extra"]),
+    dataUrl: z.string().optional(),
+    note: z.string().trim().max(500).optional(),
+    deviceTimestamp: z.string().max(50).optional(),
+  })).optional(),
+});
+
+selfDriveRoutes.post("/car/rentals/:id/inspections", async (c) => {
+  const rentalId = c.req.param("id") as string;
+  const user = c.get("user");
+  if (!(await hasTable("rental_inspections")) || !(await hasTable("rental_inspection_photos"))) {
+    return c.json({ error: "inspections_unavailable", message: "Vehicle inspections are not available yet." }, 503);
+  }
+  const rental = (await db.execute({ sql: "SELECT * FROM rentals WHERE id = ?", args: [rentalId] })).rows[0] as Row | undefined;
+  if (!rental) return c.json({ error: "not_found" }, 404);
+  const isRenter = user.sub === rental.renter_id;
+  const isOwner = user.sub === rental.owner_id;
+  const isAdmin = user.role === "admin";
+  if (!isRenter && !isOwner && !isAdmin) return c.json({ error: "forbidden" }, 403);
+  const role = isAdmin ? "admin" : isRenter ? "renter" : "owner";
+
+  const contentType = c.req.header("content-type") || "";
+  let phase: "pickup" | "return" = "pickup";
+  let odometerKm: number | null = null;
+  let fuelLevelPercent: number | null = null;
+  let notes: string | null = null;
+  type PhotoItem = { slot: string; note?: string | null; deviceTimestamp?: string | null; bytes: Uint8Array; mime: string };
+  const incomingPhotos: PhotoItem[] = [];
+
+  if (contentType.includes("multipart/form-data")) {
+    const form = await c.req.formData().catch(() => null);
+    if (!form) return c.json({ error: "invalid_body" }, 400);
+    const p = String(form.get("phase") ?? "pickup");
+    if (p !== "pickup" && p !== "return") return c.json({ error: "invalid_phase" }, 400);
+    phase = p;
+    const o = form.get("odometerKm");
+    if (o) odometerKm = Math.max(0, parseInt(String(o), 10) || 0);
+    const f = form.get("fuelLevelPercent");
+    if (f) fuelLevelPercent = Math.min(100, Math.max(0, parseInt(String(f), 10) || 0));
+    notes = form.get("notes") ? String(form.get("notes")).slice(0, 1000) : null;
+    const validSlots = new Set(["front", "rear", "left", "right", "interior", "odometer", "fuel", "damage_extra"]);
+    for (const [key, val] of form.entries()) {
+      if (val instanceof File) {
+        let slot = key.replace(/^(photo_|slot_)/, "");
+        if (!validSlots.has(slot)) slot = "damage_extra";
+        if (!INSPECTION_PHOTO_MIME.has(baseMimeType(val.type))) continue;
+        incomingPhotos.push({
+          slot,
+          note: null,
+          deviceTimestamp: new Date().toISOString(),
+          bytes: new Uint8Array(await val.arrayBuffer()),
+          mime: val.type,
+        });
+      }
+    }
+  } else {
+    const parsed = inspectionSchema.safeParse(await c.req.json().catch(() => ({})));
+    if (!parsed.success) return c.json({ error: "invalid_body", issues: parsed.error.issues }, 400);
+    phase = parsed.data.phase;
+    odometerKm = parsed.data.odometerKm ?? null;
+    fuelLevelPercent = parsed.data.fuelLevelPercent ?? null;
+    notes = parsed.data.notes ?? null;
+    for (const p of parsed.data.photos ?? []) {
+      if (!p.dataUrl) continue;
+      const decoded = decodeDataUrl(p.dataUrl);
+      if (!decoded) continue;
+      if (!INSPECTION_PHOTO_MIME.has(decoded.mime)) continue;
+      incomingPhotos.push({
+        slot: p.slot,
+        note: p.note ?? null,
+        deviceTimestamp: p.deviceTimestamp ?? parsed.data.deviceTimestamp ?? new Date().toISOString(),
+        bytes: decoded.bytes,
+        mime: decoded.mime,
+      });
+    }
+  }
+
+  // Create or update the inspection
+  const existing = (await db.execute({
+    sql: "SELECT id FROM rental_inspections WHERE rental_id = ? AND phase = ? AND inspector_role = ?",
+    args: [rentalId, phase, role],
+  })).rows[0] as Row | undefined;
+  const inspectionId = existing ? String(existing.id) : newId("rinsp");
+
+  if (existing) {
+    await db.execute({
+      sql: `UPDATE rental_inspections SET odometer_km = COALESCE(?, odometer_km), fuel_level_percent = COALESCE(?, fuel_level_percent), notes = COALESCE(?, notes), completed_at = datetime('now') WHERE id = ?`,
+      args: [odometerKm, fuelLevelPercent, notes, inspectionId],
+    });
+  } else {
+    await db.execute({
+      sql: `INSERT INTO rental_inspections (id, rental_id, phase, inspector_id, inspector_role, odometer_km, fuel_level_percent, notes, completed_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+      args: [inspectionId, rentalId, phase, user.sub, role, odometerKm, fuelLevelPercent, notes],
+    });
+  }
+
+  // Upload photos to R2
+  const bucket = getR2Bucket();
+  const createdPhotos = [];
+  for (const item of incomingPhotos) {
+    const photoId = newId("rpho");
+    const ext = extensionForMime(item.mime, "jpg");
+    const key = `rental-inspections/${rentalId}/${phase}/${photoId}.${ext}`;
+    try {
+      await bucket.put(key, item.bytes, { httpMetadata: { contentType: item.mime } });
+      await db.execute({
+        sql: `INSERT INTO rental_inspection_photos (id, inspection_id, slot, photo_key, note, device_timestamp, created_at)
+              VALUES (?, ?, ?, ?, ?, ?, datetime('now'))`,
+        args: [photoId, inspectionId, item.slot, key, item.note ?? null, item.deviceTimestamp ?? null],
+      });
+      createdPhotos.push({ id: photoId, slot: item.slot, note: item.note ?? null, device_timestamp: item.deviceTimestamp ?? null, url: `/v1/car/rentals/inspections/photos/${photoId}` });
+    } catch (err) {
+      console.error("Failed to upload inspection photo:", err);
+    }
+  }
+
+  // Update inspection reference on rental
+  if (phase === "pickup" && (await hasColumn("rentals", "pickup_inspection_id"))) {
+    await db.execute({ sql: "UPDATE rentals SET pickup_inspection_id = ?, updated_at = datetime('now') WHERE id = ?", args: [inspectionId, rentalId] });
+  } else if (phase === "return" && (await hasColumn("rentals", "return_inspection_id"))) {
+    await db.execute({ sql: "UPDATE rentals SET return_inspection_id = ?, updated_at = datetime('now') WHERE id = ?", args: [inspectionId, rentalId] });
+  }
+
+  return c.json({ ok: true, inspectionId, photosCount: createdPhotos.length, photos: createdPhotos });
+});
+
+selfDriveRoutes.get("/car/rentals/:id/inspections", async (c) => {
+  const rentalId = c.req.param("id") as string;
+  const user = c.get("user");
+  if (!(await hasTable("rental_inspections")) || !(await hasTable("rental_inspection_photos"))) {
+    return c.json({ pickup: null, return: null });
+  }
+  const rental = (await db.execute({ sql: "SELECT renter_id, owner_id FROM rentals WHERE id = ?", args: [rentalId] })).rows[0] as Row | undefined;
+  if (!rental) return c.json({ error: "not_found" }, 404);
+  if (user.sub !== rental.renter_id && user.sub !== rental.owner_id && user.role !== "admin") {
+    return c.json({ error: "forbidden" }, 403);
+  }
+  const inspections = (await db.execute({
+    sql: "SELECT * FROM rental_inspections WHERE rental_id = ? ORDER BY completed_at ASC",
+    args: [rentalId],
+  })).rows as Row[];
+
+  const photos = (await db.execute({
+    sql: `SELECT p.* FROM rental_inspection_photos p JOIN rental_inspections i ON i.id = p.inspection_id WHERE i.rental_id = ? ORDER BY p.created_at ASC`,
+    args: [rentalId],
+  })).rows as Row[];
+
+  const photoMap: Record<string, Row[]> = {};
+  for (const p of photos) {
+    (photoMap[String(p.inspection_id)] ??= []).push(p);
+  }
+
+  const formatInspection = (insp: Row | undefined) => {
+    if (!insp) return null;
+    const items = photoMap[String(insp.id)] ?? [];
+    return {
+      id: insp.id,
+      rental_id: insp.rental_id,
+      phase: insp.phase,
+      inspector_id: insp.inspector_id,
+      inspector_role: insp.inspector_role,
+      odometer_km: insp.odometer_km,
+      fuel_level_percent: insp.fuel_level_percent,
+      notes: insp.notes,
+      completed_at: insp.completed_at ? fromDb(String(insp.completed_at)).toISOString() : null,
+      photos: items.map((p) => ({
+        id: p.id,
+        slot: p.slot,
+        photo_key: p.photo_key,
+        url: `/v1/car/rentals/inspections/photos/${p.id}`,
+        note: p.note,
+        device_timestamp: p.device_timestamp,
+        created_at: p.created_at ? fromDb(String(p.created_at)).toISOString() : null,
+      })),
+    };
+  };
+
+  const pickup = inspections.filter((i) => i.phase === "pickup").pop();
+  const ret = inspections.filter((i) => i.phase === "return").pop();
+
+  return c.json({
+    pickup: formatInspection(pickup),
+    return: formatInspection(ret),
+  });
+});
+
+selfDriveRoutes.get("/car/rentals/inspections/photos/:photoId", async (c) => {
+  const photoId = c.req.param("photoId") as string;
+  const user = c.get("user");
+  if (!(await hasTable("rental_inspection_photos"))) return c.json({ error: "not_found" }, 404);
+  const row = (await db.execute({
+    sql: `SELECT p.photo_key, r.renter_id, r.owner_id
+          FROM rental_inspection_photos p
+          JOIN rental_inspections i ON i.id = p.inspection_id
+          JOIN rentals r ON r.id = i.rental_id
+          WHERE p.id = ?`,
+    args: [photoId],
+  })).rows[0] as Row | undefined;
+  if (!row) return c.json({ error: "not_found" }, 404);
+  if (user.sub !== row.renter_id && user.sub !== row.owner_id && user.role !== "admin") {
+    return c.json({ error: "forbidden" }, 403);
+  }
+  const object = await getR2Bucket().get(String(row.photo_key));
+  if (!object) return c.json({ error: "not_found" }, 404);
+  return new Response(object.body, {
+    headers: {
+      ...uploadResponseHeaders(object.httpMetadata?.contentType, "image/jpeg"),
+      "Cache-Control": "private, max-age=86400",
+    },
+  });
 });
 
 /** Requests the owner never answered lose their hold and the renter's money is returned. */

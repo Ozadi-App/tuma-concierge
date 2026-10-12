@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
 import { createClient, type Client, type InArgs } from "@libsql/client/node";
@@ -7,7 +7,7 @@ import { Hono } from "hono";
 import { signToken } from "../auth/jwt.js";
 import { setD1Binding, type D1Database } from "../db/client.js";
 import { splitSqlStatements } from "../db/split-sql.js";
-import { setR2Binding } from "../storage/r2.js";
+import { setR2Binding, type R2Bucket } from "../storage/r2.js";
 import { setBiddingSettings, setCarSettings, setMatchingModesEnabled, setPlatformEnvironment } from "../lib/settings.js";
 import { resetSchemaCache } from "../lib/schema.js";
 import { orderRoutes } from "../orders/routes.js";
@@ -25,7 +25,7 @@ const SCHEDULED = { enabled: true, maxAdvanceHours: 72, minLeadMinutes: 30, open
 
 const CARPOOL = { enabled: true, maxSeatsPerBooking: 3, maxRepeatWeeks: 2, cutoffMinutes: 15, payWithinMinutes: 15, matchRadiusKm: 10 };
 
-const SELFDRIVE = { enabled: true, platformPercent: 10, maxDays: 7, minDeposit: 50000, approveWithinHours: 12, overtimeGraceHours: 3 };
+const SELFDRIVE = { enabled: true, platformPercent: 10, maxDays: 7, minDeposit: 50000, approveWithinHours: 12, overtimeGraceHours: 3, inspectionsRequired: false };
 
 const DEALS = { enabled: true, shareEnabled: true, rentEnabled: true, minOwnerSharePercent: 40, maxOwnerSharePercent: 80, maxRentPerDay: 0 };
 const KYC = { ownerIdRequired: false, driverIdRequired: false, driverLicenceRequired: false };
@@ -104,7 +104,9 @@ test("peebee car: category -> approvals -> assignment -> booking -> bid -> settl
   process.env.JWT_SECRET = "local-car-test-secret-only";
   resetSchemaCache();
   const client = createClient({ url: "file::memory:" });
-  const migrations = join(process.cwd(), "src/db/migrations");
+  const migrations = existsSync(join(process.cwd(), "src/db/migrations"))
+    ? join(process.cwd(), "src/db/migrations")
+    : join(process.cwd(), "apps/api/src/db/migrations");
   for (const file of readdirSync(migrations).filter((f) => f.endsWith(".sql")).sort()) {
     for (const sql of splitSqlStatements(readFileSync(join(migrations, file), "utf8"))) await client.execute(sql);
   }
@@ -705,4 +707,190 @@ test("peebee car: category -> approvals -> assignment -> booking -> bid -> settl
     assert.equal(ended.rent_unpaid_at_end, 2500, "6 started days (6,000) less the 3,000 already paid leaves 3,000; the driver's 500 wallet covers some of it");
     assert.equal((await json(await call("GET", "/car/deals/cars", "d1"))).cars.some((x: { id: string }) => x.id === carB), true, "the car is open for drivers again");
   });
+});
+
+test("self-drive inspections, ledger deposit escrow hold/settlement, and cargo booking", async (t) => {
+  process.env.JWT_SECRET = "local-car-test-secret-only";
+  resetSchemaCache();
+  const client = createClient({ url: "file::memory:" });
+  const migrations = existsSync(join(process.cwd(), "src/db/migrations"))
+    ? join(process.cwd(), "src/db/migrations")
+    : join(process.cwd(), "apps/api/src/db/migrations");
+  for (const file of readdirSync(migrations).filter((f) => f.endsWith(".sql")).sort()) {
+    for (const sql of splitSqlStatements(readFileSync(join(migrations, file), "utf8"))) await client.execute(sql);
+  }
+  bindDatabase(client);
+
+  const objects = new Map<string, ArrayBuffer>();
+  setR2Binding({
+    put: async (key: string, value: ArrayBuffer) => { objects.set(key, value); },
+    get: async (key: string) => {
+      const data = objects.get(key);
+      return data ? { body: new Blob([data]).stream(), httpMetadata: { contentType: "image/jpeg" } } : null;
+    },
+    delete: async (key: string) => { objects.delete(key); },
+  } as unknown as R2Bucket);
+
+  for (const [id, role] of [["cust", "customer"], ["owner", "customer"], ["admin", "admin"]] as const) {
+    await client.execute({ sql: "INSERT INTO users (id, phone, name, password_hash, role, wallet_balance) VALUES (?, ?, ?, 'h', ?, 1000000)", args: [id, id, id, role] });
+  }
+
+  // Pre-approve renter KYC
+  await client.execute({
+    sql: "INSERT INTO selfdrive_renter_kyc (user_id, nin, residential_address, national_id_key, residence_method, residence_bill_key, status) VALUES ('cust', 'CM000000000000', 'Kampala', 'k', 'bill', 'b', 'approved')",
+    args: [],
+  });
+
+  // Approved vehicle & rental listing
+  await client.execute({
+    sql: "INSERT INTO vehicles (id, owner_id, category_id, plate, make, model, year, colour, status) VALUES ('v-test-1', 'owner', 'peebee-cargo-van', 'UBB 123A', 'Toyota', 'HiAce', 2020, 'White', 'approved')",
+    args: [],
+  });
+  await client.execute({
+    sql: "INSERT INTO rental_listings (vehicle_id, daily_price, deposit_amount, notes, active, hourly_enabled, half_day_enabled, full_day_enabled) VALUES ('v-test-1', 100000, 50000, 'Test listing', 1, 1, 1, 1)",
+    args: [],
+  });
+
+  const app = new Hono().route("/v1", orderRoutes).route("/v1", carRoutes).route("/v1", selfDriveRoutes);
+  const tokens = {
+    cust: await signToken({ sub: "cust", role: "customer" }),
+    owner: await signToken({ sub: "owner", role: "customer" }),
+    admin: await signToken({ sub: "admin", role: "admin" }),
+  };
+  const call = (method: string, path: string, who: keyof typeof tokens, body?: unknown) =>
+    app.request(`/v1${path}`, { method, headers: { Authorization: `Bearer ${tokens[who]}`, "Content-Type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
+  const json = async (res: Response) => (await res.json()) as Record<string, any>;
+
+  await setCarSettings({
+    enabled: true,
+    onDemandEnabled: true,
+    matchingMode: "first_to_claim",
+    shares: { owner: 60, driver: 30, platform: 10 },
+    maxPickupKm: 10,
+    scheduled: SCHEDULED,
+    carpool: CARPOOL,
+    selfDrive: { enabled: true, platformPercent: 10, maxDays: 7, minDeposit: 10000, approveWithinHours: 12, overtimeGraceHours: 3, inspectionsRequired: true },
+    kyc: KYC,
+    deals: DEALS,
+    vehiclePhotos: PHOTOS,
+    withdrawalsEnabled: false,
+    withdrawalMinAmount: 0,
+  });
+
+  // 1. Cargo Booking
+  const cargoRes = await call("POST", "/car/bookings", "cust", {
+    categoryId: "peebee-cargo-van",
+    cargoDescription: "Boxes of books and furniture",
+    pickupArea: "Kololo",
+    pickupAddress: "Plot 1, Kololo",
+    pickupLat: 0.32,
+    pickupLng: 32.58,
+    destinationArea: "Nakawa",
+    destinationAddress: "Plot 5, Nakawa",
+    destinationLat: 0.33,
+    destinationLng: 32.61,
+  });
+  assert.equal(cargoRes.status, 201, "cargo booking created successfully");
+  const cargoBody = await json(cargoRes);
+  assert.ok(cargoBody.order.id);
+  const listInDb = (await client.execute({ sql: "SELECT title FROM lists WHERE id = (SELECT list_id FROM orders WHERE id = ?)", args: [cargoBody.order.id] })).rows[0];
+  assert.ok(String(listInDb.title).includes("Cargo"), "list title indicates cargo");
+
+  // 2. Self-Drive Rental with Deposit Escrow Hold
+  const now = Date.now();
+  const startsAt = new Date(now + 86400000).toISOString();
+  const endsAt = new Date(now + 86400000 * 3).toISOString();
+  const rentRes = await call("POST", "/car/rentals", "cust", {
+    vehicleId: "v-test-1",
+    startsAt,
+    endsAt,
+    licenceNumber: "DL12345678",
+    licenceExpiry: "2030-01-01",
+    periodType: "full_day",
+  });
+  assert.equal(rentRes.status, 201, "rental request created");
+  const rentData = await json(rentRes);
+  const rentalId = rentData.id;
+
+  // Verify deposit escrow ledger transaction was created
+  const ledgerTx = (await client.execute({ sql: "SELECT kind, reference_id FROM ledger_transactions WHERE reference_id = ?", args: [rentalId] })).rows[0];
+  assert.ok(ledgerTx, "ledger transaction exists for rental");
+  assert.equal(ledgerTx.kind, "rental_deposit_hold");
+
+  // Owner approves rental
+  const approveRes = await call("POST", `/car/rentals/${rentalId}/decision`, "owner", { approve: true });
+  assert.equal(approveRes.status, 200);
+
+  // 3. Handover requires pickup inspection
+  const handoverBlocked = await call("POST", `/car/rentals/${rentalId}/handover`, "owner");
+  assert.equal(handoverBlocked.status, 409, "handover requires inspection");
+  const blockedBody = await json(handoverBlocked);
+  assert.equal(blockedBody.error, "inspection_required");
+
+  // Submit pickup walkaround inspection
+  const samplePhoto = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+  const pickupInspRes = await call("POST", `/car/rentals/${rentalId}/inspections`, "cust", {
+    phase: "pickup",
+    odometerKm: 55000,
+    fuelLevelPercent: 95,
+    notes: "Pickup inspection clean",
+    photos: [
+      { slot: "front", dataUrl: samplePhoto, note: "Front OK" },
+      { slot: "rear", dataUrl: samplePhoto, note: "Rear OK" },
+      { slot: "left", dataUrl: samplePhoto },
+      { slot: "right", dataUrl: samplePhoto },
+      { slot: "interior", dataUrl: samplePhoto },
+      { slot: "odometer", dataUrl: samplePhoto },
+      { slot: "fuel", dataUrl: samplePhoto },
+    ],
+  });
+  assert.equal(pickupInspRes.status, 200, "pickup inspection recorded");
+
+  // Handover succeeds now that inspection is recorded
+  const handoverSuccess = await call("POST", `/car/rentals/${rentalId}/handover`, "owner");
+  assert.equal(handoverSuccess.status, 200, "handover successful");
+
+  // 4. Return requires return inspection
+  const returnBlocked = await call("POST", `/car/rentals/${rentalId}/return`, "owner", {});
+  assert.equal(returnBlocked.status, 409, "return requires return inspection");
+
+  // Submit return walkaround inspection
+  const returnInspRes = await call("POST", `/car/rentals/${rentalId}/inspections`, "owner", {
+    phase: "return",
+    odometerKm: 55200,
+    fuelLevelPercent: 90,
+    notes: "Returned safely",
+    photos: [
+      { slot: "front", dataUrl: samplePhoto },
+      { slot: "rear", dataUrl: samplePhoto },
+      { slot: "left", dataUrl: samplePhoto },
+      { slot: "right", dataUrl: samplePhoto },
+      { slot: "interior", dataUrl: samplePhoto },
+      { slot: "odometer", dataUrl: samplePhoto },
+      { slot: "fuel", dataUrl: samplePhoto },
+    ],
+  });
+  assert.equal(returnInspRes.status, 200, "return inspection recorded");
+
+  // Retrieve inspections for comparison
+  const inspectionsRes = await call("GET", `/car/rentals/${rentalId}/inspections`, "cust");
+  assert.equal(inspectionsRes.status, 200);
+  const inspectionsData = await json(inspectionsRes);
+  assert.ok(inspectionsData.pickup, "pickup inspection present");
+  assert.ok(inspectionsData.return, "return inspection present");
+  assert.equal(inspectionsData.pickup.photos.length, 7);
+  assert.equal(inspectionsData.return.photos.length, 7);
+
+  // Return car with no damage -> settles rental and releases deposit
+  const returnSuccess = await call("POST", `/car/rentals/${rentalId}/return`, "owner", {});
+  assert.equal(returnSuccess.status, 200);
+  const returnBody = await json(returnSuccess);
+  assert.equal(returnBody.status, "completed");
+
+  // Verify deposit escrow settlement ledger transaction
+  const settlementTx = (await client.execute({ sql: "SELECT kind FROM ledger_transactions WHERE reference_id = ? AND kind = 'rental_deposit_settlement'", args: [rentalId] })).rows[0];
+  assert.ok(settlementTx, "deposit settlement ledger transaction posted");
+
+  const rentalRow = (await client.execute({ sql: "SELECT deposit_status FROM rentals WHERE id = ?", args: [rentalId] })).rows[0];
+  assert.equal(rentalRow.deposit_status, "released");
 });

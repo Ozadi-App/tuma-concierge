@@ -1,8 +1,8 @@
 "use client";
 
 import { DEFAULT_RIDE_TRACKING_SETTINGS, roundFare } from "@peebee/shared";
-import type { RidePassenger, SavedPassenger } from "@peebee/shared";
-import { ChevronRight, Route, User, Users } from "lucide-react";
+import type { CarCategory, RidePassenger, SavedPassenger } from "@peebee/shared";
+import { ChevronRight, Route, Truck, User, Users } from "lucide-react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -15,6 +15,13 @@ import { RouteSummary } from "./RouteSummary";
 import { RideTimeEstimate } from "./RideTimeEstimate";
 import { WhoIsRiding } from "../WhoIsRiding";
 import { saveSelfDriveRoute } from "../../lib/selfdrive-route";
+
+const FALLBACK_CARGO_CATEGORIES: CarCategory[] = [
+  { id: "peebee-cargo-van", kind: "cargo", name: "Cargo Van", seats: 2, cargo_type: "van", size_label: "Up to 800 kg", rate_per_km: 2500, minimum_fare: 15000 },
+  { id: "peebee-cargo-pickup", kind: "cargo", name: "Pickup Truck (1 Ton)", seats: 2, cargo_type: "pickup", size_label: "Up to 1 Ton", rate_per_km: 3500, minimum_fare: 25000 },
+  { id: "peebee-cargo-truck-3t", kind: "cargo", name: "Box Truck (3 Ton)", seats: 2, cargo_type: "truck_3t", size_label: "Up to 3 Ton", rate_per_km: 5000, minimum_fare: 45000 },
+  { id: "peebee-cargo-truck-7t", kind: "cargo", name: "Heavy Truck (7 Ton)", seats: 2, cargo_type: "truck_7t", size_label: "Up to 7 Ton", rate_per_km: 8000, minimum_fare: 80000 },
+];
 
 /** Great-circle distance in km — mirrors apps/api/src/lib/geo.ts, used only
  * for the live fare preview here; the backend recomputes it authoritatively. */
@@ -51,6 +58,10 @@ export function RideModal({ onClose, initialMode = "boda", serviceLocked = false
   const [tier, setTier] = useState<"convenient" | "comfort">("convenient");
   const [vehicleSize, setVehicleSize] = useState<"normal" | "large">("normal");
   const [tierOptions, setTierOptions] = useState<Array<{ size: "normal" | "large"; tier: "convenient" | "comfort"; fare: number; nearby: number }>>([]);
+  const [categories, setCategories] = useState<CarCategory[]>([]);
+  const [carSubMode, setCarSubMode] = useState<"passenger" | "cargo">("passenger");
+  const [selectedCargoCatId, setSelectedCargoCatId] = useState<string>("peebee-cargo-van");
+  const [cargoDescription, setCargoDescription] = useState<string>("");
   const [schedule, setSchedule] = useState<{ maxAdvanceHours: number | null; minLeadMinutes: number } | null>(null);
   const [when, setWhen] = useState<"now" | "later">("now");
   const [nowOk, setNowOk] = useState(true);
@@ -87,6 +98,7 @@ export function RideModal({ onClose, initialMode = "boda", serviceLocked = false
         setSchedule(cfg.scheduled);
         setNowOk(cfg.onDemandEnabled);
         if (!cfg.onDemandEnabled && cfg.scheduled) setWhen("later");
+        if (cfg.categories) setCategories(cfg.categories);
       })
       .catch(() => setTierPricing(null));
   }, []);
@@ -131,25 +143,49 @@ export function RideModal({ onClose, initialMode = "boda", serviceLocked = false
     setBusy(true);
     setError(null);
     try {
-      if (mode === "car" && tierPricing) {
+      if (mode === "car") {
         if (pf.lat == null || pf.lng == null || df.lat == null || df.lng == null) throw new Error("Please pin both places on the map.");
-        const { order } = await api.bookCar({
-          serviceTier: tier,
-          vehicleSize,
-          pickupArea: pf.area,
-          pickupAddress: pf.address,
-          pickupLat: pf.lat,
-          pickupLng: pf.lng,
-          destinationArea: df.area,
-          destinationAddress: df.address,
-          destinationLat: df.lat,
-          destinationLng: df.lng,
-          ...(when === "later" ? { scheduledFor: new Date(pickupAt).toISOString() } : {}),
-          ...(passenger ? { passenger } : {}),
-        });
-        onClose();
-        router.push(`/orders/${order.id}/pay`);
-        return;
+        if (carSubMode === "cargo") {
+          const cargoList = categories.filter((c) => c.kind === "cargo" || c.id.startsWith("peebee-cargo-"));
+          const effective = cargoList.length > 0 ? cargoList : FALLBACK_CARGO_CATEGORIES;
+          const selectedCat = effective.find((c) => c.id === selectedCargoCatId) || effective[0];
+          const { order } = await api.bookCar({
+            categoryId: selectedCat.id,
+            cargoDescription: cargoDescription.trim() || undefined,
+            pickupArea: pf.area,
+            pickupAddress: pf.address,
+            pickupLat: pf.lat,
+            pickupLng: pf.lng,
+            destinationArea: df.area,
+            destinationAddress: df.address,
+            destinationLat: df.lat,
+            destinationLng: df.lng,
+            ...(when === "later" ? { scheduledFor: new Date(pickupAt).toISOString() } : {}),
+            ...(passenger ? { passenger } : {}),
+          });
+          onClose();
+          router.push(`/orders/${order.id}/pay`);
+          return;
+        }
+        if (tierPricing) {
+          const { order } = await api.bookCar({
+            serviceTier: tier,
+            vehicleSize,
+            pickupArea: pf.area,
+            pickupAddress: pf.address,
+            pickupLat: pf.lat,
+            pickupLng: pf.lng,
+            destinationArea: df.area,
+            destinationAddress: df.address,
+            destinationLat: df.lat,
+            destinationLng: df.lng,
+            ...(when === "later" ? { scheduledFor: new Date(pickupAt).toISOString() } : {}),
+            ...(passenger ? { passenger } : {}),
+          });
+          onClose();
+          router.push(`/orders/${order.id}/pay`);
+          return;
+        }
       }
       const list = await api.createList({ title: "Ride" });
       const { order } = await api.createOrder({
@@ -175,6 +211,9 @@ export function RideModal({ onClose, initialMode = "boda", serviceLocked = false
       setBusy(false);
     }
   }
+
+  const cargoList = categories.filter((c) => c.kind === "cargo" || c.id.startsWith("peebee-cargo-"));
+  const effectiveCargo = cargoList.length > 0 ? cargoList : FALLBACK_CARGO_CATEGORIES;
 
   return (
     <Modal withMap mapRoute={route} title={t("ride_title")} onClose={onClose}>
@@ -212,7 +251,7 @@ export function RideModal({ onClose, initialMode = "boda", serviceLocked = false
           />
         )}
 
-        {!serviceLocked && (tierPricing || carpoolOn || rentOn) && (!carMenuOpen ? (
+        {!serviceLocked && (tierPricing || carpoolOn || rentOn || effectiveCargo.length > 0) && (!carMenuOpen ? (
           <div role="group" aria-label="Choose a ride" className="flex gap-2">
             <button type="button" aria-pressed={mode === "boda"} onClick={() => setMode("boda")} className={`min-h-10 flex-1 rounded-full px-3 text-sm font-bold ${mode === "boda" ? "bg-gold text-ink-gold" : "bg-gold/15 text-ink"}`}>{t("car_tab_boda")}</button>
             <button type="button" onClick={() => { setMode("car"); setCarMenuOpen(true); }} className="min-h-10 flex-1 rounded-full bg-gold/15 px-3 text-sm font-bold text-ink">{t("car_tab_car")}</button>
@@ -220,15 +259,102 @@ export function RideModal({ onClose, initialMode = "boda", serviceLocked = false
         ) : (
           <div className="space-y-2">
             <button type="button" onClick={() => { setMode("boda"); setCarMenuOpen(false); }} className="min-h-9 text-sm font-bold text-gold">← Choose Boda or Car</button>
-            <div role="group" aria-label="Choose a car service" className="flex gap-2">
-              {tierPricing && <button type="button" aria-pressed={mode === "car"} onClick={() => setMode("car")} className="min-h-10 flex-1 rounded-full bg-gold px-3 text-sm font-bold text-ink-gold">Car</button>}
+            <div role="group" aria-label="Choose a car service" className="flex flex-wrap gap-2">
+              {tierPricing && (
+                <button
+                  type="button"
+                  aria-pressed={mode === "car" && carSubMode === "passenger"}
+                  onClick={() => { setMode("car"); setCarSubMode("passenger"); }}
+                  className={`min-h-10 flex-1 rounded-full px-3 text-sm font-bold transition-colors ${
+                    mode === "car" && carSubMode === "passenger" ? "bg-gold text-ink-gold" : "bg-gold/15 text-ink"
+                  }`}
+                >
+                  Car
+                </button>
+              )}
+              <button
+                type="button"
+                aria-pressed={mode === "car" && carSubMode === "cargo"}
+                onClick={() => { setMode("car"); setCarSubMode("cargo"); }}
+                className={`min-h-10 flex-1 rounded-full px-3 text-sm font-bold transition-colors ${
+                  mode === "car" && carSubMode === "cargo" ? "bg-gold text-ink-gold" : "bg-gold/15 text-ink"
+                }`}
+              >
+                Cargo / Truck
+              </button>
               {carpoolOn && <button type="button" onClick={() => { onClose(); router.push("/carpool"); }} className="min-h-10 flex-1 rounded-full bg-gold/15 px-3 text-sm font-bold text-ink">Rideshare</button>}
               {rentOn && <button type="button" onClick={() => { saveSelfDriveRoute(route); onClose(); router.push("/rent"); }} className="min-h-10 flex-1 rounded-full bg-gold/15 px-3 text-sm font-bold text-ink">Selfdrive</button>}
             </div>
           </div>
         ))}
 
-        {carMenuOpen && mode === "car" && tierPricing ? (
+        {carMenuOpen && mode === "car" && carSubMode === "cargo" ? (
+          <div className="space-y-3">
+            {schedule && (
+              <div className="space-y-2">
+                <div role="tablist" className="flex gap-2">
+                  {(["now", "later"] as const).filter((w) => w === "later" || nowOk).map((w) => (
+                    <button key={w} type="button" role="tab" aria-selected={when === w} onClick={() => setWhen(w)}
+                      className={`min-h-9 flex-1 rounded-full px-3 text-xs font-bold ${when === w ? "bg-gold text-ink-gold" : "bg-gold/15 text-ink"}`}>
+                      {w === "now" ? "Now" : "Later"}
+                    </button>
+                  ))}
+                </div>
+                {when === "later" && (
+                  <>
+                    <input type="datetime-local" value={pickupAt} onChange={(e) => setPickupAt(e.target.value)}
+                      className="w-full rounded-xl border border-[var(--border-faint)] px-3 py-2.5 text-[15px] outline-none focus:border-gold" aria-label="Pickup time" />
+                    <p className="text-xs text-ink-500">
+                      At least {schedule.minLeadMinutes} minutes ahead{schedule.maxAdvanceHours ? `, up to ${schedule.maxAdvanceHours} hours` : ""}.
+                    </p>
+                  </>
+                )}
+              </div>
+            )}
+
+            <div>
+              <p className="text-xs font-semibold text-ink-500 mb-2">Choose cargo & delivery vehicle</p>
+              <div role="group" aria-label="Choose cargo vehicle" className="grid grid-cols-2 gap-2">
+                {effectiveCargo.map((cat) => {
+                  const selected = selectedCargoCatId === cat.id;
+                  const catFare = distanceKm != null ? roundFare(distanceKm * cat.rate_per_km, cat.minimum_fare) : cat.minimum_fare;
+                  return (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      aria-pressed={selected}
+                      onClick={() => setSelectedCargoCatId(cat.id)}
+                      className={`rounded-2xl border p-3 text-left transition-all ${
+                        selected
+                          ? "border-gold bg-gold/10 shadow-[0_3px_12px_rgba(201,162,39,.14)]"
+                          : "border-[var(--border-faint)] bg-[rgb(var(--surface-card))]"
+                      }`}
+                    >
+                      <span className="block text-sm font-bold text-ink truncate">{cat.name}</span>
+                      <span className="mt-0.5 block text-[11px] text-ink-500">{cat.size_label ?? "Cargo transport"}</span>
+                      <span className="mt-2 block text-xs font-bold text-gold">
+                        UGX {catFare.toLocaleString("en-UG")}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="block text-xs font-semibold text-ink-500">
+                What are you transporting? (optional)
+              </label>
+              <input
+                type="text"
+                placeholder="e.g. Household goods, cartons, equipment..."
+                value={cargoDescription}
+                onChange={(e) => setCargoDescription(e.target.value)}
+                className="w-full rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] px-3 py-2.5 text-[15px] outline-none focus:border-gold"
+              />
+            </div>
+          </div>
+        ) : carMenuOpen && mode === "car" && tierPricing ? (
           <div className="space-y-2">
             {schedule && (
               <div className="space-y-2">
@@ -312,9 +438,9 @@ export function RideModal({ onClose, initialMode = "boda", serviceLocked = false
 
         {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
 
-        {(!carMenuOpen || tierPricing) && <button
+        {(!carMenuOpen || tierPricing || carSubMode === "cargo") && <button
           onClick={submit}
-          disabled={busy || (mode === "car" && (tierOptions.length === 0 || (when === "now" && !tierOptions.find((o) => o.size === vehicleSize && o.tier === tier)?.nearby) || (when === "later" && !pickupAt)))}
+          disabled={busy || (mode === "car" && carSubMode === "passenger" && (tierOptions.length === 0 || (when === "now" && !tierOptions.find((o) => o.size === vehicleSize && o.tier === tier)?.nearby) || (when === "later" && !pickupAt))) || (mode === "car" && carSubMode === "cargo" && when === "later" && !pickupAt)}
           className="min-h-12 w-full rounded-full bg-gold px-4 text-base font-bold text-ink-gold shadow-[0_4px_12px_rgba(201,162,39,0.35)] disabled:opacity-60"
         >
           {busy ? "Please wait…" : "Next: payment"}

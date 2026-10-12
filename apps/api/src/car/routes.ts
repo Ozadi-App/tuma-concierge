@@ -445,6 +445,7 @@ const tripFields = z.object({
   destinationAddress: z.string().max(240).optional(),
   destinationLat: z.number().min(-90).max(90),
   destinationLng: z.number().min(-180).max(180),
+  cargoDescription: z.string().trim().max(300).optional(),
 });
 const oneService = (t: { categoryId?: string; serviceTier?: CarServiceTier }) => Boolean(t.categoryId) !== Boolean(t.serviceTier);
 const tripSchema = tripFields.refine(oneService, { message: "Choose one car service." });
@@ -488,6 +489,7 @@ carRoutes.post("/car/bookings", async (c) => {
     ? (await db.execute({ sql: `SELECT * FROM vehicle_categories WHERE active = 1 AND kind = 'passenger' AND ${vehicleSize === "large" ? "seats >= 5" : "seats < 5"} ORDER BY sort ASC LIMIT 1`, args: [] })).rows[0] as Row | undefined
     : await activeCategory(parsed.data.categoryId!);
   if (!category) return c.json({ error: "invalid_category" }, 400);
+  if (category.kind === "cargo" && !(await isServiceEnabled("cargo"))) return servicePaused(c, "cargo");
 
   // "Later": a pickup time inside the admin's window. "Now": needs book-now switched on.
   let scheduledAt: string | null = null;
@@ -511,9 +513,13 @@ carRoutes.post("/car/bookings", async (c) => {
 
   const environment = await getPlatformEnvironment();
   const listId = newId("list");
+  const isCargo = category.kind === "cargo";
+  const listTitle = isCargo
+    ? `${String(category.name)}${t.cargoDescription ? ` · ${t.cargoDescription}` : ""}`
+    : `${isTier ? `${parsed.data.serviceTier![0].toUpperCase()}${parsed.data.serviceTier!.slice(1)}` : String(category.name)} ride`;
   await db.execute({
     sql: "INSERT INTO lists (id, customer_id, title, status, environment) VALUES (?, ?, ?, 'draft', ?)",
-    args: [listId, user.sub, `${isTier ? `${parsed.data.serviceTier![0].toUpperCase()}${parsed.data.serviceTier!.slice(1)}` : String(category.name)} ride`, environment],
+    args: [listId, user.sub, listTitle, environment],
   });
 
   const response = await createOrderFromInput(
