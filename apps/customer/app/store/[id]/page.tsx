@@ -481,15 +481,19 @@ export default function StoreDetailPage() {
         <LiveStreamViewer
           channel={liveChannel}
           onClose={() => setShowLiveViewer(false)}
-          pinnedProducts={products.slice(0, 3).map((p) => ({
-            id: p.id,
-            title: p.title,
-            price: p.price,
-            image_url: p.image_url,
-            badge: p.badge,
-            inventory_quantity: p.inventory_quantity || 15,
-          }))}
-          onAddToCart={(product: PinnedProduct) => {
+          pinnedProduct={
+            promoProduct
+              ? {
+                  id: promoProduct.id,
+                  title: promoProduct.title,
+                  price: promoProduct.price,
+                  compare_at_price: promoProduct.compare_at_price || undefined,
+                  image_url: promoProduct.image_url || undefined,
+                  badge: promoProduct.badge || undefined,
+                }
+              : null
+          }
+          onAddToCart={() => {
             // Added via live stream
           }}
         />
