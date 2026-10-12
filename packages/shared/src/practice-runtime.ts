@@ -1,6 +1,7 @@
 import { PRACTICE_MODE_STORAGE_KEY, type PracticeRole } from "./practice.js";
 import { roundFare } from "./fare.js";
 import { DEMO_FOOD_RESTAURANTS, demoFoodImage, demoFoodMenu, demoFoodRestaurant } from "./demo-food.js";
+import { DEMO_MARKETPLACE_STORES, DEMO_MARKETPLACE_PRODUCTS, DEMO_MARKETPLACE_SPOTLIGHT } from "./demo-marketplace.js";
 import { CAR_MODEL_CATALOG } from "./car-model-catalog.js";
 
 const PRACTICE_STATE_VERSION = 4;
@@ -538,6 +539,37 @@ function handlePracticeRequest(role: PracticeRole, path: string, method: string,
     const photo = path.match(/^\/v1\/restaurants\/menu-items\/([^/]+)\/photo$/);
     const image = photo ? demoFoodImage(photo[1]) : undefined;
     if (image) return new Response(image, { headers: { "Content-Type": "image/svg+xml" } });
+
+    if (path === "/v1/marketplace/stores") {
+      const cat = query.get("category");
+      const stores = cat ? DEMO_MARKETPLACE_STORES.filter((s) => s.category === cat) : DEMO_MARKETPLACE_STORES;
+      return jsonResponse({ stores });
+    }
+    const storeDetail = path.match(/^\/v1\/marketplace\/stores\/([^/]+)$/);
+    if (storeDetail) {
+      const store = DEMO_MARKETPLACE_STORES.find((s) => s.id === storeDetail[1] || s.slug === storeDetail[1]);
+      if (store) return jsonResponse({ store });
+    }
+    const storeProducts = path.match(/^\/v1\/marketplace\/stores\/([^/]+)\/products$/);
+    if (storeProducts) {
+      const products = DEMO_MARKETPLACE_PRODUCTS[storeProducts[1]] || [];
+      return jsonResponse({ products });
+    }
+    if (path === "/v1/marketplace/live") {
+      return jsonResponse({ liveChannels: DEMO_MARKETPLACE_STORES.filter((s) => s.is_live === 1) });
+    }
+    if (path === "/v1/marketplace/spotlight") {
+      const cat = query.get("category");
+      let spotlight = DEMO_MARKETPLACE_SPOTLIGHT;
+      if (cat && cat !== "all") {
+        if (cat === "live") {
+          spotlight = spotlight.filter((item) => item.type === "live");
+        } else {
+          spotlight = spotlight.filter((item) => item.store_category === cat);
+        }
+      }
+      return jsonResponse({ spotlight });
+    }
   }
 
   if (role === "customer" && method === "POST" && path === "/v1/car/rentals") {

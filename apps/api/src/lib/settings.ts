@@ -354,6 +354,19 @@ const DEFAULTS = {
   gas_rider_daily_limit_ugx: "60000",
   gas_voucher_expiry_minutes: "60",
   gas_platform_discount_percent: "0",
+  /** Peebee Marketplace: Groceries & Stores, Live Commerce, Pro Paywalls, Social Ads */
+  marketplace_enabled: "1",
+  marketplace_live_enabled: "1",
+  marketplace_commission_percent: "10",
+  marketplace_pro_pricing_mode: "free",
+  marketplace_pro_store_price_ugx: "35000",
+  marketplace_pro_live_price_ugx: "75000",
+  marketplace_pro_trial_days: "14",
+  marketplace_ad_min_budget_ugx: "10000",
+  marketplace_ad_fee_percent: "5",
+  marketplace_min_order_amount: "5000",
+  marketplace_live_max_duration_mins: "180",
+  marketplace_delivery_base_fee: "3000",
 } as const;
 
 export type SettingKey = keyof typeof DEFAULTS;
@@ -1286,4 +1299,82 @@ export async function setGasSettings(next: Partial<GasSettings>): Promise<void> 
   if (next.platformDiscountPercent != null) writes.push(setSetting("gas_platform_discount_percent", String(Math.max(0, Math.min(100, next.platformDiscountPercent)))));
   await Promise.all(writes);
 }
+
+export type MarketplaceSettings = {
+  enabled: boolean;
+  liveEnabled: boolean;
+  commissionPercent: number;
+  proPricingMode: "free" | "paid";
+  proStorePriceUgx: number;
+  proLivePriceUgx: number;
+  proTrialDays: number;
+  adMinBudgetUgx: number;
+  adFeePercent: number;
+  minOrderAmountUgx: number;
+  liveMaxDurationMins: number;
+  deliveryBaseFeeUgx: number;
+};
+
+export async function getMarketplaceSettings(): Promise<MarketplaceSettings> {
+  const [
+    enabledStr,
+    liveEnabledStr,
+    commissionStr,
+    proPricingModeStr,
+    proStoreStr,
+    proLiveStr,
+    trialDaysStr,
+    adMinBudgetStr,
+    adFeeStr,
+    minOrderStr,
+    liveDurationStr,
+    deliveryBaseFeeStr,
+  ] = await Promise.all([
+    getSetting("marketplace_enabled"),
+    getSetting("marketplace_live_enabled"),
+    getSetting("marketplace_commission_percent"),
+    getSetting("marketplace_pro_pricing_mode"),
+    getSetting("marketplace_pro_store_price_ugx"),
+    getSetting("marketplace_pro_live_price_ugx"),
+    getSetting("marketplace_pro_trial_days"),
+    getSetting("marketplace_ad_min_budget_ugx"),
+    getSetting("marketplace_ad_fee_percent"),
+    getSetting("marketplace_min_order_amount"),
+    getSetting("marketplace_live_max_duration_mins"),
+    getSetting("marketplace_delivery_base_fee"),
+  ]);
+
+  return {
+    enabled: enabledStr !== "0",
+    liveEnabled: liveEnabledStr !== "0",
+    commissionPercent: Math.max(0, Math.min(100, Number(commissionStr) || 10)),
+    proPricingMode: (proPricingModeStr === "paid" ? "paid" : "free") as "free" | "paid",
+    proStorePriceUgx: Math.max(0, Number(proStoreStr) || 35000),
+    proLivePriceUgx: Math.max(0, Number(proLiveStr) || 75000),
+    proTrialDays: Math.max(0, Number(trialDaysStr) || 14),
+    adMinBudgetUgx: Math.max(1000, Number(adMinBudgetStr) || 10000),
+    adFeePercent: Math.max(0, Math.min(100, Number(adFeeStr) || 5)),
+    minOrderAmountUgx: Math.max(0, Number(minOrderStr) || 5000),
+    liveMaxDurationMins: Math.max(15, Number(liveDurationStr) || 180),
+    deliveryBaseFeeUgx: Math.max(0, Number(deliveryBaseFeeStr) || 3000),
+  };
+}
+
+export async function setMarketplaceSettings(next: Partial<MarketplaceSettings>): Promise<void> {
+  const writes: Promise<void>[] = [];
+  if (next.enabled != null) writes.push(setSetting("marketplace_enabled", next.enabled ? "1" : "0"));
+  if (next.liveEnabled != null) writes.push(setSetting("marketplace_live_enabled", next.liveEnabled ? "1" : "0"));
+  if (next.commissionPercent != null) writes.push(setSetting("marketplace_commission_percent", String(Math.max(0, Math.min(100, next.commissionPercent)))));
+  if (next.proPricingMode != null) writes.push(setSetting("marketplace_pro_pricing_mode", next.proPricingMode));
+  if (next.proStorePriceUgx != null) writes.push(setSetting("marketplace_pro_store_price_ugx", String(Math.max(0, Math.round(next.proStorePriceUgx)))));
+  if (next.proLivePriceUgx != null) writes.push(setSetting("marketplace_pro_live_price_ugx", String(Math.max(0, Math.round(next.proLivePriceUgx)))));
+  if (next.proTrialDays != null) writes.push(setSetting("marketplace_pro_trial_days", String(Math.max(0, Math.round(next.proTrialDays)))));
+  if (next.adMinBudgetUgx != null) writes.push(setSetting("marketplace_ad_min_budget_ugx", String(Math.max(1000, Math.round(next.adMinBudgetUgx)))));
+  if (next.adFeePercent != null) writes.push(setSetting("marketplace_ad_fee_percent", String(Math.max(0, Math.min(100, next.adFeePercent)))));
+  if (next.minOrderAmountUgx != null) writes.push(setSetting("marketplace_min_order_amount", String(Math.max(0, Math.round(next.minOrderAmountUgx)))));
+  if (next.liveMaxDurationMins != null) writes.push(setSetting("marketplace_live_max_duration_mins", String(Math.max(15, Math.round(next.liveMaxDurationMins)))));
+  if (next.deliveryBaseFeeUgx != null) writes.push(setSetting("marketplace_delivery_base_fee", String(Math.max(0, Math.round(next.deliveryBaseFeeUgx)))));
+  await Promise.all(writes);
+}
+
 

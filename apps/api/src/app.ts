@@ -38,6 +38,7 @@ import { walletRoutes } from "./wallet/routes.js";
 import { walletsRoutes } from "./wallet/wallets.js";
 
 import { gasRoutes } from "./gas/routes.js";
+import { marketplaceRoutes } from "./marketplace/routes.js";
 
 /** Hono app shared by the Node entry (local dev) and the Cloudflare Worker entry. */
 const app = new Hono();
@@ -252,6 +253,7 @@ app.route("/v1", walletsRoutes);
 app.route("/v1", stageRoutes);
 app.route("/v1", stageAdminRoutes);
 app.route("/v1", merchantRoutes);
+app.route("/v1", marketplaceRoutes);
 // adminRoutes' admin gate is scoped to /admin/* (see admin/routes.ts), so
 // mount order here is no longer load-bearing — it used to be registered as
 // "*" on this shared /v1 router, which meant anything mounted after it

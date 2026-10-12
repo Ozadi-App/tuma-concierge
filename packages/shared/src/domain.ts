@@ -285,12 +285,28 @@ export type CarSettings = {
 export type BiddingSettings = { enabled: boolean; minPercent: number; maxPercent: number };
 export type JobExpirySettings = { enabled: boolean; value: number; unit: JobExpiryUnit };
 
+export type MarketplaceSettings = {
+  enabled: boolean;
+  liveEnabled: boolean;
+  commissionPercent: number;
+  proPricingMode: "free" | "paid";
+  proStorePriceUgx: number;
+  proLivePriceUgx: number;
+  proTrialDays: number;
+  adMinBudgetUgx: number;
+  adFeePercent: number;
+  minOrderAmountUgx: number;
+  liveMaxDurationMins: number;
+  deliveryBaseFeeUgx: number;
+};
+
 /** Admin-tunable delivery pricing/matching numbers (packages/shared/src/api-client.ts: getSettings/adminUpdateSettings). */
 export type DeliverySettings = {
   timeFees: TimeFeeSettings;
   jobExpiry: JobExpirySettings;
   bidding: BiddingSettings;
   car: CarSettings;
+  marketplace?: MarketplaceSettings;
   /** Which environment's orders/wallets/lists everyone currently sees —
    * read-only here (GET /settings); change it with
    * adminSetPlatformEnvironment. */

@@ -7,6 +7,7 @@
   "types": "./src/index.ts",
   "exports": {
     "./demo-food": "./src/demo-food.ts",
+    "./demo-marketplace": "./src/demo-marketplace.ts",
     ".": "./src/index.ts",
     "./select": "./src/Select.tsx",
     "./select.css": "./select.css",

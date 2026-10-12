@@ -16,6 +16,7 @@ export { CAR_MODEL_CATALOG } from "./car-model-catalog.js";
 export type { CarModel } from "./car-model-catalog.js";
 export * from "./shopping-units.js";
 export * from "./ride-tracking.js";
+export * from "./demo-marketplace.js";
 export type { UgandaDistrict } from "./uganda-locations.js";
 export {
   detectMobileMoneyNetwork,
@@ -82,6 +83,7 @@ export type {
   FailedPayment,
   AdminOrderRow,
   DeliverySettings,
+  MarketplaceSettings,
   BiddingSettings,
   CarSettings,
   DealTermsView,

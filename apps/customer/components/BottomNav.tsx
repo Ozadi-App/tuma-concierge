@@ -6,12 +6,15 @@ import type { OrderRow } from "@peebee/shared";
 import {
   Archive,
   Bike,
+  BookOpen,
+  Briefcase,
   Car,
   CarFront,
   ChefHat,
   ChevronRight,
   CookingPot,
   Croissant,
+  Flame,
   Home,
   ListChecks,
   Package,
@@ -24,6 +27,8 @@ import {
   UtensilsCrossed,
   Truck,
   UsersRound,
+  WashingMachine,
+  Wrench,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -36,7 +41,7 @@ import { orderTitle, stageLabel } from "../lib/order-display";
 import { useLivePolling } from "../lib/use-live-polling";
 import { BottomDrawer } from "./BottomDrawer";
 
-type MenuGroup = "original" | "ride" | "shopping" | "food" | "deliver";
+type MenuGroup = "original" | "ride" | "shopping" | "food" | "deliver" | "services";
 type MenuItem = { id: string; label: string; icon: LucideIcon; href?: string; group?: Exclude<MenuGroup, "original">; disabled?: boolean };
 
 const originalMenu: MenuItem[] = [
@@ -44,6 +49,7 @@ const originalMenu: MenuItem[] = [
   { id: "shopping", label: "Buy", icon: ShoppingBag, group: "shopping" },
   { id: "food", label: "Eat", icon: UtensilsCrossed, group: "food" },
   { id: "deliver", label: "Send", icon: Package, group: "deliver" },
+  { id: "services", label: "Services", icon: Sparkles, group: "services" },
 ];
 
 const submenuItems: Record<Exclude<MenuGroup, "original">, MenuItem[]> = {
@@ -55,10 +61,10 @@ const submenuItems: Record<Exclude<MenuGroup, "original">, MenuItem[]> = {
   ],
   shopping: [
     { id: "shoplist", label: "List", icon: ListChecks, href: "/shoplist" },
-    { id: "markets", label: "Groceries", icon: Store, disabled: true },
-    { id: "stores", label: "Stores", icon: ShoppingBasket, disabled: true },
+    { id: "markets", label: "Groceries", icon: Store, href: "/groceries" },
+    { id: "stores", label: "Stores", icon: ShoppingBasket, href: "/stores" },
     { id: "pharmacy", label: "Pharma", icon: Pill, disabled: true },
-    { id: "services", label: "Jobs", icon: Sparkles, href: "/service" },
+    { id: "spotlight", label: "Spotlight", icon: Flame, href: "/spotlight" },
   ],
   food: [
     { id: "restaurant", label: "Restaurants", icon: UtensilsCrossed, href: "/restaurants" },
@@ -72,13 +78,20 @@ const submenuItems: Record<Exclude<MenuGroup, "original">, MenuItem[]> = {
     { id: "fix", label: "Move", icon: Truck, disabled: true },
     { id: "move", label: "Storage", icon: Archive, disabled: true },
   ],
+  services: [
+    { id: "laundry", label: "Laundry", icon: WashingMachine, href: "/services/laundry" },
+    { id: "fix", label: "Fix", icon: Wrench, href: "/services/fix" },
+    { id: "jobs", label: "Jobs", icon: Briefcase, href: "/service" },
+    { id: "learn", label: "Learn", icon: BookOpen, href: "/services/learn" },
+  ],
 };
 
 function groupForPath(pathname: string): MenuGroup {
   if (["/food", "/restaurants", "/kitchens", "/streetfood", "/bakeries"].some((path) => pathname === path || pathname.startsWith(`${path}/`))) return "food";
   if (pathname === "/ride" || pathname === "/rent" || pathname === "/carpool" || pathname.startsWith("/ride/")) return "ride";
-  if (pathname === "/shopping" || pathname === "/shoplist" || pathname.startsWith("/orders") || pathname === "/service" || pathname.startsWith("/service/")) return "shopping";
+  if (["/shopping", "/shoplist", "/groceries", "/stores", "/store", "/spotlight"].some((path) => pathname === path || pathname.startsWith(`${path}/`)) || pathname.startsWith("/orders")) return "shopping";
   if (pathname === "/deliver" || pathname.startsWith("/deliver/")) return "deliver";
+  if (["/services", "/service"].some((path) => pathname === path || pathname.startsWith(`${path}/`))) return "services";
   return "original";
 }
 
@@ -107,7 +120,13 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
     else if (pathname === "/carpool") setSelectedItem("rideshare");
     else if (pathname === "/rent") setSelectedItem("selfdrive");
     else if (pathname === "/shoplist" || pathname.startsWith("/orders")) setSelectedItem("shoplist");
-    else if (pathname === "/service" || pathname.startsWith("/service/")) setSelectedItem("services");
+    else if (pathname === "/groceries" || pathname.startsWith("/groceries/")) setSelectedItem("markets");
+    else if (pathname === "/stores" || pathname.startsWith("/store/")) setSelectedItem("stores");
+    else if (pathname === "/spotlight") setSelectedItem("spotlight");
+    else if (pathname === "/services/laundry") setSelectedItem("laundry");
+    else if (pathname === "/services/fix") setSelectedItem("fix");
+    else if (pathname === "/service" || pathname === "/services/jobs") setSelectedItem("jobs");
+    else if (pathname === "/services/learn") setSelectedItem("learn");
     else if (pathname === "/deliver/parcel") setSelectedItem("parcel");
     else setSelectedItem(null);
   }, [pathname]);
@@ -252,9 +271,13 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
                             setMenuGroup(item.group!);
                             setSelectedItem(null);
                             router.push(
-                              { ride: "/ride", shopping: "/shopping", food: "/food", deliver: "/deliver" }[
-                                item.group!
-                              ]
+                              {
+                                ride: "/ride",
+                                shopping: "/shopping",
+                                food: "/food",
+                                deliver: "/deliver",
+                                services: "/services",
+                              }[item.group!]
                             );
                           }}
                           className={btnClass}
