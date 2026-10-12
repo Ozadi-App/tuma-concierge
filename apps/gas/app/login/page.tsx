@@ -1,6 +1,6 @@
 "use client";
 
-import { Building2, KeyRound, ShieldCheck, UserCheck } from "lucide-react";
+import { Building2, KeyRound, ShieldCheck, UserCheck, Briefcase } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -10,7 +10,8 @@ import { useAuth } from "../../lib/auth-context";
 
 export default function LoginPage() {
   const router = useRouter();
-  const { login, outlets } = useAuth();
+  const { login, loginManager, outlets } = useAuth();
+  const [selectedRole, setSelectedRole] = useState<"attendant" | "manager">("attendant");
   const [code, setCode] = useState("");
   const [pin, setPin] = useState("");
   const [selectedOutletId, setSelectedOutletId] = useState("");
@@ -19,15 +20,21 @@ export default function LoginPage() {
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
-    if (!code.trim()) {
-      setError("Please enter your attendant badge code.");
-      return;
-    }
     setBusy(true);
     setError(null);
     try {
-      await login(code.trim().toUpperCase(), pin.trim(), selectedOutletId || undefined);
-      router.push("/");
+      if (selectedRole === "manager") {
+        await loginManager(code.trim().toUpperCase() || undefined, pin.trim() || undefined, selectedOutletId || undefined);
+        router.push("/manager");
+      } else {
+        if (!code.trim()) {
+          setError("Please enter your attendant badge code.");
+          setBusy(false);
+          return;
+        }
+        await login(code.trim().toUpperCase(), pin.trim() || undefined, selectedOutletId || undefined);
+        router.push("/");
+      }
     } catch (err) {
       setError(errorMessage(err));
     } finally {
@@ -49,8 +56,44 @@ export default function LoginPage() {
           </span>
         </div>
         <p className="text-xs font-medium text-ink-500">
-          Petrol Station Merchant & Pump Attendant Terminal
+          Petrol Station Terminal & Management System
         </p>
+      </div>
+
+      {/* Role Selector: Attendant vs Station Manager */}
+      <div className="flex rounded-2xl bg-[var(--surface-muted)] p-1 border border-[var(--border-faint)]">
+        <button
+          type="button"
+          onClick={() => {
+            setSelectedRole("attendant");
+            setCode("");
+            setError(null);
+          }}
+          className={`flex-1 flex items-center justify-center gap-2 rounded-xl py-2.5 text-xs font-bold transition ${
+            selectedRole === "attendant"
+              ? "bg-[var(--surface-raised)] text-ink shadow-sm"
+              : "text-ink-500 hover:text-ink"
+          }`}
+        >
+          <UserCheck className="h-4 w-4" />
+          <span>Pump Attendant</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setSelectedRole("manager");
+            setCode("");
+            setError(null);
+          }}
+          className={`flex-1 flex items-center justify-center gap-2 rounded-xl py-2.5 text-xs font-bold transition ${
+            selectedRole === "manager"
+              ? "bg-[var(--surface-raised)] text-ink shadow-sm"
+              : "text-ink-500 hover:text-ink"
+          }`}
+        >
+          <Briefcase className="h-4 w-4" />
+          <span>Station Manager</span>
+        </button>
       </div>
 
       {/* Login Card */}
@@ -70,7 +113,9 @@ export default function LoginPage() {
               onChange={(e) => setSelectedOutletId(e.target.value)}
               className="w-full text-xs font-bold text-ink bg-transparent outline-none cursor-pointer"
             >
-              <option value="">Auto-detect from Attendant Badge</option>
+              <option value="">
+                {selectedRole === "manager" ? "Select Petrol Station" : "Auto-detect from Attendant Badge"}
+              </option>
               {outlets.map((o) => (
                 <option key={o.id} value={o.id}>
                   {o.name}
@@ -81,21 +126,34 @@ export default function LoginPage() {
         </div>
 
         <div>
-          <label className="text-xs font-bold text-ink-500">Attendant Badge Code</label>
+          <label className="text-xs font-bold text-ink-500">
+            {selectedRole === "manager" ? "Station Manager Code" : "Attendant Badge Code"}
+          </label>
           <div className="field-box mt-1.5 flex items-center gap-2 px-3 py-2">
-            <UserCheck className="h-4 w-4 text-ink-500 shrink-0" />
+            {selectedRole === "manager" ? (
+              <Briefcase className="h-4 w-4 text-ink-500 shrink-0" />
+            ) : (
+              <UserCheck className="h-4 w-4 text-ink-500 shrink-0" />
+            )}
             <input
-              required
+              required={selectedRole === "attendant"}
               value={code}
               onChange={(e) => setCode(e.target.value.toUpperCase())}
-              placeholder="e.g. ATT-1001"
+              placeholder={selectedRole === "manager" ? "e.g. MGR-TOT-01 (or leave blank if outlet selected)" : "e.g. ATT-1001"}
               className="w-full text-xs font-bold uppercase text-ink outline-none"
             />
           </div>
+          {selectedRole === "manager" && (
+            <p className="mt-1 text-[11px] text-ink-500">
+              Demo codes: <span className="font-mono font-bold text-ink">MGR-TOT-01</span>, <span className="font-mono font-bold text-ink">MGR-SHL-02</span>
+            </p>
+          )}
         </div>
 
         <div>
-          <label className="text-xs font-bold text-ink-500">Station Staff PIN</label>
+          <label className="text-xs font-bold text-ink-500">
+            {selectedRole === "manager" ? "Station Manager PIN" : "Station Staff PIN"}
+          </label>
           <div className="field-box mt-1.5 flex items-center gap-2 px-3 py-2">
             <KeyRound className="h-4 w-4 text-ink-500 shrink-0" />
             <input
@@ -116,7 +174,11 @@ export default function LoginPage() {
           disabled={busy}
           className="w-full rounded-2xl bg-gold py-3.5 text-center text-sm font-bold text-ink-gold shadow-[var(--shadow-glow-gold)] transition active:scale-[0.98] disabled:opacity-50"
         >
-          {busy ? "Signing In Attendant…" : "Start Fuel Shift"}
+          {busy
+            ? "Verifying Credentials…"
+            : selectedRole === "manager"
+              ? "Open Station Manager Portal"
+              : "Start Fuel Shift"}
         </button>
       </form>
 

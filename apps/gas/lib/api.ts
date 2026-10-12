@@ -2,6 +2,9 @@ import { createApiClient, createPracticeFetch, friendlyErrorMessage } from "@pee
 
 export const TOKEN_KEY = "peebee_gas_token";
 export const ATTENDANT_KEY = "peebee_gas_attendant";
+export const MANAGER_KEY = "peebee_gas_manager";
+export const ROLE_KEY = "peebee_gas_role";
+export const MODE_KEY = "peebee_gas_mode";
 export const OUTLET_KEY = "peebee_gas_outlet";
 
 export function getStoredToken() {
@@ -20,6 +23,9 @@ export const api = createApiClient({
     if (typeof window === "undefined") return;
     window.localStorage.removeItem(TOKEN_KEY);
     window.localStorage.removeItem(ATTENDANT_KEY);
+    window.localStorage.removeItem(MANAGER_KEY);
+    window.localStorage.removeItem(ROLE_KEY);
+    window.localStorage.removeItem(MODE_KEY);
     if (window.location.pathname !== "/login") window.location.href = "/login";
   },
 });

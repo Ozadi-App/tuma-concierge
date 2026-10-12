@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Briefcase,
   Building2,
   ChevronDown,
   Fuel,
@@ -9,6 +10,8 @@ import {
   Power,
   Sun,
   User,
+  ShieldCheck,
+  ArrowRightLeft,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -23,7 +26,20 @@ const THEME_OPTIONS = [
 ] as const;
 
 export function BrandHeader() {
-  const { attendant, outlet, outlets, selectOutlet, toggleDuty, logout } = useAuth();
+  const {
+    attendant,
+    manager,
+    isManager,
+    role,
+    activeMode,
+    switchToPumpMode,
+    switchToManagerMode,
+    outlet,
+    outlets,
+    selectOutlet,
+    toggleDuty,
+    logout,
+  } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
   const { setMode } = useThemeMode();
@@ -63,9 +79,46 @@ export function BrandHeader() {
           </sup>
         </Link>
 
-        {/* Attendant quick status & Profile expand toggle */}
+        {/* Quick Role & Mode Switcher */}
         <div className="flex items-center gap-2">
-          {attendant && (
+          {/* If Station Manager is logged in, show quick mode toggle button */}
+          {isManager && (
+            <button
+              type="button"
+              onClick={() => {
+                if (activeMode === "manager") {
+                  switchToPumpMode();
+                  router.push("/");
+                } else {
+                  switchToManagerMode();
+                  router.push("/manager");
+                }
+              }}
+              className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold transition ${
+                activeMode === "manager"
+                  ? "bg-gold text-ink-gold shadow-sm"
+                  : isDarkMode
+                    ? "bg-black/15 text-black font-extrabold"
+                    : "bg-white/15 text-white"
+              }`}
+              title="Toggle between Manager Portal and Pump Terminal"
+            >
+              {activeMode === "manager" ? (
+                <>
+                  <Fuel size={13} />
+                  <span>Pump Mode</span>
+                </>
+              ) : (
+                <>
+                  <Briefcase size={13} />
+                  <span>Manager View</span>
+                </>
+              )}
+            </button>
+          )}
+
+          {/* Attendant on/off duty badge */}
+          {attendant && !isManager && (
             <button
               type="button"
               onClick={() => toggleDuty(!attendant.on_duty)}
@@ -120,8 +173,67 @@ export function BrandHeader() {
       >
         <div className="min-h-0 overflow-hidden">
           <div className="space-y-3 px-4 pb-4">
-            {/* Attendant Card */}
-            {attendant ? (
+            {/* Manager / Attendant Profile Card */}
+            {isManager && manager ? (
+              <div className="customer-profile-card space-y-3 rounded-3xl p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <span className="customer-profile-avatar flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full font-bold">
+                      <Briefcase size={22} aria-hidden />
+                    </span>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <span className="block truncate text-base font-bold leading-tight">
+                          {manager.full_name}
+                        </span>
+                        <span className="rounded-md bg-gold/20 px-1.5 py-0.2 text-[10px] font-black uppercase text-gold">
+                          Manager
+                        </span>
+                      </div>
+                      <span className="customer-profile-muted mt-0.5 block truncate text-xs font-mono">
+                        {manager.manager_code} · {outlet?.name ?? "Petrol Station"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Switch Mode Segmented Button */}
+                <div className="flex rounded-2xl bg-black/10 p-1 border border-white/10 dark:bg-white/10">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      switchToManagerMode();
+                      setExpanded(false);
+                      router.push("/manager");
+                    }}
+                    className={`flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-bold transition ${
+                      activeMode === "manager"
+                        ? "bg-gold text-ink-gold shadow-sm"
+                        : "text-white/70 hover:text-white"
+                    }`}
+                  >
+                    <Briefcase size={13} />
+                    <span>Manager Portal</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      switchToPumpMode();
+                      setExpanded(false);
+                      router.push("/");
+                    }}
+                    className={`flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-bold transition ${
+                      activeMode === "attendant"
+                        ? "bg-gold text-ink-gold shadow-sm"
+                        : "text-white/70 hover:text-white"
+                    }`}
+                  >
+                    <Fuel size={13} />
+                    <span>Sell Fuel (Pump)</span>
+                  </button>
+                </div>
+              </div>
+            ) : attendant ? (
               <div className="customer-profile-card flex items-center justify-between gap-3 rounded-3xl p-4">
                 <div className="flex min-w-0 items-center gap-3">
                   <span className="customer-profile-avatar flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full font-bold">
@@ -158,7 +270,7 @@ export function BrandHeader() {
                 onClick={() => setExpanded(false)}
                 className="customer-profile-card flex items-center justify-between rounded-3xl p-4 font-bold"
               >
-                <span>Attendant Sign In</span>
+                <span>Staff & Manager Sign In</span>
                 <span className="text-xs uppercase tracking-wider text-gold">Login &rarr;</span>
               </Link>
             )}
@@ -221,7 +333,7 @@ export function BrandHeader() {
             </section>
 
             {/* Sign out */}
-            {attendant && (
+            {(attendant || manager) && (
               <button
                 type="button"
                 onClick={() => {
@@ -232,7 +344,7 @@ export function BrandHeader() {
                 className="flex w-full items-center justify-center gap-2 rounded-2xl border border-red-500/30 bg-red-500/10 py-2.5 text-xs font-bold text-red-500 transition hover:bg-red-500/20"
               >
                 <LogOut size={14} />
-                <span>Sign Out Attendant</span>
+                <span>Sign Out of Station</span>
               </button>
             )}
           </div>

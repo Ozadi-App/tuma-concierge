@@ -1,11 +1,13 @@
 "use client";
 
-import { Fuel, GraduationCap, History, Store } from "lucide-react";
+import { Briefcase, Fuel, GraduationCap, History, Store } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useAuth } from "../lib/auth-context";
 
-const TABS = [
+const BASE_TABS = [
   { href: "/", label: "Pump", icon: Fuel },
+  { href: "/manager", label: "Manager", icon: Briefcase },
   { href: "/shift", label: "Shift", icon: History },
   { href: "/prices", label: "Prices", icon: Store },
   { href: "/practice", label: "Practice", icon: GraduationCap },
@@ -13,9 +15,12 @@ const TABS = [
 
 export function BottomNav() {
   const pathname = usePathname();
+  const { isManager } = useAuth();
 
   // Do not show bottom nav on login page
   if (pathname === "/login") return null;
+
+  const tabs = BASE_TABS;
 
   return (
     <nav
@@ -24,7 +29,7 @@ export function BottomNav() {
     >
       <div className="mx-auto flex max-w-lg items-center justify-center">
         <ul className="customer-nav-capsule pointer-events-auto flex w-full items-stretch justify-around rounded-[24px] p-1.5 gap-1">
-          {TABS.map((tab) => {
+          {tabs.map((tab) => {
             const active =
               tab.href === "/"
                 ? pathname === "/" || pathname === "/dispense"
