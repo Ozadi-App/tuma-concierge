@@ -7,19 +7,23 @@ import {
   Camera,
   Check,
   ChevronRight,
+  Eye,
   Flame,
   Globe,
   Heart,
   Layers,
+  LayoutGrid,
   Megaphone,
   Package,
   PackagePlus,
   Play,
   Plus,
   Radio,
+  Search,
   Send,
   Share2,
   ShoppingBag,
+  SlidersHorizontal,
   Sparkles,
   Store as StoreIcon,
   Trash2,
@@ -157,6 +161,11 @@ export default function MerchantProStorePage() {
   const [adTargetProduct, setAdTargetProduct] = useState("");
   const [launchingAd, setLaunchingAd] = useState(false);
   const [adCampaigns, setAdCampaigns] = useState<AdCampaign[]>([]);
+
+  // Storefront mobile preview state (Inspiration UI 3-screens)
+  const [showStorefrontPreview, setShowStorefrontPreview] = useState(false);
+  const [previewScreen, setPreviewScreen] = useState<"storefront" | "product" | "cart">("storefront");
+  const [previewSelectedSize, setPreviewSelectedSize] = useState("M");
 
   useEffect(() => {
     loadData();
@@ -646,14 +655,28 @@ export default function MerchantProStorePage() {
       {activeTab === "catalog" && (
         <div className="space-y-4">
           {/* Quick Action Bar */}
-          <div className="flex items-center justify-between gap-2">
-            <button
-              onClick={() => setShowAddProduct(true)}
-              className="flex items-center gap-2 rounded-full bg-gold px-4 py-2.5 text-xs font-bold text-ink-gold shadow transition active:scale-95"
-            >
-              <Plus className="h-4 w-4" />
-              <span>Add Product</span>
-            </button>
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowAddProduct(true)}
+                className="flex items-center gap-2 rounded-full bg-gold px-4 py-2.5 text-xs font-bold text-ink-gold shadow transition active:scale-95"
+              >
+                <Plus className="h-4 w-4" />
+                <span>Add Product</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setPreviewScreen("storefront");
+                  setShowStorefrontPreview(true);
+                }}
+                className="flex items-center gap-1.5 rounded-full border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] px-3.5 py-2.5 text-xs font-bold text-ink transition hover:border-gold active:scale-95 shadow-xs"
+              >
+                <Eye className="h-4 w-4 text-gold" />
+                <span>Preview Storefront</span>
+              </button>
+            </div>
 
             {products.length === 0 && (
               <button
@@ -1362,6 +1385,284 @@ export default function MerchantProStorePage() {
               >
                 {savingProduct ? "Saving Product…" : "Save & Publish Product"}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* STOREFRONT PREVIEW MODAL (Mirroring Inspiration UI 3-screens) */}
+      {showStorefrontPreview && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-3 backdrop-blur-sm overflow-y-auto">
+          <div className="w-full max-w-md rounded-[32px] border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-4 shadow-2xl space-y-3 my-4">
+            {/* Top Bar with Screen Switcher */}
+            <div className="flex items-center justify-between border-b border-[var(--border-faint)] pb-2.5">
+              <div>
+                <h3 className="font-bold text-sm text-ink flex items-center gap-1.5">
+                  <Eye className="h-4 w-4 text-gold" />
+                  <span>Customer View Preview</span>
+                </h3>
+                <p className="text-[10px] text-ink-500">Live mobile storefront rendering</p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowStorefrontPreview(false)}
+                className="rounded-full p-1.5 text-ink-500 hover:text-ink"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Screen Selector Pills */}
+            <div className="grid grid-cols-3 gap-1.5 rounded-2xl bg-[rgb(var(--surface-muted))] p-1 text-[11px] font-bold">
+              <button
+                type="button"
+                onClick={() => setPreviewScreen("storefront")}
+                className={`rounded-xl py-2 transition text-center ${
+                  previewScreen === "storefront"
+                    ? "bg-gold text-ink-gold shadow-sm font-extrabold"
+                    : "text-ink-500 hover:text-ink"
+                }`}
+              >
+                1. Storefront
+              </button>
+              <button
+                type="button"
+                onClick={() => setPreviewScreen("product")}
+                className={`rounded-xl py-2 transition text-center ${
+                  previewScreen === "product"
+                    ? "bg-gold text-ink-gold shadow-sm font-extrabold"
+                    : "text-ink-500 hover:text-ink"
+                }`}
+              >
+                2. Product
+              </button>
+              <button
+                type="button"
+                onClick={() => setPreviewScreen("cart")}
+                className={`rounded-xl py-2 transition text-center ${
+                  previewScreen === "cart"
+                    ? "bg-gold text-ink-gold shadow-sm font-extrabold"
+                    : "text-ink-500 hover:text-ink"
+                }`}
+              >
+                3. Cart
+              </button>
+            </div>
+
+            {/* Simulated Phone Viewport */}
+            <div className="rounded-[32px] border-2 border-neutral-700 bg-[rgb(var(--color-bg))] p-3.5 space-y-3 max-h-[580px] overflow-y-auto no-scrollbar shadow-inner text-ink">
+              {previewScreen === "storefront" && (
+                <div className="space-y-3">
+                  {/* Screen 1 Header */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[rgb(var(--surface-muted))] text-ink">
+                      <LayoutGrid className="h-4.5 w-4.5" />
+                    </div>
+                    <div className="text-center min-w-0 px-2">
+                      <p className="text-[9px] font-bold uppercase tracking-wider text-ink-500">
+                        {store.address || "Kampala, UG"}
+                      </p>
+                      <h4 className="text-xs font-black text-ink truncate">{store.name}</h4>
+                    </div>
+                    <div className="h-9 w-9 rounded-full bg-gold/20 border border-gold/40 flex items-center justify-center text-xs font-bold text-gold">
+                      {store.name.slice(0, 2).toUpperCase()}
+                    </div>
+                  </div>
+
+                  {/* Search + Filter */}
+                  <div className="flex items-center gap-2">
+                    <div className="field-box flex-1 flex items-center rounded-xl px-3 py-2 text-xs">
+                      <Search className="h-3.5 w-3.5 text-ink-500 mr-2 shrink-0" />
+                      <span className="text-[11px] text-ink-500">Search products…</span>
+                    </div>
+                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gold/15 text-gold border border-gold/30">
+                      <SlidersHorizontal className="h-3.5 w-3.5" />
+                    </div>
+                  </div>
+
+                  {/* Big Sale Hero Promo Banner */}
+                  <div className="relative overflow-hidden rounded-[24px] border border-gold/30 bg-gradient-to-r from-gold/20 via-gold/10 to-[rgb(var(--surface-card))] p-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className="h-16 w-16 rounded-xl bg-neutral-900 overflow-hidden shrink-0">
+                        {products[0]?.image_url ? (
+                          <img src={products[0].image_url || undefined} alt="" className="h-full w-full object-cover" />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center text-xl">🛍️</div>
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <span className="rounded-full bg-gold/30 px-2 py-0.5 text-[8px] font-black uppercase text-gold">
+                          Big Sale
+                        </span>
+                        <h5 className="text-xs font-bold text-ink truncate mt-0.5">
+                          {products[0]?.title || "Store Collection"}
+                        </h5>
+                        <p className="text-[9px] text-ink-500 line-clamp-1">Up to 40% OFF trending products</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Filter Pills */}
+                  <div className="flex gap-1.5 overflow-x-auto text-[10px] font-bold">
+                    <span className="rounded-full bg-gold px-3 py-1 text-ink-gold">All</span>
+                    <span className="rounded-full bg-[rgb(var(--surface-muted))] px-3 py-1 text-ink-500">Popular</span>
+                    <span className="rounded-full bg-[rgb(var(--surface-muted))] px-3 py-1 text-ink-500">Recent</span>
+                    <span className="rounded-full bg-[rgb(var(--surface-muted))] px-3 py-1 text-ink-500">Recommended</span>
+                  </div>
+
+                  {/* 2-Column Product Grid */}
+                  <div className="grid grid-cols-2 gap-2 pt-1">
+                    {(products.length > 0 ? products.slice(0, 4) : [1, 2]).map((item, idx) => {
+                      const prod = typeof item === "object" ? item : null;
+                      return (
+                        <div
+                          key={idx}
+                          className="rounded-[20px] border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-2.5 space-y-1.5"
+                        >
+                          <div className="relative aspect-[4/5] rounded-[16px] bg-neutral-900 overflow-hidden">
+                            {prod?.image_url ? (
+                              <img src={prod.image_url || undefined} alt="" className="h-full w-full object-cover" />
+                            ) : (
+                              <div className="flex h-full w-full items-center justify-center text-2xl">🛍️</div>
+                            )}
+                            <div className="absolute top-1.5 right-1.5 h-6 w-6 rounded-full bg-black/40 backdrop-blur-xs flex items-center justify-center text-white">
+                              <Heart className="h-3 w-3" />
+                            </div>
+                          </div>
+                          <div className="text-[11px] font-bold text-ink truncate">{prod?.title || `Product Item ${idx + 1}`}</div>
+                          <div className="flex items-center justify-between pt-0.5">
+                            <span className="text-[11px] font-black text-ink">{ugx(prod?.price || 15000)}</span>
+                            <div className="flex h-5 w-5 items-center justify-center rounded-full bg-gold text-ink-gold text-[10px] font-bold">
+                              +
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {previewScreen === "product" && (
+                <div className="space-y-3">
+                  {/* Hero Curved Photo */}
+                  <div className="relative h-48 w-full rounded-b-[28px] bg-neutral-900 overflow-hidden -mx-3.5 -mt-3.5 mb-2">
+                    {products[0]?.image_url ? (
+                      <img src={products[0].image_url || undefined} alt="" className="h-full w-full object-cover" />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center text-4xl">🛍️</div>
+                    )}
+                    <div className="absolute top-3 left-3 h-8 w-8 rounded-full bg-black/40 backdrop-blur-xs flex items-center justify-center text-white">
+                      <ChevronRight className="h-4 w-4 rotate-180" />
+                    </div>
+                    <div className="absolute top-3 right-3 h-8 w-8 rounded-full bg-black/40 backdrop-blur-xs flex items-center justify-center text-white">
+                      <Heart className="h-4 w-4 fill-current text-red-500" />
+                    </div>
+                  </div>
+
+                  {/* Title & Price */}
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <h4 className="text-sm font-extrabold text-ink">{products[0]?.title || "Designer Item"}</h4>
+                      <p className="text-[10px] text-gold font-semibold">Premium Collection</p>
+                    </div>
+                    <span className="text-sm font-black text-gold">{ugx(products[0]?.price || 25000)}</span>
+                  </div>
+
+                  <p className="text-[10px] text-ink-500 leading-relaxed">
+                    {products[0]?.description || "Soft comfortable fabric with elegant tailoring and versatile styling."}
+                  </p>
+
+                  {/* Size Chips */}
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-bold uppercase text-ink">Size</span>
+                    <div className="flex gap-1.5">
+                      {["S", "M", "L", "XL"].map((s) => (
+                        <button
+                          key={s}
+                          type="button"
+                          onClick={() => setPreviewSelectedSize(s)}
+                          className={`h-7 w-8 rounded-lg text-[10px] font-bold ${
+                            previewSelectedSize === s ? "bg-gold text-ink-gold" : "bg-[rgb(var(--surface-muted))] text-ink-500"
+                          }`}
+                        >
+                          {s}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Sticky Action Button */}
+                  <div className="flex items-center gap-2 pt-2 border-t border-[var(--border-faint)]">
+                    <button
+                      type="button"
+                      className="flex-1 h-10 rounded-full bg-gold text-xs font-bold text-ink-gold shadow-sm"
+                    >
+                      Buy Now
+                    </button>
+                    <div className="h-10 w-10 rounded-full bg-[rgb(var(--surface-muted))] border border-[var(--border-faint)] flex items-center justify-center text-ink">
+                      <ShoppingBag className="h-4 w-4" />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {previewScreen === "cart" && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between border-b border-[var(--border-faint)] pb-2">
+                    <LayoutGrid className="h-4 w-4 text-ink-500" />
+                    <span className="text-xs font-bold text-ink">Cart</span>
+                    <div className="h-6 w-6 rounded-full bg-gold/20 text-gold flex items-center justify-center text-[10px] font-bold">
+                      PB
+                    </div>
+                  </div>
+
+                  {/* Items */}
+                  <div className="space-y-2">
+                    {[1, 2].map((i) => (
+                      <div
+                        key={i}
+                        className="rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] p-2 flex items-center justify-between gap-2 text-xs"
+                      >
+                        <div className="h-10 w-10 rounded-lg bg-neutral-900 overflow-hidden shrink-0">
+                          {products[i - 1]?.image_url ? (
+                            <img src={products[i - 1]?.image_url || undefined} alt="" className="h-full w-full object-cover" />
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center text-xs">🛍️</div>
+                          )}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[11px] font-bold text-ink truncate">
+                            {products[i - 1]?.title || `Store Item ${i}`}
+                          </p>
+                          <span className="text-[10px] font-black text-gold">{ugx(products[i - 1]?.price || 15000)}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[10px] font-bold text-ink">- 1 +</span>
+                          <span className="h-4 w-4 rounded-md bg-gold flex items-center justify-center text-ink-gold text-[9px] font-black">
+                            ✓
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Total & Pay Now */}
+                  <div className="pt-2 border-t border-[var(--border-faint)] flex items-center justify-between">
+                    <div>
+                      <span className="text-[9px] font-bold uppercase text-ink-500 block">Total</span>
+                      <span className="text-xs font-black text-gold">{ugx(35000)}</span>
+                    </div>
+                    <button
+                      type="button"
+                      className="rounded-full bg-gold px-5 py-2 text-xs font-bold text-ink-gold shadow-sm"
+                    >
+                      Pay Now
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
