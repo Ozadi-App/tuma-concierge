@@ -77,7 +77,15 @@ export function Select({ children, value, defaultValue, onValueChange, name, req
             {options.map((option) => (
               <SelectPrimitive.Item key={option.value} value={option.value || emptyMenuValue} disabled={option.disabled} aria-selected={option.value === selected} className="peebee-select-option">
                 <SelectPrimitive.ItemText>{option.label}</SelectPrimitive.ItemText>
-                {(option.value === "" && selected === "") ? <span className="peebee-select-check" aria-hidden="true">✓</span> : <SelectPrimitive.ItemIndicator className="peebee-select-check" aria-hidden="true">✓</SelectPrimitive.ItemIndicator>}
+                <span className="peebee-select-check-ring" aria-hidden="true">
+                  {(option.value === "" && selected === "") ? (
+                    <span className="peebee-select-check-dot" />
+                  ) : (
+                    <SelectPrimitive.ItemIndicator className="peebee-select-check-dot-wrapper">
+                      <span className="peebee-select-check-dot" />
+                    </SelectPrimitive.ItemIndicator>
+                  )}
+                </span>
               </SelectPrimitive.Item>
             ))}
           </SelectPrimitive.Viewport>

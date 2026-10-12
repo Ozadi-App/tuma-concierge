@@ -19,6 +19,7 @@ import { useEffect, useRef, useState } from "react";
 import { useAuth } from "../lib/auth-context";
 import { useResolvedTheme, useThemeMode } from "../lib/theme";
 import { BrandLogo } from "./BrandLogo";
+import { Select } from "@peebee/shared/select";
 
 const THEME_OPTIONS = [
   { mode: "light", label: "Light", Icon: Sun },
@@ -284,20 +285,22 @@ export function BrandHeader() {
                     Station Outlet
                   </span>
                 </div>
-                <select
+                <Select
                   value={outlet?.id ?? ""}
-                  onChange={(e) => {
-                    selectOutlet(e.target.value);
+                  onValueChange={(val) => {
+                    selectOutlet(val);
                     setExpanded(false);
                   }}
-                  className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs font-bold text-white focus:outline-none"
+                  aria-label="Station Outlet"
+                  sizing="stretch"
+                  className="w-full text-xs font-bold"
                 >
                   {outlets.map((o) => (
-                    <option key={o.id} value={o.id} className="text-black bg-white">
+                    <option key={o.id} value={o.id}>
                       {o.name} ({o.code})
                     </option>
                   ))}
-                </select>
+                </Select>
               </div>
             )}
 
