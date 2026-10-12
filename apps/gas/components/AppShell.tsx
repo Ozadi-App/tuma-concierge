@@ -4,6 +4,8 @@ import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { BottomNav } from "./BottomNav";
 import { BrandHeader } from "./BrandHeader";
+import { PwaInstallPrompt } from "./PwaInstallPrompt";
+import { PracticeProposalPrompt } from "./PracticeProposalPrompt";
 
 export function AppShell({ children }: { children: any }) {
   const pathname = usePathname();
@@ -20,6 +22,8 @@ export function AppShell({ children }: { children: any }) {
         {children}
       </main>
       {!isAuthPage && <BottomNav />}
+      <PwaInstallPrompt />
+      <PracticeProposalPrompt />
     </div>
   );
 }

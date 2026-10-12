@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { BrandLogo } from "../../components/BrandLogo";
+import { PWA_LOGIN_PROMPT_KEY } from "../../components/PwaInstallPrompt";
+import { SESSION_START_KEY } from "../../components/PracticeProposalPrompt";
 import { errorMessage } from "../../lib/api";
 import { useAuth } from "../../lib/auth-context";
 
@@ -23,6 +25,10 @@ export default function LoginPage() {
     setBusy(true);
     setError(null);
     try {
+      if (typeof window !== "undefined") {
+        sessionStorage.setItem(PWA_LOGIN_PROMPT_KEY, "1");
+        sessionStorage.setItem(SESSION_START_KEY, String(Date.now()));
+      }
       if (selectedRole === "manager") {
         await loginManager(code.trim().toUpperCase() || undefined, pin.trim() || undefined, selectedOutletId || undefined);
         router.push("/manager");
@@ -36,6 +42,9 @@ export default function LoginPage() {
         router.push("/");
       }
     } catch (err) {
+      if (typeof window !== "undefined") {
+        sessionStorage.removeItem(PWA_LOGIN_PROMPT_KEY);
+      }
       setError(errorMessage(err));
     } finally {
       setBusy(false);

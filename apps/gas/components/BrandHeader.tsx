@@ -17,6 +17,8 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "../lib/auth-context";
+import { api } from "../lib/api";
+import { isPracticeMode, type PlatformEnvironment } from "@peebee/shared";
 import { useResolvedTheme, useThemeMode } from "../lib/theme";
 import { BrandLogo } from "./BrandLogo";
 import { Select } from "@peebee/shared/select";
@@ -47,10 +49,28 @@ export function BrandHeader() {
   const activeTheme = useResolvedTheme();
   const [expanded, setExpanded] = useState(false);
   const toggleRef = useRef<HTMLButtonElement>(null);
+  const [environment, setEnvironment] = useState<PlatformEnvironment | null>(() => {
+    const env = process.env.NEXT_PUBLIC_PLATFORM_ENV || process.env.NEXT_PUBLIC_ENVIRONMENT;
+    return env === "sandbox" ? "sandbox" : null;
+  });
+  const [practiceActive, setPracticeActive] = useState(false);
 
   useEffect(() => setExpanded(false), [pathname]);
 
+  useEffect(() => {
+    const syncPractice = () => setPracticeActive(isPracticeMode());
+    syncPractice();
+    window.addEventListener("storage", syncPractice);
+    api.getSettings()
+      .then(({ settings }) => setEnvironment(settings.platformEnvironment))
+      .catch(() => {});
+    return () => window.removeEventListener("storage", syncPractice);
+  }, []);
+
   const isDarkMode = activeTheme === "dark";
+  const isPractice = practiceActive || pathname === "/practice" || pathname.startsWith("/practice");
+  const isSandbox = !isPractice && environment === "sandbox";
+  const modeSuperscript = isPractice ? "practice" : isSandbox ? "demo" : "Gas";
 
   return (
     <header
@@ -66,17 +86,17 @@ export function BrandHeader() {
         {/* Peebee Gas Logo with customer app branding */}
         <Link
           href="/"
-          aria-label="Peebee Gas Home"
+          aria-label={`Peebee Gas Home${isPractice ? ", practice mode" : isSandbox ? ", demo mode" : ""}`}
           className="flex shrink-0 items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold rounded-xl"
         >
           <BrandLogo variant={isDarkMode ? "dark" : "light"} />
           <sup
             aria-hidden="true"
-            className={`pt-1 text-[10px] font-black uppercase tracking-widest ${
+            className={`pt-1 text-[10px] font-black tracking-wider ${
               isDarkMode ? "text-black" : "text-gold"
             }`}
           >
-            Gas
+            {modeSuperscript}
           </sup>
         </Link>
 

@@ -267,6 +267,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem(MANAGER_KEY);
     localStorage.removeItem(ROLE_KEY);
     localStorage.removeItem(MODE_KEY);
+    if (typeof window !== "undefined") {
+      sessionStorage.removeItem("peebee_gas_session_start");
+      sessionStorage.removeItem("peebee_gas_practice_proposed");
+      sessionStorage.removeItem("peebee_gas_prompt_pwa_on_login");
+    }
     setAttendant(null);
     setManager(null);
     setRole(null);
