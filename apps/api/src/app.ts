@@ -222,6 +222,7 @@ app.route("/v1/auth", verifyRoutes);
 // before the authenticated /v1 routers on purpose.
 app.route("/v1/trips", tripRoutes);
 app.route("/v1/gas", gasRoutes);
+app.route("/v1", marketplaceRoutes);
 app.route("/v1", orderRoutes);
 app.route("/v1", paymentRoutes);
 app.route("/v1", pushRoutes);
@@ -253,7 +254,6 @@ app.route("/v1", walletsRoutes);
 app.route("/v1", stageRoutes);
 app.route("/v1", stageAdminRoutes);
 app.route("/v1", merchantRoutes);
-app.route("/v1", marketplaceRoutes);
 // adminRoutes' admin gate is scoped to /admin/* (see admin/routes.ts), so
 // mount order here is no longer load-bearing — it used to be registered as
 // "*" on this shared /v1 router, which meant anything mounted after it
