@@ -35,13 +35,14 @@ export const metadata: Metadata = {
   },
   appleWebApp: {
     capable: true,
-    statusBarStyle: "default",
+    statusBarStyle: "black-translucent",
     title: "Peebee Admin",
   },
 };
 
 export const viewport: Viewport = {
-  themeColor: "#153A75",
+  themeColor: "#000000",
+  viewportFit: "cover",
 };
 
 export default function RootLayout({

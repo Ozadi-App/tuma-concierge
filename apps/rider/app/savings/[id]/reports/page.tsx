@@ -23,7 +23,7 @@ function monthLabel(key: string): string {
   return new Date(Number(y), Number(m) - 1, 1).toLocaleDateString("en-UG", { month: "short" });
 }
 
-const PIE_COLORS = ["#C9A227", "#153A75", "#2F855A", "#B45309", "#7C3AED", "#DB2777", "#0891B2", "#DC2626", "#4B5563", "#65A30D"];
+const PIE_COLORS = ["#C9A227", "#101010", "#2F855A", "#B45309", "#7C3AED", "#DB2777", "#0891B2", "#DC2626", "#4B5563", "#65A30D"];
 
 function MiniBarChart({ series, valueKey, color, label }: {
   series: StageReports["monthlySeries"];
@@ -66,12 +66,12 @@ function TrendLineChart({ series }: { series: StageReports["monthlySeries"] }) {
         <p className="text-xs font-bold uppercase tracking-wide text-ink-500">Contributions vs loans</p>
         <div className="flex gap-3 text-[10px]">
           <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-gold" />Contributions</span>
-          <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-[#153A75]" />Loans</span>
+          <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-[#101010]" />Loans</span>
         </div>
       </div>
       <svg viewBox={`0 0 ${w} ${h}`} className="h-28 w-full">
         <polyline points={points("contributions")} fill="none" stroke="#C9A227" strokeWidth="2" />
-        <polyline points={points("loans")} fill="none" stroke="#153A75" strokeWidth="2" />
+        <polyline points={points("loans")} fill="none" stroke="#101010" strokeWidth="2" />
       </svg>
     </div>
   );
@@ -234,7 +234,7 @@ export default function StageReportsPage() {
               </div>
             ))}
           </div>
-          <MiniBarChart series={report.monthlySeries} valueKey="loans" color="#153A75" label="Loans disbursed per month" />
+          <MiniBarChart series={report.monthlySeries} valueKey="loans" color="#101010" label="Loans disbursed per month" />
           <MiniBarChart series={report.monthlySeries} valueKey="repayments" color="#2F855A" label="Repayments per month" />
         </div>
       )}
