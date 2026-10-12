@@ -232,13 +232,13 @@ function renderDashboardHtml(branches: BranchInfo[], subdomain: string): string 
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg: #090d16;
-      --card-bg: #121826;
-      --card-border: #1f293d;
-      --text: #f3f4f6;
-      --text-muted: #9ca3af;
-      --primary: #3b82f6;
-      --primary-hover: #2563eb;
+      --bg: #0a0a0a;
+      --card-bg: #141414;
+      --card-border: rgba(255, 255, 255, 0.1);
+      --text: #f5f5f5;
+      --text-muted: #999999;
+      --primary: #c9a227;
+      --primary-hover: #e0b93d;
       --accent: #10b981;
       --font: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
       --mono: 'JetBrains Mono', monospace;
@@ -254,7 +254,7 @@ function renderDashboardHtml(branches: BranchInfo[], subdomain: string): string 
       line-height: 1.5;
     }
     header {
-      background: #0f172a;
+      background: #111111;
       border-bottom: 1px solid var(--card-border);
       padding: 1.25rem 2rem;
       display: flex;
@@ -301,7 +301,7 @@ function renderDashboardHtml(branches: BranchInfo[], subdomain: string): string 
       gap: 2rem;
     }
     .hero-banner {
-      background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+      background: linear-gradient(135deg, #1c1c1c 0%, #101010 100%);
       border: 1px solid var(--card-border);
       border-radius: 16px;
       padding: 1.75rem;
@@ -316,8 +316,8 @@ function renderDashboardHtml(branches: BranchInfo[], subdomain: string): string 
     }
     .quick-input {
       flex: 1;
-      background: #090d16;
-      border: 1px solid #334155;
+      background: #0a0a0a;
+      border: 1px solid rgba(255, 255, 255, 0.15);
       color: #fff;
       padding: 0.65rem 1rem;
       border-radius: 8px;
@@ -327,11 +327,11 @@ function renderDashboardHtml(branches: BranchInfo[], subdomain: string): string 
     .quick-input:focus { outline: none; border-color: var(--primary); }
     .btn {
       background: var(--primary);
-      color: #fff;
+      color: #0a0a0a;
       border: none;
       padding: 0.65rem 1.25rem;
       border-radius: 8px;
-      font-weight: 600;
+      font-weight: 700;
       font-size: 0.875rem;
       cursor: pointer;
       text-decoration: none;
@@ -371,7 +371,7 @@ function renderDashboardHtml(branches: BranchInfo[], subdomain: string): string 
     }
     .subdomain-icon { font-size: 1.5rem; }
     .subdomain-info h4 { font-size: 0.925rem; font-weight: 600; color: #fff; }
-    .subdomain-info code { font-family: var(--mono); font-size: 0.75rem; color: #60a5fa; }
+    .subdomain-info code { font-family: var(--mono); font-size: 0.75rem; color: #c9a227; }
     .subdomain-arrow { margin-left: auto; color: var(--text-muted); font-size: 1.1rem; }
 
     .search-bar {
@@ -421,8 +421,8 @@ function renderDashboardHtml(branches: BranchInfo[], subdomain: string): string 
       padding: 0.2rem 0.5rem;
       border-radius: 6px;
     }
-    .badge-main { background: #3b82f6; color: #fff; }
-    .badge-branch { background: #1e293b; color: #94a3b8; border: 1px solid #334155; }
+    .badge-main { background: #c9a227; color: #0a0a0a; }
+    .badge-branch { background: #1c1c1c; color: #a0a0a0; border: 1px solid rgba(255, 255, 255, 0.1); }
     .branch-meta {
       font-size: 0.775rem;
       color: var(--text-muted);
@@ -430,7 +430,7 @@ function renderDashboardHtml(branches: BranchInfo[], subdomain: string): string 
       text-align: right;
     }
     .commit-sha { color: #cbd5e1; font-weight: 600; }
-    .commit-msg { color: #64748b; }
+    .commit-msg { color: #888888; }
 
     .branch-apps {
       display: flex;
@@ -438,8 +438,8 @@ function renderDashboardHtml(branches: BranchInfo[], subdomain: string): string 
       gap: 0.6rem;
     }
     .app-chip {
-      background: #1e293b;
-      border: 1px solid #334155;
+      background: #181818;
+      border: 1px solid rgba(255, 255, 255, 0.1);
       color: #e2e8f0;
       padding: 0.45rem 0.85rem;
       border-radius: 8px;
@@ -454,7 +454,7 @@ function renderDashboardHtml(branches: BranchInfo[], subdomain: string): string 
     .app-chip:hover {
       background: var(--primary);
       border-color: var(--primary);
-      color: #fff;
+      color: #0a0a0a;
       transform: translateY(-1px);
     }
 
@@ -465,7 +465,7 @@ function renderDashboardHtml(branches: BranchInfo[], subdomain: string): string 
       font-size: 0.8rem;
       color: var(--text-muted);
     }
-    footer a { color: #60a5fa; text-decoration: none; }
+    footer a { color: #c9a227; text-decoration: none; }
   </style>
 </head>
 <body>
@@ -498,10 +498,12 @@ function renderDashboardHtml(branches: BranchInfo[], subdomain: string): string 
         <select id="quickApp" class="quick-input" style="max-width: 140px;">
           <option value="customer">customer</option>
           <option value="rider">rider</option>
+          <option value="gas">gas</option>
           <option value="merchant">merchant</option>
           <option value="partner">partner</option>
           <option value="restaurant">restaurant</option>
           <option value="admin">admin</option>
+          <option value="sales">sales</option>
           <option value="web">web</option>
           <option value="api">api</option>
         </select>
