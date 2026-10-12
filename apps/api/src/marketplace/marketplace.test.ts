@@ -66,7 +66,24 @@ test("marketplace routes: public browsing is accessible without authentication",
   assert.ok(Array.isArray(spotData.spotlight));
   assert.ok(spotData.spotlight.length > 0);
 
-  // 4. Authenticated merchant endpoint rejects without bearer token
+  // 4. Public single product detail
+  const prodRes = await app.request("/v1/marketplace/products/prod_honey_glazed_chicken");
+  assert.equal(prodRes.status, 200);
+  const prodData = (await prodRes.json()) as any;
+  assert.ok(prodData.product);
+  assert.equal(prodData.product.id, "prod_honey_glazed_chicken");
+  assert.equal(prodData.product.image_url, "/products/honey-glazed-chicken.jpg");
+  assert.ok(prodData.store);
+  assert.equal(prodData.store.id, "store_demo_fresh_mart");
+
+  const blazerRes = await app.request("/v1/marketplace/products/prod_pink_blazer");
+  assert.equal(blazerRes.status, 200);
+  const blazerData = (await blazerRes.json()) as any;
+  assert.ok(blazerData.product);
+  assert.equal(blazerData.product.id, "prod_pink_blazer");
+  assert.equal(blazerData.product.image_url, "/products/pink-blazer.jpg");
+
+  // 5. Authenticated merchant endpoint rejects without bearer token
   const meStoreRes = await app.request("/v1/merchants/me/store");
   assert.equal(meStoreRes.status, 401);
 });

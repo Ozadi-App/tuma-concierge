@@ -555,6 +555,17 @@ function handlePracticeRequest(role: PracticeRole, path: string, method: string,
       const products = DEMO_MARKETPLACE_PRODUCTS[storeProducts[1]] || [];
       return jsonResponse({ products });
     }
+    const productDetail = path.match(/^\/v1\/marketplace\/products\/([^/]+)$/);
+    if (productDetail) {
+      const pid = productDetail[1];
+      for (const [storeId, prods] of Object.entries(DEMO_MARKETPLACE_PRODUCTS)) {
+        const prod = prods.find((p) => p.id === pid || p.slug === pid);
+        if (prod) {
+          const store = DEMO_MARKETPLACE_STORES.find((s) => s.id === storeId);
+          return jsonResponse({ product: prod, store });
+        }
+      }
+    }
     if (path === "/v1/marketplace/live") {
       return jsonResponse({ liveChannels: DEMO_MARKETPLACE_STORES.filter((s) => s.is_live === 1) });
     }

@@ -199,6 +199,24 @@ export const DEMO_MARKETPLACE_PRODUCTS: Record<string, any[]> = {
       ],
     },
     {
+      id: "prod_honey_glazed_chicken",
+      store_id: "store_demo_fresh_mart",
+      title: "Honey Glazed Chicken",
+      slug: "honey-glazed-chicken",
+      description: "Crispy chicken in a sweet & savory honey-soy glaze, served on jasmine rice with sesame seeds & scallions.",
+      price: 24000,
+      compare_at_price: 28000,
+      inventory_quantity: 40,
+      category_name: "Fresh Meals",
+      badge: "Chef Choice",
+      image_url: "/products/honey-glazed-chicken.jpg",
+      has_variants: 1,
+      variants: [
+        { id: "var_chicken_reg", title: "Regular Portion", price: 24000, inventory_quantity: 25 },
+        { id: "var_chicken_large", title: "Large Meal Box", price: 32000, compare_at_price: 36000, inventory_quantity: 15 },
+      ],
+    },
+    {
       id: "prod_avocados_pack",
       store_id: "store_demo_fresh_mart",
       title: "Hass Avocados (Pack of 3)",
@@ -208,7 +226,7 @@ export const DEMO_MARKETPLACE_PRODUCTS: Record<string, any[]> = {
       inventory_quantity: 60,
       category_name: "Fresh Produce",
       badge: "Organic",
-      image_url: "https://images.unsplash.com/photo-1523049673857-eb18f1d7b578?auto=format&fit=crop&w=600&q=80",
+      image_url: "/products/fresh-avocados.jpg",
       has_variants: 0,
       variants: [],
     },
@@ -240,7 +258,7 @@ export const DEMO_MARKETPLACE_PRODUCTS: Record<string, any[]> = {
       inventory_quantity: 40,
       category_name: "Bakery",
       badge: "Warm & Fresh",
-      image_url: "https://images.unsplash.com/photo-1555507036-ab1f4038808a?auto=format&fit=crop&w=600&q=80",
+      image_url: "/products/croissant-bakery.jpg",
       has_variants: 1,
       variants: [
         { id: "var_croissant_2", title: "Pack of 2", price: 7500, inventory_quantity: 25 },
@@ -278,6 +296,26 @@ export const DEMO_MARKETPLACE_PRODUCTS: Record<string, any[]> = {
     },
   ],
   store_demo_urban_vogue: [
+    {
+      id: "prod_pink_blazer",
+      store_id: "store_demo_urban_vogue",
+      title: "Minimalist Oversized Pink Blazer",
+      slug: "minimalist-oversized-pink-blazer",
+      description: "Modern minimalist single-breasted tailored blazer in soft blossom pink. Features structured shoulders, notch lapels, and full silk lining. Versatile for both power dressing and elevated casual evening looks.",
+      price: 145000,
+      compare_at_price: 175000,
+      inventory_quantity: 22,
+      category_name: "Fashion & Boutique",
+      badge: "Best Seller",
+      image_url: "/products/pink-blazer.jpg",
+      has_variants: 1,
+      variants: [
+        { id: "var_blazer_s_blossom", title: "Size S / Blossom Pink", price: 145000, inventory_quantity: 5 },
+        { id: "var_blazer_m_blossom", title: "Size M / Blossom Pink", price: 145000, inventory_quantity: 8 },
+        { id: "var_blazer_l_blossom", title: "Size L / Blossom Pink", price: 145000, inventory_quantity: 6 },
+        { id: "var_blazer_xl_blossom", title: "Size XL / Blossom Pink", price: 145000, inventory_quantity: 3 },
+      ],
+    },
     {
       id: "prod_linen_shirt",
       store_id: "store_demo_urban_vogue",
@@ -330,7 +368,7 @@ export const DEMO_MARKETPLACE_PRODUCTS: Record<string, any[]> = {
       inventory_quantity: 35,
       category_name: "Gadgets",
       badge: "Trending",
-      image_url: "https://images.unsplash.com/photo-1590658268037-6bf12165a8df?auto=format&fit=crop&w=600&q=80",
+      image_url: "/products/anc-earbuds.jpg",
       has_variants: 1,
       variants: [
         { id: "var_earbuds_black", title: "Midnight Black", price: 95000, inventory_quantity: 20 },
@@ -364,7 +402,7 @@ export const DEMO_MARKETPLACE_PRODUCTS: Record<string, any[]> = {
       inventory_quantity: 45,
       category_name: "Beauty",
       badge: "100% Pure",
-      image_url: "https://images.unsplash.com/photo-1556228720-195a672e8a03?auto=format&fit=crop&w=600&q=80",
+      image_url: "/products/shea-butter.jpg",
       has_variants: 1,
       variants: [
         { id: "var_shea_vanilla", title: "Madagascar Vanilla Scent (250g)", price: 28000, inventory_quantity: 25 },
@@ -399,7 +437,7 @@ export const DEMO_MARKETPLACE_PRODUCTS: Record<string, any[]> = {
       inventory_quantity: 18,
       category_name: "Footwear",
       badge: "Limited Drop",
-      image_url: "https://images.unsplash.com/photo-1552346154-21d32810aba3?auto=format&fit=crop&w=600&q=80",
+      image_url: "/products/retro-sneakers.jpg",
       has_variants: 1,
       variants: [
         { id: "var_kicks_41", title: "EU 41 / UK 7", price: 185000, inventory_quantity: 4 },
@@ -1180,6 +1218,52 @@ marketplaceRoutes.get("/marketplace/stores/:id/products", async (c) => {
   }));
 
   return c.json({ products: enriched });
+});
+
+marketplaceRoutes.get("/marketplace/products/:id", async (c) => {
+  const id = c.req.param("id");
+
+  // 1. Try database lookup
+  const prodRes = await db.execute({
+    sql: "SELECT * FROM store_products WHERE id = ? OR slug = ?",
+    args: [id, id],
+  });
+
+  let product = (prodRes.rows[0] as Row | undefined) || null;
+  let store: Row | null = null;
+
+  if (product) {
+    const variantsRes = await db.execute({
+      sql: "SELECT * FROM store_product_variants WHERE product_id = ? ORDER BY created_at",
+      args: [String(product.id)],
+    });
+    product.variants = variantsRes.rows;
+
+    const storeRes = await db.execute({
+      sql: "SELECT id, name, slug, logo_url, banner_url, address, is_open, is_live, delivery_enabled, category FROM stores WHERE id = ?",
+      args: [String(product.store_id)],
+    });
+    store = (storeRes.rows[0] as Row | undefined) || null;
+  } else {
+    // 2. Fall back to demo products
+    for (const [storeId, prods] of Object.entries(DEMO_MARKETPLACE_PRODUCTS)) {
+      const match = prods.find((p: any) => p.id === id || p.slug === id);
+      if (match) {
+        product = { ...match } as unknown as Row;
+        const demoStore = DEMO_MARKETPLACE_STORES.find((s) => s.id === storeId);
+        if (demoStore) {
+          store = { ...demoStore } as unknown as Row;
+        }
+        break;
+      }
+    }
+  }
+
+  if (!product) {
+    return c.json({ error: "product_not_found" }, 404);
+  }
+
+  return c.json({ product, store });
 });
 
 // Live Channels Feed (for top "LIVE NOW" rail)

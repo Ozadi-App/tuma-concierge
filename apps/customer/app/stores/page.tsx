@@ -417,7 +417,7 @@ export default function StoresPage() {
       {cartItemCount > 0 && (
         <div className="fixed inset-x-4 bottom-20 z-40 mx-auto max-w-md animate-slide-up">
           <Link
-            href="/shopping"
+            href="/cart"
             className="flex items-center justify-between rounded-full bg-ink px-5 py-3.5 text-cream shadow-xl transition active:scale-98"
           >
             <div className="flex items-center gap-2.5">
