@@ -26,6 +26,7 @@
   --surface-muted: 245 245 245;
   --surface-input: 247 247 247;
   --border-faint: rgba(10, 10, 10, 0.08);
+  --customer-nav-content-gap: calc(88px + env(safe-area-inset-bottom));
 }
 
 @media (prefers-color-scheme: dark) {
@@ -89,3 +90,53 @@ input, select, textarea { background: rgb(var(--surface-input)); }
 .sales-tab-active { background:rgb(var(--ink)); color:rgb(var(--cream)); }
 button:disabled { opacity:.55; cursor:wait; }
 button:focus-visible,a:focus-visible { outline:2px solid rgb(var(--gold)); outline-offset:3px; }
+
+/* Customer Header */
+.customer-header {
+  background: rgb(var(--color-black-700, 26 26 26));
+  color: white;
+  border-bottom: 1px solid rgb(255 255 255 / .08);
+}
+
+:root[data-theme="dark"] .customer-header {
+  background: rgb(var(--color-gold, 201 162 39));
+  color: #111;
+  border-bottom-color: rgb(0 0 0 / .14);
+}
+
+/* Customer Floating Bottom Navigation Capsule */
+.customer-nav-content-clearance {
+  padding-bottom: var(--customer-nav-content-gap, calc(88px + env(safe-area-inset-bottom)));
+}
+
+.customer-nav-capsule {
+  background: linear-gradient(135deg, rgb(var(--color-black-700, 26 26 26)), rgb(var(--color-black-900, 10 10 10)));
+  border: 1px solid rgb(255 255 255 / .14);
+  box-shadow: 0 12px 32px rgb(0 0 0 / .35);
+}
+
+:root[data-theme="dark"] .customer-nav-capsule {
+  background: #000;
+  border-color: rgb(255 255 255 / .16);
+}
+
+.customer-nav-item {
+  color: rgb(255 255 255 / .7);
+  transition: all 180ms ease;
+}
+
+.customer-nav-item:hover {
+  color: white;
+  background: rgb(255 255 255 / .08);
+}
+
+.customer-nav-item.is-active {
+  color: rgb(var(--color-ink-gold, 10 10 10));
+  background: rgb(var(--color-gold, 201 162 39));
+  font-weight: 700;
+}
+
+.customer-nav-item.is-active .customer-nav-indicator {
+  background: rgb(var(--color-ink-gold, 10 10 10));
+}
+
