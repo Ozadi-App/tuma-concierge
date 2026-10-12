@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle, Camera, ChevronRight, Fuel, Sparkles } from "lucide-react";
+import { AlertCircle, Briefcase, Camera, ChevronRight, Fuel, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -11,7 +11,7 @@ import { useAuth } from "../lib/auth-context";
 
 export default function PumpHomePage() {
   const router = useRouter();
-  const { attendant, outlet, shiftSummary, ready } = useAuth();
+  const { attendant, manager, isManager, outlet, shiftSummary, ready } = useAuth();
   const [code, setCode] = useState("");
   const [scannerOpen, setScannerOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -55,6 +55,25 @@ export default function PumpHomePage() {
 
   return (
     <div className="space-y-4">
+      {/* Station Manager Pump Mode Banner */}
+      {isManager && (
+        <div className="home-card py-2.5 px-3.5 flex items-center justify-between !bg-gold/15 border-gold/30 text-xs">
+          <div className="flex items-center gap-2 min-w-0">
+            <Briefcase className="h-4 w-4 text-gold shrink-0" />
+            <span className="font-bold text-ink truncate">
+              Manager Mode · {manager?.full_name ?? "Station Manager"} (Selling Fuel)
+            </span>
+          </div>
+          <Link
+            href="/manager"
+            className="flex items-center gap-1 font-bold text-gold hover:underline shrink-0 ml-2"
+          >
+            <span>Manager Portal</span>
+            <ChevronRight className="h-3.5 w-3.5" />
+          </Link>
+        </div>
+      )}
+
       {/* Shift Overview Glance Card */}
       <section className="home-card !bg-black-700 text-white dark:!bg-black border border-white/10 shadow-[var(--shadow-card)]">
         <div className="flex items-start justify-between">

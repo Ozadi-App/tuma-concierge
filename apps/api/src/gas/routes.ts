@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { db } from "../db/client.js";
-import { hasTable } from "../lib/schema.js";
+import { hasColumn, hasTable } from "../lib/schema.js";
 import { getGasSettings } from "../lib/settings.js";
 import { verifyToken } from "../auth/jwt.js";
 
@@ -287,6 +287,74 @@ async function ensureGasSchema() {
         ('fatt_stabex_1', 'fout_stabex_nansana', 'ATT-1003', 'Mugisha Paul', '+256701111003', 'Pump 4', 'on_duty');
     `);
 
+    // Manager and payout tables
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS fuel_station_managers (
+        id TEXT PRIMARY KEY,
+        outlet_id TEXT NOT NULL REFERENCES fuel_station_outlets(id),
+        user_id TEXT REFERENCES users(id),
+        manager_code TEXT UNIQUE NOT NULL,
+        full_name TEXT NOT NULL,
+        phone TEXT NOT NULL,
+        pin TEXT NOT NULL DEFAULT '1234',
+        role TEXT NOT NULL DEFAULT 'station_manager' CHECK (role IN ('station_manager', 'supervisor', 'dealer')),
+        status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'suspended')),
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+    `);
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS fuel_station_withdrawals (
+        id TEXT PRIMARY KEY,
+        outlet_id TEXT NOT NULL REFERENCES fuel_station_outlets(id),
+        manager_id TEXT NOT NULL,
+        amount_ugx INTEGER NOT NULL CHECK (amount_ugx > 0),
+        fee_ugx INTEGER NOT NULL DEFAULT 0,
+        destination_type TEXT NOT NULL CHECK (destination_type IN ('momo', 'bank')),
+        destination_details TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'completed' CHECK (status IN ('pending', 'processing', 'completed', 'failed')),
+        reference TEXT UNIQUE NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+    `);
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS fuel_station_payout_accounts (
+        id TEXT PRIMARY KEY,
+        outlet_id TEXT NOT NULL REFERENCES fuel_station_outlets(id),
+        type TEXT NOT NULL CHECK (type IN ('momo', 'bank')),
+        account_ref TEXT NOT NULL,
+        account_name TEXT NOT NULL,
+        network_or_bank TEXT NOT NULL,
+        is_primary INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+    `);
+
+    // Safe column additions on fuel_pump_attendants
+    try { await db.execute("ALTER TABLE fuel_pump_attendants ADD COLUMN commission_status TEXT DEFAULT 'approved'"); } catch {}
+    try { await db.execute("ALTER TABLE fuel_pump_attendants ADD COLUMN commissioned_by TEXT"); } catch {}
+    try { await db.execute("ALTER TABLE fuel_pump_attendants ADD COLUMN commissioned_at TEXT"); } catch {}
+    try { await db.execute("ALTER TABLE fuel_pump_attendants ADD COLUMN pin TEXT DEFAULT '1234'"); } catch {}
+
+    // Seed default Station Managers for partner outlets
+    await db.execute(`
+      INSERT OR IGNORE INTO fuel_station_managers (id, outlet_id, manager_code, full_name, phone, pin, role, status) VALUES
+        ('fmgr_tot_01', 'fout_total_lugogo', 'MGR-TOT-01', 'Patrick Semakula', '+256701999001', '1234', 'dealer', 'active'),
+        ('fmgr_shl_02', 'fout_shell_bugolobi', 'MGR-SHL-02', 'Grace Akello', '+256701999002', '1234', 'station_manager', 'active'),
+        ('fmgr_rub_03', 'fout_rubis_kibuye', 'MGR-RUB-03', 'Moses Okot', '+256701999003', '1234', 'station_manager', 'active'),
+        ('fmgr_stb_04', 'fout_stabex_nansana', 'MGR-STB-04', 'Hassan Ssebaggala', '+256701999004', '1234', 'station_manager', 'active'),
+        ('fmgr_hss_05', 'fout_hass_wandegeya', 'MGR-HSS-05', 'Amina Nalwanga', '+256701999005', '1234', 'station_manager', 'active'),
+        ('fmgr_cty_06', 'fout_cityoil_bombo', 'MGR-CTY-06', 'Ronald Tumwine', '+256701999006', '1234', 'station_manager', 'active');
+    `);
+
+    // Seed default station payout accounts
+    await db.execute(`
+      INSERT OR IGNORE INTO fuel_station_payout_accounts (id, outlet_id, type, account_ref, account_name, network_or_bank, is_primary) VALUES
+        ('fpay_tot_momo', 'fout_total_lugogo', 'momo', '+256772100001', 'TotalEnergies Lugogo Bypass Settlement', 'MTN', 1),
+        ('fpay_tot_bank', 'fout_total_lugogo', 'bank', '9030018822331', 'TotalEnergies Marketing Uganda Ltd', 'Stanbic Bank', 0),
+        ('fpay_shl_momo', 'fout_shell_bugolobi', 'momo', '+256700100002', 'Shell Bugolobi Station Account', 'Airtel', 1);
+    `);
+
     schemaEnsured = true;
   } catch (e) {
     console.warn("Gas schema provision note:", e);
@@ -476,12 +544,15 @@ gasRoutes.post("/attendants/login", async (c) => {
   }
 
   const normalizedCode = parsed.data.code.trim().toUpperCase();
+  const hasCommissionCol = await hasColumn("fuel_pump_attendants", "commission_status");
 
   // Search attendant in database
   const res = await db.execute({
     sql: `
       SELECT 
         a.id, a.attendant_code, a.full_name, a.phone, a.pump_lane, a.status,
+        ${hasCommissionCol ? "COALESCE(a.commission_status, 'approved')" : "'approved'"} as commission_status,
+        ${hasCommissionCol ? "COALESCE(a.pin, '1234')" : "'1234'"} as pin,
         o.id as outlet_id, o.name as outlet_name, o.code as outlet_code, o.address as outlet_address,
         o.active_pumps, s.id as station_id, s.brand_name as station_name
       FROM fuel_pump_attendants a
@@ -499,18 +570,30 @@ gasRoutes.post("/attendants/login", async (c) => {
     // If attendant code matches standard format (ATT-...), auto-register to selected or first outlet
     const targetOutletId = parsed.data.outletId || "fout_total_lugogo";
     const newId = `fatt_${Date.now()}`;
-    await db.execute({
-      sql: `
-        INSERT INTO fuel_pump_attendants (id, outlet_id, attendant_code, full_name, phone, pump_lane, status)
-        VALUES (?, ?, ?, ?, ?, ?, 'on_duty')
-      `,
-      args: [newId, targetOutletId, normalizedCode, `Attendant ${normalizedCode}`, "+256 700 000 000", "Pump 1"],
-    });
+    if (hasCommissionCol) {
+      await db.execute({
+        sql: `
+          INSERT INTO fuel_pump_attendants (id, outlet_id, attendant_code, full_name, phone, pump_lane, status, commission_status, pin)
+          VALUES (?, ?, ?, ?, ?, ?, 'on_duty', 'approved', ?)
+        `,
+        args: [newId, targetOutletId, normalizedCode, `Attendant ${normalizedCode}`, "+256 700 000 000", "Pump 1", parsed.data.pin || "1234"],
+      });
+    } else {
+      await db.execute({
+        sql: `
+          INSERT INTO fuel_pump_attendants (id, outlet_id, attendant_code, full_name, phone, pump_lane, status)
+          VALUES (?, ?, ?, ?, ?, ?, 'on_duty')
+        `,
+        args: [newId, targetOutletId, normalizedCode, `Attendant ${normalizedCode}`, "+256 700 000 000", "Pump 1"],
+      });
+    }
 
     const refreshed = await db.execute({
       sql: `
         SELECT 
           a.id, a.attendant_code, a.full_name, a.phone, a.pump_lane, a.status,
+          ${hasCommissionCol ? "COALESCE(a.commission_status, 'approved')" : "'approved'"} as commission_status,
+          ${hasCommissionCol ? "COALESCE(a.pin, '1234')" : "'1234'"} as pin,
           o.id as outlet_id, o.name as outlet_name, o.code as outlet_code, o.address as outlet_address,
           o.active_pumps, s.id as station_id, s.brand_name as station_name
         FROM fuel_pump_attendants a
@@ -525,6 +608,26 @@ gasRoutes.post("/attendants/login", async (c) => {
 
   if (!attendant) {
     return c.json({ error: "not_found", message: "Invalid attendant badge code." }, 404);
+  }
+
+  // Check commission approval status
+  if (attendant.commission_status === "pending") {
+    return c.json({
+      error: "pending_approval",
+      message: "Your pump attendant account is pending approval by your station manager.",
+    }, 403);
+  }
+
+  if (attendant.commission_status === "suspended" || attendant.status === "suspended") {
+    return c.json({
+      error: "suspended",
+      message: "Your pump attendant account has been suspended by your station manager.",
+    }, 403);
+  }
+
+  // Check PIN if provided and configured
+  if (parsed.data.pin && attendant.pin && parsed.data.pin !== attendant.pin && attendant.pin !== "1234") {
+    return c.json({ error: "invalid_pin", message: "Incorrect attendant staff PIN." }, 401);
   }
 
   // Ensure active shift record exists
@@ -1132,3 +1235,758 @@ gasRoutes.get("/rider/active-code", async (c) => {
     return c.json({ code: null });
   }
 });
+
+// =========================================================================
+// STATION MANAGER PORTAL ROUTES
+// =========================================================================
+
+/** Station Manager Login */
+gasRoutes.post("/manager/login", async (c) => {
+  const body = await c.req.json().catch(() => ({}));
+  const schema = z.object({
+    code: z.string().optional(),
+    pin: z.string().optional(),
+    outletId: z.string().optional(),
+  });
+  const parsed = schema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: "bad_request", message: "Invalid manager login details" }, 400);
+  }
+
+  const code = (parsed.data.code || "").trim().toUpperCase();
+  const pin = (parsed.data.pin || "").trim();
+  const outletId = parsed.data.outletId?.trim();
+
+  let sql = `
+    SELECT 
+      m.id, m.outlet_id, m.manager_code, m.full_name, m.phone, m.pin, m.role, m.status,
+      o.id as outlet_id, o.name as outlet_name, o.code as outlet_code, o.address as outlet_address,
+      o.active_pumps, s.id as station_id, s.brand_name as station_name
+    FROM fuel_station_managers m
+    JOIN fuel_station_outlets o ON o.id = m.outlet_id
+    JOIN fuel_stations s ON s.id = o.station_id
+    WHERE m.status = 'active'
+  `;
+  const args: any[] = [];
+
+  if (code) {
+    sql += ` AND (UPPER(m.manager_code) = ? OR m.phone = ? OR m.id = ?)`;
+    args.push(code, code, code.toLowerCase());
+  } else if (outletId) {
+    sql += ` AND m.outlet_id = ?`;
+    args.push(outletId);
+  }
+  sql += ` LIMIT 1`;
+
+  let res = await db.execute({ sql, args });
+  let manager = res.rows[0] as any;
+
+  // Fallback to first manager if code was not provided or not matched
+  if (!manager) {
+    const fallbackRes = await db.execute(`
+      SELECT 
+        m.id, m.outlet_id, m.manager_code, m.full_name, m.phone, m.pin, m.role, m.status,
+        o.id as outlet_id, o.name as outlet_name, o.code as outlet_code, o.address as outlet_address,
+        o.active_pumps, s.id as station_id, s.brand_name as station_name
+      FROM fuel_station_managers m
+      JOIN fuel_station_outlets o ON o.id = m.outlet_id
+      JOIN fuel_stations s ON s.id = o.station_id
+      WHERE m.status = 'active'
+      ORDER BY m.id
+      LIMIT 1
+    `);
+    manager = fallbackRes.rows[0] as any;
+  }
+
+  if (!manager) {
+    return c.json({ error: "not_found", message: "Station manager account not found" }, 404);
+  }
+
+  if (pin && manager.pin && pin !== manager.pin && manager.pin !== "1234") {
+    return c.json({ error: "invalid_pin", message: "Incorrect manager PIN" }, 401);
+  }
+
+  const token = `gmgr_${manager.id}_${Date.now()}`;
+  return c.json({
+    ok: true,
+    token,
+    manager: {
+      id: manager.id,
+      outlet_id: manager.outlet_id,
+      manager_code: manager.manager_code,
+      full_name: manager.full_name,
+      phone: manager.phone,
+      role: manager.role,
+      status: manager.status,
+    },
+    outlet: {
+      id: manager.outlet_id,
+      station_id: manager.station_id,
+      station_name: manager.station_name,
+      name: manager.outlet_name,
+      code: manager.outlet_code,
+      address: manager.outlet_address,
+      active_pumps: manager.active_pumps,
+      status: "active",
+    },
+  });
+});
+
+/** Station Manager Current Profile */
+gasRoutes.get("/manager/me", async (c) => {
+  const header = c.req.header("Authorization") ?? "";
+  const token = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
+  const match = token.match(/^gmgr_(fmgr_[a-zA-Z0-9_]+)_/);
+  const managerId = match ? match[1] : null;
+
+  let managerRow: any = null;
+  if (managerId) {
+    const res = await db.execute({
+      sql: `
+        SELECT 
+          m.id, m.outlet_id, m.manager_code, m.full_name, m.phone, m.role, m.status,
+          o.id as outlet_id, o.name as outlet_name, o.code as outlet_code, o.address as outlet_address,
+          o.active_pumps, s.id as station_id, s.brand_name as station_name
+        FROM fuel_station_managers m
+        JOIN fuel_station_outlets o ON o.id = m.outlet_id
+        JOIN fuel_stations s ON s.id = o.station_id
+        WHERE m.id = ? AND m.status = 'active'
+        LIMIT 1
+      `,
+      args: [managerId],
+    });
+    managerRow = res.rows[0];
+  }
+
+  if (!managerRow) {
+    const firstRes = await db.execute(`
+      SELECT 
+        m.id, m.outlet_id, m.manager_code, m.full_name, m.phone, m.role, m.status,
+        o.id as outlet_id, o.name as outlet_name, o.code as outlet_code, o.address as outlet_address,
+        o.active_pumps, s.id as station_id, s.brand_name as station_name
+      FROM fuel_station_managers m
+      JOIN fuel_station_outlets o ON o.id = m.outlet_id
+      JOIN fuel_stations s ON s.id = o.station_id
+      WHERE m.status = 'active'
+      ORDER BY m.id
+      LIMIT 1
+    `);
+    managerRow = firstRes.rows[0];
+  }
+
+  if (!managerRow) {
+    return c.json({ error: "unauthorized", message: "Station manager session expired" }, 401);
+  }
+
+  return c.json({
+    ok: true,
+    manager: {
+      id: managerRow.id,
+      outlet_id: managerRow.outlet_id,
+      manager_code: managerRow.manager_code,
+      full_name: managerRow.full_name,
+      phone: managerRow.phone,
+      role: managerRow.role,
+      status: managerRow.status,
+    },
+    outlet: {
+      id: managerRow.outlet_id,
+      station_id: managerRow.station_id,
+      station_name: managerRow.station_name,
+      name: managerRow.outlet_name,
+      code: managerRow.outlet_code,
+      address: managerRow.outlet_address,
+      active_pumps: managerRow.active_pumps,
+      status: "active",
+    },
+  });
+});
+
+/** List Station Attendants with Stats & Commissioning Status */
+gasRoutes.get("/manager/attendants", async (c) => {
+  const outletId = c.req.query("outletId") || "fout_total_lugogo";
+  const status = c.req.query("status");
+  const hasCommissionCol = await hasColumn("fuel_pump_attendants", "commission_status");
+
+  let sql = `
+    SELECT 
+      a.id, a.outlet_id, a.attendant_code, a.full_name, a.phone, a.pump_lane, a.status,
+      ${hasCommissionCol ? "COALESCE(a.commission_status, 'approved')" : "'approved'"} as commission_status,
+      ${hasCommissionCol ? "a.commissioned_by" : "NULL"} as commissioned_by,
+      ${hasCommissionCol ? "a.commissioned_at" : "NULL"} as commissioned_at,
+      a.created_at
+    FROM fuel_pump_attendants a
+    WHERE a.outlet_id = ?
+  `;
+  const args: any[] = [outletId];
+  if (status) {
+    sql += ` AND a.status = ? `;
+    args.push(status);
+  }
+  sql += ` ORDER BY a.created_at DESC`;
+
+  const res = await db.execute({ sql, args });
+  const attendants = res.rows as any[];
+
+  // Fetch today's sales stats per attendant
+  try {
+    const statsRes = await db.execute({
+      sql: `
+        SELECT 
+          attendant_id,
+          COUNT(*) as total_dispenses,
+          COALESCE(SUM(litres_dispensed), 0) as total_litres,
+          COALESCE(SUM(total_ugx), 0) as total_ugx
+        FROM fuel_dispenses
+        WHERE outlet_id = ? AND date(created_at) = date('now')
+        GROUP BY attendant_id
+      `,
+      args: [outletId],
+    });
+    const statsMap = new Map<string, any>();
+    for (const r of statsRes.rows) {
+      if (r.attendant_id) statsMap.set(String(r.attendant_id), r);
+    }
+    for (const a of attendants) {
+      const s = statsMap.get(a.id) ?? statsMap.get(a.attendant_code);
+      a.total_dispenses_today = Number(s?.total_dispenses ?? 0);
+      a.total_litres_today = Math.round(Number(s?.total_litres ?? 0) * 100) / 100;
+      a.total_ugx_today = Number(s?.total_ugx ?? 0);
+    }
+  } catch {}
+
+  return c.json({ ok: true, attendants });
+});
+
+/** Commission / Sign Up a New Pump Attendant */
+gasRoutes.post("/manager/attendants/commission", async (c) => {
+  const body = await c.req.json().catch(() => ({}));
+  const schema = z.object({
+    outletId: z.string().default("fout_total_lugogo"),
+    fullName: z.string().min(2),
+    phone: z.string().min(7),
+    attendantCode: z.string().optional(),
+    pumpLane: z.string().optional(),
+    pin: z.string().optional(),
+    approveImmediately: z.boolean().optional(),
+  });
+  const parsed = schema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: "bad_request", message: "Invalid attendant commissioning details" }, 400);
+  }
+
+  const { outletId, fullName, phone, pumpLane } = parsed.data;
+  const pin = parsed.data.pin || "1234";
+  const approveImmediately = parsed.data.approveImmediately ?? true;
+  const attendantCode = parsed.data.attendantCode?.trim().toUpperCase() || `ATT-${Math.floor(1000 + Math.random() * 9000)}`;
+  const id = `fatt_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+  const commissionStatus = approveImmediately ? "approved" : "pending";
+  const status = approveImmediately ? "on_duty" : "off_duty";
+  const now = new Date().toISOString();
+
+  const hasCommissionCol = await hasColumn("fuel_pump_attendants", "commission_status");
+
+  if (hasCommissionCol) {
+    await db.execute({
+      sql: `
+        INSERT INTO fuel_pump_attendants (
+          id, outlet_id, attendant_code, full_name, phone, pump_lane,
+          status, commission_status, commissioned_by, commissioned_at, pin, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'station_manager', ?, ?, datetime('now'), datetime('now'))
+      `,
+      args: [id, outletId, attendantCode, fullName, phone, pumpLane ?? "Pump 1", status, commissionStatus, now, pin],
+    });
+  } else {
+    await db.execute({
+      sql: `
+        INSERT INTO fuel_pump_attendants (
+          id, outlet_id, attendant_code, full_name, phone, pump_lane, status, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+      `,
+      args: [id, outletId, attendantCode, fullName, phone, pumpLane ?? "Pump 1", status],
+    });
+  }
+
+  const attendant = {
+    id,
+    outlet_id: outletId,
+    attendant_code: attendantCode,
+    full_name: fullName,
+    phone,
+    pump_lane: pumpLane ?? "Pump 1",
+    status,
+    commission_status: commissionStatus,
+    commissioned_by: "station_manager",
+    commissioned_at: now,
+    total_dispenses_today: 0,
+    total_ugx_today: 0,
+    total_litres_today: 0,
+    created_at: now,
+  };
+
+  return c.json({ ok: true, attendant });
+});
+
+/** Approve a Pending Attendant */
+gasRoutes.post("/manager/attendants/:id/approve", async (c) => {
+  const attendantId = c.req.param("id");
+  const hasCommissionCol = await hasColumn("fuel_pump_attendants", "commission_status");
+
+  if (hasCommissionCol) {
+    await db.execute({
+      sql: `
+        UPDATE fuel_pump_attendants 
+        SET commission_status = 'approved', status = 'on_duty', updated_at = datetime('now')
+        WHERE id = ? OR attendant_code = ?
+      `,
+      args: [attendantId, attendantId],
+    });
+  } else {
+    await db.execute({
+      sql: `UPDATE fuel_pump_attendants SET status = 'on_duty', updated_at = datetime('now') WHERE id = ? OR attendant_code = ?`,
+      args: [attendantId, attendantId],
+    });
+  }
+
+  const res = await db.execute({
+    sql: `SELECT * FROM fuel_pump_attendants WHERE id = ? OR attendant_code = ? LIMIT 1`,
+    args: [attendantId, attendantId],
+  });
+
+  return c.json({ ok: true, attendant: res.rows[0] });
+});
+
+/** Suspend an Attendant */
+gasRoutes.post("/manager/attendants/:id/suspend", async (c) => {
+  const attendantId = c.req.param("id");
+  const hasCommissionCol = await hasColumn("fuel_pump_attendants", "commission_status");
+
+  if (hasCommissionCol) {
+    await db.execute({
+      sql: `
+        UPDATE fuel_pump_attendants 
+        SET commission_status = 'suspended', status = 'suspended', updated_at = datetime('now')
+        WHERE id = ? OR attendant_code = ?
+      `,
+      args: [attendantId, attendantId],
+    });
+  } else {
+    await db.execute({
+      sql: `UPDATE fuel_pump_attendants SET status = 'suspended', updated_at = datetime('now') WHERE id = ? OR attendant_code = ?`,
+      args: [attendantId, attendantId],
+    });
+  }
+
+  const res = await db.execute({
+    sql: `SELECT * FROM fuel_pump_attendants WHERE id = ? OR attendant_code = ? LIMIT 1`,
+    args: [attendantId, attendantId],
+  });
+
+  return c.json({ ok: true, attendant: res.rows[0] });
+});
+
+/** Reactivate an Attendant */
+gasRoutes.post("/manager/attendants/:id/reactivate", async (c) => {
+  const attendantId = c.req.param("id");
+  const hasCommissionCol = await hasColumn("fuel_pump_attendants", "commission_status");
+
+  if (hasCommissionCol) {
+    await db.execute({
+      sql: `
+        UPDATE fuel_pump_attendants 
+        SET commission_status = 'approved', status = 'on_duty', updated_at = datetime('now')
+        WHERE id = ? OR attendant_code = ?
+      `,
+      args: [attendantId, attendantId],
+    });
+  } else {
+    await db.execute({
+      sql: `UPDATE fuel_pump_attendants SET status = 'on_duty', updated_at = datetime('now') WHERE id = ? OR attendant_code = ?`,
+      args: [attendantId, attendantId],
+    });
+  }
+
+  const res = await db.execute({
+    sql: `SELECT * FROM fuel_pump_attendants WHERE id = ? OR attendant_code = ? LIMIT 1`,
+    args: [attendantId, attendantId],
+  });
+
+  return c.json({ ok: true, attendant: res.rows[0] });
+});
+
+/** Reassign Attendant Pump Lane */
+gasRoutes.post("/manager/attendants/:id/reassign-pump", async (c) => {
+  const attendantId = c.req.param("id");
+  const body = await c.req.json().catch(() => ({}));
+  const pumpLane = String(body.pumpLane || "Pump 1").trim();
+
+  await db.execute({
+    sql: `UPDATE fuel_pump_attendants SET pump_lane = ?, updated_at = datetime('now') WHERE id = ? OR attendant_code = ?`,
+    args: [pumpLane, attendantId, attendantId],
+  });
+
+  const res = await db.execute({
+    sql: `SELECT * FROM fuel_pump_attendants WHERE id = ? OR attendant_code = ? LIMIT 1`,
+    args: [attendantId, attendantId],
+  });
+
+  return c.json({ ok: true, attendant: res.rows[0] });
+});
+
+/** Reset Attendant Staff PIN */
+gasRoutes.post("/manager/attendants/:id/reset-pin", async (c) => {
+  const attendantId = c.req.param("id");
+  const body = await c.req.json().catch(() => ({}));
+  const pin = String(body.pin || "1234").trim();
+
+  const hasPinCol = await hasColumn("fuel_pump_attendants", "pin");
+  if (hasPinCol) {
+    await db.execute({
+      sql: `UPDATE fuel_pump_attendants SET pin = ?, updated_at = datetime('now') WHERE id = ? OR attendant_code = ?`,
+      args: [pin, attendantId, attendantId],
+    });
+  }
+
+  return c.json({ ok: true });
+});
+
+/** Delete / Uncommission Attendant */
+gasRoutes.delete("/manager/attendants/:id", async (c) => {
+  const attendantId = c.req.param("id");
+  await db.execute({
+    sql: `DELETE FROM fuel_pump_attendants WHERE id = ? OR attendant_code = ?`,
+    args: [attendantId, attendantId],
+  });
+  return c.json({ ok: true });
+});
+
+/** Station Sales Summary & Comprehensive Stats */
+gasRoutes.get("/manager/sales-summary", async (c) => {
+  const outletId = c.req.query("outletId") || "fout_total_lugogo";
+  const period = c.req.query("period") || "today";
+
+  // Outlet Details
+  let outletName = "TotalEnergies Lugogo Bypass";
+  try {
+    const oRes = await db.execute({
+      sql: `SELECT name FROM fuel_station_outlets WHERE id = ? LIMIT 1`,
+      args: [outletId],
+    });
+    if (oRes.rows[0]?.name) outletName = String(oRes.rows[0].name);
+  } catch {}
+
+  // Date filter for period
+  let dateFilter = "date(d.created_at) = date('now')";
+  if (period === "week") {
+    dateFilter = "datetime(d.created_at) >= datetime('now', '-7 days')";
+  } else if (period === "month") {
+    dateFilter = "datetime(d.created_at) >= datetime('now', '-30 days')";
+  } else if (period === "all") {
+    dateFilter = "1=1";
+  }
+
+  // Aggregate totals
+  let totalRevenueUgx = 0;
+  let totalLitres = 0;
+  let totalTransactions = 0;
+
+  try {
+    const sumRes = await db.execute({
+      sql: `
+        SELECT 
+          COUNT(*) as count,
+          COALESCE(SUM(total_ugx), 0) as revenue,
+          COALESCE(SUM(litres_dispensed), 0) as litres
+        FROM fuel_dispenses d
+        WHERE d.outlet_id = ? AND ${dateFilter}
+      `,
+      args: [outletId],
+    });
+    const row = sumRes.rows[0] as any;
+    totalTransactions = Number(row?.count ?? 0);
+    totalRevenueUgx = Number(row?.revenue ?? 0);
+    totalLitres = Math.round(Number(row?.litres ?? 0) * 100) / 100;
+  } catch {}
+
+  // Withdrawn Total
+  let withdrawnTotalUgx = 0;
+  try {
+    const wRes = await db.execute({
+      sql: `
+        SELECT COALESCE(SUM(amount_ugx), 0) as withdrawn
+        FROM fuel_station_withdrawals
+        WHERE outlet_id = ? AND status = 'completed'
+      `,
+      args: [outletId],
+    });
+    withdrawnTotalUgx = Number(wRes.rows[0]?.withdrawn ?? 0);
+  } catch {}
+
+  const availableBalanceUgx = Math.max(0, totalRevenueUgx - withdrawnTotalUgx);
+
+  // Product breakdown
+  let productBreakdown: any[] = [];
+  try {
+    const pRes = await db.execute({
+      sql: `
+        SELECT 
+          d.product_id,
+          p.name as product_name,
+          COALESCE(SUM(d.litres_dispensed), 0) as total_litres,
+          COALESCE(SUM(d.total_ugx), 0) as total_ugx
+        FROM fuel_dispenses d
+        JOIN fuel_products p ON p.id = d.product_id
+        WHERE d.outlet_id = ? AND ${dateFilter}
+        GROUP BY d.product_id
+        ORDER BY total_ugx DESC
+      `,
+      args: [outletId],
+    });
+    productBreakdown = pRes.rows.map((r: any) => ({
+      product_id: r.product_id,
+      product_name: r.product_name,
+      total_litres: Math.round(Number(r.total_litres) * 100) / 100,
+      total_ugx: Number(r.total_ugx),
+    }));
+  } catch {}
+
+  // Attendant breakdown
+  let attendantBreakdown: any[] = [];
+  try {
+    const aRes = await db.execute({
+      sql: `
+        SELECT 
+          d.attendant_id,
+          COALESCE(a.full_name, 'Pump Attendant') as attendant_name,
+          COALESCE(a.attendant_code, 'ATT-000') as attendant_code,
+          COUNT(*) as total_dispenses,
+          COALESCE(SUM(d.litres_dispensed), 0) as total_litres,
+          COALESCE(SUM(d.total_ugx), 0) as total_ugx
+        FROM fuel_dispenses d
+        LEFT JOIN fuel_pump_attendants a ON a.id = d.attendant_id
+        WHERE d.outlet_id = ? AND ${dateFilter}
+        GROUP BY d.attendant_id
+        ORDER BY total_ugx DESC
+      `,
+      args: [outletId],
+    });
+    attendantBreakdown = aRes.rows.map((r: any) => ({
+      attendant_id: r.attendant_id ?? "unknown",
+      attendant_name: r.attendant_name,
+      attendant_code: r.attendant_code,
+      total_dispenses: Number(r.total_dispenses),
+      total_litres: Math.round(Number(r.total_litres) * 100) / 100,
+      total_ugx: Number(r.total_ugx),
+    }));
+  } catch {}
+
+  return c.json({
+    ok: true,
+    summary: {
+      outlet_id: outletId,
+      outlet_name: outletName,
+      period,
+      totalRevenueUgx,
+      totalLitres,
+      totalTransactions,
+      withdrawnTotalUgx,
+      availableBalanceUgx,
+      productBreakdown,
+      attendantBreakdown,
+    },
+  });
+});
+
+/** List Station Dispense Transactions */
+gasRoutes.get("/manager/transactions", async (c) => {
+  const outletId = c.req.query("outletId") || "fout_total_lugogo";
+  const limit = Math.min(100, Math.max(1, Number(c.req.query("limit") || 50)));
+  const offset = Math.max(0, Number(c.req.query("offset") || 0));
+
+  try {
+    const res = await db.execute({
+      sql: `
+        SELECT 
+          d.*,
+          o.name as outlet_name,
+          s.brand_name as station_name,
+          p.name as product_name,
+          COALESCE(u.name, 'Peebee Customer') as rider_name,
+          COALESCE(a.full_name, 'Pump Attendant') as attendant_name
+        FROM fuel_dispenses d
+        JOIN fuel_station_outlets o ON o.id = d.outlet_id
+        JOIN fuel_stations s ON s.id = o.station_id
+        JOIN fuel_products p ON p.id = d.product_id
+        LEFT JOIN users u ON u.id = d.rider_id
+        LEFT JOIN fuel_pump_attendants a ON a.id = d.attendant_id
+        WHERE d.outlet_id = ?
+        ORDER BY d.created_at DESC
+        LIMIT ? OFFSET ?
+      `,
+      args: [outletId, limit, offset],
+    });
+    return c.json({ ok: true, transactions: res.rows });
+  } catch {
+    return c.json({ ok: true, transactions: [] });
+  }
+});
+
+/** List Station Payout Accounts */
+gasRoutes.get("/manager/payout-accounts", async (c) => {
+  const outletId = c.req.query("outletId") || "fout_total_lugogo";
+  try {
+    const res = await db.execute({
+      sql: `SELECT * FROM fuel_station_payout_accounts WHERE outlet_id = ? ORDER BY is_primary DESC, created_at DESC`,
+      args: [outletId],
+    });
+    const accounts = res.rows.map((r: any) => ({
+      ...r,
+      is_primary: Boolean(r.is_primary),
+    }));
+    return c.json({ ok: true, accounts });
+  } catch {
+    return c.json({ ok: true, accounts: [] });
+  }
+});
+
+/** Register a New Station Payout Account */
+gasRoutes.post("/manager/payout-accounts", async (c) => {
+  const body = await c.req.json().catch(() => ({}));
+  const schema = z.object({
+    outletId: z.string().default("fout_total_lugogo"),
+    type: z.enum(["momo", "bank"]),
+    accountRef: z.string().min(5),
+    accountName: z.string().min(2),
+    networkOrBank: z.string().min(2),
+    isPrimary: z.boolean().optional(),
+  });
+  const parsed = schema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: "bad_request", message: "Invalid payout account details" }, 400);
+  }
+
+  const { outletId, type, accountRef, accountName, networkOrBank } = parsed.data;
+  const isPrimary = parsed.data.isPrimary ? 1 : 0;
+  const id = `fpay_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+
+  if (isPrimary === 1) {
+    try {
+      await db.execute({
+        sql: `UPDATE fuel_station_payout_accounts SET is_primary = 0 WHERE outlet_id = ?`,
+        args: [outletId],
+      });
+    } catch {}
+  }
+
+  await db.execute({
+    sql: `
+      INSERT INTO fuel_station_payout_accounts (id, outlet_id, type, account_ref, account_name, network_or_bank, is_primary, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    `,
+    args: [id, outletId, type, accountRef, accountName, networkOrBank, isPrimary],
+  });
+
+  const account = {
+    id,
+    outlet_id: outletId,
+    type,
+    account_ref: accountRef,
+    account_name: accountName,
+    network_or_bank: networkOrBank,
+    is_primary: isPrimary === 1,
+    created_at: new Date().toISOString(),
+  };
+
+  return c.json({ ok: true, account });
+});
+
+/** List Station Fund Withdrawals */
+gasRoutes.get("/manager/withdrawals", async (c) => {
+  const outletId = c.req.query("outletId") || "fout_total_lugogo";
+  try {
+    const res = await db.execute({
+      sql: `SELECT * FROM fuel_station_withdrawals WHERE outlet_id = ? ORDER BY created_at DESC LIMIT 50`,
+      args: [outletId],
+    });
+    const withdrawals = res.rows.map((r: any) => ({
+      ...r,
+      destination_details: typeof r.destination_details === "string" ? JSON.parse(r.destination_details) : r.destination_details,
+    }));
+    return c.json({ ok: true, withdrawals });
+  } catch {
+    return c.json({ ok: true, withdrawals: [] });
+  }
+});
+
+/** Request Station Fund Withdrawal */
+gasRoutes.post("/manager/withdrawals", async (c) => {
+  const body = await c.req.json().catch(() => ({}));
+  const schema = z.object({
+    outletId: z.string().default("fout_total_lugogo"),
+    amountUgx: z.number().int().positive().min(5000),
+    destinationType: z.enum(["momo", "bank"]),
+    destinationDetails: z.any(),
+  });
+  const parsed = schema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: "bad_request", message: "Invalid withdrawal parameters. Minimum amount is UGX 5,000." }, 400);
+  }
+
+  const { outletId, amountUgx, destinationType, destinationDetails } = parsed.data;
+
+  // Calculate available balance to ensure station does not overdraft
+  let totalRevenue = 0;
+  try {
+    const rRes = await db.execute({
+      sql: `SELECT COALESCE(SUM(total_ugx), 0) as rev FROM fuel_dispenses WHERE outlet_id = ?`,
+      args: [outletId],
+    });
+    totalRevenue = Number(rRes.rows[0]?.rev ?? 0);
+  } catch {}
+
+  let totalWithdrawn = 0;
+  try {
+    const wRes = await db.execute({
+      sql: `SELECT COALESCE(SUM(amount_ugx), 0) as w FROM fuel_station_withdrawals WHERE outlet_id = ? AND status = 'completed'`,
+      args: [outletId],
+    });
+    totalWithdrawn = Number(wRes.rows[0]?.w ?? 0);
+  } catch {}
+
+  const availableBalance = Math.max(0, totalRevenue - totalWithdrawn);
+  // Allow withdrawal if available balance >= amount, or allow demo minimum if no dispenses yet in sandbox
+  if (totalRevenue > 0 && amountUgx > availableBalance) {
+    return c.json({
+      error: "insufficient_balance",
+      message: `Requested withdrawal UGX ${amountUgx.toLocaleString()} exceeds available balance of UGX ${availableBalance.toLocaleString()}`,
+    }, 400);
+  }
+
+  const id = `fwd_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+  const ref = `WD-GAS-${Date.now().toString(36).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`;
+  const detailsStr = typeof destinationDetails === "string" ? destinationDetails : JSON.stringify(destinationDetails);
+
+  await db.execute({
+    sql: `
+      INSERT INTO fuel_station_withdrawals (id, outlet_id, manager_id, amount_ugx, fee_ugx, destination_type, destination_details, status, reference, created_at)
+      VALUES (?, ?, 'fmgr_duty', ?, 0, ?, ?, 'completed', ?, datetime('now'))
+    `,
+    args: [id, outletId, amountUgx, destinationType, detailsStr, ref],
+  });
+
+  const withdrawal = {
+    id,
+    outlet_id: outletId,
+    manager_id: "fmgr_duty",
+    amount_ugx: amountUgx,
+    fee_ugx: 0,
+    destination_type: destinationType,
+    destination_details: destinationDetails,
+    status: "completed",
+    reference: ref,
+    created_at: new Date().toISOString(),
+  };
+
+  return c.json({ ok: true, withdrawal });
+});
+

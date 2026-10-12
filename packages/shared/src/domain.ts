@@ -2526,3 +2526,91 @@ export type FuelShiftSummary = {
   recent?: FuelReceipt[];
 };
 
+export type FuelStationManager = {
+  id: string;
+  outlet_id: string;
+  manager_code: string;
+  full_name: string;
+  phone: string;
+  role: "station_manager" | "supervisor" | "dealer";
+  status: "active" | "suspended";
+  created_at?: string;
+};
+
+export type FuelPumpAttendant = {
+  id: string;
+  outlet_id: string;
+  attendant_code: string;
+  full_name: string;
+  phone: string;
+  pump_lane?: string | null;
+  status: "on_duty" | "off_duty" | "suspended";
+  commission_status: "approved" | "pending" | "suspended";
+  commissioned_by?: string | null;
+  commissioned_at?: string | null;
+  total_dispenses_today?: number;
+  total_ugx_today?: number;
+  total_litres_today?: number;
+  created_at?: string;
+};
+
+export type FuelProductSalesStats = {
+  product_id: string;
+  product_name: string;
+  total_litres: number;
+  total_ugx: number;
+};
+
+export type FuelAttendantSalesStats = {
+  attendant_id: string;
+  attendant_name: string;
+  attendant_code: string;
+  total_dispenses: number;
+  total_litres: number;
+  total_ugx: number;
+};
+
+export type FuelStationSalesSummary = {
+  outlet_id: string;
+  outlet_name: string;
+  period: "today" | "week" | "month" | "all";
+  totalRevenueUgx: number;
+  totalLitres: number;
+  totalTransactions: number;
+  withdrawnTotalUgx: number;
+  availableBalanceUgx: number;
+  productBreakdown: FuelProductSalesStats[];
+  attendantBreakdown: FuelAttendantSalesStats[];
+};
+
+export type FuelStationWithdrawal = {
+  id: string;
+  outlet_id: string;
+  manager_id: string;
+  amount_ugx: number;
+  fee_ugx: number;
+  destination_type: "momo" | "bank";
+  destination_details: {
+    phone?: string;
+    network?: string;
+    bankName?: string;
+    accountNumber?: string;
+    accountName: string;
+  };
+  status: "pending" | "processing" | "completed" | "failed";
+  reference: string;
+  created_at: string;
+};
+
+export type FuelStationPayoutAccount = {
+  id: string;
+  outlet_id: string;
+  type: "momo" | "bank";
+  account_ref: string;
+  account_name: string;
+  network_or_bank: string;
+  is_primary: boolean;
+  created_at?: string;
+};
+
+
