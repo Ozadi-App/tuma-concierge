@@ -3,6 +3,7 @@
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { useAuth } from "../lib/auth-context";
+import { BrandLogo } from "./BrandLogo";
 
 const PUBLIC_PATHS = ["/login"];
 // Reachable even while a forced password change is pending — otherwise
@@ -26,7 +27,18 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     if (needsPasswordChange) router.replace("/set-password");
   }, [ready, isAdmin, isPublic, needsPasswordChange, router]);
 
-  if (!ready) return null;
+  if (!ready) {
+    return (
+      <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-[rgb(var(--color-cream))] text-ink">
+        <div className="flex flex-col items-center gap-4 animate-pulse">
+          <BrandLogo wordmark={false} className="h-20 w-20" />
+          <span className="font-serif text-2xl font-black lowercase tracking-tight text-ink select-none">
+            peebee
+          </span>
+        </div>
+      </div>
+    );
+  }
   if (!isAdmin && !isPublic) return null;
   if (isAdmin && isPublic) return null;
   if (needsPasswordChange) return null;
