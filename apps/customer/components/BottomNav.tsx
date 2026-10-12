@@ -55,8 +55,8 @@ const submenuItems: Record<Exclude<MenuGroup, "original">, MenuItem[]> = {
   ],
   shopping: [
     { id: "shoplist", label: "List", icon: ListChecks, href: "/shoplist" },
-    { id: "markets", label: "Groceries", icon: Store, disabled: true },
-    { id: "stores", label: "Stores", icon: ShoppingBasket, disabled: true },
+    { id: "markets", label: "Groceries", icon: Store, href: "/groceries" },
+    { id: "stores", label: "Stores", icon: ShoppingBasket, href: "/stores" },
     { id: "pharmacy", label: "Pharma", icon: Pill, disabled: true },
     { id: "services", label: "Jobs", icon: Sparkles, href: "/service" },
   ],
@@ -77,7 +77,7 @@ const submenuItems: Record<Exclude<MenuGroup, "original">, MenuItem[]> = {
 function groupForPath(pathname: string): MenuGroup {
   if (["/food", "/restaurants", "/kitchens", "/streetfood", "/bakeries"].some((path) => pathname === path || pathname.startsWith(`${path}/`))) return "food";
   if (pathname === "/ride" || pathname === "/rent" || pathname === "/carpool" || pathname.startsWith("/ride/")) return "ride";
-  if (pathname === "/shopping" || pathname === "/shoplist" || pathname.startsWith("/orders") || pathname === "/service" || pathname.startsWith("/service/")) return "shopping";
+  if (["/shopping", "/shoplist", "/groceries", "/stores", "/store"].some((path) => pathname === path || pathname.startsWith(`${path}/`)) || pathname.startsWith("/orders") || pathname === "/service" || pathname.startsWith("/service/")) return "shopping";
   if (pathname === "/deliver" || pathname.startsWith("/deliver/")) return "deliver";
   return "original";
 }

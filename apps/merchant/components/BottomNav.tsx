@@ -1,12 +1,13 @@
 "use client";
 
-import { Building2, CreditCard, LayoutGrid, UserRound, WalletCards } from "lucide-react";
+import { Building2, CreditCard, LayoutGrid, Store, UserRound, WalletCards } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "../lib/auth-context";
 
 const tabs = [
   { href: "/", label: "Overview", icon: LayoutGrid },
+  { href: "/store", label: "Pro Store", icon: Store },
   { href: "/payments", label: "Payments", icon: CreditCard },
   { href: "/wallet", label: "Wallet", icon: WalletCards },
   { href: "/outlets", label: "Outlets", icon: Building2 },

@@ -82,6 +82,7 @@ export type {
   FailedPayment,
   AdminOrderRow,
   DeliverySettings,
+  MarketplaceSettings,
   BiddingSettings,
   CarSettings,
   DealTermsView,

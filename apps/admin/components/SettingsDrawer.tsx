@@ -198,6 +198,13 @@ export function SettingsListContent({ onItemClick }: { onItemClick?: () => void 
       show: hasPermission(role, "payments.manage"),
     },
     {
+      href: "/settings/marketplace",
+      icon: Store,
+      label: "Marketplace & Pro stores",
+      value: "TikTok live & ads",
+      show: true,
+    },
+    {
       href: "/settings/payments",
       icon: CreditCard,
       label: "Payments",

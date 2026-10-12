@@ -22,6 +22,8 @@ import {
   setCarSettings,
   getGasSettings,
   setGasSettings,
+  getMarketplaceSettings,
+  setMarketplaceSettings,
   getLugandaAudioSettings,
   getMatchingSettings,
   getMonetizationSettings,
@@ -139,6 +141,7 @@ async function fullSettings() {
     bidding: await getBiddingSettings(),
     car: await getCarSettings(),
     gas: await getGasSettings(),
+    marketplace: await getMarketplaceSettings(),
     ...delivery,
     services,
     ...matching,
@@ -389,6 +392,23 @@ const updateSchema = z.object({
     })
     .partial()
     .optional(),
+  marketplace: z
+    .object({
+      enabled: z.boolean(),
+      liveEnabled: z.boolean(),
+      commissionPercent: z.number().min(0).max(100),
+      proPricingMode: z.enum(["free", "paid"]),
+      proStorePriceUgx: z.number().int().min(0).max(10_000_000),
+      proLivePriceUgx: z.number().int().min(0).max(10_000_000),
+      proTrialDays: z.number().int().min(0).max(365),
+      adMinBudgetUgx: z.number().int().min(1000).max(100_000_000),
+      adFeePercent: z.number().min(0).max(100),
+      minOrderAmountUgx: z.number().int().min(0).max(10_000_000),
+      liveMaxDurationMins: z.number().int().min(15).max(1440),
+      deliveryBaseFeeUgx: z.number().int().min(0).max(1_000_000),
+    })
+    .partial()
+    .optional(),
   rideForOtherEnabled: z.boolean().optional(),
   rideForOtherDistanceM: z.number().int().min(50).max(50_000).optional(),
   enabledModes: z.array(z.enum(["first_to_claim", "nearest_window", "customer_selects"])).optional(),
@@ -517,6 +537,7 @@ settingsRoutes.put(
     if (parsed.data.bidding) await setBiddingSettings(parsed.data.bidding);
     if (parsed.data.car) await setCarSettings(parsed.data.car);
     if (parsed.data.gas) await setGasSettings(parsed.data.gas);
+    if (parsed.data.marketplace) await setMarketplaceSettings(parsed.data.marketplace);
 
     if (parsed.data.deliveryRatePerKm != null) {
       await setSetting("delivery_rate_per_km", String(parsed.data.deliveryRatePerKm));
@@ -1109,3 +1130,60 @@ settingsRoutes.put(
     return c.json({ navMode: parsed.data.mode });
   },
 );
+
+const patchMarketplaceSettingsSchema = z
+  .object({
+    enabled: z.boolean(),
+    liveEnabled: z.boolean(),
+    commissionPercent: z.number().min(0).max(100),
+    proPricingMode: z.enum(["free", "paid"]),
+    proStorePriceUgx: z.number().int().min(0).max(10_000_000),
+    proLivePriceUgx: z.number().int().min(0).max(10_000_000),
+    proTrialDays: z.number().int().min(0).max(365),
+    adMinBudgetUgx: z.number().int().min(1000).max(100_000_000),
+    adFeePercent: z.number().min(0).max(100),
+    minOrderAmountUgx: z.number().int().min(0).max(10_000_000),
+    liveMaxDurationMins: z.number().int().min(15).max(1440),
+    deliveryBaseFeeUgx: z.number().int().min(0).max(1_000_000),
+  })
+  .partial();
+
+settingsRoutes.get(
+  "/admin/marketplace-settings",
+  requireAuth,
+  requireRole("admin"),
+  requirePermission("settings.view"),
+  async (c) => {
+    const marketplace = await getMarketplaceSettings();
+    return c.json({ marketplace });
+  },
+);
+
+settingsRoutes.patch(
+  "/admin/marketplace-settings",
+  requireAuth,
+  requireRole("admin"),
+  requirePermission("settings.manage"),
+  async (c) => {
+    const user = c.get("user");
+    const parsed = patchMarketplaceSettingsSchema.safeParse(await c.req.json().catch(() => ({})));
+    if (!parsed.success) return c.json({ error: "invalid_body", issues: parsed.error.issues }, 400);
+
+    const before = await getMarketplaceSettings();
+    await setMarketplaceSettings(parsed.data);
+    const after = await getMarketplaceSettings();
+
+    await logActivity({
+      actor: user,
+      action: "settings.update",
+      entityType: "settings",
+      summary: "Updated Marketplace & Pro Live Commerce settings",
+      before: { marketplace: before },
+      after: { marketplace: after },
+      ip: clientIp(c),
+    });
+
+    return c.json({ marketplace: after });
+  },
+);
+

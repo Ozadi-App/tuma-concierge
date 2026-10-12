@@ -61,6 +61,7 @@ import type {
   CustomerWalletSummary,
   CustomerWalletsResponse,
   DeliverySettings,
+  MarketplaceSettings,
   FailedPayment,
   FeeProposal,
   FuelStationOutlet,
@@ -1596,6 +1597,84 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
       return request<{ platformEnvironment: PlatformEnvironment }>("/v1/admin/platform-environment", {
         method: "PUT",
         body: JSON.stringify({ environment }),
+      });
+    },
+
+    // Marketplace & Live Commerce Admin Settings
+    async adminGetMarketplaceSettings() {
+      return request<{ marketplace: MarketplaceSettings }>("/v1/admin/marketplace-settings");
+    },
+    async adminUpdateMarketplaceSettings(marketplace: Partial<MarketplaceSettings>) {
+      return request<{ marketplace: MarketplaceSettings }>("/v1/admin/marketplace-settings", {
+        method: "PATCH",
+        body: JSON.stringify(marketplace),
+      });
+    },
+
+    // Marketplace Customer Endpoints
+    async getMarketplaceStores(category?: string) {
+      const q = category ? `?category=${category}` : "";
+      return request<{ stores: any[] }>(`/v1/marketplace/stores${q}`);
+    },
+    async getMarketplaceStore(id: string) {
+      return request<{ store: any }>(`/v1/marketplace/stores/${id}`);
+    },
+    async getMarketplaceStoreProducts(id: string) {
+      return request<{ products: any[] }>(`/v1/marketplace/stores/${id}/products`);
+    },
+    async getMarketplaceLiveChannels() {
+      return request<{ liveChannels: any[] }>("/v1/marketplace/live");
+    },
+
+    // Merchant Pro Store Endpoints
+    async getMerchantProStore() {
+      return request<{ store: any; settings?: MarketplaceSettings; canCreate?: boolean; trialDays?: number; pricing?: any }>("/v1/merchants/me/store");
+    },
+    async createMerchantProStore(input: {
+      name: string;
+      category: "groceries" | "stores";
+      sub_category?: string;
+      description?: string;
+      announcement?: string;
+      phone?: string;
+      whatsapp_number?: string;
+      address?: string;
+      min_order_amount?: number;
+    }) {
+      return request<{ store: any; trialActive: boolean }>("/v1/merchants/me/store", {
+        method: "POST",
+        body: JSON.stringify(input),
+      });
+    },
+    async updateMerchantProStore(input: any) {
+      return request<{ store: any }>("/v1/merchants/me/store", {
+        method: "PUT",
+        body: JSON.stringify(input),
+      });
+    },
+    async getMerchantProProducts() {
+      return request<{ products: any[] }>("/v1/merchants/me/products");
+    },
+    async createMerchantProProduct(input: any) {
+      return request<{ ok: boolean; productId: string }>("/v1/merchants/me/products", {
+        method: "POST",
+        body: JSON.stringify(input),
+      });
+    },
+    async triggerMerchantProStarterPack() {
+      return request<{ ok: boolean; addedCount: number }>("/v1/merchants/me/products/starter-pack", {
+        method: "POST",
+      });
+    },
+    async startMerchantProLive(input?: { title?: string; streamUrl?: string; isRestream?: boolean }) {
+      return request<{ ok: boolean; sessionId: string }>("/v1/merchants/me/store/live/start", {
+        method: "POST",
+        body: JSON.stringify(input || {}),
+      });
+    },
+    async endMerchantProLive() {
+      return request<{ ok: boolean }>("/v1/merchants/me/store/live/end", {
+        method: "POST",
       });
     },
 
