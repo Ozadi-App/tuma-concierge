@@ -73,7 +73,7 @@ export default function ShiftPage() {
       )}
 
       {/* Shift Metrics Card */}
-      <section className="home-card space-y-3 !bg-navy text-white shadow-md dark:!bg-[#153A75]">
+      <section className="home-card space-y-3 border border-white/10 !bg-black-900 text-white shadow-md dark:!bg-black-900">
         <div className="flex items-center justify-between text-xs text-white/70">
           <span className="flex items-center gap-1.5">
             <Clock className="h-3.5 w-3.5" />

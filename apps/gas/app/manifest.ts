@@ -7,8 +7,8 @@ export default function manifest(): MetadataRoute.Manifest {
     description: "Petrol station merchant & pump attendant voucher redemption for Peebee riders",
     start_url: "/",
     display: "standalone",
-    background_color: "#F7F3EE",
-    theme_color: "#C9A227",
+    background_color: "#FFFFFF",
+    theme_color: "#000000",
     icons: [
       {
         src: "/favicon.svg",
