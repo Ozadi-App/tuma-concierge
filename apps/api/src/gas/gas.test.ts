@@ -158,4 +158,140 @@ test("gas routes: full lifecycle with in-memory database", async () => {
   const shiftData = (await shiftRes.json()) as any;
   assert.ok(shiftData.summary.total_dispenses >= 1);
   assert.ok(shiftData.summary.total_ugx >= 20000);
+
+  // 8. Station Manager Login
+  const mgrLoginRes = await app.request("/v1/gas/manager/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      code: "MGR-TOT-01",
+      pin: "1234",
+      outletId: "fout_total_lugogo",
+    }),
+  });
+  assert.equal(mgrLoginRes.status, 200);
+  const mgrLoginData = (await mgrLoginRes.json()) as any;
+  assert.equal(mgrLoginData.ok, true);
+  assert.equal(mgrLoginData.manager.manager_code, "MGR-TOT-01");
+  assert.equal(mgrLoginData.manager.full_name, "Patrick Semakula");
+  assert.ok(mgrLoginData.token.startsWith("gmgr_"));
+
+  // 9. Station Manager Commissions a New Attendant with Pending Status
+  const commRes = await app.request("/v1/gas/manager/attendants/commission", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      outletId: "fout_total_lugogo",
+      fullName: "Nalubega Joan",
+      phone: "+256701555666",
+      attendantCode: "ATT-1099",
+      pumpLane: "Pump 3",
+      pin: "4321",
+      approveImmediately: false,
+    }),
+  });
+  assert.equal(commRes.status, 200);
+  const commData = (await commRes.json()) as any;
+  assert.equal(commData.ok, true);
+  assert.equal(commData.attendant.commission_status, "pending");
+  const newAttId = commData.attendant.id;
+
+  // 10. Pending attendant tries to login -> rejected with 403 pending_approval
+  const blockedLoginRes = await app.request("/v1/gas/attendants/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      code: "ATT-1099",
+      pin: "4321",
+    }),
+  });
+  assert.equal(blockedLoginRes.status, 403);
+  const blockedData = (await blockedLoginRes.json()) as any;
+  assert.equal(blockedData.error, "pending_approval");
+
+  // 11. Manager approves the attendant
+  const approveRes = await app.request(`/v1/gas/manager/attendants/${newAttId}/approve`, {
+    method: "POST",
+  });
+  assert.equal(approveRes.status, 200);
+  const approveData = (await approveRes.json()) as any;
+  assert.equal(approveData.attendant.commission_status, "approved");
+
+  // 12. Approved attendant can now login
+  const allowedLoginRes = await app.request("/v1/gas/attendants/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      code: "ATT-1099",
+      pin: "4321",
+    }),
+  });
+  assert.equal(allowedLoginRes.status, 200);
+  const allowedData = (await allowedLoginRes.json()) as any;
+  assert.equal(allowedData.ok, true);
+  assert.equal(allowedData.attendant.code, "ATT-1099");
+
+  // 13. Manager checks attendants list
+  const listAttRes = await app.request("/v1/gas/manager/attendants?outletId=fout_total_lugogo");
+  assert.equal(listAttRes.status, 200);
+  const listAttData = (await listAttRes.json()) as any;
+  assert.ok(listAttData.attendants.some((a: any) => a.attendant_code === "ATT-1099"));
+
+  // 14. Station Sales Summary & Reports
+  const salesRes = await app.request("/v1/gas/manager/sales-summary?outletId=fout_total_lugogo&period=today");
+  assert.equal(salesRes.status, 200);
+  const salesData = (await salesRes.json()) as any;
+  assert.ok(salesData.summary.totalRevenueUgx >= 20000);
+  assert.ok(salesData.summary.availableBalanceUgx >= 20000);
+  assert.ok(salesData.summary.productBreakdown.length > 0);
+
+  // 15. Station Manager adds payout account
+  const addPayRes = await app.request("/v1/gas/manager/payout-accounts", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      outletId: "fout_total_lugogo",
+      type: "momo",
+      accountRef: "+256782334455",
+      accountName: "Lugogo Bypass Payout Manager",
+      networkOrBank: "MTN MoMo",
+      isPrimary: true,
+    }),
+  });
+  assert.equal(addPayRes.status, 200);
+  const addPayData = (await addPayRes.json()) as any;
+  assert.equal(addPayData.ok, true);
+  assert.equal(addPayData.account.account_name, "Lugogo Bypass Payout Manager");
+
+  // 16. Station Manager requests fund withdrawal
+  const wdRes = await app.request("/v1/gas/manager/withdrawals", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      outletId: "fout_total_lugogo",
+      amountUgx: 10000,
+      destinationType: "momo",
+      destinationDetails: {
+        phone: "+256782334455",
+        network: "MTN",
+        accountName: "Lugogo Bypass Payout Manager",
+      },
+    }),
+  });
+  assert.equal(wdRes.status, 200);
+  const wdData = (await wdRes.json()) as any;
+  assert.equal(wdData.ok, true);
+  assert.equal(wdData.withdrawal.amount_ugx, 10000);
+  assert.ok(wdData.withdrawal.reference.startsWith("WD-GAS-"));
+
+  // 17. Verify withdrawal list & reduced available balance
+  const listWdRes = await app.request("/v1/gas/manager/withdrawals?outletId=fout_total_lugogo");
+  assert.equal(listWdRes.status, 200);
+  const listWdData = (await listWdRes.json()) as any;
+  assert.ok(listWdData.withdrawals.some((w: any) => w.reference === wdData.withdrawal.reference));
+
+  const updatedSalesRes = await app.request("/v1/gas/manager/sales-summary?outletId=fout_total_lugogo&period=today");
+  const updatedSalesData = (await updatedSalesRes.json()) as any;
+  assert.equal(updatedSalesData.summary.withdrawnTotalUgx, 10000);
+  assert.equal(updatedSalesData.summary.availableBalanceUgx, salesData.summary.availableBalanceUgx - 10000);
 });

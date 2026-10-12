@@ -41,7 +41,7 @@ export function Numpad({
             key={digit}
             type="button"
             onClick={() => handleDigit(digit)}
-            className="flex min-h-14 items-center justify-center rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface))] text-xl font-bold text-ink shadow-sm active:scale-95 transition"
+            className="flex min-h-14 items-center justify-center rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] text-xl font-bold text-ink shadow-[var(--shadow-card)] active:scale-95 transition"
           >
             {digit}
           </button>
@@ -49,14 +49,14 @@ export function Numpad({
         <button
           type="button"
           onClick={handleClear}
-          className="flex min-h-14 items-center justify-center rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface))] text-xs font-bold text-ink-500 uppercase active:scale-95 transition"
+          className="flex min-h-14 items-center justify-center rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] text-xs font-bold text-ink-500 uppercase tracking-wider active:scale-95 transition"
         >
-          C
+          Clear
         </button>
         <button
           type="button"
           onClick={() => handleDigit("0")}
-          className="flex min-h-14 items-center justify-center rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface))] text-xl font-bold text-ink shadow-sm active:scale-95 transition"
+          className="flex min-h-14 items-center justify-center rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] text-xl font-bold text-ink shadow-[var(--shadow-card)] active:scale-95 transition"
         >
           0
         </button>
@@ -64,9 +64,9 @@ export function Numpad({
           type="button"
           onClick={handleBackspace}
           aria-label="Backspace"
-          className="flex min-h-14 items-center justify-center rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface))] text-ink active:scale-95 transition"
+          className="flex min-h-14 items-center justify-center rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] text-ink active:scale-95 transition"
         >
-          <Delete className="h-6 w-6 text-ink-500" />
+          <Delete className="h-5 w-5 text-ink-500" />
         </button>
       </div>
 
@@ -75,7 +75,7 @@ export function Numpad({
           type="button"
           disabled={confirmDisabled}
           onClick={onConfirm}
-          className="min-h-12 w-full rounded-2xl bg-gold text-base font-bold text-ink-gold shadow transition disabled:opacity-50"
+          className="min-h-13 w-full rounded-2xl bg-gold py-3 text-sm font-bold text-ink-gold shadow-[var(--shadow-glow-gold)] transition active:scale-[0.98] disabled:opacity-40"
         >
           {confirmLabel}
         </button>

@@ -84,7 +84,7 @@ export default function WalletPage() {
       <h1 className="text-2xl font-black text-ink">Earnings</h1>
       {error && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">{error}</p>}
       {notice && <p className="text-sm font-medium text-green">{notice}</p>}
-      <section className="rounded-[24px] bg-navy p-5 text-white dark:bg-[#153A75]">
+      <section className="rounded-[24px] border border-white/10 bg-black-900 p-5 text-white dark:bg-black-900">
         <p className="text-xs text-white/70">Wallet balance</p>
         <p className="mt-2 text-3xl font-black">{ugx(wallet?.balance ?? 0)}</p>
         <p className="mt-3 text-xs text-white/70">

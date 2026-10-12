@@ -1,5 +1,4 @@
 import type { Metadata, Viewport } from "next";
-import type { ReactNode } from "react";
 import "./globals.css";
 import { AppShell } from "../components/AppShell";
 import { AuthProvider } from "../lib/auth-context";
@@ -22,18 +21,25 @@ const THEME_INIT_SCRIPT = `
 `;
 
 export const metadata: Metadata = {
-  title: "Peebee Gas — Fuel Merchant App",
+  title: "Peebee Gas — Fuel Merchant",
   description: "Petrol station merchant & pump attendant voucher redemption for Peebee riders",
-  manifest: "/manifest.webmanifest",
+  manifest: "/manifest.json",
   icons: {
     icon: [
-      { url: "/favicon.svg", sizes: "any", type: "image/svg+xml" },
+      { url: "/favicon.svg?v=logo-6", sizes: "any", type: "image/svg+xml" },
+      { url: "/icons/icon-192.png?v=logo-6", sizes: "192x192", type: "image/png" },
     ],
+    apple: "/icons/apple-touch-icon.png?v=logo-6",
+  },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Peebee Gas",
   },
 };
 
 export const viewport: Viewport = {
-  themeColor: "#C9A227",
+  themeColor: "#000000",
   viewportFit: "cover",
   width: "device-width",
   initialScale: 1,

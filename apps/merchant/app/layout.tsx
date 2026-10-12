@@ -35,9 +35,9 @@ export const metadata: Metadata = {
     ],
     apple: "/icons/apple-touch-icon.png?v=logo-6",
   },
-  appleWebApp: { capable: true, statusBarStyle: "default", title: "Peebee Merchant" },
+  appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "Peebee Merchant" },
 };
-export const viewport: Viewport = { themeColor: "#153A75", viewportFit: "cover" };
+export const viewport: Viewport = { themeColor: "#000000", viewportFit: "cover" };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (

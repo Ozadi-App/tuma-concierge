@@ -16,6 +16,7 @@ function apply(mode: ThemeMode) {
   document.documentElement.setAttribute("data-theme", computeTheme(mode));
 }
 
+/** Reads/writes the appearance preference and keeps the DOM in sync */
 export function useThemeMode() {
   const [mode, setModeState] = useState<ThemeMode | null>(null);
 
@@ -31,7 +32,7 @@ export function useThemeMode() {
     if (!mode) return;
     apply(mode);
     if (mode !== "auto") return;
-    const interval = setInterval(() => apply(mode), 60_000);
+    const interval = setInterval(() => apply(mode), 60000);
     return () => clearInterval(interval);
   }, [mode]);
 
@@ -43,4 +44,18 @@ export function useThemeMode() {
   }
 
   return { mode: mode ?? "auto", setMode };
+}
+
+/** The theme actually on screen right now ("auto" already resolved) */
+export function useResolvedTheme(): "light" | "dark" {
+  const [theme, setTheme] = useState<"light" | "dark">("light");
+  useEffect(() => {
+    const read = () =>
+      setTheme(document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light");
+    read();
+    const observer = new MutationObserver(read);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    return () => observer.disconnect();
+  }, []);
+  return theme;
 }

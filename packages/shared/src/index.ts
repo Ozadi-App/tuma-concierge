@@ -243,6 +243,13 @@ export type {
   RentalInspectionPhoto,
   RentalInspection,
   RentalInspectionSubmitInput,
+  FuelStationManager,
+  FuelPumpAttendant,
+  FuelProductSalesStats,
+  FuelAttendantSalesStats,
+  FuelStationSalesSummary,
+  FuelStationWithdrawal,
+  FuelStationPayoutAccount,
 } from "./domain.js";
 
 export { NotificationSnapshots, installNotificationSound, observeNotificationSnapshot, playNotificationSound, resetNotificationSnapshots } from "./notification-sound.js";

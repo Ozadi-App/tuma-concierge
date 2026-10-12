@@ -18,9 +18,9 @@ export function SettingsPageShell({
         <Link
           href="/settings"
           aria-label="Back to settings"
-          className="-ml-1.5 flex h-8 w-8 items-center justify-center rounded-full text-ink-500"
+          className="-ml-1.5 flex h-9 w-9 items-center justify-center rounded-full text-ink transition active:opacity-60"
         >
-          <ChevronLeft className="h-5 w-5" strokeWidth={1.75} aria-hidden />
+          <ChevronLeft className="h-5 w-5" strokeWidth={2} aria-hidden />
         </Link>
         <h1 className="text-xl font-bold text-ink">{title}</h1>
       </div>
@@ -40,12 +40,12 @@ export function SettingsSaveBar({
 }) {
   return (
     <>
-      {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">{error}</p>}
+      {error && <p className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">{error}</p>}
       {saved && <p className="text-sm font-medium text-green">Saved.</p>}
       <button
         type="submit"
         disabled={busy}
-        className="min-h-11 w-full rounded-full bg-gold px-4 text-sm font-bold text-ink-gold disabled:opacity-60"
+        className="min-h-12 w-full rounded-[20px] bg-gold px-4 text-sm font-bold text-ink-gold shadow transition hover:opacity-95 active:scale-[0.99] disabled:opacity-60"
       >
         {busy ? "Saving…" : "Save settings"}
       </button>

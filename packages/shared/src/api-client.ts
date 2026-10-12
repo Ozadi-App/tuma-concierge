@@ -69,6 +69,11 @@ import type {
   FuelCode,
   FuelReceipt,
   FuelShiftSummary,
+  FuelStationManager,
+  FuelPumpAttendant,
+  FuelStationSalesSummary,
+  FuelStationWithdrawal,
+  FuelStationPayoutAccount,
   IntegrationsStatus,
   IceServer,
   IncomingCall,
@@ -2328,6 +2333,142 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
     async getActiveRiderFuelCode(riderId?: string) {
       const q = riderId ? `?riderId=${encodeURIComponent(riderId)}` : "";
       return request<{ code: FuelCode | null }>(`/v1/gas/rider/active-code${q}`);
+    },
+    async gasAttendantLogin(code: string, pin?: string, outletId?: string) {
+      return request<{
+        ok: true;
+        token: string;
+        attendant: { id: string; code: string; name: string; phone: string; pump_lane: string; on_duty: boolean };
+        outlet: FuelStationOutlet;
+      }>("/v1/gas/attendants/login", {
+        method: "POST",
+        body: JSON.stringify({ code, pin, outletId }),
+      });
+    },
+    async gasMe() {
+      return request<{
+        ok: true;
+        attendant: { id: string; code: string; name: string; phone: string; pump_lane: string; on_duty: boolean };
+        outlet: FuelStationOutlet;
+      }>("/v1/gas/me");
+    },
+    async gasToggleDuty(onDuty: boolean) {
+      return request<{ ok: true; on_duty: boolean }>("/v1/gas/attendants/toggle-duty", {
+        method: "POST",
+        body: JSON.stringify({ onDuty }),
+      });
+    },
+    // Station Manager Portal Methods
+    async gasManagerLogin(code?: string, pin?: string, outletId?: string) {
+      return request<{
+        ok: true;
+        token: string;
+        manager: FuelStationManager;
+        outlet: FuelStationOutlet;
+      }>("/v1/gas/manager/login", {
+        method: "POST",
+        body: JSON.stringify({ code, pin, outletId }),
+      });
+    },
+    async gasManagerMe() {
+      return request<{
+        ok: true;
+        manager: FuelStationManager;
+        outlet: FuelStationOutlet;
+      }>("/v1/gas/manager/me");
+    },
+    async gasManagerAttendants(outletId?: string, status?: string) {
+      const params = new URLSearchParams();
+      if (outletId) params.set("outletId", outletId);
+      if (status) params.set("status", status);
+      const q = params.toString() ? `?${params.toString()}` : "";
+      return request<{ ok: true; attendants: FuelPumpAttendant[] }>(`/v1/gas/manager/attendants${q}`);
+    },
+    async gasManagerCommissionAttendant(data: {
+      outletId: string;
+      fullName: string;
+      phone: string;
+      attendantCode?: string;
+      pumpLane?: string;
+      pin?: string;
+      approveImmediately?: boolean;
+    }) {
+      return request<{ ok: true; attendant: FuelPumpAttendant }>("/v1/gas/manager/attendants/commission", {
+        method: "POST",
+        body: JSON.stringify(data),
+      });
+    },
+    async gasManagerApproveAttendant(attendantId: string) {
+      return request<{ ok: true; attendant: FuelPumpAttendant }>(`/v1/gas/manager/attendants/${encodeURIComponent(attendantId)}/approve`, {
+        method: "POST",
+      });
+    },
+    async gasManagerSuspendAttendant(attendantId: string) {
+      return request<{ ok: true; attendant: FuelPumpAttendant }>(`/v1/gas/manager/attendants/${encodeURIComponent(attendantId)}/suspend`, {
+        method: "POST",
+      });
+    },
+    async gasManagerReactivateAttendant(attendantId: string) {
+      return request<{ ok: true; attendant: FuelPumpAttendant }>(`/v1/gas/manager/attendants/${encodeURIComponent(attendantId)}/reactivate`, {
+        method: "POST",
+      });
+    },
+    async gasManagerReassignPump(attendantId: string, pumpLane: string) {
+      return request<{ ok: true; attendant: FuelPumpAttendant }>(`/v1/gas/manager/attendants/${encodeURIComponent(attendantId)}/reassign-pump`, {
+        method: "POST",
+        body: JSON.stringify({ pumpLane }),
+      });
+    },
+    async gasManagerResetPin(attendantId: string, pin: string) {
+      return request<{ ok: true }>(`/v1/gas/manager/attendants/${encodeURIComponent(attendantId)}/reset-pin`, {
+        method: "POST",
+        body: JSON.stringify({ pin }),
+      });
+    },
+    async gasManagerDeleteAttendant(attendantId: string) {
+      return request<{ ok: true }>(`/v1/gas/manager/attendants/${encodeURIComponent(attendantId)}`, {
+        method: "DELETE",
+      });
+    },
+    async gasManagerSalesSummary(outletId?: string, period = "today") {
+      const q = outletId ? `?outletId=${encodeURIComponent(outletId)}&period=${encodeURIComponent(period)}` : `?period=${encodeURIComponent(period)}`;
+      return request<{ ok: true; summary: FuelStationSalesSummary }>(`/v1/gas/manager/sales-summary${q}`);
+    },
+    async gasManagerTransactions(outletId?: string, limit = 50, offset = 0) {
+      const q = outletId ? `?outletId=${encodeURIComponent(outletId)}&limit=${limit}&offset=${offset}` : `?limit=${limit}&offset=${offset}`;
+      return request<{ ok: true; transactions: FuelReceipt[] }>(`/v1/gas/manager/transactions${q}`);
+    },
+    async gasManagerPayoutAccounts(outletId?: string) {
+      const q = outletId ? `?outletId=${encodeURIComponent(outletId)}` : "";
+      return request<{ ok: true; accounts: FuelStationPayoutAccount[] }>(`/v1/gas/manager/payout-accounts${q}`);
+    },
+    async gasManagerAddPayoutAccount(data: {
+      outletId: string;
+      type: "momo" | "bank";
+      accountRef: string;
+      accountName: string;
+      networkOrBank: string;
+      isPrimary?: boolean;
+    }) {
+      return request<{ ok: true; account: FuelStationPayoutAccount }>("/v1/gas/manager/payout-accounts", {
+        method: "POST",
+        body: JSON.stringify(data),
+      });
+    },
+    async gasManagerWithdrawals(outletId?: string) {
+      const q = outletId ? `?outletId=${encodeURIComponent(outletId)}` : "";
+      return request<{ ok: true; withdrawals: FuelStationWithdrawal[] }>(`/v1/gas/manager/withdrawals${q}`);
+    },
+    async gasManagerRequestWithdrawal(data: {
+      outletId: string;
+      amountUgx: number;
+      destinationType: "momo" | "bank";
+      destinationDetails: any;
+    }) {
+      return request<{ ok: true; withdrawal: FuelStationWithdrawal }>("/v1/gas/manager/withdrawals", {
+        method: "POST",
+        body: JSON.stringify(data),
+      });
     },
   };
 }

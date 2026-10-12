@@ -1,14 +1,40 @@
+"use client";
+
 import { BrandLogo } from "./BrandLogo";
 import Link from "next/link";
+import { useResolvedTheme } from "../lib/theme";
 
 export function BrandHeader() {
+  const activeTheme = useResolvedTheme();
+  const isDarkMode = activeTheme === "dark";
+
   return (
-    <header className="sticky top-0 z-40 h-14 border-b border-navy/15 bg-cream/95 backdrop-blur-sm">
-      <div className="mx-auto flex h-full max-w-lg items-center gap-3 px-4">
-        <Link href="/" aria-label="Go to home" className="shrink-0">
-          <BrandLogo />
+    <header className="customer-header sticky top-0 z-40 transition-colors">
+      <div className="mx-auto flex h-16 max-w-lg items-center justify-between gap-3 px-4">
+        <Link
+          href="/"
+          aria-label="Peebee Food Home"
+          className="flex shrink-0 items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold rounded-xl"
+        >
+          <BrandLogo variant={isDarkMode ? "dark" : "light"} />
+          <sup
+            aria-hidden="true"
+            className={`pt-1 text-[10px] font-black uppercase tracking-widest ${
+              isDarkMode ? "text-black" : "text-gold"
+            }`}
+          >
+            Food
+          </sup>
         </Link>
-        <span className="ml-auto rounded-full bg-green/15 px-2.5 py-0.5 text-xs font-medium text-green-600">Food</span>
+        <span
+          className={`rounded-full px-3 py-1 text-xs font-bold transition ${
+            isDarkMode
+              ? "bg-black/15 text-black font-extrabold"
+              : "bg-white/10 text-white/90"
+          }`}
+        >
+          Food
+        </span>
       </div>
     </header>
   );

@@ -1,10 +1,10 @@
 "use client";
 
 import { BrandLogo } from "./BrandLogo";
-
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "../lib/auth-context";
+import { useResolvedTheme } from "../lib/theme";
 import { AuthGate } from "./AuthGate";
 import { BottomNav } from "./BottomNav";
 import { ServiceBanner } from "./ServiceBanner";
@@ -13,14 +13,63 @@ import { PracticeModeBanner, PracticeModeGuard, PracticeModePrompt } from "./Pra
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { merchant } = useAuth();
+  const activeTheme = useResolvedTheme();
+  const isDarkMode = activeTheme === "dark";
   const bare = pathname === "/login" || pathname === "/apply" || pathname === "/activate";
-  return <AuthGate>
-    <PracticeModeGuard role="merchant" pathname={pathname} />
-    {!bare && <PracticeModePrompt role="merchant" />}
-    {!bare && <header className="sticky top-0 z-30 border-b border-[var(--border-faint)] bg-[rgb(var(--surface))]/95 backdrop-blur"><div className="mx-auto flex h-14 max-w-xl items-center gap-3 px-4"><Link href="/" aria-label="Go to merchant home" className="shrink-0"><BrandLogo /></Link><div className="min-w-0 flex-1"><p className="text-sm font-black text-navy">Merchant</p><p className="max-w-[240px] truncate text-[10px] text-ink-500">{merchant?.display_name}</p></div>{merchant?.environment === "sandbox" && <span className="rounded-full bg-sky-100 px-2 py-1 text-[10px] font-black uppercase tracking-wide text-sky-700 dark:bg-sky-950/40 dark:text-sky-200">Sandbox</span>}</div></header>}
-    {!bare && <PracticeModeBanner role="merchant" />}
-    {!bare && <ServiceBanner />}
-    <main className={`mx-auto min-h-dvh max-w-xl ${bare ? "" : "pb-20"}`}>{children}</main>
-    {!bare && <BottomNav />}
-  </AuthGate>;
+
+  return (
+    <AuthGate>
+      <PracticeModeGuard role="merchant" pathname={pathname} />
+      {!bare && <PracticeModePrompt role="merchant" />}
+      {!bare && (
+        <header className="customer-header sticky top-0 z-30 transition-colors">
+          <div className="mx-auto flex h-16 max-w-xl items-center justify-between gap-3 px-4">
+            <Link
+              href="/"
+              aria-label="Go to merchant home"
+              className="flex shrink-0 items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold rounded-xl"
+            >
+              <BrandLogo variant={isDarkMode ? "dark" : "light"} />
+              <sup
+                aria-hidden="true"
+                className={`pt-1 text-[10px] font-black uppercase tracking-widest ${
+                  isDarkMode ? "text-black" : "text-gold"
+                }`}
+              >
+                Merchant
+              </sup>
+            </Link>
+            <div className="flex items-center gap-2 min-w-0">
+              {merchant?.display_name && (
+                <p
+                  className={`max-w-[180px] truncate text-xs font-semibold ${
+                    isDarkMode ? "text-black/80" : "text-white/80"
+                  }`}
+                >
+                  {merchant.display_name}
+                </p>
+              )}
+              {merchant?.environment === "sandbox" && (
+                <span
+                  className={`rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-wide ${
+                    isDarkMode
+                      ? "bg-black/15 text-black"
+                      : "bg-sky-500/20 text-sky-300"
+                  }`}
+                >
+                  Demo
+                </span>
+              )}
+            </div>
+          </div>
+        </header>
+      )}
+      {!bare && <PracticeModeBanner role="merchant" />}
+      {!bare && <ServiceBanner />}
+      <main className={`mx-auto min-h-dvh max-w-xl ${bare ? "" : "pb-[calc(88px+env(safe-area-inset-bottom))]"}`}>
+        {children}
+      </main>
+      {!bare && <BottomNav />}
+    </AuthGate>
+  );
 }

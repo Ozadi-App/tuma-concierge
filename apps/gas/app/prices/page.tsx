@@ -1,7 +1,7 @@
 "use client";
 
 import type { FuelOutletPrice } from "@peebee/shared";
-import { AlertCircle, CheckCircle2, DollarSign, Fuel, Info, Save } from "lucide-react";
+import { AlertCircle, CheckCircle2, Fuel, Info, Save } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api, errorMessage } from "../../lib/api";
 import { useAuth } from "../../lib/auth-context";
@@ -53,7 +53,7 @@ export default function PricesPage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 pb-6">
       <header className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-black text-ink">Station Pump Prices</h1>
@@ -65,7 +65,7 @@ export default function PricesPage() {
           <button
             type="button"
             onClick={() => setEditing(true)}
-            className="rounded-full bg-gold px-3.5 py-1.5 text-xs font-bold text-ink-gold hover:opacity-95"
+            className="rounded-xl bg-gold px-3.5 py-1.5 text-xs font-bold text-ink-gold shadow-[var(--shadow-glow-gold)] transition active:scale-95"
           >
             Edit Prices
           </button>
@@ -74,7 +74,7 @@ export default function PricesPage() {
             <button
               type="button"
               onClick={() => setEditing(false)}
-              className="rounded-full border border-[var(--border-faint)] px-3 py-1.5 text-xs font-bold text-ink"
+              className="rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] px-3 py-1.5 text-xs font-bold text-ink active:scale-95 transition"
             >
               Cancel
             </button>
@@ -82,7 +82,7 @@ export default function PricesPage() {
               type="button"
               disabled={saving}
               onClick={handleSave}
-              className="flex items-center gap-1.5 rounded-full bg-gold px-3.5 py-1.5 text-xs font-bold text-ink-gold"
+              className="flex items-center gap-1.5 rounded-xl bg-gold px-3.5 py-1.5 text-xs font-bold text-ink-gold shadow-[var(--shadow-glow-gold)] active:scale-95 transition"
             >
               <Save className="h-3.5 w-3.5" />
               <span>{saving ? "Saving…" : "Save"}</span>
@@ -92,14 +92,14 @@ export default function PricesPage() {
       </header>
 
       {error && (
-        <div className="flex items-center gap-2 rounded-2xl bg-red-50 p-3 text-xs font-semibold text-red-700 dark:bg-red-950/40 dark:text-red-300">
+        <div className="flex items-center gap-2 rounded-2xl border border-red-500/20 bg-red-50 p-3 text-xs font-semibold text-red-700 dark:bg-red-950/40 dark:text-red-300">
           <AlertCircle className="h-4 w-4 shrink-0" />
           <span>{error}</span>
         </div>
       )}
 
       {success && (
-        <div className="flex items-center gap-2 rounded-2xl bg-green/10 p-3 text-xs font-semibold text-green dark:bg-green/20">
+        <div className="flex items-center gap-2 rounded-2xl border border-green/30 bg-green/10 p-3 text-xs font-semibold text-green dark:bg-green/20">
           <CheckCircle2 className="h-4 w-4 shrink-0" />
           <span>Pump price board updated successfully. Live for all riders.</span>
         </div>
@@ -113,7 +113,7 @@ export default function PricesPage() {
             className="home-card flex items-center justify-between p-4"
           >
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gold/15 text-gold">
+              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gold/15 text-gold">
                 <Fuel className="h-5 w-5" />
               </div>
               <div>
@@ -155,7 +155,7 @@ export default function PricesPage() {
       </section>
 
       {/* Regional Regulatory Benchmark Notice */}
-      <section className="rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-3.5 text-xs text-ink-500 space-y-1.5">
+      <section className="home-card space-y-1.5 p-4 text-xs text-ink-500">
         <div className="flex items-center gap-2 font-bold text-ink">
           <Info className="h-4 w-4 text-gold" />
           <span>Uganda Fuel Price Benchmark (Kampala Metropolitan)</span>
