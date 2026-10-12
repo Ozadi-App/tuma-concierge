@@ -3,7 +3,7 @@
 import { AlertCircle, Camera, CheckCircle2, ChevronRight, Fuel, QrCode, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Numpad } from "../components/Numpad";
 import { QrScanner } from "../components/QrScanner";
 import { api, errorMessage } from "../lib/api";
@@ -11,11 +11,17 @@ import { useAuth } from "../lib/auth-context";
 
 export default function PumpHomePage() {
   const router = useRouter();
-  const { attendant, outlet, shiftSummary, refreshShift } = useAuth();
+  const { attendant, outlet, shiftSummary, ready, refreshShift } = useAuth();
   const [code, setCode] = useState("");
   const [scannerOpen, setScannerOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (ready && !attendant) {
+      router.replace("/login");
+    }
+  }, [ready, attendant, router]);
 
   async function handleVerify(codeToVerify: string) {
     const trimmed = codeToVerify.trim().toUpperCase();
