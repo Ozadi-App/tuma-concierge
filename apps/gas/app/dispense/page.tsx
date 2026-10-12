@@ -1,10 +1,19 @@
 "use client";
 
 import type { FuelCode, FuelOutletPrice, FuelReceipt } from "@peebee/shared";
-import { AlertCircle, ArrowLeft, Bike, CarFront, CheckCircle2, ChevronRight, Fuel, Printer, Share2, ShieldCheck, User } from "lucide-react";
+import {
+  AlertCircle,
+  ArrowLeft,
+  Bike,
+  CarFront,
+  CheckCircle2,
+  Printer,
+  ShieldCheck,
+} from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
+import { BrandLogo } from "../../components/BrandLogo";
 import { api, errorMessage } from "../../lib/api";
 import { useAuth } from "../../lib/auth-context";
 
@@ -113,7 +122,7 @@ function DispenseContent() {
     }
 
     if (finalAmount > codeData.authorized_amount_ugx) {
-      setError(`Amount exceeds rider's limit of ${ugx(codeData.authorized_amount_ugx)}`);
+      setError(`Amount exceeds limit of ${ugx(codeData.authorized_amount_ugx)}`);
       return;
     }
 
@@ -145,9 +154,9 @@ function DispenseContent() {
   if (loading) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
-        <div className="space-y-2 text-center">
+        <div className="space-y-3 text-center">
           <div className="mx-auto h-8 w-8 animate-spin rounded-full border-4 border-gold border-t-transparent" />
-          <p className="text-xs font-bold text-ink-500">Verifying rider fuel voucher…</p>
+          <p className="text-xs font-bold text-ink-500">Verifying fuel voucher…</p>
         </div>
       </div>
     );
@@ -156,9 +165,9 @@ function DispenseContent() {
   // Digital Receipt Completed View
   if (completedReceipt) {
     return (
-      <div className="space-y-4">
-        <div className="rounded-2xl bg-green/10 p-4 text-center dark:bg-green/20">
-          <CheckCircle2 className="mx-auto h-12 w-12 text-green" />
+      <div className="space-y-4 pb-6">
+        <div className="rounded-2xl border border-green/30 bg-green/10 p-4 text-center dark:bg-green/20">
+          <CheckCircle2 className="mx-auto h-10 w-10 text-green" />
           <h1 className="mt-2 text-xl font-black text-ink">Fuel Dispensed Successfully</h1>
           <p className="text-xs font-semibold text-green">
             Digital receipt signed & authorized
@@ -166,13 +175,16 @@ function DispenseContent() {
         </div>
 
         {/* Printable / Shareable Digital Receipt */}
-        <section className="home-card space-y-4 border-2 border-gold/30">
+        <section className="home-card space-y-4 border-2 border-gold/40">
           <div className="flex items-center justify-between border-b border-[var(--border-faint)] pb-3">
-            <div>
-              <span className="text-[10px] font-bold uppercase text-gold">Official Receipt</span>
-              <p className="font-mono text-xs font-bold text-ink">
-                {completedReceipt.receipt_ref}
-              </p>
+            <div className="flex items-center gap-2">
+              <BrandLogo wordmark={false} className="!h-8 !w-8" />
+              <div>
+                <span className="text-[10px] font-black uppercase tracking-wider text-gold">Official Receipt</span>
+                <p className="font-mono text-xs font-bold text-ink">
+                  {completedReceipt.receipt_ref}
+                </p>
+              </div>
             </div>
             <div className="text-right">
               <span className="text-[11px] font-bold text-ink">
@@ -184,7 +196,7 @@ function DispenseContent() {
 
           <div className="grid grid-cols-2 gap-3 text-xs">
             <div>
-              <span className="text-ink-500">Rider / Plate</span>
+              <span className="text-ink-500">Customer / Plate</span>
               <p className="font-bold text-ink">
                 {completedReceipt.rider_name} · {completedReceipt.vehicle_plate}
               </p>
@@ -206,7 +218,7 @@ function DispenseContent() {
           </div>
 
           {/* Large Totals Badge */}
-          <div className="rounded-xl bg-gold/10 p-3.5 text-center">
+          <div className="rounded-2xl border border-gold/30 bg-gold/10 p-3.5 text-center">
             <span className="text-xs font-bold text-ink-500">
               Total Volume Dispensed: <strong>{completedReceipt.litres_dispensed} Litres</strong>
             </span>
@@ -221,11 +233,11 @@ function DispenseContent() {
         </section>
 
         {/* Action Buttons */}
-        <div className="flex gap-2">
+        <div className="flex gap-2.5">
           <button
             type="button"
             onClick={() => window.print()}
-            className="flex min-h-12 flex-1 items-center justify-center gap-2 rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface))] font-bold text-ink"
+            className="flex min-h-13 flex-1 items-center justify-center gap-2 rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] font-bold text-ink shadow-[var(--shadow-card)] active:scale-95 transition"
           >
             <Printer className="h-4 w-4" />
             <span>Print Receipt</span>
@@ -233,7 +245,7 @@ function DispenseContent() {
           <button
             type="button"
             onClick={() => router.push("/")}
-            className="flex min-h-12 flex-1 items-center justify-center rounded-2xl bg-gold font-bold text-ink-gold"
+            className="flex min-h-13 flex-1 items-center justify-center rounded-2xl bg-gold font-bold text-ink-gold shadow-[var(--shadow-glow-gold)] active:scale-[0.98] transition"
           >
             <span>Next Customer →</span>
           </button>
@@ -243,12 +255,12 @@ function DispenseContent() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 pb-6">
       {/* Back button */}
       <div className="flex items-center gap-2">
         <Link
           href="/"
-          className="flex h-9 w-9 items-center justify-center rounded-full border border-[var(--border-faint)] text-ink"
+          className="flex h-9 w-9 items-center justify-center rounded-full border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] text-ink hover:border-gold transition"
         >
           <ArrowLeft className="h-4 w-4" />
         </Link>
@@ -256,13 +268,13 @@ function DispenseContent() {
       </div>
 
       {error && (
-        <div className="flex items-center gap-2 rounded-2xl bg-red-50 p-3 text-xs font-semibold text-red-700 dark:bg-red-950/40 dark:text-red-300">
+        <div className="flex items-center gap-2 rounded-2xl border border-red-500/20 bg-red-50 p-3 text-xs font-semibold text-red-700 dark:bg-red-950/40 dark:text-red-300">
           <AlertCircle className="h-4 w-4 shrink-0" />
           <span>{error}</span>
         </div>
       )}
 
-      {/* Verified Driver / Rider Card */}
+      {/* Verified Customer Card */}
       {codeData && (
         <section className="home-card space-y-3 !border-l-4 !border-l-green">
           <div className="flex items-center justify-between">
@@ -296,7 +308,7 @@ function DispenseContent() {
           </div>
 
           <div className="flex items-center justify-between border-t border-[var(--border-faint)] pt-2.5 text-xs">
-            <span className="text-ink-500">Authorized Quota</span>
+            <span className="text-ink-500">Authorized Limit</span>
             <strong className="text-sm font-black text-green">
               {ugx(codeData.authorized_amount_ugx)}
             </strong>
@@ -318,7 +330,7 @@ function DispenseContent() {
                 className={`flex flex-col items-start rounded-2xl border p-3 text-left transition ${
                   isSelected
                     ? "border-gold bg-gold/10 text-ink ring-2 ring-gold"
-                    : "border-[var(--border-faint)] bg-[rgb(var(--surface-input))] text-ink hover:bg-gold/5"
+                    : "border-[var(--border-faint)] bg-[rgb(var(--surface-input))] text-ink hover:border-gold/40"
                 }`}
               >
                 <span className="text-xs font-black">{p.product_name}</span>
@@ -341,7 +353,7 @@ function DispenseContent() {
         </div>
 
         <div className="grid grid-cols-2 gap-3">
-          <div className="field-box space-y-1 p-2.5">
+          <div className="field-box flex-col items-start p-2.5">
             <span className="text-[10px] font-bold uppercase text-ink-500">Amount (UGX)</span>
             <input
               type="text"
@@ -353,7 +365,7 @@ function DispenseContent() {
             />
           </div>
 
-          <div className="field-box space-y-1 p-2.5">
+          <div className="field-box flex-col items-start p-2.5">
             <span className="text-[10px] font-bold uppercase text-ink-500">Litres (L)</span>
             <input
               type="number"
@@ -375,7 +387,7 @@ function DispenseContent() {
               onClick={() => handleUgxChange(String(preset))}
               className={`rounded-full px-3 py-1.5 text-xs font-bold transition ${
                 Number(amountUgx) === preset
-                  ? "bg-gold text-ink-gold"
+                  ? "bg-gold text-ink-gold font-extrabold"
                   : "bg-gold/15 text-ink hover:bg-gold/25"
               }`}
             >
@@ -402,10 +414,10 @@ function DispenseContent() {
                 key={num}
                 type="button"
                 onClick={() => setPumpNumber(num)}
-                className={`h-8 w-8 rounded-lg text-xs font-bold transition ${
+                className={`h-8 w-8 rounded-xl text-xs font-bold transition ${
                   pumpNumber === num
-                    ? "bg-navy text-white"
-                    : "border border-[var(--border-faint)] text-ink"
+                    ? "bg-black-700 text-white dark:bg-gold dark:text-ink-gold shadow-sm"
+                    : "border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] text-ink"
                 }`}
               >
                 P{num}
@@ -420,7 +432,7 @@ function DispenseContent() {
         type="button"
         disabled={dispensing || !Number(amountUgx)}
         onClick={handleConfirmDispense}
-        className="min-h-13 w-full rounded-2xl bg-gold text-base font-black text-ink-gold shadow transition hover:opacity-95 disabled:opacity-50"
+        className="min-h-14 w-full rounded-2xl bg-gold text-base font-bold text-ink-gold shadow-[var(--shadow-glow-gold)] transition active:scale-[0.98] disabled:opacity-40"
       >
         {dispensing ? "Dispensing fuel…" : `Confirm & Dispense ${ugx(Number(amountUgx) || 0)}`}
       </button>

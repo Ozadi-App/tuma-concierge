@@ -5,16 +5,16 @@ import type { ReactNode } from "react";
 import { BottomNav } from "./BottomNav";
 import { BrandHeader } from "./BrandHeader";
 
-export function AppShell({ children }: { children: ReactNode }) {
+export function AppShell({ children }: { children: any }) {
   const pathname = usePathname();
   const isAuthPage = pathname === "/login" || pathname === "/apply";
 
   return (
-    <div className="min-h-dvh bg-[rgb(var(--cream))] text-[rgb(var(--ink))]">
+    <div className="min-h-dvh bg-cream text-ink">
       {!isAuthPage && <BrandHeader />}
       <main
-        className={`mx-auto max-w-xl px-4 py-4 ${
-          !isAuthPage ? "pb-[calc(4.5rem+env(safe-area-inset-bottom))]" : ""
+        className={`mx-auto max-w-lg px-4 py-4 ${
+          !isAuthPage ? "customer-nav-content-clearance" : ""
         }`}
       >
         {children}
