@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle, Camera, CheckCircle2, ChevronRight, Fuel, QrCode, Sparkles } from "lucide-react";
+import { AlertCircle, Camera, ChevronRight, Fuel, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -11,7 +11,7 @@ import { useAuth } from "../lib/auth-context";
 
 export default function PumpHomePage() {
   const router = useRouter();
-  const { attendant, outlet, shiftSummary, ready, refreshShift } = useAuth();
+  const { attendant, outlet, shiftSummary, ready } = useAuth();
   const [code, setCode] = useState("");
   const [scannerOpen, setScannerOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -55,12 +55,12 @@ export default function PumpHomePage() {
 
   return (
     <div className="space-y-4">
-      {/* Shift Overview Ticker */}
-      <section className="home-card !bg-navy text-white shadow-md dark:!bg-[#153A75]">
+      {/* Shift Overview Glance Card */}
+      <section className="home-card !bg-black-700 text-white dark:!bg-black border border-white/10 shadow-[var(--shadow-card)]">
         <div className="flex items-start justify-between">
           <div>
             <p className="text-xs font-semibold text-white/70">Attendant Shift · Today</p>
-            <h2 className="mt-1 text-2xl font-black tracking-tight">
+            <h2 className="mt-1 text-2xl font-black tracking-tight text-white">
               {ugx(shiftSummary?.total_ugx ?? 0)}
             </h2>
           </div>
@@ -75,11 +75,11 @@ export default function PumpHomePage() {
         <div className="mt-3 flex items-center gap-4 border-t border-white/15 pt-3 text-xs text-white/80">
           <div>
             <span className="text-white/60">Pumped: </span>
-            <strong>{(shiftSummary?.total_litres ?? 0).toFixed(2)} L</strong>
+            <strong className="text-white">{(shiftSummary?.total_litres ?? 0).toFixed(2)} L</strong>
           </div>
           <div>
             <span className="text-white/60">Dispenses: </span>
-            <strong>{shiftSummary?.total_dispenses ?? 0} refuels</strong>
+            <strong className="text-white">{shiftSummary?.total_dispenses ?? 0} refuels</strong>
           </div>
         </div>
       </section>
@@ -96,7 +96,7 @@ export default function PumpHomePage() {
           <button
             type="button"
             onClick={() => setScannerOpen(true)}
-            className="flex items-center gap-2 rounded-2xl bg-gold px-4 py-2.5 text-xs font-bold text-ink-gold shadow transition hover:opacity-95"
+            className="flex items-center gap-2 rounded-2xl bg-gold px-4 py-2.5 text-xs font-bold text-ink-gold shadow-[var(--shadow-glow-gold)] transition active:scale-95"
           >
             <Camera className="h-4 w-4" />
             <span>Scan QR</span>
@@ -104,7 +104,7 @@ export default function PumpHomePage() {
         </div>
 
         {error && (
-          <div className="flex items-center gap-2 rounded-2xl bg-red-50 p-3 text-xs font-semibold text-red-700 dark:bg-red-950/40 dark:text-red-300">
+          <div className="flex items-center gap-2 rounded-2xl border border-red-500/20 bg-red-50 p-3 text-xs font-semibold text-red-700 dark:bg-red-950/40 dark:text-red-300">
             <AlertCircle className="h-4 w-4 shrink-0" />
             <span>{error}</span>
           </div>
@@ -113,7 +113,7 @@ export default function PumpHomePage() {
         {/* 6-Digit Code Display */}
         <div className="space-y-1.5 text-center">
           <label className="text-xs font-bold text-ink-500">
-            Enter 6-digit fuel code from rider
+            Enter 6-digit fuel code from customer app
           </label>
           <div className="flex justify-center gap-2">
             {[0, 1, 2, 3, 4, 5].map((index) => {
@@ -123,7 +123,7 @@ export default function PumpHomePage() {
                   key={index}
                   className={`flex h-13 w-11 items-center justify-center rounded-xl border text-xl font-black transition ${
                     char
-                      ? "border-gold bg-gold/10 text-ink"
+                      ? "border-gold bg-gold/10 text-ink shadow-sm"
                       : "border-[var(--border-faint)] bg-[rgb(var(--surface-input))] text-ink-500"
                   }`}
                 >
@@ -134,7 +134,7 @@ export default function PumpHomePage() {
           </div>
         </div>
 
-        {/* Tactical Outdoor Numpad */}
+        {/* Outdoor Tactile Numpad */}
         <Numpad
           value={code.replace(/^PBGAS-/, "")}
           onChange={(val) => {
@@ -145,30 +145,10 @@ export default function PumpHomePage() {
             }
           }}
           maxLength={6}
-          confirmLabel={busy ? "Checking code…" : "Verify Rider Code"}
+          confirmLabel={busy ? "Checking voucher…" : "Verify Voucher Code"}
           confirmDisabled={busy || code.replace(/^PBGAS-/, "").length < 6}
           onConfirm={() => handleVerify(code)}
         />
-      </section>
-
-      {/* Quick Testing & Simulator Helpers */}
-      <section className="rounded-2xl border border-dashed border-[var(--border-faint)] bg-gold/5 p-3.5">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Sparkles className="h-4 w-4 text-gold" />
-            <span className="text-xs font-bold text-ink">Demo Rider Code Ready:</span>
-          </div>
-          <button
-            type="button"
-            onClick={() => {
-              setCode("738291");
-              void handleVerify("738291");
-            }}
-            className="rounded-lg bg-gold/20 px-2.5 py-1 text-xs font-black text-gold hover:bg-gold/30"
-          >
-            Use 738291 (Okello R.)
-          </button>
-        </div>
       </section>
 
       {/* Current Station Pump Prices Board */}
@@ -178,8 +158,8 @@ export default function PumpHomePage() {
             <Fuel className="h-4 w-4 text-gold" />
             <h3 className="text-sm font-bold text-ink">Today's Pump Prices</h3>
           </div>
-          <Link href="/prices" className="text-xs font-bold text-gold">
-            Adjust board →
+          <Link href="/prices" className="text-xs font-bold text-gold hover:underline">
+            Price board →
           </Link>
         </div>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">

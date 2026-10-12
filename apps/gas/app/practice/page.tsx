@@ -105,9 +105,9 @@ export default function GasPracticePage() {
       <header className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Link
-            href="/account"
-            className="flex h-9 w-9 items-center justify-center rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface))] text-ink"
-            aria-label="Back to Account"
+            href="/"
+            className="flex h-9 w-9 items-center justify-center rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] text-ink transition hover:border-gold"
+            aria-label="Back to Pump"
           >
             <ArrowLeft className="h-4 w-4" />
           </Link>

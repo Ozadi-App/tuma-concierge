@@ -1,9 +1,10 @@
 "use client";
 
-import { Building2, Fuel, KeyRound, ShieldCheck, UserCheck } from "lucide-react";
+import { Building2, KeyRound, ShieldCheck, UserCheck } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { BrandLogo } from "../../components/BrandLogo";
 import { errorMessage } from "../../lib/api";
 import { useAuth } from "../../lib/auth-context";
 
@@ -35,14 +36,19 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="mx-auto max-w-sm space-y-6 pt-6">
-      {/* Brand Hero */}
-      <div className="text-center space-y-2">
-        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl bg-gold text-ink-gold shadow-md">
-          <Fuel className="h-8 w-8" strokeWidth={2.2} />
+    <div className="mx-auto max-w-sm space-y-6 pt-6 pb-12">
+      {/* Brand Hero Header with Peebee Logo */}
+      <div className="text-center space-y-3">
+        <div className="flex justify-center">
+          <BrandLogo wordmark={false} className="justify-center" />
         </div>
-        <h1 className="text-2xl font-black text-ink">Peebee Gas</h1>
-        <p className="text-xs text-ink-500">
+        <div className="flex items-center justify-center gap-1.5">
+          <h1 className="text-2xl font-black tracking-tight text-ink">Peebee</h1>
+          <span className="rounded-md bg-gold/20 px-2 py-0.5 text-xs font-black uppercase tracking-wider text-gold">
+            Gas
+          </span>
+        </div>
+        <p className="text-xs font-medium text-ink-500">
           Petrol Station Merchant & Pump Attendant Terminal
         </p>
       </div>
@@ -50,21 +56,21 @@ export default function LoginPage() {
       {/* Login Card */}
       <form onSubmit={handleLogin} className="home-card space-y-4">
         {error && (
-          <div className="rounded-xl bg-red-50 p-3 text-xs font-semibold text-red-700 dark:bg-red-950/40 dark:text-red-300">
+          <div className="rounded-xl border border-red-500/20 bg-red-50 p-3 text-xs font-semibold text-red-700 dark:bg-red-950/40 dark:text-red-300">
             {error}
           </div>
         )}
 
         <div>
           <label className="text-xs font-bold text-ink-500">Petrol Station Outlet</label>
-          <div className="field-box mt-1 flex items-center gap-2 px-3 py-1">
+          <div className="field-box mt-1.5 flex items-center gap-2 px-3 py-2">
             <Building2 className="h-4 w-4 text-ink-500 shrink-0" />
             <select
               value={selectedOutletId}
               onChange={(e) => setSelectedOutletId(e.target.value)}
               className="w-full text-xs font-bold text-ink bg-transparent outline-none cursor-pointer"
             >
-              <option value="">Select Station (Auto-detect from badge)</option>
+              <option value="">Auto-detect from Attendant Badge</option>
               {outlets.map((o) => (
                 <option key={o.id} value={o.id}>
                   {o.name}
@@ -76,7 +82,7 @@ export default function LoginPage() {
 
         <div>
           <label className="text-xs font-bold text-ink-500">Attendant Badge Code</label>
-          <div className="field-box mt-1 flex items-center gap-2 px-3 py-1">
+          <div className="field-box mt-1.5 flex items-center gap-2 px-3 py-2">
             <UserCheck className="h-4 w-4 text-ink-500 shrink-0" />
             <input
               required
@@ -90,7 +96,7 @@ export default function LoginPage() {
 
         <div>
           <label className="text-xs font-bold text-ink-500">Station Staff PIN</label>
-          <div className="field-box mt-1 flex items-center gap-2 px-3 py-1">
+          <div className="field-box mt-1.5 flex items-center gap-2 px-3 py-2">
             <KeyRound className="h-4 w-4 text-ink-500 shrink-0" />
             <input
               type="password"
@@ -100,26 +106,28 @@ export default function LoginPage() {
               className="w-full text-xs font-bold text-ink outline-none"
             />
           </div>
+          <p className="mt-1 text-[11px] text-ink-500">
+            Default station terminal PIN: <span className="font-mono font-bold text-ink">1234</span>
+          </p>
         </div>
 
         <button
           type="submit"
           disabled={busy}
-          className="min-h-12 w-full rounded-2xl bg-gold font-bold text-ink-gold shadow transition hover:opacity-95 disabled:opacity-50"
+          className="w-full rounded-2xl bg-gold py-3.5 text-center text-sm font-bold text-ink-gold shadow-[var(--shadow-glow-gold)] transition active:scale-[0.98] disabled:opacity-50"
         >
-          {busy ? "Signing in…" : "Sign In to Pump Terminal"}
+          {busy ? "Signing In Attendant…" : "Start Fuel Shift"}
         </button>
-
-        <div className="border-t border-[var(--border-faint)] pt-3 text-center">
-          <Link href="/apply" className="text-xs font-semibold text-gold hover:underline">
-            Register a new petrol station on Peebee →
-          </Link>
-        </div>
       </form>
 
-      <div className="flex items-center justify-center gap-2 text-center text-[11px] text-ink-500">
-        <ShieldCheck className="h-3.5 w-3.5 text-green" />
-        <span>Connected to live Peebee Gas Network</span>
+      {/* Staff Practice Link */}
+      <div className="text-center">
+        <Link
+          href="/practice"
+          className="inline-flex items-center gap-1.5 text-xs font-bold text-gold hover:underline"
+        >
+          <span>Need training? Open Attendant Practice Mode &rarr;</span>
+        </Link>
       </div>
     </div>
   );

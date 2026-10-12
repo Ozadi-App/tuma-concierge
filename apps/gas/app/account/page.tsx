@@ -1,8 +1,9 @@
 "use client";
 
-import { Building2, ChevronRight, Fuel, LogOut, ShieldCheck, Sparkles, User } from "lucide-react";
+import { Building2, ChevronRight, LogOut, ShieldCheck, Sparkles, User } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { BrandLogo } from "../../components/BrandLogo";
 import { useAuth } from "../../lib/auth-context";
 
 export default function AccountPage() {
@@ -15,16 +16,19 @@ export default function AccountPage() {
   }
 
   return (
-    <div className="space-y-4">
-      <header>
-        <h1 className="text-xl font-black text-ink">Attendant Account</h1>
-        <p className="text-xs text-ink-500">Workspace settings and station assignment</p>
+    <div className="space-y-4 pb-6">
+      <header className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-black text-ink">Attendant Account</h1>
+          <p className="text-xs text-ink-500">Workspace settings and station assignment</p>
+        </div>
+        <BrandLogo wordmark={false} className="!h-8 !w-8" />
       </header>
 
       {/* Attendant Profile Card */}
       <section className="home-card space-y-3">
         <div className="flex items-center gap-3">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gold text-ink-gold">
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gold/15 text-gold font-bold">
             <User className="h-6 w-6" />
           </div>
           <div>
@@ -59,19 +63,19 @@ export default function AccountPage() {
             <Building2 className="h-4 w-4 text-gold" />
             <h3 className="text-sm font-bold text-ink">Assigned Petrol Station</h3>
           </div>
-          <Link href="/stations" className="text-xs font-bold text-gold">
+          <Link href="/stations" className="text-xs font-bold text-gold hover:underline">
             Browse all →
           </Link>
         </div>
 
-        <div>
+        <div className="field-box px-3 py-1">
           <select
             value={outlet?.id ?? ""}
             onChange={(e) => selectOutlet(e.target.value)}
-            className="min-h-12 w-full rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] px-3 text-xs font-bold text-ink outline-none"
+            className="min-h-11 w-full text-xs font-bold text-ink bg-transparent outline-none cursor-pointer"
           >
             {outlets.map((o) => (
-              <option key={o.id} value={o.id}>
+              <option key={o.id} value={o.id} className="text-black bg-white">
                 {o.name} ({o.code})
               </option>
             ))}
@@ -85,10 +89,10 @@ export default function AccountPage() {
       {/* Training / Practice Mode Link */}
       <Link
         href="/practice"
-        className="home-card flex items-center justify-between p-4 hover:border-gold/50"
+        className="home-card flex items-center justify-between p-4 hover:border-gold/50 transition active:scale-[0.99]"
       >
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gold/15 text-gold">
+          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gold/15 text-gold">
             <Sparkles className="h-5 w-5" />
           </div>
           <div>
@@ -103,7 +107,7 @@ export default function AccountPage() {
       <button
         type="button"
         onClick={handleSignOut}
-        className="flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface))] font-bold text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20"
+        className="flex min-h-13 w-full items-center justify-center gap-2 rounded-2xl border border-red-500/25 bg-red-500/10 font-bold text-red-500 transition hover:bg-red-500/20 active:scale-[0.98]"
       >
         <LogOut className="h-4 w-4" />
         <span>Sign Out of Station</span>

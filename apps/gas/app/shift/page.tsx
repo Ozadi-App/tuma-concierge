@@ -1,7 +1,7 @@
 "use client";
 
 import type { FuelReceipt } from "@peebee/shared";
-import { AlertCircle, Calendar, CheckCircle, Clock, Download, Fuel, RefreshCw, User } from "lucide-react";
+import { AlertCircle, CheckCircle, Clock, Fuel, RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api, errorMessage } from "../../lib/api";
 import { useAuth } from "../../lib/auth-context";
@@ -38,7 +38,7 @@ export default function ShiftPage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 pb-6">
       <header className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-black text-ink">Shift & Pump Log</h1>
@@ -52,31 +52,32 @@ export default function ShiftPage() {
             void refreshShift();
             void loadDispenses();
           }}
-          className="flex h-9 w-9 items-center justify-center rounded-full border border-[var(--border-faint)] text-ink hover:bg-gold/10"
+          className="flex h-9 w-9 items-center justify-center rounded-full border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] text-ink shadow-sm transition hover:border-gold active:scale-95"
+          title="Refresh shift log"
         >
           <RefreshCw className="h-4 w-4" />
         </button>
       </header>
 
       {error && (
-        <div className="flex items-center gap-2 rounded-2xl bg-red-50 p-3 text-xs font-semibold text-red-700 dark:bg-red-950/40 dark:text-red-300">
+        <div className="flex items-center gap-2 rounded-2xl border border-red-500/20 bg-red-50 p-3 text-xs font-semibold text-red-700 dark:bg-red-950/40 dark:text-red-300">
           <AlertCircle className="h-4 w-4 shrink-0" />
           <span>{error}</span>
         </div>
       )}
 
       {closedNotice && (
-        <div className="flex items-center gap-2 rounded-2xl bg-green/10 p-3 text-xs font-semibold text-green dark:bg-green/20">
+        <div className="flex items-center gap-2 rounded-2xl border border-green/30 bg-green/10 p-3 text-xs font-semibold text-green dark:bg-green/20">
           <CheckCircle className="h-4 w-4 shrink-0" />
           <span>Shift summary balanced and reconciled. Digital log saved.</span>
         </div>
       )}
 
       {/* Shift Metrics Card */}
-      <section className="home-card space-y-3 !bg-navy text-white shadow-md dark:!bg-[#153A75]">
+      <section className="home-card space-y-3 !bg-black-700 text-white dark:!bg-black border border-white/10 shadow-[var(--shadow-card)]">
         <div className="flex items-center justify-between text-xs text-white/70">
           <span className="flex items-center gap-1.5">
-            <Clock className="h-3.5 w-3.5" />
+            <Clock className="h-3.5 w-3.5 text-gold" />
             <span>Active Shift</span>
           </span>
           <span className="rounded-full bg-green/25 px-2.5 py-0.5 font-bold text-green-300">
@@ -87,13 +88,13 @@ export default function ShiftPage() {
         <div className="grid grid-cols-2 gap-4 border-y border-white/15 py-3">
           <div>
             <span className="text-xs text-white/70">Total Revenue</span>
-            <div className="mt-0.5 text-2xl font-black">
+            <div className="mt-0.5 text-2xl font-black text-white">
               {ugx(shiftSummary?.total_ugx ?? 0)}
             </div>
           </div>
           <div>
             <span className="text-xs text-white/70">Volume Dispensed</span>
-            <div className="mt-0.5 text-2xl font-black">
+            <div className="mt-0.5 text-2xl font-black text-white">
               {(shiftSummary?.total_litres ?? 0).toFixed(2)} L
             </div>
           </div>
@@ -104,7 +105,7 @@ export default function ShiftPage() {
           <button
             type="button"
             onClick={handleCloseShift}
-            className="rounded-lg bg-gold px-3 py-1 text-xs font-bold text-ink-gold hover:opacity-95"
+            className="rounded-xl bg-gold px-3.5 py-1.5 text-xs font-bold text-ink-gold shadow-[var(--shadow-glow-gold)] transition active:scale-95"
           >
             Reconcile Shift
           </button>
@@ -131,7 +132,7 @@ export default function ShiftPage() {
               <div key={d.id} className="flex items-center justify-between py-3 text-xs">
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="rounded-md bg-[#FFD700] px-1.5 py-0.5 font-mono text-[10px] font-black text-black">
+                    <span className="rounded-md border border-black/40 bg-[#FFD700] px-1.5 py-0.5 font-mono text-[10px] font-black text-black shadow-sm">
                       {d.vehicle_plate}
                     </span>
                     <strong className="font-bold text-ink">{d.rider_name}</strong>
