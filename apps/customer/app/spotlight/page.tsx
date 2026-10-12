@@ -441,7 +441,7 @@ export default function SpotlightPage() {
       {cartItemCount > 0 && (
         <div className="fixed inset-x-4 bottom-6 z-40 mx-auto max-w-md animate-slide-up">
           <Link
-            href="/shopping"
+            href="/cart"
             className="flex items-center justify-between rounded-full bg-ink px-5 py-3.5 text-cream shadow-2xl transition active:scale-98 border border-white/20"
           >
             <div className="flex items-center gap-2.5">

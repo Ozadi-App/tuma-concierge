@@ -1622,6 +1622,9 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
     async getMarketplaceStoreProducts(id: string) {
       return request<{ products: any[] }>(`/v1/marketplace/stores/${id}/products`);
     },
+    async getMarketplaceProduct(id: string) {
+      return request<{ product: any; store?: any }>(`/v1/marketplace/products/${id}`);
+    },
     async getMarketplaceLiveChannels() {
       return request<{ liveChannels: any[] }>("/v1/marketplace/live");
     },
