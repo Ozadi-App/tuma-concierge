@@ -28,13 +28,16 @@ export function BottomNav() {
   const [showSavingsTab, setShowSavingsTab] = useState(false);
   const t = useTranslate();
 
-  // Do not show bottom nav on login or verify pages
-  if (pathname === "/login" || pathname === "/activate" || pathname === "/forgot-password" || pathname.startsWith("/verify") || pathname.startsWith("/chat/")) {
-    return null;
-  }
+  const isHidden =
+    pathname === "/login" ||
+    pathname === "/activate" ||
+    pathname === "/forgot-password" ||
+    pathname.startsWith("/verify") ||
+    pathname.startsWith("/chat/");
 
   useLivePolling(
     () => {
+      if (isHidden) return;
       api
         .getChatThreads()
         .then((res) => {
@@ -47,15 +50,20 @@ export function BottomNav() {
         .catch(() => {});
     },
     UNREAD_POLL_MS,
-    [],
+    [isHidden],
   );
 
   useEffect(() => {
+    if (isHidden) return;
     api
       .getSettings()
       .then(({ settings }) => setShowSavingsTab(settings.vslaFeaturePlacement === "bottom_nav_tab"))
       .catch(() => {});
-  }, []);
+  }, [isHidden]);
+
+  if (isHidden) {
+    return null;
+  }
 
   const tabs: Tab[] = BASE_TABS.map((tab) => ({ href: tab.href, label: t(tab.labelKey), icon: tab.icon }));
   if (showSavingsTab) {
