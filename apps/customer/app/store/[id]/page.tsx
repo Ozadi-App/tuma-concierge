@@ -504,7 +504,7 @@ export default function StoreDetailPage() {
         {filteredProducts.length === 0 ? (
           <div className="rounded-3xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-8 text-center space-y-2">
             <p className="text-sm font-bold text-ink">No items match your filter</p>
-            <p className="text-xs text-ink-500">Try switching to the "All" tab or searching for another keyword.</p>
+            <p className="text-xs text-ink-500">Try switching to the &quot;All&quot; tab or searching for another keyword.</p>
             <button
               type="button"
               onClick={() => {
