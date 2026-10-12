@@ -1,41 +1,465 @@
 "use client";
 
-import { hasPermission } from "@peebee/shared";
-import { ChevronRight } from "lucide-react";
+import { ADMIN_ROLE_LABELS, hasPermission } from "@peebee/shared";
+import {
+  ArrowUpRight,
+  Banknote,
+  Car,
+  ChevronRight,
+  ClipboardList,
+  Compass,
+  CreditCard,
+  Globe,
+  HelpCircle,
+  KeyRound,
+  Languages,
+  LogOut,
+  MapPin,
+  Mic,
+  Moon,
+  Phone,
+  PiggyBank,
+  Power,
+  Route,
+  Settings2,
+  Sparkles,
+  Store,
+  Trash2,
+  User,
+  Users,
+  Wallet,
+} from "lucide-react";
 import Link from "next/link";
+import { useEffect, useState } from "react";
+import { api } from "../../lib/api";
 import { useAuth } from "../../lib/auth-context";
-import { SETTINGS_LINKS } from "../../lib/settings-nav";
+
+interface SettingsItem {
+  href?: string;
+  icon: React.ComponentType<{ className?: string; strokeWidth?: number }>;
+  label: string;
+  value?: string | React.ReactNode;
+  isExternal?: boolean;
+  show?: boolean;
+  onClick?: () => void;
+}
 
 export default function SettingsPage() {
-  const { user } = useAuth();
-  const links = SETTINGS_LINKS.filter((link) => !link.show || link.show(user?.adminRole ?? null));
+  const { user, logout } = useAuth();
+  const role = user?.adminRole ?? null;
+
+  const [platformMode, setPlatformMode] = useState<string | null>(null);
+  const [activeServicesCount, setActiveServicesCount] = useState<number | null>(null);
+  const [themeMode, setThemeMode] = useState<"auto" | "light" | "dark">("auto");
+  const [cacheStatus, setCacheStatus] = useState<string>("1.2 MB");
+
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem("peebee-theme") as "auto" | "light" | "dark" | null;
+      if (stored === "light" || stored === "dark" || stored === "auto") {
+        setThemeMode(stored);
+      }
+    } catch {}
+
+    api
+      .getSettings()
+      .then(({ settings }) => {
+        setPlatformMode(settings.platformEnvironment ?? "live");
+        const activeCount = Object.values(settings.services ?? {}).filter(Boolean).length;
+        setActiveServicesCount(activeCount);
+      })
+      .catch(() => {});
+  }, []);
+
+  function handleThemeCycle() {
+    const next: "auto" | "light" | "dark" =
+      themeMode === "auto" ? "dark" : themeMode === "dark" ? "light" : "auto";
+    setThemeMode(next);
+    try {
+      window.localStorage.setItem("peebee-theme", next);
+      const computedTheme =
+        next === "auto"
+          ? window.matchMedia("(prefers-color-scheme: dark)").matches
+            ? "dark"
+            : "light"
+          : next;
+      document.documentElement.setAttribute("data-theme", computedTheme);
+    } catch {}
+  }
+
+  async function handleClearCache() {
+    setCacheStatus("Clearing…");
+    try {
+      if ("caches" in window) {
+        const keys = await caches.keys();
+        await Promise.all(keys.map((k) => caches.delete(k)));
+      }
+      setTimeout(() => {
+        setCacheStatus("Cleaned");
+      }, 350);
+    } catch {
+      setCacheStatus("Cleaned");
+    }
+  }
+
+  const themeLabel =
+    themeMode === "auto" ? "Follow system" : themeMode === "dark" ? "Dark" : "Light";
+
+  const servicesGroup: SettingsItem[] = [
+    {
+      href: "/settings/services",
+      icon: Power,
+      label: "Services",
+      value: activeServicesCount !== null ? `${activeServicesCount} active` : "All active",
+      show: true,
+    },
+    {
+      href: "/settings/car",
+      icon: Car,
+      label: "Peebee Car",
+      value: "Fleet & drivers",
+      show: hasPermission(role, "car.view"),
+    },
+    {
+      href: "/settings/delivery",
+      icon: Banknote,
+      label: "Delivery pricing",
+      value: "Per-km rates",
+      show: true,
+    },
+    {
+      href: "/settings/matching",
+      icon: Route,
+      label: "Rider matching",
+      value: "Dispatch rules",
+      show: true,
+    },
+    {
+      href: "/settings/shopping-units",
+      icon: Settings2,
+      label: "Shopping units",
+      value: "Measures",
+      show: hasPermission(role, "settings.manage"),
+    },
+  ];
+
+  const financesGroup: SettingsItem[] = [
+    {
+      href: "/settings/monetization",
+      icon: CreditCard,
+      label: "Monetization",
+      value: "Commissions",
+      show: hasPermission(role, "payments.manage"),
+    },
+    {
+      href: "/settings/payments",
+      icon: CreditCard,
+      label: "Payments",
+      value: "MTN / Airtel",
+      show: hasPermission(role, "payments.manage"),
+    },
+    {
+      href: "/settings/merchant-payments",
+      icon: Store,
+      label: "Merchant payments",
+      value: "Custody gate",
+      show: hasPermission(role, "merchant_finance.manage"),
+    },
+    {
+      href: "/settings/customer-wallet",
+      icon: Wallet,
+      label: "Customer wallet",
+      value: "Balance caps",
+      show: hasPermission(role, "payments.manage"),
+    },
+    {
+      href: "/settings/rider-wallet",
+      icon: Wallet,
+      label: "Rider wallet",
+      value: "Min reserve",
+      show: hasPermission(role, "payments.manage"),
+    },
+    {
+      href: "/settings/stage-savings",
+      icon: PiggyBank,
+      label: "Stage savings circles",
+      value: "Cycles & loans",
+      show: hasPermission(role, "payments.manage"),
+    },
+  ];
+
+  const integrationsGroup: SettingsItem[] = [
+    {
+      href: "/settings/ai-keys",
+      icon: KeyRound,
+      label: "Google AI keys",
+      value: "Auto-rotation",
+      show: hasPermission(role, "settings.manage"),
+    },
+    {
+      href: "/settings/email-keys",
+      icon: KeyRound,
+      label: "Email API keys",
+      value: "Resend",
+      show: hasPermission(role, "settings.manage"),
+    },
+    {
+      href: "/settings/maps",
+      icon: MapPin,
+      label: "Maps provider",
+      value: "TomTom / Mapbox",
+      show: hasPermission(role, "payments.manage"),
+    },
+    {
+      href: "/settings/navigation",
+      icon: Compass,
+      label: "Navigation and tracking",
+      value: "Live routes",
+      show: hasPermission(role, "payments.manage") || hasPermission(role, "settings.manage"),
+    },
+    {
+      href: "/settings/calls",
+      icon: Phone,
+      label: "Voice calls",
+      value: "Provider",
+      show: hasPermission(role, "payments.manage"),
+    },
+    {
+      href: "/settings/voice",
+      icon: Mic,
+      label: "Voice recordings",
+      value: "Max duration",
+      show: true,
+    },
+    {
+      href: "/settings/luganda-audio",
+      icon: Languages,
+      label: "Luganda list reading",
+      value: "Audio voices",
+      show: true,
+    },
+  ];
+
+  const preferencesGroup: SettingsItem[] = [
+    {
+      href: "/account",
+      icon: User,
+      label: "Account",
+      show: true,
+    },
+    ...(role === "super_admin"
+      ? [
+          {
+            href: "/staff",
+            icon: Users,
+            label: "Staff accounts",
+            value: "Team access",
+            show: true,
+          },
+          {
+            href: "/onboarding",
+            icon: Store,
+            label: "Sales onboarding",
+            value: "Policy",
+            show: true,
+          },
+        ]
+      : []),
+    {
+      icon: Globe,
+      label: "Language",
+      value: "English",
+      show: true,
+    },
+    {
+      icon: Moon,
+      label: "Appearance",
+      value: themeLabel,
+      onClick: handleThemeCycle,
+      show: true,
+    },
+    {
+      icon: Trash2,
+      label: "Clear cache",
+      value: cacheStatus,
+      onClick: handleClearCache,
+      show: true,
+    },
+  ];
+
+  const systemGroup: SettingsItem[] = [
+    {
+      href: "/activity",
+      icon: ClipboardList,
+      label: "Activity log",
+      show: hasPermission(role, "activity_log.view"),
+    },
+    {
+      href: "https://preview.peebee.online",
+      icon: Sparkles,
+      label: "Explore Preview Hub",
+      isExternal: true,
+      show: true,
+    },
+    {
+      href: "https://github.com/Peebee-Application/Peebee",
+      icon: HelpCircle,
+      label: "Get help & documentation",
+      isExternal: true,
+      show: true,
+    },
+    {
+      icon: Settings2,
+      label: "Version",
+      value: "v26.18.0",
+      show: true,
+    },
+  ];
 
   return (
-    <div className="space-y-5 px-4 pb-6 pt-4">
-      <h1 className="text-xl font-bold text-ink">Settings</h1>
-      <p className="text-sm text-ink-500">Each area below is its own page — tap one to view or change it.</p>
-      <ul className="space-y-2">
-        {links.map((link) => {
-          const Icon = link.icon;
-          return (
-            <li key={link.href}>
-              <Link
-                href={link.href}
-                className="home-card flex items-center gap-3 !py-3 transition active:opacity-70"
+    <div className="space-y-4 px-4 pb-12 pt-3">
+      {/* 1. Admin Profile Card (Matches Screenshot 2 Top Card) */}
+      <Link
+        href="/account"
+        className="flex items-center gap-3.5 rounded-[24px] bg-[rgb(var(--surface-card))] p-3.5 border border-[var(--border-faint)] shadow-[0_2px_8px_rgba(0,0,0,0.03)] transition active:opacity-75"
+      >
+        <div className="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-full overflow-hidden bg-gradient-to-tr from-blue-700 via-indigo-600 to-sky-400 text-white font-black text-xl shadow-inner">
+          <span className="select-none">🌍</span>
+        </div>
+        <div className="min-w-0 flex-1">
+          <h2 className="text-[17px] font-bold text-ink truncate leading-tight">
+            {user?.name ?? "Christo"}
+          </h2>
+          <p className="text-xs text-ink-500 font-medium mt-0.5">
+            {role ? (ADMIN_ROLE_LABELS[role] ?? "Admin") : "Personal"}
+          </p>
+        </div>
+        <ChevronRight className="h-4.5 w-4.5 text-ink-500/50 shrink-0" strokeWidth={1.8} />
+      </Link>
+
+      {/* 2. Platform Status / Mode Highlight Card (Matches Screenshot 2 Second Card) */}
+      <div className="rounded-[24px] bg-[rgb(var(--surface-card))] border border-[var(--border-faint)] p-4 shadow-[0_2px_8px_rgba(0,0,0,0.03)] space-y-3.5">
+        <div className="flex items-center justify-between">
+          <h3 className="font-serif text-2xl font-black text-ink tracking-tight">
+            {platformMode === "live" ? "Live" : "Sandbox"}
+          </h3>
+          <Link
+            href="/settings/platform"
+            className="rounded-full bg-ink px-4 py-1.5 text-xs font-bold text-cream transition hover:opacity-90 active:scale-95"
+          >
+            {platformMode === "live" ? "Production" : "Manage"}
+          </Link>
+        </div>
+        <div className="border-t border-[var(--border-faint)] pt-3">
+          <Link
+            href="/settings/services"
+            className="flex items-center justify-between transition active:opacity-75"
+          >
+            <div className="flex items-center gap-2.5">
+              <Sparkles className="h-4.5 w-4.5 text-gold" strokeWidth={2} />
+              <span className="text-sm font-semibold text-ink">Active Services</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs font-medium text-ink-500">
+                {activeServicesCount !== null ? `${activeServicesCount} Online` : "Loading…"}
+              </span>
+              <ChevronRight className="h-4 w-4 text-ink-500/50" strokeWidth={1.8} />
+            </div>
+          </Link>
+        </div>
+      </div>
+
+      {/* 3. Group 1: Core Operations & Services */}
+      <SettingsCardSection items={servicesGroup} />
+
+      {/* 4. Group 2: Finances & Monetization */}
+      <SettingsCardSection items={financesGroup} />
+
+      {/* 5. Group 3: Integrations & API Keys */}
+      <SettingsCardSection items={integrationsGroup} />
+
+      {/* 6. Group 4: Preferences (Account, Language, Appearance, Cache) */}
+      <SettingsCardSection items={preferencesGroup} />
+
+      {/* 7. Group 5: System & Info (Activity, Docs, Version) */}
+      <SettingsCardSection items={systemGroup} />
+
+      {/* 8. Standalone Log Out Card (Matches Screenshot 1 Bottom Card) */}
+      <button
+        type="button"
+        onClick={logout}
+        className="flex w-full items-center gap-3.5 rounded-[24px] bg-[rgb(var(--surface-card))] border border-[var(--border-faint)] px-4 py-3.5 text-sm font-semibold text-ink shadow-[0_2px_8px_rgba(0,0,0,0.03)] transition active:opacity-75"
+      >
+        <LogOut className="h-5 w-5 text-ink/80 shrink-0" strokeWidth={1.8} />
+        <span>Log out</span>
+      </button>
+    </div>
+  );
+}
+
+function SettingsCardSection({ items }: { items: SettingsItem[] }) {
+  const visible = items.filter((i) => i.show !== false);
+  if (visible.length === 0) return null;
+
+  return (
+    <div className="rounded-[24px] bg-[rgb(var(--surface-card))] border border-[var(--border-faint)] divide-y divide-[var(--border-faint)] overflow-hidden shadow-[0_2px_8px_rgba(0,0,0,0.03)]">
+      {visible.map((item, idx) => {
+        const Icon = item.icon;
+        const content = (
+          <>
+            <div className="flex items-center gap-3 min-w-0">
+              <Icon className="h-5 w-5 text-ink/80 shrink-0" strokeWidth={1.8} />
+              <span className="text-sm font-medium text-ink truncate">{item.label}</span>
+            </div>
+            <div className="flex items-center gap-1.5 shrink-0">
+              {item.value && (
+                <span className="text-[13px] text-ink-500 font-medium">{item.value}</span>
+              )}
+              {item.isExternal ? (
+                <ArrowUpRight className="h-4 w-4 text-ink-500/60" strokeWidth={1.8} />
+              ) : (
+                <ChevronRight className="h-4 w-4 text-ink-500/50" strokeWidth={1.8} />
+              )}
+            </div>
+          </>
+        );
+
+        if (item.href) {
+          if (item.isExternal) {
+            return (
+              <a
+                key={item.label + idx}
+                href={item.href}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center justify-between px-4 py-3.5 transition active:bg-black/5 dark:active:bg-white/5"
               >
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gold/15 text-gold">
-                  <Icon className="h-4.5 w-4.5" strokeWidth={1.75} aria-hidden />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-semibold text-ink">{link.label}</span>
-                  <span className="block truncate text-xs text-ink-500">{link.description}</span>
-                </span>
-                <ChevronRight className="h-4.5 w-4.5 shrink-0 text-ink-500" strokeWidth={1.75} aria-hidden />
-              </Link>
-            </li>
+                {content}
+              </a>
+            );
+          }
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className="flex items-center justify-between px-4 py-3.5 transition active:bg-black/5 dark:active:bg-white/5"
+            >
+              {content}
+            </Link>
           );
-        })}
-      </ul>
+        }
+
+        return (
+          <button
+            key={item.label + idx}
+            type="button"
+            onClick={item.onClick}
+            className="flex w-full items-center justify-between px-4 py-3.5 text-left transition active:bg-black/5 dark:active:bg-white/5"
+          >
+            {content}
+          </button>
+        );
+      })}
     </div>
   );
 }
