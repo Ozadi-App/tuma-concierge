@@ -11,19 +11,19 @@ export interface ProductCardData {
   store_id: string;
   title: string;
   slug?: string;
-  description?: string;
+  description?: string | null;
   price: number;
-  compare_at_price?: number;
+  compare_at_price?: number | null;
   image_url?: string | null;
   badge?: string | null;
   category_name?: string | null;
-  inventory_quantity?: number;
-  has_variants?: number;
+  inventory_quantity?: number | null;
+  has_variants?: number | boolean | null;
   variants?: Array<{
     id: string;
     title: string;
     price: number;
-    compare_at_price?: number;
+    compare_at_price?: number | null;
   }>;
 }
 
@@ -71,7 +71,7 @@ export function ProductCard({
       variantId: defaultVariant?.id,
       variantTitle: defaultVariant?.title,
       price: defaultVariant?.price ?? product.price,
-      compareAtPrice: defaultVariant?.compare_at_price ?? product.compare_at_price,
+      compareAtPrice: (defaultVariant?.compare_at_price ?? product.compare_at_price) || undefined,
       imageUrl: product.image_url || undefined,
       category: product.category_name || undefined,
       quantity: 1,
