@@ -1625,6 +1625,10 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
     async getMarketplaceLiveChannels() {
       return request<{ liveChannels: any[] }>("/v1/marketplace/live");
     },
+    async getMarketplaceSpotlight(category?: string) {
+      const q = category ? `?category=${category}` : "";
+      return request<{ spotlight: any[] }>(`/v1/marketplace/spotlight${q}`);
+    },
 
     // Merchant Pro Store Endpoints
     async getMerchantProStore() {
