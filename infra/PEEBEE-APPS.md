@@ -12,6 +12,8 @@ All applications belong to Cloudflare account
 | Restaurant | `peebee-restaurant` | `apps/restaurant` | `restaurant.peebee.online` |
 | Merchant | `peebee-merchant` | `apps/merchant` | `merchant.peebee.online` |
 | Car / partner | `peebee-partner` | `apps/partner` | `car.peebee.online`, `partner.peebee.online` |
+| Sales | `peebee-sales` | `apps/sales` | `sales.peebee.online` |
+| Gas | `peebee-gas` | `apps/gas` | `gas.peebee.online` |
 | API | `peebee-api` | `apps/api` | `api.peebee.online` |
 
 Each frontend builds against `https://api.peebee.online` from its tracked
