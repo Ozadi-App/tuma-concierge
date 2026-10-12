@@ -103,6 +103,9 @@ onboardingRoutes.post('/sales/onboarding',bodyLimit({maxSize:30*1024*1024}),asyn
     {field:'photo',types:['image/jpeg','image/png','image/webp'],limit:4*1024*1024,audience:'rider'},
     {field:'ownerId',types:['image/jpeg','image/png','image/webp','application/pdf'],limit:8*1024*1024,audience:'merchant'},
     {field:'businessDocument',types:['image/jpeg','image/png','image/webp','application/pdf'],limit:8*1024*1024,audience:'merchant'},
+    {field:'partnerId',types:['image/jpeg','image/png','image/webp','application/pdf'],limit:8*1024*1024,audience:'partner'},
+    {field:'drivingLicence',types:['image/jpeg','image/png','image/webp','application/pdf'],limit:8*1024*1024,audience:'partner'},
+    {field:'stationDoc',types:['image/jpeg','image/png','image/webp','application/pdf'],limit:8*1024*1024,audience:'gas'},
   ];
   for(const spec of files) {
     const file=form?.get(spec.field);if(!(file instanceof File)||!file.size)continue;
