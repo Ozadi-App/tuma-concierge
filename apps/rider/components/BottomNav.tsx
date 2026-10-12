@@ -1,7 +1,6 @@
 "use client";
 
 import { observeNotificationSnapshot } from "@peebee/shared";
-
 import { Briefcase, ClipboardList, MessageCircle, PiggyBank, User, Wallet } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -29,12 +28,20 @@ export function BottomNav() {
   const [showSavingsTab, setShowSavingsTab] = useState(false);
   const t = useTranslate();
 
+  // Do not show bottom nav on login or verify pages
+  if (pathname === "/login" || pathname === "/activate" || pathname === "/forgot-password" || pathname.startsWith("/verify") || pathname.startsWith("/chat/")) {
+    return null;
+  }
+
   useLivePolling(
     () => {
       api
         .getChatThreads()
         .then((res) => {
-          observeNotificationSnapshot("chat-inbox", res.threads.filter((t) => t.unread).map((t) => t.counterpartId + ":" + t.lastMessageAt));
+          observeNotificationSnapshot(
+            "chat-inbox",
+            res.threads.filter((t) => t.unread).map((t) => t.counterpartId + ":" + t.lastMessageAt)
+          );
           setHasUnread(res.threads.some((t) => t.unread));
         })
         .catch(() => {});
@@ -56,33 +63,47 @@ export function BottomNav() {
   }
 
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-[var(--border-faint)] bg-[rgb(var(--surface-card))] pb-[env(safe-area-inset-bottom)]">
-      <ul className="mx-auto flex max-w-lg items-stretch justify-around">
-        {tabs.map((tab) => {
-          const active =
-            tab.href === "/" ? pathname === "/" || pathname.startsWith("/jobs") : pathname.startsWith(tab.href);
-          const Icon = tab.icon;
-          return (
-            <li key={tab.href} className="flex-1">
-              <Link
-                href={tab.href}
-                aria-current={active ? "page" : undefined}
-                className={`relative flex min-h-14 flex-col items-center justify-center gap-1 px-0.5 py-1.5 text-[11px] font-medium after:absolute after:inset-x-2 after:bottom-0 after:h-1 after:rounded-full ${
-                  active ? "text-gold after:bg-gold" : "text-ink-500"
-                }`}
-              >
-                <span className="relative">
-                  <Icon className="h-6 w-6" strokeWidth={active ? 2.25 : 1.75} aria-hidden />
-                  {tab.href === "/chat" && hasUnread && (
-                    <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-gold" aria-hidden />
+    <nav
+      aria-label="Bottom Navigation"
+      className="customer-nav fixed inset-x-0 bottom-3 z-40 px-3 pointer-events-none pb-[env(safe-area-inset-bottom)]"
+    >
+      <div className="mx-auto flex max-w-lg items-center justify-center">
+        <ul className="customer-nav-capsule pointer-events-auto flex w-full items-stretch justify-around rounded-[24px] p-1.5 gap-1">
+          {tabs.map((tab) => {
+            const active =
+              tab.href === "/"
+                ? pathname === "/" || pathname.startsWith("/jobs")
+                : pathname.startsWith(tab.href);
+            const Icon = tab.icon;
+
+            return (
+              <li key={tab.href} className="flex-1">
+                <Link
+                  href={tab.href}
+                  aria-current={active ? "page" : undefined}
+                  className={`customer-nav-item relative flex h-[58px] flex-col items-center justify-center gap-1 rounded-[18px] px-1 py-1 text-[11px] font-bold transition-all duration-200 active:scale-95 ${
+                    active ? "is-active" : ""
+                  }`}
+                >
+                  <span className="relative">
+                    <Icon className="h-5 w-5" strokeWidth={active ? 2.4 : 1.8} aria-hidden />
+                    {tab.href === "/chat" && hasUnread && (
+                      <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-red-500" aria-hidden />
+                    )}
+                  </span>
+                  <span className="leading-none truncate max-w-[58px]">{tab.label}</span>
+                  {active && (
+                    <span
+                      className="customer-nav-indicator absolute bottom-1.5 h-1 w-3.5 rounded-full"
+                      aria-hidden
+                    />
                   )}
-                </span>
-                <span>{tab.label}</span>
-              </Link>
-            </li>
-          );
-        })}
-      </ul>
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
     </nav>
   );
 }

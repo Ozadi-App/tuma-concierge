@@ -29,8 +29,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {!isAuthPage && <PracticeModeBanner role="restaurant" />}
       {!isAuthPage && <ServiceBanner />}
       <main
-        className={`mx-auto max-w-lg ${showHeader ? "min-h-[calc(100dvh-3.5rem)]" : "min-h-dvh"} ${
-          showNav ? "pb-[calc(3.5rem+env(safe-area-inset-bottom))]" : ""
+        className={`mx-auto max-w-lg ${showHeader ? "min-h-[calc(100dvh-4rem)]" : "min-h-dvh"} ${
+          showNav ? "pb-[calc(88px+env(safe-area-inset-bottom))]" : ""
         }`}
       >
         {children}
