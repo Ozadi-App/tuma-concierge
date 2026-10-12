@@ -184,44 +184,106 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
           )}
 
           {/* Home stays separate; the wider menu changes between the four service groups. */}
-          <div className="pointer-events-auto grid w-full grid-cols-[repeat(5,minmax(0,1fr))] gap-1">
-            <button
-              type="button"
-              aria-label="Home and reset menu"
-              aria-current={pathname === "/" ? "page" : undefined}
-              onClick={() => {
-                setMenuGroup("original");
-                setSelectedItem(null);
-                router.push("/");
-              }}
-              className={`customer-nav-home flex h-[60px] w-full flex-col items-center justify-center gap-1 rounded-[22px] transition-all duration-200 active:scale-95 ${pathname === "/" ? "is-active" : ""}`}
-            >
-              <Home className="h-5 w-5" strokeWidth={pathname === "/" ? 2.3 : 1.8} aria-hidden />
-              <span className="text-[10px] font-semibold leading-none">{t("nav_home")}</span>
-              {pathname === "/" && <span className="customer-nav-home-indicator" aria-hidden />}
-            </button>
+          <div className="pointer-events-auto flex w-full items-center gap-1.5">
+            {/* Detached Home Capsule on Left */}
+            <div className="customer-nav-capsule flex w-[64px] sm:w-[72px] shrink-0 items-center justify-center rounded-[24px] p-1.5 shadow-[var(--shadow-float-capsule)]">
+              <button
+                type="button"
+                aria-label="Home and reset menu"
+                aria-current={pathname === "/" ? "page" : undefined}
+                onClick={() => {
+                  setMenuGroup("original");
+                  setSelectedItem(null);
+                  router.push("/");
+                }}
+                className={`customer-nav-item relative flex h-[58px] w-full flex-col items-center justify-center gap-1 rounded-[18px] px-1 py-1 text-[11px] font-bold transition-all duration-200 active:scale-95 ${
+                  pathname === "/" ? "is-active" : ""
+                }`}
+              >
+                <Home className="h-5 w-5" strokeWidth={pathname === "/" ? 2.4 : 1.8} aria-hidden />
+                <span className="leading-none truncate max-w-[54px]">{t("nav_home")}</span>
+                {pathname === "/" && (
+                  <span
+                    className="customer-nav-indicator absolute bottom-1.5 h-1 w-3.5 rounded-full"
+                    aria-hidden
+                  />
+                )}
+              </button>
+            </div>
 
-            <div className="customer-nav-menu pointer-events-auto col-span-4 h-[60px] min-w-0 rounded-[22px] p-0">
-              <ul key={menuGroup} className="customer-nav-items flex h-full w-full items-stretch gap-1" aria-label={menuGroup === "original" ? "Main menu" : `${menuGroup} menu`}>
+            {/* Main Menu Capsule on Right */}
+            <div className="customer-nav-capsule flex flex-1 min-w-0 items-center justify-around rounded-[24px] p-1.5 shadow-[var(--shadow-float-capsule)]">
+              <ul
+                key={menuGroup}
+                className="customer-nav-items flex h-full w-full items-stretch justify-around gap-1"
+                aria-label={menuGroup === "original" ? "Main menu" : `${menuGroup} menu`}
+              >
                 {(menuGroup === "original" ? originalMenu : submenuItems[menuGroup]).map((item) => {
                   const Icon = item.icon;
                   const active = item.id === selectedItem;
-                  const classes = `customer-nav-item relative flex h-full w-full min-w-0 items-center justify-center rounded-2xl px-1 transition-all duration-200 ${item.group ? "is-primary" : ""} ${active ? "is-active is-expanded" : ""} ${item.disabled ? "is-disabled" : ""}`;
-                  const contents = <>
-                    <Icon className="h-[19px] w-[19px] shrink-0" strokeWidth={item.group || active ? 2.2 : 1.8} aria-hidden />
-                    <span className="customer-nav-label">{item.label}</span>
-                    {active && <span className="customer-nav-item-indicator" aria-hidden />}
-                  </>;
 
-                  return <li key={item.id} className={`customer-nav-cell h-full min-w-0 ${item.group ? "is-primary" : ""} ${active ? "is-expanded" : ""}`}>
-                    {item.group ? (
-                      <button type="button" aria-label={`${item.label} home and submenu`} aria-expanded={menuGroup === item.group} onClick={() => { setMenuGroup(item.group!); setSelectedItem(null); router.push({ ride: "/ride", shopping: "/shopping", food: "/food", deliver: "/deliver" }[item.group!]); }} className={classes}>{contents}</button>
-                    ) : item.disabled ? (
-                      <button type="button" aria-disabled="true" aria-label={`${item.label}, coming soon`} title="Coming soon" onClick={() => setSelectedItem(item.id)} className={classes}>{contents}</button>
-                    ) : (
-                      <Link href={item.href!} onClick={() => setSelectedItem(item.id)} aria-current={active ? "page" : undefined} className={classes}>{contents}</Link>
-                    )}
-                  </li>;
+                  const content = (
+                    <>
+                      <Icon className="h-5 w-5 shrink-0" strokeWidth={active ? 2.4 : 1.8} aria-hidden />
+                      <span className="leading-none truncate max-w-full text-[10px] sm:text-[11px] font-bold">
+                        {item.label}
+                      </span>
+                      {active && (
+                        <span
+                          className="customer-nav-indicator absolute bottom-1.5 h-1 w-3.5 rounded-full"
+                          aria-hidden
+                        />
+                      )}
+                    </>
+                  );
+
+                  const btnClass = `customer-nav-item relative flex h-[58px] w-full flex-col items-center justify-center gap-1 rounded-[18px] px-0.5 sm:px-1 py-1 text-[11px] font-bold transition-all duration-200 active:scale-95 ${
+                    active ? "is-active" : ""
+                  } ${item.disabled ? "opacity-40 cursor-not-allowed" : ""}`;
+
+                  return (
+                    <li key={item.id} className="flex-1 min-w-0">
+                      {item.group ? (
+                        <button
+                          type="button"
+                          aria-label={`${item.label} home and submenu`}
+                          aria-expanded={menuGroup === item.group}
+                          onClick={() => {
+                            setMenuGroup(item.group!);
+                            setSelectedItem(null);
+                            router.push(
+                              { ride: "/ride", shopping: "/shopping", food: "/food", deliver: "/deliver" }[
+                                item.group!
+                              ]
+                            );
+                          }}
+                          className={btnClass}
+                        >
+                          {content}
+                        </button>
+                      ) : item.disabled ? (
+                        <button
+                          type="button"
+                          aria-disabled="true"
+                          aria-label={`${item.label}, coming soon`}
+                          title="Coming soon"
+                          onClick={() => setSelectedItem(item.id)}
+                          className={btnClass}
+                        >
+                          {content}
+                        </button>
+                      ) : (
+                        <Link
+                          href={item.href!}
+                          onClick={() => setSelectedItem(item.id)}
+                          aria-current={active ? "page" : undefined}
+                          className={btnClass}
+                        >
+                          {content}
+                        </Link>
+                      )}
+                    </li>
+                  );
                 })}
               </ul>
             </div>
