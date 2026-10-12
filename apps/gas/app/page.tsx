@@ -56,7 +56,7 @@ export default function PumpHomePage() {
   return (
     <div className="space-y-4">
       {/* Shift Overview Ticker */}
-      <section className="home-card !bg-navy text-white shadow-md dark:!bg-[#153A75]">
+      <section className="home-card border border-white/10 !bg-black-900 text-white shadow-md dark:!bg-black-900">
         <div className="flex items-start justify-between">
           <div>
             <p className="text-xs font-semibold text-white/70">Attendant Shift · Today</p>

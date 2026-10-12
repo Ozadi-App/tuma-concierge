@@ -3,7 +3,7 @@ import Link from "next/link";
 
 export function BrandHeader() {
   return (
-    <header className="sticky top-0 z-40 h-14 border-b border-navy/15 bg-cream/95 backdrop-blur-sm">
+    <header className="sticky top-0 z-40 h-14 border-b border-[var(--border-faint)] bg-cream/95 backdrop-blur-sm">
       <div className="mx-auto flex h-full max-w-lg items-center gap-3 px-4">
         <Link href="/" aria-label="Go to home" className="shrink-0">
           <BrandLogo />

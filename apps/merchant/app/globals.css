@@ -15,44 +15,94 @@
 
 :root {
   color-scheme: light;
-  --cream: 247 243 238;
-  --ink: 14 28 50;
-  --ink-muted: 94 108 126;
+  --cream: 255 255 255;
+  --color-cream: 255 255 255;
+  --color-cream-50: 255 255 255;
+  --color-cream-100: 245 245 245;
+  --ink: 10 10 10;
+  --color-ink: 10 10 10;
+  --ink-muted: 92 102 112;
+  --color-ink-500: 92 102 112;
+  --color-ink-900: 10 10 10;
+  --color-ink-gold: 10 10 10;
   --gold: 201 162 39;
-  --navy: 21 58 117;
+  --color-gold: 201 162 39;
+  --color-gold-400: 224 185 61;
+  --color-gold-500: 201 162 39;
+  --navy: 48 48 48;
+  --color-navy: 48 48 48;
+  --color-navy-400: 68 68 68;
+  --color-navy-700: 32 32 32;
   --green: 27 122 78;
+  --color-green: 27 122 78;
+  --color-green-400: 47 168 106;
+  --color-green-600: 27 122 78;
+  --color-black: 10 10 10;
+  --color-black-700: 26 26 26;
+  --color-black-900: 10 10 10;
   --surface: 255 255 255;
-  --surface-muted: 238 234 227;
+  --surface-card: 255 255 255;
+  --surface-muted: 242 242 242;
   --surface-input: 255 255 255;
-  --border-faint: rgba(14, 28, 50, 0.1);
+  --border-faint: rgba(10, 10, 10, 0.08);
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --cream: 13 32 61;
-    --ink: 247 243 238;
-    --ink-muted: 168 180 200;
-    --navy: 120 155 214;
+    --cream: 14 14 14;
+    --color-cream: 14 14 14;
+    --color-cream-50: 14 14 14;
+    --color-cream-100: 26 26 26;
+    --ink: 245 245 245;
+    --color-ink: 245 245 245;
+    --ink-muted: 170 170 170;
+    --color-ink-500: 170 170 170;
+    --color-ink-900: 245 245 245;
+    --navy: 220 220 220;
+    --color-navy: 220 220 220;
+    --color-navy-400: 230 230 230;
+    --color-navy-700: 200 200 200;
     --green: 47 168 106;
-    --surface: 22 48 88;
-    --surface-muted: 40 76 122;
-    --surface-input: 33 63 106;
-    --border-faint: rgba(247, 243, 238, 0.11);
+    --color-green: 47 168 106;
+    --color-green-400: 62 196 128;
+    --color-black: 0 0 0;
+    --color-black-700: 26 26 26;
+    --color-black-900: 0 0 0;
+    --surface: 30 30 30;
+    --surface-card: 30 30 30;
+    --surface-muted: 39 39 39;
+    --surface-input: 36 36 36;
+    --border-faint: rgba(247, 243, 238, 0.1);
   }
 }
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --cream: 13 32 61;
-  --ink: 247 243 238;
-  --ink-muted: 168 180 200;
-  --navy: 120 155 214;
+  --cream: 14 14 14;
+  --color-cream: 14 14 14;
+  --color-cream-50: 14 14 14;
+  --color-cream-100: 26 26 26;
+  --ink: 245 245 245;
+  --color-ink: 245 245 245;
+  --ink-muted: 170 170 170;
+  --color-ink-500: 170 170 170;
+  --color-ink-900: 245 245 245;
+  --navy: 220 220 220;
+  --color-navy: 220 220 220;
+  --color-navy-400: 230 230 230;
+  --color-navy-700: 200 200 200;
   --green: 47 168 106;
-  --surface: 22 48 88;
-  --surface-muted: 40 76 122;
-  --surface-input: 33 63 106;
-  --border-faint: rgba(247, 243, 238, 0.11);
+  --color-green: 47 168 106;
+  --color-green-400: 62 196 128;
+  --color-black: 0 0 0;
+  --color-black-700: 26 26 26;
+  --color-black-900: 0 0 0;
+  --surface: 30 30 30;
+  --surface-card: 30 30 30;
+  --surface-muted: 39 39 39;
+  --surface-input: 36 36 36;
+  --border-faint: rgba(247, 243, 238, 0.1);
 }
 
 html { font-size: 17px; }

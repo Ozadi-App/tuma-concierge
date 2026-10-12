@@ -64,7 +64,7 @@ export function StageSavingsCard({ context = "home", compact = false }: { contex
     return (
       <Link
         href="/savings"
-        className="flex items-center gap-3 rounded-2xl bg-gradient-to-br from-[#153A75] to-[#0C2245] p-4 text-white shadow-sm"
+        className="flex items-center gap-3 rounded-2xl border border-white/10 bg-gradient-to-br from-[#1c1c1c] to-[#0a0a0a] p-4 text-white shadow-sm"
       >
         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gold/25 text-gold">
           <PiggyBank className="h-5 w-5" strokeWidth={2} aria-hidden />
@@ -81,7 +81,7 @@ export function StageSavingsCard({ context = "home", compact = false }: { contex
   return (
     <Link
       href={`/savings/${stage.id}`}
-      className="flex items-center gap-3 rounded-2xl bg-gradient-to-br from-[#153A75] to-[#0C2245] p-4 text-white shadow-sm"
+      className="flex items-center gap-3 rounded-2xl border border-white/10 bg-gradient-to-br from-[#1c1c1c] to-[#0a0a0a] p-4 text-white shadow-sm"
     >
       <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gold/25 text-gold">
         <PiggyBank className="h-5 w-5" strokeWidth={2} aria-hidden />
