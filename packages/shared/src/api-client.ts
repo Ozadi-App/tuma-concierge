@@ -2314,6 +2314,30 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
       const q = riderId ? `?riderId=${encodeURIComponent(riderId)}` : "";
       return request<{ code: FuelCode | null }>(`/v1/gas/rider/active-code${q}`);
     },
+    async gasAttendantLogin(code: string, pin?: string, outletId?: string) {
+      return request<{
+        ok: true;
+        token: string;
+        attendant: { id: string; code: string; name: string; phone: string; pump_lane: string; on_duty: boolean };
+        outlet: FuelStationOutlet;
+      }>("/v1/gas/attendants/login", {
+        method: "POST",
+        body: JSON.stringify({ code, pin, outletId }),
+      });
+    },
+    async gasMe() {
+      return request<{
+        ok: true;
+        attendant: { id: string; code: string; name: string; phone: string; pump_lane: string; on_duty: boolean };
+        outlet: FuelStationOutlet;
+      }>("/v1/gas/me");
+    },
+    async gasToggleDuty(onDuty: boolean) {
+      return request<{ ok: true; on_duty: boolean }>("/v1/gas/attendants/toggle-duty", {
+        method: "POST",
+        body: JSON.stringify({ onDuty }),
+      });
+    },
   };
 }
 

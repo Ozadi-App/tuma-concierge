@@ -1,39 +1,41 @@
 "use client";
 
-import { Fuel, KeyRound, Phone, UserCheck } from "lucide-react";
+import { Building2, Fuel, KeyRound, ShieldCheck, UserCheck } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { errorMessage } from "../../lib/api";
 import { useAuth } from "../../lib/auth-context";
 
 export default function LoginPage() {
   const router = useRouter();
-  const { login } = useAuth();
+  const { login, outlets } = useAuth();
   const [code, setCode] = useState("");
-  const [name, setName] = useState("");
   const [pin, setPin] = useState("");
+  const [selectedOutletId, setSelectedOutletId] = useState("");
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
-    if (!code.trim()) return;
+    if (!code.trim()) {
+      setError("Please enter your attendant badge code.");
+      return;
+    }
     setBusy(true);
+    setError(null);
     try {
-      await login(code, name);
+      await login(code.trim().toUpperCase(), pin.trim(), selectedOutletId || undefined);
       router.push("/");
+    } catch (err) {
+      setError(errorMessage(err));
     } finally {
       setBusy(false);
     }
   }
 
-  function handleDemoLogin(attCode: string, attName: string) {
-    setCode(attCode);
-    setName(attName);
-    void login(attCode, attName).then(() => router.push("/"));
-  }
-
   return (
-    <div className="mx-auto max-w-sm space-y-6 pt-8">
+    <div className="mx-auto max-w-sm space-y-6 pt-6">
       {/* Brand Hero */}
       <div className="text-center space-y-2">
         <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl bg-gold text-ink-gold shadow-md">
@@ -41,16 +43,41 @@ export default function LoginPage() {
         </div>
         <h1 className="text-2xl font-black text-ink">Peebee Gas</h1>
         <p className="text-xs text-ink-500">
-          Petrol Station Merchant & Pump Attendant Portal
+          Petrol Station Merchant & Pump Attendant Terminal
         </p>
       </div>
 
       {/* Login Card */}
       <form onSubmit={handleLogin} className="home-card space-y-4">
+        {error && (
+          <div className="rounded-xl bg-red-50 p-3 text-xs font-semibold text-red-700 dark:bg-red-950/40 dark:text-red-300">
+            {error}
+          </div>
+        )}
+
+        <div>
+          <label className="text-xs font-bold text-ink-500">Petrol Station Outlet</label>
+          <div className="field-box mt-1 flex items-center gap-2 px-3 py-1">
+            <Building2 className="h-4 w-4 text-ink-500 shrink-0" />
+            <select
+              value={selectedOutletId}
+              onChange={(e) => setSelectedOutletId(e.target.value)}
+              className="w-full text-xs font-bold text-ink bg-transparent outline-none cursor-pointer"
+            >
+              <option value="">Select Station (Auto-detect from badge)</option>
+              {outlets.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
         <div>
           <label className="text-xs font-bold text-ink-500">Attendant Badge Code</label>
           <div className="field-box mt-1 flex items-center gap-2 px-3 py-1">
-            <UserCheck className="h-4 w-4 text-ink-500" />
+            <UserCheck className="h-4 w-4 text-ink-500 shrink-0" />
             <input
               required
               value={code}
@@ -62,21 +89,9 @@ export default function LoginPage() {
         </div>
 
         <div>
-          <label className="text-xs font-bold text-ink-500">Attendant Name (Optional)</label>
+          <label className="text-xs font-bold text-ink-500">Station Staff PIN</label>
           <div className="field-box mt-1 flex items-center gap-2 px-3 py-1">
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Kato Dennis"
-              className="w-full text-xs font-semibold text-ink outline-none"
-            />
-          </div>
-        </div>
-
-        <div>
-          <label className="text-xs font-bold text-ink-500">Station PIN</label>
-          <div className="field-box mt-1 flex items-center gap-2 px-3 py-1">
-            <KeyRound className="h-4 w-4 text-ink-500" />
+            <KeyRound className="h-4 w-4 text-ink-500 shrink-0" />
             <input
               type="password"
               value={pin}
@@ -90,39 +105,21 @@ export default function LoginPage() {
         <button
           type="submit"
           disabled={busy}
-          className="min-h-12 w-full rounded-2xl bg-gold font-bold text-ink-gold shadow transition hover:opacity-95"
+          className="min-h-12 w-full rounded-2xl bg-gold font-bold text-ink-gold shadow transition hover:opacity-95 disabled:opacity-50"
         >
-          {busy ? "Signing in…" : "Sign In to Pump Lane"}
+          {busy ? "Signing in…" : "Sign In to Pump Terminal"}
         </button>
 
-        {/* Quick Demo Sign In Chips */}
-        <div className="border-t border-[var(--border-faint)] pt-3 text-center space-y-2">
-          <span className="text-[11px] font-semibold text-ink-500">Fast Demo Sign In:</span>
-          <div className="flex justify-center gap-2">
-            <button
-              type="button"
-              onClick={() => handleDemoLogin("ATT-1001", "Kato Dennis")}
-              className="rounded-lg bg-gold/15 px-2.5 py-1 text-xs font-bold text-ink hover:bg-gold/25"
-            >
-              Kato (Total)
-            </button>
-            <button
-              type="button"
-              onClick={() => handleDemoLogin("ATT-1002", "Nakato Sarah")}
-              className="rounded-lg bg-gold/15 px-2.5 py-1 text-xs font-bold text-ink hover:bg-gold/25"
-            >
-              Sarah (Shell)
-            </button>
-          </div>
+        <div className="border-t border-[var(--border-faint)] pt-3 text-center">
+          <Link href="/apply" className="text-xs font-semibold text-gold hover:underline">
+            Register a new petrol station on Peebee →
+          </Link>
         </div>
       </form>
 
-      {/* Station Registration Link */}
-      <div className="text-center text-xs text-ink-500">
-        New petrol station dealer?{" "}
-        <Link href="/apply" className="font-bold text-gold hover:underline">
-          Register station here →
-        </Link>
+      <div className="flex items-center justify-center gap-2 text-center text-[11px] text-ink-500">
+        <ShieldCheck className="h-3.5 w-3.5 text-green" />
+        <span>Connected to live Peebee Gas Network</span>
       </div>
     </div>
   );
