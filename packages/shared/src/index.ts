@@ -239,6 +239,10 @@ export type {
   FuelCode,
   FuelReceipt,
   FuelShiftSummary,
+  RentalInspectionSlot,
+  RentalInspectionPhoto,
+  RentalInspection,
+  RentalInspectionSubmitInput,
 } from "./domain.js";
 
 export { NotificationSnapshots, installNotificationSound, observeNotificationSnapshot, playNotificationSound, resetNotificationSnapshots } from "./notification-sound.js";

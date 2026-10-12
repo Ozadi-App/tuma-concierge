@@ -2126,6 +2126,8 @@ export type CarBookingInput = {
   destinationLng: number;
   /** Booking for someone else — see RidePassenger. */
   passenger?: RidePassenger;
+  /** Cargo/moving items description (for cargo and truck bookings). */
+  cargoDescription?: string;
 };
 
 export type CarWallet = {
@@ -2190,6 +2192,46 @@ export type RentalVehicle = {
   lastServiceDate?: string | null;
 };
 
+export type RentalInspectionSlot = "front" | "rear" | "left" | "right" | "interior" | "odometer" | "fuel" | "damage_extra";
+
+export type RentalInspectionPhoto = {
+  id: string;
+  inspection_id?: string;
+  slot: RentalInspectionSlot;
+  photo_key?: string;
+  url?: string;
+  note: string | null;
+  device_timestamp: string | null;
+  created_at?: string;
+};
+
+export type RentalInspection = {
+  id: string;
+  rental_id: string;
+  phase: "pickup" | "return";
+  inspector_id: string;
+  inspector_role: "renter" | "owner" | "admin";
+  odometer_km: number | null;
+  fuel_level_percent: number | null;
+  notes: string | null;
+  completed_at: string;
+  photos: RentalInspectionPhoto[];
+};
+
+export type RentalInspectionSubmitInput = {
+  phase: "pickup" | "return";
+  odometerKm?: number;
+  fuelLevelPercent?: number;
+  notes?: string;
+  deviceTimestamp?: string;
+  photos?: Array<{
+    slot: RentalInspectionSlot;
+    note?: string;
+    deviceTimestamp?: string;
+    dataUrl?: string;
+  }>;
+};
+
 export type Rental = {
   id: string;
   vehicle_id: string;
@@ -2212,6 +2254,9 @@ export type Rental = {
   handed_over_at?: string | null;
   overtime_amount?: number;
   hourly_price?: number;
+  deposit_status?: "held" | "released" | "partly_forfeited" | "forfeited";
+  pickup_inspection?: RentalInspection | null;
+  return_inspection?: RentalInspection | null;
 };
 
 export type OwnerRentalVehicle = {

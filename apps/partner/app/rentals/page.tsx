@@ -1,9 +1,10 @@
 "use client";
 
-import type { OwnerRentalVehicle, Rental } from "@peebee/shared";
+import type { OwnerRentalVehicle, Rental, RentalInspection } from "@peebee/shared";
 import { useCallback, useEffect, useState } from "react";
 import { api, errorMessage } from "../../lib/api";
 import { useAuth } from "../../lib/auth-context";
+import { InspectionWalkaroundModal } from "../../components/InspectionWalkaroundModal";
 
 const ugx = (n: number | null) => `UGX ${Number(n ?? 0).toLocaleString("en-UG")}`;
 const field = "min-h-12 w-full rounded-xl border border-[var(--border-faint)] px-3";
@@ -22,6 +23,34 @@ export default function RentalsPage() {
   const [claims, setClaims] = useState<Record<string, string>>({});
   const [error, setError] = useState("");
   const [now, setNow] = useState(Date.now());
+  const [inspectionModal, setInspectionModal] = useState<{
+    rentalId: string;
+    plate?: string | null;
+    renterName?: string | null;
+    phase: "pickup" | "return";
+    readOnly?: boolean;
+    existing?: RentalInspection | null;
+    comparison?: RentalInspection | null;
+  } | null>(null);
+
+  const openInspection = async (r: Rental, phase: "pickup" | "return") => {
+    try {
+      const res = await api.getRentalInspections(r.id);
+      const existing = phase === "pickup" ? res.pickup : res.return;
+      const comparison = phase === "return" ? res.pickup : null;
+      setInspectionModal({
+        rentalId: r.id,
+        plate: r.plate,
+        renterName: r.renter_name,
+        phase,
+        existing,
+        comparison,
+        readOnly: r.status === "completed",
+      });
+    } catch (err) {
+      setError(errorMessage(err));
+    }
+  };
 
   const load = useCallback(() => {
     api.ownerRentals().then((r) => { setVehicles(r.vehicles); setRentals(r.rentals); setUnavailable(false); }).catch(() => setUnavailable(true));
@@ -92,8 +121,23 @@ export default function RentalsPage() {
       {rentals.length === 0 && <p className="text-sm text-ink-500">None yet.</p>}
       {rentals.map((r) => (
         <section key={r.id} className="home-card space-y-2">
-          <p className="text-sm font-bold text-ink">{r.plate} · {r.renter_name} <span className="font-normal text-ink-500">· {r.status}</span></p>
-          <p className="text-xs text-ink-500">{when(r.starts_at)} → {when(r.ends_at)} · {r.period_type?.replace("_", " ") ?? `${r.days} day${r.days === 1 ? "" : "s"}`}</p>
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <p className="text-sm font-bold text-ink">{r.plate} · {r.renter_name} <span className="font-normal text-ink-500">· {r.status}</span></p>
+              <p className="text-xs text-ink-500">{when(r.starts_at)} → {when(r.ends_at)} · {r.period_type?.replace("_", " ") ?? `${r.days} day${r.days === 1 ? "" : "s"}`}</p>
+            </div>
+            {r.deposit_status && (
+              <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-bold ${
+                r.deposit_status === "held"
+                  ? "bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300"
+                  : r.deposit_status === "released"
+                  ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300"
+                  : "bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300"
+              }`}>
+                Deposit {r.deposit_status === "held" ? "in escrow" : r.deposit_status.replace("_", " ")}
+              </span>
+            )}
+          </div>
           {r.status === "active" && r.handed_over_at && <p className="text-xs font-semibold text-ink">Timer: {Math.max(0, Math.floor((now - new Date(r.handed_over_at).getTime()) / 3_600_000))} hours elapsed since handover {when(r.handed_over_at)}. Due {when(r.ends_at)}; configured grace, then {ugx(r.hourly_price ?? 0)} per started extra hour.</p>}
           <p className="text-xs text-ink-500">Rent {ugx(r.rent_amount)} · deposit {ugx(r.deposit_amount)} · licence {r.licence_number} (to {r.licence_expiry})</p>
           {r.status === "requested" && (
@@ -103,18 +147,51 @@ export default function RentalsPage() {
             </div>
           )}
           {r.status === "approved" && (
-            <button type="button" onClick={() => act(() => api.handoverRental(r.id))} className="min-h-10 w-full rounded-full bg-gold px-3 text-sm font-bold text-ink-gold">Car handed over</button>
+            <div className="space-y-2">
+              <button type="button" onClick={() => openInspection(r, "pickup")} className="min-h-10 w-full rounded-full bg-gold/15 px-3 text-sm font-bold text-ink hover:bg-gold/25">
+                📸 Pickup Walkaround Inspection (Photos)
+              </button>
+              <button type="button" onClick={() => act(() => api.handoverRental(r.id))} className="min-h-10 w-full rounded-full bg-gold px-3 text-sm font-bold text-ink-gold">
+                Confirm Handover to Renter
+              </button>
+            </div>
           )}
           {r.status === "active" && (
             <div className="space-y-2">
+              <button type="button" onClick={() => openInspection(r, "return")} className="min-h-10 w-full rounded-full bg-gold/15 px-3 text-sm font-bold text-ink hover:bg-gold/25">
+                📸 Return Walkaround (Compare with Pickup)
+              </button>
               <input inputMode="numeric" value={claims[r.id] ?? ""} onChange={(e) => setClaims((x) => ({ ...x, [r.id]: e.target.value.replace(/\D/g, "") }))} placeholder="Damage claim (UGX), leave empty if none" className={field} />
-              <button type="button" onClick={() => act(() => api.returnRental(r.id, claims[r.id] ? Number(claims[r.id]) : undefined))} className="min-h-10 w-full rounded-full bg-gold px-3 text-sm font-bold text-ink-gold">Car returned</button>
+              <button type="button" onClick={() => act(() => api.returnRental(r.id, claims[r.id] ? Number(claims[r.id]) : undefined))} className="min-h-10 w-full rounded-full bg-gold px-3 text-sm font-bold text-ink-gold">Car returned & settle rental</button>
+            </div>
+          )}
+          {(r.status === "completed" || r.status === "disputed") && (
+            <div className="pt-1">
+              <button type="button" onClick={() => openInspection(r, "return")} className="min-h-9 rounded-full bg-gold/15 px-3 text-xs font-bold text-ink hover:bg-gold/25">
+                🔍 View Inspection Photos
+              </button>
             </div>
           )}
           {r.status === "disputed" && <p className="text-xs text-ink-500">Peebee is reviewing your damage claim of {ugx(r.damage_claim)}.</p>}
           {r.status === "completed" && <p className="text-xs font-semibold text-ink">You received {ugx(r.owner_amount)}{Number(r.overtime_amount ?? 0) > 0 ? `, including ${ugx(Number(r.overtime_amount))} overtime` : ""}</p>}
         </section>
       ))}
+
+      {inspectionModal && (
+        <InspectionWalkaroundModal
+          rentalId={inspectionModal.rentalId}
+          plate={inspectionModal.plate}
+          renterName={inspectionModal.renterName}
+          phase={inspectionModal.phase}
+          readOnly={inspectionModal.readOnly}
+          existingInspection={inspectionModal.existing}
+          comparisonInspection={inspectionModal.comparison}
+          onClose={() => setInspectionModal(null)}
+          onSuccess={() => {
+            load();
+          }}
+        />
+      )}
     </div>
   );
 }

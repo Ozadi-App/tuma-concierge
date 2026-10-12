@@ -1,6 +1,6 @@
 "use client";
 
-import type { Rental, RentalVehicle, SelfDriveResidenceMethod, SelfDriveRenterKycProfile } from "@peebee/shared";
+import type { Rental, RentalInspection, RentalVehicle, SelfDriveResidenceMethod, SelfDriveRenterKycProfile } from "@peebee/shared";
 import { ChevronLeft } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
@@ -10,6 +10,7 @@ import { useRoadRoute } from "../../lib/useRoadRoute";
 import { RentalVehicleGallery } from "../../components/RentalVehicleGallery";
 import { RentalCarDetails } from "../../components/RentalCarDetails";
 import { loadSelfDriveRoute } from "../../lib/selfdrive-route";
+import { InspectionWalkaroundModal } from "../../components/InspectionWalkaroundModal";
 
 const ugx = (n: number | null) => `UGX ${Number(n ?? 0).toLocaleString("en-UG")}`;
 const field = "w-full rounded-xl border border-[var(--border-faint)] px-3 py-2.5 text-[15px] outline-none focus:border-gold";
@@ -59,6 +60,38 @@ export default function RentPage() {
   const [tenancyStart, setTenancyStart] = useState("");
   const [tenancyEnd, setTenancyEnd] = useState("");
   const [kycBusy, setKycBusy] = useState(false);
+  const [inspectionModal, setInspectionModal] = useState<{
+    rentalId: string;
+    plate?: string | null;
+    vehicleName?: string | null;
+    phase: "pickup" | "return";
+    readOnly?: boolean;
+    existing?: RentalInspection | null;
+    comparison?: RentalInspection | null;
+  } | null>(null);
+
+  const openInspection = async (r: Rental, phase: "pickup" | "return") => {
+    setBusy(`insp_${r.id}`);
+    try {
+      const res = await api.getRentalInspections(r.id);
+      const existing = phase === "pickup" ? res.pickup : res.return;
+      const comparison = phase === "return" ? res.pickup : null;
+      setInspectionModal({
+        rentalId: r.id,
+        plate: r.plate,
+        vehicleName: r.vehicle,
+        phase,
+        existing,
+        comparison,
+        readOnly: r.status === "completed" || (phase === "pickup" && r.status === "active"),
+      });
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const roadRoute = useRoadRoute(route?.pickup?.lat, route?.pickup?.lng, route?.destination.lat, route?.destination.lng);
   const roundTripKm = roadRoute ? roadRoute.route.distanceMeters / 1000 * 2 : null;
   const rentalEnd = () => rentalEndAt(startsAt, periodType, hourCount);
@@ -308,20 +341,84 @@ export default function RentPage() {
 
       {mine.length > 0 && <h2 className="pt-2 text-lg font-bold text-ink">My rentals</h2>}
       {mine.map((r) => (
-        <section key={r.id} className="home-card space-y-1">
-          <p className="text-sm font-bold text-ink">{r.vehicle ?? r.plate} <span className="font-normal text-ink-500">· {r.status}</span></p>
-          <p className="text-xs text-ink-500">{when(r.starts_at)} → {when(r.ends_at)} · owner {r.owner_name} · {r.period_type?.replace("_", " ") ?? "full day"}</p>
+        <section key={r.id} className="home-card space-y-2">
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <p className="text-sm font-bold text-ink">{r.vehicle ?? r.plate} <span className="font-normal text-ink-500">· {r.status}</span></p>
+              <p className="text-xs text-ink-500">{when(r.starts_at)} → {when(r.ends_at)} · owner {r.owner_name} · {r.period_type?.replace("_", " ") ?? "full day"}</p>
+            </div>
+            {r.deposit_status && (
+              <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-bold ${
+                r.deposit_status === "held"
+                  ? "bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300"
+                  : r.deposit_status === "released"
+                  ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300"
+                  : "bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300"
+              }`}>
+                Deposit {r.deposit_status === "held" ? "in escrow" : r.deposit_status.replace("_", " ")}
+              </span>
+            )}
+          </div>
           {r.handed_over_at && r.status === "active" && <p className="text-xs font-semibold text-ink">Timer: {Math.max(0, Math.floor((now - new Date(r.handed_over_at).getTime()) / 3_600_000))} hours elapsed since handover at {when(r.handed_over_at)}. Due {when(r.ends_at)}; the configured grace period applies{r.hourly_price ? `, then ${ugx(r.hourly_price)} per started hour.` : "."}</p>}
           {r.status === "active" && (r.vehicle_id.startsWith("demo-rent-") || r.vehicle_id.startsWith("practice-rent-")) && <button type="button" onClick={() => finishDemo(r.id)} className="min-h-10 w-full rounded-full bg-gold px-3 text-sm font-bold text-ink-gold">Return car and settle rental</button>}
           <p className="text-xs text-ink-500">Rent {ugx(r.rent_amount)} · deposit {ugx(r.deposit_amount)}</p>
           {r.status === "completed" && r.refund_amount != null && <p className="text-xs font-semibold text-ink">Deposit returned: {ugx(r.refund_amount)}</p>}
           {r.status === "completed" && Number(r.overtime_amount ?? 0) > 0 && <p className="text-xs text-ink-500">Overtime fee settled: {ugx(Number(r.overtime_amount))}</p>}
           {r.status === "disputed" && <p className="text-xs text-ink-500">The owner reported damage. Peebee is reviewing it before your deposit is settled.</p>}
-          {(r.status === "requested" || r.status === "approved") && (
-            <button type="button" onClick={() => cancel(r.id)} className="text-sm font-bold text-gold">Cancel and get my money back</button>
-          )}
+
+          <div className="flex flex-wrap gap-2 pt-1">
+            {(r.status === "approved" || r.status === "active") && (
+              <button
+                type="button"
+                disabled={busy === `insp_${r.id}`}
+                onClick={() => openInspection(r, "pickup")}
+                className="min-h-9 rounded-full bg-gold/15 px-3 text-xs font-bold text-ink hover:bg-gold/25"
+              >
+                📸 Pickup Inspection (Photos)
+              </button>
+            )}
+            {r.status === "active" && (
+              <button
+                type="button"
+                disabled={busy === `insp_${r.id}`}
+                onClick={() => openInspection(r, "return")}
+                className="min-h-9 rounded-full bg-gold/15 px-3 text-xs font-bold text-ink hover:bg-gold/25"
+              >
+                📸 Return Inspection (Photos)
+              </button>
+            )}
+            {(r.status === "completed" || r.status === "disputed") && (
+              <button
+                type="button"
+                disabled={busy === `insp_${r.id}`}
+                onClick={() => openInspection(r, "return")}
+                className="min-h-9 rounded-full bg-gold/15 px-3 text-xs font-bold text-ink hover:bg-gold/25"
+              >
+                🔍 View Inspection Photos
+              </button>
+            )}
+            {(r.status === "requested" || r.status === "approved") && (
+              <button type="button" onClick={() => cancel(r.id)} className="text-sm font-bold text-gold">Cancel and get my money back</button>
+            )}
+          </div>
         </section>
       ))}
+
+      {inspectionModal && (
+        <InspectionWalkaroundModal
+          rentalId={inspectionModal.rentalId}
+          plate={inspectionModal.plate}
+          vehicleName={inspectionModal.vehicleName}
+          phase={inspectionModal.phase}
+          readOnly={inspectionModal.readOnly}
+          existingInspection={inspectionModal.existing}
+          comparisonInspection={inspectionModal.comparison}
+          onClose={() => setInspectionModal(null)}
+          onSuccess={() => {
+            loadMine();
+          }}
+        />
+      )}
     </div>
   );
 }
