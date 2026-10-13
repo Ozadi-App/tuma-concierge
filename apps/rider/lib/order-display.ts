@@ -37,10 +37,15 @@ export function formatUgx(amount: number | null | undefined): string {
 
 /** Takes only the fields it reads, so it works for both a full order
  * and the deliberately thinner AvailableJob from the open-jobs feed. */
-type TitleableOrder = Pick<OrderRow, "id" | "type" | "customer_name" | "destination_area" | "is_ride">;
+type TitleableOrder = Pick<OrderRow, "id" | "type" | "customer_name" | "destination_area" | "is_ride"> & {
+  store_name?: string | null;
+  restaurant_name?: string | null;
+};
 
 export function jobTitle(order: TitleableOrder): string {
   if (order.type !== "parcel") {
+    if (order.store_name) return `${order.store_name} Order`;
+    if (order.restaurant_name) return `${order.restaurant_name} Order`;
     const firstName = order.customer_name?.trim().split(/\s+/)[0];
     if (firstName) return `${firstName}'s List`;
   }

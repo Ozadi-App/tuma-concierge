@@ -96,6 +96,11 @@ export type OrderRow = {
    * apps/api/src/db/migrations/0034_order_restaurant.sql). */
   restaurant_id: string | null;
   restaurant_name?: string | null;
+  /** Set only for marketplace store / grocery orders — type stays 'shopping' */
+  store_id?: string | null;
+  store_name?: string | null;
+  store_category?: "groceries" | "stores" | string | null;
+  store_address?: string | null;
   /** Available to the assigned rider for a food order so the correct outlet is unambiguous. */
   restaurant_outlet_code?: string | null;
   restaurant_outlet_name?: string | null;
@@ -171,6 +176,10 @@ export type AvailableJob = Pick<
   customer_name: string | null;
   /** Only set for food orders (restaurant_id != null). */
   restaurant_name: string | null;
+  /** Only set for marketplace store / grocery orders (store_id != null). */
+  store_id?: string | null;
+  store_name?: string | null;
+  store_category?: string | null;
   distanceKm: number | null;
   outOfServiceRange: boolean;
   /** Set once this rider has already applied — only meaningful for "nearest_window"/"customer_selects"

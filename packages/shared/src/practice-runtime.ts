@@ -629,6 +629,42 @@ function handlePracticeRequest(role: PracticeRole, path: string, method: string,
     save({ hasOrder: true, riderClaimed: false, stage: "Create", orderType: type, isRide: body.isRide === true, paymentRail: body.paymentRail === "float" ? "float" : "escrow", total: type === "shopping" ? estimated + deliveryFee : deliveryFee, deliveryFee, destinationArea: String(body.destinationArea ?? "Entebbe City"), destinationAddress: String(body.destinationAddress ?? "Kitoro Road"), merchantPaymentStatus: "none", autoAdvanceAt: null });
     return jsonResponse({ order: orderFor(state) });
   }
+  if (role === "customer" && method === "POST" && path === "/v1/marketplace/checkout") {
+    const rawItems = Array.isArray(body.items) ? (body.items as Array<Record<string, unknown>>) : [];
+    const items = rawItems.map((item, index) => ({
+      id: `practice-item-${index + 1}`,
+      name: String(item.title ?? `Item ${index + 1}`),
+      quantity: Number(item.quantity ?? 1),
+      unitPrice: Number(item.price ?? 0),
+      note: typeof item.variantTitle === "string" ? item.variantTitle : null,
+    }));
+    const estimated = items.reduce((sum, it) => sum + it.unitPrice * it.quantity, 0);
+    const deliveryFee = 5_000;
+    const storeId = String(rawItems[0]?.storeId ?? "store_demo_fresh_mart");
+    const demoStore = DEMO_MARKETPLACE_STORES.find((s) => s.id === storeId);
+    save({
+      items,
+      hasOrder: true,
+      riderClaimed: false,
+      stage: body.paymentRail === "float" ? "Match" : "Create",
+      orderType: "shopping",
+      isRide: false,
+      paymentRail: body.paymentRail === "float" ? "float" : "escrow",
+      total: estimated + deliveryFee,
+      deliveryFee,
+      destinationArea: String(body.destinationArea ?? "Kampala"),
+      destinationAddress: String(body.destinationAddress ?? "Kampala"),
+      merchantPaymentStatus: "none",
+      autoAdvanceAt: null,
+    });
+    const order = {
+      ...orderFor(state),
+      store_id: storeId,
+      store_name: demoStore?.name ?? "Marketplace Store",
+      store_category: demoStore?.category ?? "stores",
+    };
+    return jsonResponse({ ok: true, orders: [order], order }, 201);
+  }
   if (role === "customer" && method === "POST" && path === "/v1/car/bookings") {
     const vehicleSize = body.vehicleSize === "large" ? "large" : "normal";
     const serviceTier = body.serviceTier === "comfort" ? "comfort" : "convenient";

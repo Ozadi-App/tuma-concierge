@@ -348,11 +348,15 @@ riderRoutes.get("/riders/jobs/available", requireAuth, requireRole("rider"), asy
 
   // Peebee Car rides are for car drivers only — never in the boda feed.
   const carFilter = (await hasTable("car_bookings")) ? "AND NOT EXISTS (SELECT 1 FROM car_bookings cb WHERE cb.order_id = o.id)" : "";
+  const supportsStoreId = (await hasColumn("orders", "store_id")) && (await hasTable("stores"));
+  const storeJoin = supportsStoreId ? "LEFT JOIN stores st ON st.id = o.store_id" : "";
+  const storeFields = supportsStoreId ? "st.name as store_name, st.category as store_category," : "";
   const [res, appliedRes] = await Promise.all([
     db.execute({
-      sql: `SELECT o.*, u.name as customer_name, r.name as restaurant_name, ${bundleCount} FROM orders o
+      sql: `SELECT o.*, u.name as customer_name, r.name as restaurant_name, ${storeFields} ${bundleCount} FROM orders o
             LEFT JOIN users u ON u.id = o.customer_id
             LEFT JOIN restaurants r ON r.id = o.restaurant_id
+            ${storeJoin}
             WHERE o.rider_id IS NULL AND o.stage IN ('Create', 'Match') AND o.environment = ? ${carFilter}
             AND o.id NOT IN (SELECT order_id FROM order_rider_exclusions WHERE rider_id = ?) ${bundleFilter} ${bundleHoldFilter}
             ORDER BY o.created_at ASC`,

@@ -11,6 +11,8 @@ export interface DemoStore {
   phone: string;
   whatsapp_number: string;
   address: string;
+  lat?: number;
+  lng?: number;
   is_open: number;
   delivery_enabled: number;
   pickup_enabled: number;
@@ -88,6 +90,8 @@ export const DEMO_MARKETPLACE_STORES: DemoStore[] = [
     phone: "+256 700 123 456",
     whatsapp_number: "+256 700 123 456",
     address: "Acacia Mall Ground Floor, Kololo",
+    lat: 0.3353,
+    lng: 32.5857,
     is_open: 1,
     delivery_enabled: 1,
     pickup_enabled: 1,
@@ -112,6 +116,8 @@ export const DEMO_MARKETPLACE_STORES: DemoStore[] = [
     phone: "+256 701 445 566",
     whatsapp_number: "+256 701 445 566",
     address: "Bukoto Street, Kamwokya",
+    lat: 0.3421,
+    lng: 32.5872,
     is_open: 1,
     delivery_enabled: 1,
     pickup_enabled: 1,
@@ -136,6 +142,8 @@ export const DEMO_MARKETPLACE_STORES: DemoStore[] = [
     phone: "+256 772 987 654",
     whatsapp_number: "+256 772 987 654",
     address: "Garden City Mall Level 2, Kampala",
+    lat: 0.3186,
+    lng: 32.5898,
     is_open: 1,
     delivery_enabled: 1,
     pickup_enabled: 1,
@@ -160,6 +168,8 @@ export const DEMO_MARKETPLACE_STORES: DemoStore[] = [
     phone: "+256 750 333 444",
     whatsapp_number: "+256 750 333 444",
     address: "Pioneer Mall, Kampala CBD",
+    lat: 0.3138,
+    lng: 32.5815,
     is_open: 1,
     delivery_enabled: 1,
     pickup_enabled: 1,
@@ -184,6 +194,8 @@ export const DEMO_MARKETPLACE_STORES: DemoStore[] = [
     phone: "+256 788 223 344",
     whatsapp_number: "+256 788 223 344",
     address: "Village Mall Bugolobi, Level 1",
+    lat: 0.3142,
+    lng: 32.6185,
     is_open: 1,
     delivery_enabled: 1,
     pickup_enabled: 1,
@@ -208,6 +220,8 @@ export const DEMO_MARKETPLACE_STORES: DemoStore[] = [
     phone: "+256 702 889 900",
     whatsapp_number: "+256 702 889 900",
     address: "Arena Mall, Nsambya",
+    lat: 0.2985,
+    lng: 32.5852,
     is_open: 1,
     delivery_enabled: 1,
     pickup_enabled: 1,

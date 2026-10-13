@@ -270,11 +270,15 @@ export default function JobDetailPage() {
             )}
           </p>
         )}
-        {order.type === "parcel" && order.pickup_area && (
+        {(order.store_name || order.restaurant_name || order.pickup_address || (order.type === "parcel" && order.pickup_area)) && (
           <p className="flex items-center gap-1.5 text-sm text-ink-500">
             <MapPin className="h-3.5 w-3.5 text-ink-500" strokeWidth={2} aria-hidden />
-            {t("job_pickup", { area: order.pickup_area })}
-            {order.pickup_address ? ` · ${order.pickup_address}` : ""}
+            <span className="font-semibold text-ink">
+              {order.type === "parcel"
+                ? t("job_pickup", { area: order.pickup_area ?? "" })
+                : `Pickup: ${order.store_name ?? order.restaurant_name ?? order.pickup_address}`}
+            </span>
+            {(order.store_name || order.restaurant_name) && order.pickup_address ? ` · ${order.pickup_address}` : ""}
           </p>
         )}
         {order.destination_area && (
