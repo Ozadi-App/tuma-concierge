@@ -5,9 +5,9 @@ import { ParcelModal } from "./home/ParcelModal";
 import { RideModal } from "./home/RideModal";
 import { ShoppingListModal } from "./home/ShoppingListModal";
 
-export function StandaloneRideBooking({ mode }: { mode: "boda" | "car" }) {
+export function StandaloneRideBooking({ mode, cargo = false }: { mode: "boda" | "car"; cargo?: boolean }) {
   const router = useRouter();
-  return <RideModal initialMode={mode} serviceLocked onClose={() => router.push("/")} />;
+  return <RideModal initialMode={mode} initialCargo={cargo} serviceLocked onClose={() => router.push("/")} />;
 }
 
 export function StandaloneShoplist() {
