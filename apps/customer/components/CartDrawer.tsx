@@ -8,7 +8,6 @@ import {
   ArrowLeft,
   Check,
   ChevronRight,
-  CreditCard,
   MapPin,
   Minus,
   Plus,
@@ -54,7 +53,6 @@ export function CartDrawer({
   const [portalReady, setPortalReady] = useState(false);
   const [viewMode, setViewMode] = useState<"items" | "checkout">("items");
   const [deliveryAddress, setDeliveryAddress] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState<"momo" | "airtel" | "wallet" | "cod">("momo");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
 
@@ -96,7 +94,6 @@ export function CartDrawer({
     const cached = getCachedCustomerCoordinates();
 
     try {
-      const paymentRail = paymentMethod === "cod" ? "float" : "escrow";
       const res = await api.checkoutMarketplace({
         items: selectedItems.map((it) => ({
           productId: it.productId,
@@ -108,9 +105,8 @@ export function CartDrawer({
           variantTitle: it.variantTitle,
           imageUrl: it.imageUrl,
         })),
-        paymentRail,
-        paymentMethod,
-        destinationAddress: deliveryAddress.trim() || "Acacia Mall / Kololo, Kampala",
+        paymentRail: "escrow",
+        destinationAddress: deliveryAddress.trim() || cached.label || "Kampala",
         destinationArea: "Kampala",
         destinationLat: cached.lat || 0.3353,
         destinationLng: cached.lng || 32.5857,
@@ -121,12 +117,10 @@ export function CartDrawer({
       setIsSubmitting(false);
       onClose();
 
-      if (paymentRail === "escrow" && firstOrder?.id) {
+      if (firstOrder?.id) {
         router.push(`/orders/${firstOrder.id}/pay`);
-      } else if (firstOrder?.id) {
-        router.push(`/orders/${firstOrder.id}`);
       } else {
-        router.push("/cart");
+        router.push("/orders");
       }
     } catch (err) {
       setCheckoutError(errorMessage(err));
@@ -363,71 +357,6 @@ export function CartDrawer({
                 </div>
               </div>
 
-              {/* Payment Method Selection */}
-              <div className="space-y-2">
-                <label className="text-xs font-bold uppercase tracking-wider text-ink-500 flex items-center gap-1.5">
-                  <Wallet className="h-3.5 w-3.5 text-gold" />
-                  <span>Payment Method</span>
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setPaymentMethod("momo")}
-                    className={`flex items-center gap-2 p-3 rounded-2xl border text-left text-xs font-bold transition active:scale-95 ${
-                      paymentMethod === "momo"
-                        ? "border-gold bg-gold/15 text-ink shadow-xs"
-                        : "border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] text-ink-500"
-                    }`}
-                  >
-                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-amber-400 text-ink text-[10px] font-black shrink-0">
-                      M
-                    </span>
-                    <span className="truncate">MTN MoMo</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setPaymentMethod("airtel")}
-                    className={`flex items-center gap-2 p-3 rounded-2xl border text-left text-xs font-bold transition active:scale-95 ${
-                      paymentMethod === "airtel"
-                        ? "border-gold bg-gold/15 text-ink shadow-xs"
-                        : "border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] text-ink-500"
-                    }`}
-                  >
-                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-red-600 text-white text-[10px] font-black shrink-0">
-                      A
-                    </span>
-                    <span className="truncate">Airtel Money</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setPaymentMethod("wallet")}
-                    className={`flex items-center gap-2 p-3 rounded-2xl border text-left text-xs font-bold transition active:scale-95 ${
-                      paymentMethod === "wallet"
-                        ? "border-gold bg-gold/15 text-ink shadow-xs"
-                        : "border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] text-ink-500"
-                    }`}
-                  >
-                    <Wallet className="h-5 w-5 text-gold shrink-0" />
-                    <span className="truncate">Peebee Wallet</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setPaymentMethod("cod")}
-                    className={`flex items-center gap-2 p-3 rounded-2xl border text-left text-xs font-bold transition active:scale-95 ${
-                      paymentMethod === "cod"
-                        ? "border-gold bg-gold/15 text-ink shadow-xs"
-                        : "border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] text-ink-500"
-                    }`}
-                  >
-                    <CreditCard className="h-5 w-5 text-emerald-600 shrink-0" />
-                    <span className="truncate">Cash on Delivery</span>
-                  </button>
-                </div>
-              </div>
-
               {/* Order breakdown */}
               <div className="rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] p-3.5 space-y-2 text-xs">
                 <div className="flex justify-between text-ink-500">
@@ -505,7 +434,7 @@ export function CartDrawer({
                   onClick={handleCheckoutSubmit}
                   className="w-full py-4 px-5 rounded-full bg-gold text-ink-gold font-black text-sm shadow-lg hover:brightness-105 active:scale-98 transition flex items-center justify-between disabled:opacity-50"
                 >
-                  <span>{isSubmitting ? "Placing Order…" : "Confirm Order"}</span>
+                  <span>{isSubmitting ? "Creating Order…" : "Next: Payment"}</span>
                   <span className="font-mono font-extrabold">
                     UGX {total.toLocaleString()}
                   </span>

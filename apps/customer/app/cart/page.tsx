@@ -20,6 +20,7 @@ import {
 import { useCart, CartItem } from "../../lib/cart";
 import { ProductImage } from "../../components/ProductImage";
 import { api, errorMessage } from "../../lib/api";
+import { getCachedCustomerCoordinates } from "../../lib/location";
 
 export default function CartPage() {
   const router = useRouter();
@@ -39,27 +40,17 @@ export default function CartPage() {
     clearCart,
   } = useCart();
 
-  const [checkoutModalOpen, setCheckoutModalOpen] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<"momo" | "airtel" | "wallet" | "cod">("momo");
-  const [deliveryAddress, setDeliveryAddress] = useState("Acacia Mall / Kololo, Kampala");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
-  const [orderSuccess, setOrderSuccess] = useState<string | null>(null);
 
-  const allSelected = items.length > 0 && items.every((i) => i.selected);
-
-  const handleCheckout = () => {
-    if (selectedItems.length === 0) return;
-    setCheckoutError(null);
-    setCheckoutModalOpen(true);
-  };
-
-  const handleConfirmOrder = async () => {
-    if (selectedItems.length === 0) return;
+  const handleCheckout = async () => {
+    if (selectedItems.length === 0 || isSubmitting) return;
     setIsSubmitting(true);
     setCheckoutError(null);
+
+    const cached = getCachedCustomerCoordinates();
+
     try {
-      const paymentRail = paymentMethod === "cod" ? "float" : "escrow";
       const res = await api.checkoutMarketplace({
         items: selectedItems.map((it) => ({
           productId: it.productId,
@@ -71,24 +62,21 @@ export default function CartPage() {
           variantTitle: it.variantTitle,
           imageUrl: it.imageUrl,
         })),
-        paymentRail,
-        paymentMethod,
-        destinationAddress: deliveryAddress.trim() || "Acacia Mall / Kololo, Kampala",
+        paymentRail: "escrow",
+        destinationAddress: cached.label || "Kampala",
         destinationArea: "Kampala",
-        destinationLat: 0.3353,
-        destinationLng: 32.5857,
+        destinationLat: cached.lat || 0.3353,
+        destinationLng: cached.lng || 32.5857,
       });
 
       const firstOrder = res.order ?? res.orders?.[0];
       clearCart();
       setIsSubmitting(false);
 
-      if (paymentRail === "escrow" && firstOrder?.id) {
+      if (firstOrder?.id) {
         router.push(`/orders/${firstOrder.id}/pay`);
-      } else if (firstOrder?.id) {
-        router.push(`/orders/${firstOrder.id}`);
       } else {
-        setOrderSuccess("CONFIRMED");
+        router.push("/orders");
       }
     } catch (err) {
       setCheckoutError(errorMessage(err));
@@ -96,61 +84,12 @@ export default function CartPage() {
     }
   };
 
+  const allSelected = items.length > 0 && items.every((i) => i.selected);
+
   if (!mounted) {
     return (
       <div className="flex min-h-[70vh] items-center justify-center p-4">
         <div className="h-9 w-9 animate-spin rounded-full border-3 border-gold border-t-transparent" />
-      </div>
-    );
-  }
-
-  // Success State
-  if (orderSuccess) {
-    return (
-      <div className="min-h-screen bg-[rgb(var(--color-bg))] flex items-center justify-center p-4 text-ink">
-        <div className="w-full max-w-md bg-surface-card border border-surface-border rounded-3xl p-6 text-center space-y-4 shadow-xl animate-in zoom-in-95 duration-200">
-          <div className="w-16 h-16 mx-auto rounded-full bg-emerald-500/20 text-emerald-500 flex items-center justify-center">
-            <Check className="w-9 h-9 stroke-[3]" />
-          </div>
-          <h1 className="text-2xl font-black tracking-tight text-ink">Order Placed!</h1>
-          <p className="text-xs text-ink-500">
-            Thank you for your order. The store has received your request and is packing your items now.
-          </p>
-
-          <div className="bg-surface-subtle border border-surface-border rounded-2xl p-3.5 text-xs text-left space-y-1.5">
-            <div className="flex justify-between">
-              <span className="text-ink-500 font-semibold">Order ID</span>
-              <span className="font-mono font-bold text-ink">{orderSuccess}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-ink-500 font-semibold">Delivery To</span>
-              <span className="font-bold text-ink truncate max-w-[200px]">{deliveryAddress}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-ink-500 font-semibold">Payment</span>
-              <span className="font-bold text-ink uppercase">{paymentMethod}</span>
-            </div>
-            <div className="flex justify-between pt-1 border-t border-surface-border">
-              <span className="font-bold text-ink">Total Paid</span>
-              <span className="font-black text-gold">UGX {total.toLocaleString()}</span>
-            </div>
-          </div>
-
-          <div className="pt-2 space-y-2">
-            <Link
-              href="/orders"
-              className="block w-full py-3.5 px-4 rounded-full bg-ink text-cream font-bold text-xs uppercase tracking-wider hover:bg-ink/90 active:scale-98 transition shadow-md"
-            >
-              Track Order
-            </Link>
-            <Link
-              href="/stores"
-              className="block w-full py-3 px-4 rounded-full bg-surface-subtle border border-surface-border text-ink-700 font-bold text-xs uppercase tracking-wider hover:bg-surface-card active:scale-98 transition"
-            >
-              Continue Shopping
-            </Link>
-          </div>
-        </div>
       </div>
     );
   }
@@ -381,143 +320,22 @@ export default function CartPage() {
         ========================================================================= */}
         {items.length > 0 && (
           <div className="fixed bottom-0 inset-x-0 z-40 bg-[rgb(var(--color-bg))]/90 backdrop-blur-md border-t border-surface-border p-4">
-            <div className="mx-auto max-w-md">
+            <div className="mx-auto max-w-md space-y-2">
+              {checkoutError && (
+                <div className="rounded-2xl bg-red-500/10 border border-red-500/20 p-2.5 text-xs font-semibold text-red-600 text-center">
+                  {checkoutError}
+                </div>
+              )}
               <button
                 type="button"
-                disabled={selectedCount === 0}
+                disabled={selectedCount === 0 || isSubmitting}
                 onClick={handleCheckout}
                 className="w-full py-4 px-6 rounded-full bg-ink text-cream hover:bg-ink/90 disabled:opacity-50 disabled:pointer-events-none active:scale-[0.98] transition font-bold text-sm sm:text-base shadow-xl flex items-center justify-between"
               >
-                <span>Proceed to Checkout</span>
+                <span>{isSubmitting ? "Creating Order…" : "Next: Payment"}</span>
                 <span className="font-black text-gold">
                   UGX {total.toLocaleString()}
                 </span>
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* =========================================================================
-            CHECKOUT MODAL / PAYMENT SHEET
-        ========================================================================= */}
-        {checkoutModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-xs p-0 sm:p-4">
-            <div className="w-full max-w-md rounded-t-[36px] sm:rounded-[36px] bg-surface-card border border-surface-border shadow-2xl p-5 space-y-4 animate-in slide-in-from-bottom duration-200">
-              <div className="flex items-center justify-between">
-                <h3 className="text-base font-black text-ink">Confirm & Pay</h3>
-                <button
-                  type="button"
-                  onClick={() => setCheckoutModalOpen(false)}
-                  className="text-xs font-bold text-ink-500 hover:text-ink"
-                >
-                  Cancel
-                </button>
-              </div>
-
-              {/* Delivery Address */}
-              <div>
-                <label className="text-[11px] font-bold uppercase tracking-wider text-ink-500 block mb-1">
-                  Delivery Location
-                </label>
-                <div className="field-box flex items-center gap-2 rounded-2xl p-3 border border-surface-border">
-                  <MapPin className="w-4 h-4 text-gold shrink-0" />
-                  <input
-                    type="text"
-                    value={deliveryAddress}
-                    onChange={(e) => setDeliveryAddress(e.target.value)}
-                    className="w-full text-xs font-semibold outline-none bg-transparent"
-                    placeholder="Enter delivery address in Kampala"
-                  />
-                </div>
-              </div>
-
-              {/* Payment Methods */}
-              <div>
-                <label className="text-[11px] font-bold uppercase tracking-wider text-ink-500 block mb-1.5">
-                  Choose Payment Method
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setPaymentMethod("momo")}
-                    className={`p-3 rounded-2xl border text-left text-xs font-bold transition flex items-center gap-2 ${
-                      paymentMethod === "momo"
-                        ? "bg-gold/20 border-gold text-ink"
-                        : "bg-surface-subtle border-surface-border text-ink-700"
-                    }`}
-                  >
-                    <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
-                    <span>MTN MoMo</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setPaymentMethod("airtel")}
-                    className={`p-3 rounded-2xl border text-left text-xs font-bold transition flex items-center gap-2 ${
-                      paymentMethod === "airtel"
-                        ? "bg-red-500/20 border-red-500 text-ink"
-                        : "bg-surface-subtle border-surface-border text-ink-700"
-                    }`}
-                  >
-                    <span className="w-2.5 h-2.5 rounded-full bg-red-600" />
-                    <span>Airtel Money</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setPaymentMethod("wallet")}
-                    className={`p-3 rounded-2xl border text-left text-xs font-bold transition flex items-center gap-2 ${
-                      paymentMethod === "wallet"
-                        ? "bg-indigo-500/20 border-indigo-500 text-ink"
-                        : "bg-surface-subtle border-surface-border text-ink-700"
-                    }`}
-                  >
-                    <Wallet className="w-3.5 h-3.5 text-indigo-500" />
-                    <span>Peebee Wallet</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setPaymentMethod("cod")}
-                    className={`p-3 rounded-2xl border text-left text-xs font-bold transition flex items-center gap-2 ${
-                      paymentMethod === "cod"
-                        ? "bg-emerald-500/20 border-emerald-500 text-ink"
-                        : "bg-surface-subtle border-surface-border text-ink-700"
-                    }`}
-                  >
-                    <CreditCard className="w-3.5 h-3.5 text-emerald-500" />
-                    <span>Cash on Delivery</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Total Summary */}
-              <div className="bg-surface-subtle p-3 rounded-2xl flex items-center justify-between text-xs">
-                <span className="font-semibold text-ink-700">Amount Due</span>
-                <span className="font-black text-base text-gold">UGX {total.toLocaleString()}</span>
-              </div>
-
-              {checkoutError && (
-                <p className="rounded-xl bg-red-500/10 border border-red-500/20 p-2.5 text-xs font-bold text-red-600">
-                  {checkoutError}
-                </p>
-              )}
-
-              {/* Confirm Button */}
-              <button
-                type="button"
-                disabled={isSubmitting}
-                onClick={handleConfirmOrder}
-                className="w-full py-4 rounded-full bg-ink text-cream font-bold text-sm tracking-wide hover:bg-ink/90 active:scale-98 transition shadow-lg flex items-center justify-center gap-2"
-              >
-                {isSubmitting ? (
-                  <>
-                    <div className="w-4 h-4 rounded-full border-2 border-cream border-t-transparent animate-spin" />
-                    <span>Processing payment…</span>
-                  </>
-                ) : (
-                  <span>Pay Now (UGX {total.toLocaleString()})</span>
-                )}
               </button>
             </div>
           </div>
