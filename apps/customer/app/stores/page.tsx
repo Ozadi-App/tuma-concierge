@@ -20,6 +20,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api, errorMessage } from "../../lib/api";
 import { LiveStreamChannel, LiveStreamViewer, PinnedProduct } from "../../components/LiveStreamViewer";
+import { ProductImage } from "../../components/ProductImage";
 
 interface MarketplaceStore {
   id: string;
@@ -238,12 +239,23 @@ export default function StoresPage() {
                 <div className="relative rounded-full p-[2.5px] bg-gradient-to-tr from-amber-500 via-red-500 to-pink-500 shadow-md">
                   <div className="relative h-15 w-15 overflow-hidden rounded-full border-2 border-[rgb(var(--color-cream))] bg-neutral-900">
                     {c.logo_url ? (
-                      <img src={c.logo_url} alt={c.name} className="h-full w-full object-cover" />
-                    ) : (
-                      <div className="flex h-full w-full items-center justify-center font-bold text-gold">
-                        🛍️
-                      </div>
-                    )}
+                      <img
+                        src={c.logo_url}
+                        alt={c.name}
+                        className="h-full w-full object-cover"
+                        onError={(e) => {
+                          e.currentTarget.style.display = "none";
+                          const fb = e.currentTarget.nextElementSibling as HTMLElement | null;
+                          if (fb) fb.style.display = "flex";
+                        }}
+                      />
+                    ) : null}
+                    <div
+                      style={{ display: c.logo_url ? "none" : "flex" }}
+                      className="h-full w-full items-center justify-center font-bold text-gold text-xs"
+                    >
+                      {c.name.slice(0, 2).toUpperCase()}
+                    </div>
                   </div>
                   <span className="absolute -bottom-1 inset-x-0 mx-auto w-fit rounded-full bg-red-600 px-2 py-0.2 text-[8px] font-black uppercase tracking-wider text-white shadow">
                     LIVE
@@ -314,17 +326,15 @@ export default function StoresPage() {
               >
                 <div>
                   <div className="relative aspect-square w-full overflow-hidden rounded-xl bg-neutral-100 dark:bg-neutral-800">
-                    {p.image_url ? (
-                      <img
-                        src={p.image_url}
-                        alt={p.title}
-                        className="h-full w-full object-cover transition duration-300 hover:scale-105"
-                      />
-                    ) : (
-                      <div className="flex h-full w-full items-center justify-center text-3xl">👗</div>
-                    )}
+                    <ProductImage
+                      src={p.image_url}
+                      alt={p.title}
+                      category={p.category_name || undefined}
+                      className="h-full w-full object-cover transition duration-300 hover:scale-105"
+                      aspectRatio="square"
+                    />
                     {p.badge && (
-                      <span className="absolute top-2 left-2 rounded-full bg-gold px-2 py-0.5 text-[9px] font-black text-ink-gold uppercase">
+                      <span className="absolute top-2 left-2 z-10 rounded-full bg-gold px-2 py-0.5 text-[9px] font-black text-ink-gold uppercase">
                         {p.badge}
                       </span>
                     )}
@@ -383,10 +393,23 @@ export default function StoresPage() {
             >
               <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-2xl bg-neutral-100 dark:bg-neutral-800">
                 {s.logo_url ? (
-                  <img src={s.logo_url} alt={s.name} className="h-full w-full object-cover" />
-                ) : (
-                  <div className="flex h-full w-full items-center justify-center text-2xl">🛍️</div>
-                )}
+                  <img
+                    src={s.logo_url}
+                    alt={s.name}
+                    className="h-full w-full object-cover"
+                    onError={(e) => {
+                      e.currentTarget.style.display = "none";
+                      const fb = e.currentTarget.nextElementSibling as HTMLElement | null;
+                      if (fb) fb.style.display = "flex";
+                    }}
+                  />
+                ) : null}
+                <div
+                  style={{ display: s.logo_url ? "none" : "flex" }}
+                  className="h-full w-full items-center justify-center bg-gold/20 font-bold text-gold text-lg"
+                >
+                  {s.name.slice(0, 2).toUpperCase()}
+                </div>
                 {s.is_live ? (
                   <span className="absolute bottom-1 inset-x-1 rounded-full bg-red-600 text-center text-[7px] font-black uppercase text-white animate-pulse">
                     LIVE

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   ShoppingBag,
   Sparkles,
@@ -20,6 +20,7 @@ interface ProductImageProps {
   className?: string;
   aspectRatio?: "square" | "portrait" | "wide";
   forceShapes?: boolean;
+  priority?: boolean;
 }
 
 interface PaletteTheme {
@@ -243,9 +244,15 @@ export function ProductImage({
   className = "",
   aspectRatio = "portrait",
   forceShapes = false,
+  priority = false,
 }: ProductImageProps) {
   const [hasError, setHasError] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
+
+  useEffect(() => {
+    setHasError(false);
+    setIsLoaded(false);
+  }, [src]);
 
   const aspectClass =
     aspectRatio === "square"
@@ -254,10 +261,15 @@ export function ProductImage({
       ? "aspect-[16/10]"
       : "aspect-[3/4]";
 
+  const finalAspectClass =
+    className.includes("h-full") || className.includes("aspect-")
+      ? ""
+      : aspectClass;
+
   const shouldRenderShapes = forceShapes || !src || hasError;
 
   return (
-    <div className={`relative overflow-hidden w-full ${aspectClass} ${className}`}>
+    <div className={`relative overflow-hidden w-full ${finalAspectClass} ${className}`}>
       {shouldRenderShapes ? (
         <GeometricShapesFallback category={category} alt={alt} />
       ) : (
@@ -271,7 +283,8 @@ export function ProductImage({
           <img
             src={src || ""}
             alt={alt}
-            loading="lazy"
+            loading={priority ? "eager" : "lazy"}
+            decoding={priority ? "sync" : "async"}
             onLoad={() => setIsLoaded(true)}
             onError={() => setHasError(true)}
             className={`w-full h-full object-cover transition-opacity duration-300 ${

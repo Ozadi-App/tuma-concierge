@@ -194,6 +194,7 @@ export default function SingleProductPage() {
             alt={product.title}
             category={product.category_name || undefined}
             forceShapes={useShapesOnly}
+            priority
             className="w-full h-full object-cover"
           />
 
