@@ -69,9 +69,9 @@ export function buildSecurityHeaders({ apiUrl = "", dev = false } = {}) {
     // — leave it out and the button renders unstyled.
     // Mapbox GL and Google Maps load their own stylesheets/web fonts too.
     `style-src 'self' 'unsafe-inline' ${GOOGLE_SIGNIN} ${MAPBOX[0]} https://fonts.googleapis.com`,
-    `img-src 'self' data: blob: ${OSM_TILES} https://*.openstreetmap.org ${GOOGLE_AVATARS} ${TILE_PROVIDERS.join(" ")} ${MAPBOX[0]} ${GOOGLE_MAPS_DATA.join(" ")}`,
+    `img-src 'self' data: blob: https://images.unsplash.com https://*.unsplash.com ${OSM_TILES} https://*.openstreetmap.org ${GOOGLE_AVATARS} ${TILE_PROVIDERS.join(" ")} ${MAPBOX[0]} ${GOOGLE_MAPS_DATA.join(" ")}`,
     "font-src 'self' data: https://fonts.gstatic.com",
-    `media-src 'self' blob: ${api}`.trim(),
+    `media-src 'self' blob: https://commondatastorage.googleapis.com ${api}`.trim(),
     `connect-src ${connect.join(" ")}`,
     `frame-src ${GOOGLE_SIGNIN}`,
     // Service worker (the PWA) and any blob-backed worker.

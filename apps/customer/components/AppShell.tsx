@@ -22,8 +22,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // whole screen — its own header/footer replace BrandHeader/BottomNav so
   // the conversation gets the full viewport with nothing floating over it.
   const isChatThread = pathname.startsWith("/chat/") || /^\/restaurants\/[^/]+\/chat$/.test(pathname);
-  const showHeader = !isAuthPage && !isChatThread && !isFoodDetail;
-  const showNav = !isAuthPage && !isChatThread && !isFoodDetail && !navigationOverlayOpen;
+  // Single store (/store/<id>) and single product (/product/<id> or /store/<id>/product/<productId>)
+  // screens take on full viewport view without top BrandHeader or bottom navigation bar.
+  const isSingleStore = /^\/store\/[^/]+$/.test(pathname);
+  const isSingleProduct = pathname.startsWith("/product/") || /^\/store\/[^/]+\/product\/[^/]+$/.test(pathname);
+  const isImmersiveFullscreen = isSingleStore || isSingleProduct;
+
+  const showHeader = !isAuthPage && !isChatThread && !isFoodDetail && !isImmersiveFullscreen;
+  const showNav = !isAuthPage && !isChatThread && !isFoodDetail && !navigationOverlayOpen && !isImmersiveFullscreen;
 
   return (
     <AuthGate>

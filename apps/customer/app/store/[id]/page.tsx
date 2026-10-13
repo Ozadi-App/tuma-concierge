@@ -18,6 +18,7 @@ import {
 import { api, errorMessage } from "../../../lib/api";
 import { LiveStreamChannel, LiveStreamViewer, PinnedProduct } from "../../../components/LiveStreamViewer";
 import { ProductCard } from "../../../components/ProductCard";
+import { ProductImage } from "../../../components/ProductImage";
 import { useCart } from "../../../lib/cart";
 
 interface StoreDetail {
@@ -230,12 +231,19 @@ export default function StoreDetailPage() {
               src={store.logo_url}
               alt={store.name}
               className="h-11 w-11 rounded-full object-cover border-2 border-gold/40 shadow-xs"
+              onError={(e) => {
+                e.currentTarget.style.display = "none";
+                const fallback = e.currentTarget.nextElementSibling as HTMLElement | null;
+                if (fallback) fallback.style.display = "flex";
+              }}
             />
-          ) : (
-            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-gold/20 border-2 border-gold/40 font-bold text-gold text-sm">
-              {store.name.slice(0, 2).toUpperCase()}
-            </div>
-          )}
+          ) : null}
+          <div
+            style={{ display: store.logo_url ? "none" : "flex" }}
+            className="h-11 w-11 items-center justify-center rounded-full bg-gold/20 border-2 border-gold/40 font-bold text-gold text-sm shadow-xs"
+          >
+            {store.name.slice(0, 2).toUpperCase()}
+          </div>
         </div>
       </header>
 
@@ -295,16 +303,15 @@ export default function StoreDetailPage() {
           <div className="flex items-center justify-between gap-3">
             {/* Promo Graphic */}
             <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-2xl bg-neutral-900 shadow-md">
-              {promoProduct.image_url ? (
-                <img
-                  src={promoProduct.image_url}
-                  alt={promoProduct.title}
-                  className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-                />
-              ) : (
-                <div className="flex h-full w-full items-center justify-center text-3xl">🛍️</div>
-              )}
-              <span className="absolute bottom-1 right-1 rounded-full bg-gold px-1.5 py-0.5 text-[9px] font-black text-ink-gold">
+              <ProductImage
+                src={promoProduct.image_url}
+                alt={promoProduct.title}
+                category={promoProduct.category_name || undefined}
+                className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                aspectRatio="square"
+                forceShapes={useShapesOnly}
+              />
+              <span className="absolute bottom-1 right-1 z-10 rounded-full bg-gold px-1.5 py-0.5 text-[9px] font-black text-ink-gold shadow-xs">
                 HOT
               </span>
             </div>
