@@ -9,6 +9,7 @@ import {
   Headphones,
   Heart,
   Croissant,
+  Citrus,
   Leaf,
   Layers,
 } from "lucide-react";
@@ -38,6 +39,20 @@ interface PaletteTheme {
 function getCategoryPalette(category?: string, name?: string): PaletteTheme {
   const c = (category || "").toLowerCase();
   const n = (name || "").toLowerCase();
+
+  if (c.includes("juice") || c.includes("smoothie") || c.includes("wellness") || n.includes("juice") || n.includes("smoothie") || n.includes("shot")) {
+    return {
+      bg: "linear-gradient(135deg, #FEFCE8 0%, #FEF9C3 100%)",
+      shape1: "#FACC15",
+      shape2: "#EAB308",
+      shape3: "#CA8A04",
+      shape4: "#FEF08A",
+      iconBg: "bg-yellow-100",
+      iconColor: "text-yellow-700",
+      tag: "JUICE & SMOOTHIES",
+      icon: Citrus,
+    };
+  }
 
   if (c.includes("bakery") || n.includes("croissant") || n.includes("sourdough") || n.includes("roll")) {
     return {
