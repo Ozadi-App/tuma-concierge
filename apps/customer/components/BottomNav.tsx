@@ -59,6 +59,7 @@ const submenuItems: Record<Exclude<MenuGroup, "original">, MenuItem[]> = {
     { id: "car", label: "Car", icon: Car, href: "/ride/car" },
     { id: "rideshare", label: "Rideshare", icon: UsersRound, href: "/carpool" },
     { id: "selfdrive", label: "Selfdrive", icon: CarFront, href: "/rent" },
+    { id: "move", label: "Move", icon: Truck, href: "/ride/move" },
   ],
   shopping: [
     { id: "shoplist", label: "List", icon: ListChecks, href: "/shoplist" },
@@ -76,9 +77,8 @@ const submenuItems: Record<Exclude<MenuGroup, "original">, MenuItem[]> = {
   ],
   deliver: [
     { id: "parcel", label: "Parcels", icon: Package, href: "/deliver/parcel" },
-    { id: "laundry", label: "Goods", icon: ShoppingBasket, disabled: true },
-    { id: "fix", label: "Move", icon: Truck, disabled: true },
-    { id: "move", label: "Storage", icon: Archive, disabled: true },
+    { id: "goods", label: "Goods", icon: ShoppingBasket, disabled: true },
+    { id: "storage", label: "Storage", icon: Archive, disabled: true },
   ],
   services: [
     { id: "laundry", label: "Laundry", icon: WashingMachine, href: "/services/laundry" },
@@ -90,7 +90,7 @@ const submenuItems: Record<Exclude<MenuGroup, "original">, MenuItem[]> = {
 
 function groupForPath(pathname: string): MenuGroup {
   if (["/food", "/restaurants", "/kitchens", "/streetfood", "/juices", "/bakeries"].some((path) => pathname === path || pathname.startsWith(`${path}/`))) return "food";
-  if (pathname === "/ride" || pathname === "/rent" || pathname === "/carpool" || pathname.startsWith("/ride/")) return "ride";
+  if (pathname === "/ride" || pathname === "/rent" || pathname === "/carpool" || pathname.startsWith("/ride/") || pathname === "/move") return "ride";
   if (["/shopping", "/shoplist", "/groceries", "/stores", "/store", "/spotlight"].some((path) => pathname === path || pathname.startsWith(`${path}/`)) || pathname.startsWith("/orders")) return "shopping";
   if (pathname === "/deliver" || pathname.startsWith("/deliver/")) return "deliver";
   if (["/services", "/service"].some((path) => pathname === path || pathname.startsWith(`${path}/`))) return "services";
@@ -122,6 +122,7 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
     else if (pathname === "/ride/car") setSelectedItem("car");
     else if (pathname === "/carpool") setSelectedItem("rideshare");
     else if (pathname === "/rent") setSelectedItem("selfdrive");
+    else if (pathname === "/ride/move" || pathname === "/move") setSelectedItem("move");
     else if (pathname === "/shoplist" || pathname.startsWith("/orders")) setSelectedItem("shoplist");
     else if (pathname === "/groceries" || pathname.startsWith("/groceries/")) setSelectedItem("markets");
     else if (pathname === "/stores" || pathname.startsWith("/store/")) setSelectedItem("stores");

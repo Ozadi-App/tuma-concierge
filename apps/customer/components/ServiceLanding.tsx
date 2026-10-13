@@ -15,6 +15,7 @@ const landingContent: Record<LandingGroup, { eyebrow: string; title: string; des
       { title: "Car", description: "A comfortable ride for your journey.", icon: Car, href: "/ride/car" },
       { title: "Rideshare", description: "Share a trip and travel together.", icon: UsersRound, href: "/carpool" },
       { title: "Selfdrive", description: "Choose a car and drive yourself.", icon: CarFront, href: "/rent" },
+      { title: "Move", description: "Vans and trucks for moving and cargo.", icon: Truck, href: "/ride/move" },
     ],
   },
   shopping: {
@@ -32,11 +33,10 @@ const landingContent: Record<LandingGroup, { eyebrow: string; title: string; des
   deliver: {
     eyebrow: "Send something across town",
     title: "Send with Peebee",
-    description: "Choose how to send a parcel, move goods, or arrange storage.",
+    description: "Choose how to send a parcel, deliver goods, or arrange storage.",
     items: [
       { title: "Parcels", description: "Send a package to someone.", icon: Package, href: "/deliver/parcel" },
       { title: "Goods", description: "Arrange pickup and delivery for your goods.", icon: ShoppingBasket },
-      { title: "Move", description: "Move larger items across town.", icon: Truck },
       { title: "Storage", description: "Arrange space for items you need to store.", icon: Archive },
     ],
   },

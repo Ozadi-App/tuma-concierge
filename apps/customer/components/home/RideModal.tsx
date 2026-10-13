@@ -39,7 +39,17 @@ function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): nu
  * you are and take you to a destination. A ride is stored as a normal
  * parcel order (pickup + destination, distance-priced) with `isRide: true`
  * — see apps/api/src/db/migrations/0039_ride_orders.sql. */
-export function RideModal({ onClose, initialMode = "boda", serviceLocked = false }: { onClose: () => void; initialMode?: "boda" | "car"; serviceLocked?: boolean }) {
+export function RideModal({
+  onClose,
+  initialMode = "boda",
+  initialCargo = false,
+  serviceLocked = false,
+}: {
+  onClose: () => void;
+  initialMode?: "boda" | "car";
+  initialCargo?: boolean;
+  serviceLocked?: boolean;
+}) {
   const t = useTranslate();
   const router = useRouter();
   // The first thing a rider books is where: pickup and destination come
@@ -59,7 +69,7 @@ export function RideModal({ onClose, initialMode = "boda", serviceLocked = false
   const [vehicleSize, setVehicleSize] = useState<"normal" | "large">("normal");
   const [tierOptions, setTierOptions] = useState<Array<{ size: "normal" | "large"; tier: "convenient" | "comfort"; fare: number; nearby: number }>>([]);
   const [categories, setCategories] = useState<CarCategory[]>([]);
-  const [carSubMode, setCarSubMode] = useState<"passenger" | "cargo">("passenger");
+  const [carSubMode, setCarSubMode] = useState<"passenger" | "cargo">(initialCargo ? "cargo" : "passenger");
   const [selectedCargoCatId, setSelectedCargoCatId] = useState<string>("peebee-cargo-van");
   const [cargoDescription, setCargoDescription] = useState<string>("");
   const [schedule, setSchedule] = useState<{ maxAdvanceHours: number | null; minLeadMinutes: number } | null>(null);
@@ -68,8 +78,8 @@ export function RideModal({ onClose, initialMode = "boda", serviceLocked = false
   const [carpoolOn, setCarpoolOn] = useState(false);
   const [rentOn, setRentOn] = useState(false);
   const [pickupAt, setPickupAt] = useState("");
-  const [mode, setMode] = useState<"boda" | "car">(initialMode);
-  const [carMenuOpen, setCarMenuOpen] = useState(initialMode === "car");
+  const [mode, setMode] = useState<"boda" | "car">(initialCargo ? "car" : initialMode);
+  const [carMenuOpen, setCarMenuOpen] = useState(initialMode === "car" || initialCargo);
   const [busy, setBusy] = useState(false);
   const [showEstimates, setShowEstimates] = useState(false);
   const [error, setError] = useState<string | null>(null);
