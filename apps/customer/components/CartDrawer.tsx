@@ -29,14 +29,12 @@ export interface CartDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   onOpen?: () => void;
-  forceShapes?: boolean;
 }
 
 export function CartDrawer({
   isOpen,
   onClose,
   onOpen,
-  forceShapes = false,
 }: CartDrawerProps) {
   const router = useRouter();
   const {
@@ -267,7 +265,6 @@ export function CartDrawer({
                         src={line.imageUrl}
                         alt={line.title}
                         category={line.category}
-                        forceShapes={forceShapes}
                         className="h-full w-full object-cover"
                         aspectRatio="square"
                       />

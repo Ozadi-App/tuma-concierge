@@ -73,7 +73,6 @@ export default function SingleProductPage() {
   const [quantity, setQuantity] = useState(1);
   const [isFavorited, setIsFavorited] = useState(false);
   const [addedToast, setAddedToast] = useState(false);
-  const [useShapesOnly, setUseShapesOnly] = useState(false);
   const [showFullDesc, setShowFullDesc] = useState(false);
   const [cartDrawerOpen, setCartDrawerOpen] = useState(false);
 
@@ -196,7 +195,6 @@ export default function SingleProductPage() {
             src={product.image_url}
             alt={product.title}
             category={product.category_name || undefined}
-            forceShapes={useShapesOnly}
             priority
             className="w-full h-full object-cover"
           />
@@ -213,20 +211,6 @@ export default function SingleProductPage() {
             </button>
 
             <div className="flex items-center gap-2">
-              {/* Option 2 Toggle Pill for testing fallback colored shapes */}
-              <button
-                type="button"
-                onClick={() => setUseShapesOnly(!useShapesOnly)}
-                title="Toggle Option 2 Colored Shapes fallback"
-                className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider backdrop-blur-md border transition-all ${
-                  useShapesOnly
-                    ? "bg-gold text-ink-gold border-gold shadow-md"
-                    : "bg-black/35 text-white/80 border-white/20 hover:bg-black/55"
-                }`}
-              >
-                {useShapesOnly ? "Shapes Mode" : "Photo Mode"}
-              </button>
-
               {/* Cart Drawer Shortcut Button */}
               <CartDrawerTrigger
                 onClick={() => setCartDrawerOpen(true)}
@@ -457,7 +441,6 @@ export default function SingleProductPage() {
         <CartDrawer
           isOpen={cartDrawerOpen}
           onClose={() => setCartDrawerOpen(false)}
-          forceShapes={useShapesOnly}
         />
       </div>
     </div>
