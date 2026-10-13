@@ -1,0 +1,122 @@
+@import "../../../packages/shared/select.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  /* Text stays inset even when a field has no explicit padding utility.
+     Compound fields share their wrapper's spacing and single fill. */
+  input:where(:not([type="checkbox"], [type="radio"], [type="range"], [type="file"], [type="hidden"], [type="submit"], [type="button"], [type="color"])):where(:not(.field-box *)),
+  textarea:where(:not(.field-box *)) {
+    padding: 0.625rem 0.75rem;
+  }
+}
+
+:root {
+  color-scheme: light;
+  /* Palette — stored as "R G B" triples so Tailwind can apply opacity modifiers */
+  --color-gold: 201 162 39;
+  --color-gold-400: 224 185 61;
+  --color-gold-500: 201 162 39;
+  --color-black: 10 10 10;
+  --color-black-700: 26 26 26;
+  --color-black-900: 10 10 10;
+  --color-ink: 10 10 10;
+  --color-ink-500: 92 102 112;
+  --color-ink-900: 10 10 10;
+  --color-ink-gold: 10 10 10;
+  --color-green: 27 122 78;
+  --color-green-400: 47 168 106;
+  --color-green-600: 27 122 78;
+  --color-cream: 255 255 255;
+  --color-cream-50: 255 255 255;
+  --color-cream-100: 245 245 245;
+  --color-navy: 48 48 48;
+  --color-navy-400: 68 68 68;
+  --color-navy-700: 32 32 32;
+
+  /* Surfaces */
+  --surface-card: 255 255 255;
+  --surface-muted: 242 242 242;
+  --surface-input: 255 255 255;
+
+  /* Geometry & Elevation */
+  --radius-card: 24px;
+  --radius-drawer: 28px;
+  --radius-capsule: 9999px;
+  --border-faint: rgba(10, 10, 10, 0.08);
+  --border-faint-on-dark: rgba(247, 243, 238, 0.12);
+  --shadow-card: 0 4px 16px rgba(10, 10, 10, 0.06), 0 1px 2px rgba(10, 10, 10, 0.04);
+  --shadow-card-hover: 0 12px 28px rgba(10, 10, 10, 0.10), 0 4px 8px rgba(10, 10, 10, 0.06);
+  --shadow-float-capsule: 0 12px 32px -4px rgba(10, 10, 10, 0.12), 0 4px 12px rgba(10, 10, 10, 0.06);
+  --shadow-glow-gold: 0 6px 20px -2px rgba(201, 162, 39, 0.40);
+  --pad-card: 24px;
+  --transition-raise: 200ms ease;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --color-cream: 10 10 10;
+    --color-cream-50: 10 10 10;
+    --color-cream-100: 20 20 20;
+    --color-ink: 247 243 238;
+    --color-ink-500: 160 160 160;
+    --color-ink-900: 255 255 255;
+    --color-ink-gold: 10 10 10;
+    --surface-card: 20 20 20;
+    --surface-muted: 32 32 32;
+    --surface-input: 20 20 20;
+    --border-faint: rgba(247, 243, 238, 0.12);
+  }
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+  --color-cream: 10 10 10;
+  --color-cream-50: 10 10 10;
+  --color-cream-100: 20 20 20;
+  --color-ink: 247 243 238;
+  --color-ink-500: 160 160 160;
+  --color-ink-900: 255 255 255;
+  --color-ink-gold: 10 10 10;
+  --surface-card: 20 20 20;
+  --surface-muted: 32 32 32;
+  --surface-input: 20 20 20;
+  --border-faint: rgba(247, 243, 238, 0.12);
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+  --color-cream: 255 255 255;
+  --color-cream-50: 255 255 255;
+  --color-cream-100: 245 245 245;
+  --color-ink: 10 10 10;
+  --color-ink-500: 92 102 112;
+  --color-ink-900: 10 10 10;
+  --color-ink-gold: 10 10 10;
+  --surface-card: 255 255 255;
+  --surface-muted: 242 242 242;
+  --surface-input: 255 255 255;
+  --border-faint: rgba(10, 10, 10, 0.08);
+}
+
+body {
+  background-color: rgb(var(--color-cream));
+  color: rgb(var(--color-ink));
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  margin: 0;
+  padding: 0;
+}
+
+/* Single-fill field-box rule: wrapper owns the fill and border, inputs inside stay transparent */
+.field-box {
+  background-color: rgb(var(--surface-input));
+}
+
+.field-box input,
+.field-box textarea,
+.field-box select {
+  background-color: transparent !important;
+}

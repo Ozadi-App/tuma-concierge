@@ -2683,4 +2683,69 @@ export type FuelStationPayoutAccount = {
   created_at?: string;
 };
 
+// ---------------------------------------------------------------------------
+// Pharmacy & Prescription Types
+// ---------------------------------------------------------------------------
+
+export interface PrescriptionItem {
+  id: string;
+  name: string;
+  dosage: string;
+  quantity: number;
+  unitPrice: number;
+  totalPrice: number;
+  rxRequired: boolean;
+}
+
+export type PrescriptionStatus =
+  | "pending_review"
+  | "pharmacist_reviewing"
+  | "priced_ready"
+  | "approved_by_patient"
+  | "dispensing"
+  | "dispatched"
+  | "completed"
+  | "declined";
+
+export interface PrescriptionOrder {
+  id: string;
+  customerId: string;
+  customerName: string;
+  customerPhone: string;
+  pharmacyId?: string;
+  pharmacyName?: string;
+  prescriptionImageUrl: string;
+  patientNotes?: string;
+  patientAge?: number;
+  patientGender?: "male" | "female" | "child";
+  status: PrescriptionStatus;
+  pharmacistNotes?: string;
+  dosageInstructions?: string;
+  pharmacistLicenseNumber?: string;
+  pharmacistName?: string;
+  quotedItems: PrescriptionItem[];
+  quotedTotalUgx: number;
+  deliveryAddress?: string;
+  deliveryFeeUgx: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PharmacyStoreProfile {
+  id: string;
+  name: string;
+  slug: string;
+  category: "pharmacy";
+  address: string;
+  phone: string;
+  ndaLicenseNumber: string;
+  supervisingPharmacist: string;
+  pharmacistAplNumber: string;
+  isNdaVerified: boolean;
+  isOpen: boolean;
+  deliveryEnabled: boolean;
+  rating?: number;
+}
+
+
 

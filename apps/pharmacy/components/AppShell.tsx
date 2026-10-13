@@ -1,0 +1,62 @@
+"use client";
+
+import {
+  Bell,
+  CheckCircle2,
+  Lock,
+  Power,
+  ShieldCheck,
+  Store,
+} from "lucide-react";
+import Link from "next/link";
+import { type ReactNode } from "react";
+import { useAuth } from "../lib/auth-context";
+import { PharmacyNav } from "./PharmacyNav";
+
+export function AppShell({ children }: { children: any }) {
+  const { pharmacy, pharmacist, toggleOpen, ready } = useAuth();
+
+  return (
+    <div className="min-h-screen bg-[rgb(var(--color-cream))] text-ink pb-24">
+      {/* Top Pharmacy Status Header */}
+      <header className="sticky top-0 z-30 border-b border-[var(--border-faint)] bg-[rgb(var(--surface-card))]/95 backdrop-blur-md px-4 py-3">
+        <div className="mx-auto flex max-w-lg items-center justify-between">
+          <div className="min-w-0 space-y-0.5">
+            <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-gold">
+              <ShieldCheck className="h-3.5 w-3.5 text-gold" />
+              <span>{pharmacy?.ndaLicenseNumber || "NDA PREMISES LICENSED"}</span>
+            </div>
+            <h1 className="truncate text-sm font-black text-ink">
+              {pharmacy?.name || "Vine Pharmacy — Acacia Mall"}
+            </h1>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={toggleOpen}
+              className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-black transition active:scale-95 ${
+                pharmacy?.isOpen
+                  ? "bg-green-600/15 text-green-600 hover:bg-green-600/20"
+                  : "bg-red-500/15 text-red-500 hover:bg-red-500/20"
+              }`}
+            >
+              <span
+                className={`h-2 w-2 rounded-full ${
+                  pharmacy?.isOpen ? "bg-green-600 animate-pulse" : "bg-red-500"
+                }`}
+              />
+              <span>{pharmacy?.isOpen ? "Open" : "Closed"}</span>
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {/* Main Content Area */}
+      <main className="mx-auto max-w-lg px-4 pt-4">{children}</main>
+
+      {/* Persistent Bottom Nav */}
+      <PharmacyNav />
+    </div>
+  );
+}

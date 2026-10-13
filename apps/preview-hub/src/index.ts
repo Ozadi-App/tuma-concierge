@@ -7,6 +7,7 @@ const APPS = [
   { id: "customer", name: "Customer App", icon: "📱", desc: "Customer ordering & concierge interface" },
   { id: "rider", name: "Peebee Rider App", icon: "🛵", desc: "Rider delivery & earnings interface" },
   { id: "gas", name: "Peebee Gas", icon: "⛽", desc: "Petrol station merchant & pump attendant interface" },
+  { id: "pharmacy", name: "Peebee Pharmacy", icon: "💊", desc: "Licensed pharmacy & prescription dispensing console" },
   { id: "merchant", name: "Merchant App", icon: "🏪", desc: "Merchant store & orders management" },
   { id: "partner", name: "Peebee Car App", icon: "🚗", desc: "Car owners and drivers: vehicles, rides, earnings" },
   { id: "restaurant", name: "Restaurant App", icon: "🍽️", desc: "Restaurant kitchen & menu dashboard" },

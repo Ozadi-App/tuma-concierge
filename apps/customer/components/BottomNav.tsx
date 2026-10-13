@@ -65,7 +65,7 @@ const submenuItems: Record<Exclude<MenuGroup, "original">, MenuItem[]> = {
     { id: "shoplist", label: "List", icon: ListChecks, href: "/shoplist" },
     { id: "markets", label: "Groceries", icon: Store, href: "/groceries" },
     { id: "stores", label: "Stores", icon: ShoppingBasket, href: "/stores" },
-    { id: "pharmacy", label: "Pharma", icon: Pill, disabled: true },
+    { id: "pharmacy", label: "Pharma", icon: Pill, href: "/pharmacy" },
     { id: "spotlight", label: "Spotlight", icon: Flame, href: "/spotlight" },
   ],
   food: [
@@ -91,7 +91,7 @@ const submenuItems: Record<Exclude<MenuGroup, "original">, MenuItem[]> = {
 function groupForPath(pathname: string): MenuGroup {
   if (["/food", "/restaurants", "/kitchens", "/streetfood", "/juices", "/bakeries"].some((path) => pathname === path || pathname.startsWith(`${path}/`))) return "food";
   if (pathname === "/ride" || pathname === "/rent" || pathname === "/carpool" || pathname.startsWith("/ride/") || pathname === "/move") return "ride";
-  if (["/shopping", "/shoplist", "/groceries", "/stores", "/store", "/spotlight"].some((path) => pathname === path || pathname.startsWith(`${path}/`)) || pathname.startsWith("/orders")) return "shopping";
+  if (["/shopping", "/shoplist", "/groceries", "/stores", "/store", "/pharmacy", "/spotlight"].some((path) => pathname === path || pathname.startsWith(`${path}/`)) || pathname.startsWith("/orders")) return "shopping";
   if (pathname === "/deliver" || pathname.startsWith("/deliver/")) return "deliver";
   if (["/services", "/service"].some((path) => pathname === path || pathname.startsWith(`${path}/`))) return "services";
   return "original";
@@ -126,6 +126,7 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
     else if (pathname === "/shoplist" || pathname.startsWith("/orders")) setSelectedItem("shoplist");
     else if (pathname === "/groceries" || pathname.startsWith("/groceries/")) setSelectedItem("markets");
     else if (pathname === "/stores" || pathname.startsWith("/store/")) setSelectedItem("stores");
+    else if (pathname === "/pharmacy" || pathname.startsWith("/pharmacy/")) setSelectedItem("pharmacy");
     else if (pathname === "/spotlight") setSelectedItem("spotlight");
     else if (pathname === "/services/laundry") setSelectedItem("laundry");
     else if (pathname === "/services/fix") setSelectedItem("fix");

@@ -26,7 +26,7 @@ const landingContent: Record<LandingGroup, { eyebrow: string; title: string; des
       { title: "List", description: "Create and send a shopping list.", icon: ListChecks, href: "/shoplist" },
       { title: "Groceries", description: "Browse nearby markets and groceries.", icon: Store, href: "/groceries" },
       { title: "Stores", description: "Shop from verified local stores.", icon: ShoppingBasket, href: "/stores" },
-      { title: "Pharma", description: "Get everyday health essentials.", icon: Pill },
+      { title: "Pharma", description: "Get everyday health essentials.", icon: Pill, href: "/pharmacy" },
       { title: "Spotlight", description: "Watch live shopping streams, reels & creator carousels.", icon: Flame, href: "/spotlight" },
     ],
   },

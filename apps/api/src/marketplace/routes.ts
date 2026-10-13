@@ -172,6 +172,93 @@ export const DEMO_MARKETPLACE_STORES = [
     live_viewer_count: 188,
     status: "active",
   },
+  {
+    id: "store_demo_vine_pharmacy",
+    name: "Vine Pharmacy — Acacia Mall",
+    slug: "vine-pharmacy-acacia",
+    category: "pharmacy",
+    sub_category: "retail-pharmacy",
+    description: "Full service licensed pharmacy dispensing authentic prescription medicines, cold care, baby wellness and vitamins.",
+    announcement: "Supervising Pharmacist on duty 7 days a week. Express 25-min delivery across Kampala! 💊",
+    logo_url: "https://images.unsplash.com/photo-1587854692152-cbe660dbde88?auto=format&fit=crop&w=200&q=80",
+    banner_url: "https://images.unsplash.com/photo-1576602976047-174e57a47881?auto=format&fit=crop&w=1200&q=80",
+    phone: "+256 772 110 220",
+    whatsapp_number: "+256 772 110 220",
+    address: "Acacia Mall, Ground Floor, Kisementi, Kololo",
+    lat: 0.3344,
+    lng: 32.5891,
+    is_open: 1,
+    delivery_enabled: 1,
+    pickup_enabled: 1,
+    min_order_amount: 5000,
+    pro_tier: "pro_store",
+    is_live: 0,
+    live_channel_title: null,
+    live_stream_url: null,
+    live_viewer_count: 0,
+    status: "active",
+    nda_license_number: "NDA/PREM/KLA/2026/0418",
+    supervising_pharmacist: "Dr. Sarah Namubiru, BPharm, MPS",
+    is_nda_verified: true,
+  },
+  {
+    id: "store_demo_first_pharmacy",
+    name: "First Pharmacy — Wandegeya",
+    slug: "first-pharmacy-wandegeya",
+    category: "pharmacy",
+    sub_category: "retail-pharmacy",
+    description: "24/7 prescription dispensing, chronic care medication, allergy relief, first aid and diagnostics.",
+    announcement: "Upload prescription online for rapid pharmacist verification and courier dispatch 🚑",
+    logo_url: "https://images.unsplash.com/photo-1631549916768-4119b2e5f926?auto=format&fit=crop&w=200&q=80",
+    banner_url: "https://images.unsplash.com/photo-1586015555751-63c26210f462?auto=format&fit=crop&w=1200&q=80",
+    phone: "+256 701 445 566",
+    whatsapp_number: "+256 701 445 566",
+    address: "Wandegeya Commercial Centre, Opposite Makerere Gate",
+    lat: 0.3312,
+    lng: 32.5714,
+    is_open: 1,
+    delivery_enabled: 1,
+    pickup_enabled: 1,
+    min_order_amount: 5000,
+    pro_tier: "pro_store",
+    is_live: 0,
+    live_channel_title: null,
+    live_stream_url: null,
+    live_viewer_count: 0,
+    status: "active",
+    nda_license_number: "NDA/PREM/KLA/2026/0122",
+    supervising_pharmacist: "Pharm. Brian Kigozi, BPharm",
+    is_nda_verified: true,
+  },
+  {
+    id: "store_demo_ecopharm",
+    name: "Ecopharm — Lugogo Mall",
+    slug: "ecopharm-lugogo",
+    category: "pharmacy",
+    sub_category: "retail-pharmacy",
+    description: "Trusted community healthcare partner. Orthopedic supports, baby wellness, dermatology and pain management.",
+    announcement: "Authentic medicines guaranteed under strict cold chain storage standards ❄️",
+    logo_url: "https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?auto=format&fit=crop&w=200&q=80",
+    banner_url: "https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?auto=format&fit=crop&w=1200&q=80",
+    phone: "+256 782 990 011",
+    whatsapp_number: "+256 782 990 011",
+    address: "Lugogo Shopping Mall, Shop 14, Lugogo Bypass",
+    lat: 0.3275,
+    lng: 32.6092,
+    is_open: 1,
+    delivery_enabled: 1,
+    pickup_enabled: 1,
+    min_order_amount: 5000,
+    pro_tier: "pro_store",
+    is_live: 0,
+    live_channel_title: null,
+    live_stream_url: null,
+    live_viewer_count: 0,
+    status: "active",
+    nda_license_number: "NDA/PREM/KLA/2026/0889",
+    supervising_pharmacist: "Pharm. Agnes Tumusiime, MPS",
+    is_nda_verified: true,
+  },
 ];
 
 export const DEMO_MARKETPLACE_PRODUCTS: Record<string, any[]> = {
@@ -476,6 +563,218 @@ export const DEMO_MARKETPLACE_PRODUCTS: Record<string, any[]> = {
       image_url: "/products/canvas-sneakers.jpg",
       has_variants: 0,
       variants: [],
+    },
+  ],
+  store_demo_vine_pharmacy: [
+    {
+      id: "prod_panadol_extra",
+      store_id: "store_demo_vine_pharmacy",
+      title: "Panadol Extra (Paracetamol 500mg + Caffeine 65mg)",
+      slug: "panadol-extra-24s",
+      description: "Fast relief for tough headaches, migraines, muscle aches, backaches and fever.",
+      price: 6500,
+      compare_at_price: 7500,
+      inventory_quantity: 120,
+      category_name: "Pain & Fever",
+      badge: "Fast Acting",
+      image_url: "https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?auto=format&fit=crop&w=400&q=80",
+      has_variants: 0,
+      variants: [],
+      rx_required: false,
+      dosage_form: "Tablets",
+      strength: "500mg / 65mg",
+      pack_size: "Pack of 24",
+      active_ingredient: "Paracetamol, Caffeine",
+    },
+    {
+      id: "prod_piriton_4mg",
+      store_id: "store_demo_vine_pharmacy",
+      title: "Piriton Allergy Relief 4mg",
+      slug: "piriton-4mg-30s",
+      description: "Rapid relief from hayfever, skin allergies, runny nose, sneezing, and insect bites.",
+      price: 5000,
+      inventory_quantity: 85,
+      category_name: "Cold & Allergy",
+      badge: "Allergy Relief",
+      image_url: "https://images.unsplash.com/photo-1471864190281-a93a3070b6de?auto=format&fit=crop&w=400&q=80",
+      has_variants: 0,
+      variants: [],
+      rx_required: false,
+      dosage_form: "Tablets",
+      strength: "4mg",
+      pack_size: "Strip of 30",
+      active_ingredient: "Chlorpheniramine Maleate",
+    },
+    {
+      id: "prod_strepsils_honey",
+      store_id: "store_demo_vine_pharmacy",
+      title: "Strepsils Honey & Lemon Lozenges",
+      slug: "strepsils-honey-lemon-16s",
+      description: "Dual antibacterial soothing relief for sore throats and mouth infections.",
+      price: 12500,
+      compare_at_price: 14000,
+      inventory_quantity: 60,
+      category_name: "Cold & Allergy",
+      badge: "Sore Throat",
+      image_url: "https://images.unsplash.com/photo-1550572017-edd951aa8f72?auto=format&fit=crop&w=400&q=80",
+      has_variants: 0,
+      variants: [],
+      rx_required: false,
+      dosage_form: "Lozenges",
+      pack_size: "Pack of 16",
+      active_ingredient: "Amylmetacresol, Dichlorobenzyl alcohol",
+    },
+    {
+      id: "prod_redoxon_vit_c",
+      store_id: "store_demo_vine_pharmacy",
+      title: "Redoxon Double Action Vitamin C 1000mg + Zinc",
+      slug: "redoxon-vit-c-zinc-15s",
+      description: "Effervescent immune booster tablets with essential Vitamin C and Zinc antioxidant shield.",
+      price: 28000,
+      compare_at_price: 32000,
+      inventory_quantity: 40,
+      category_name: "Vitamins & Wellness",
+      badge: "Immune Shield",
+      image_url: "https://images.unsplash.com/photo-1577401239170-897942555fb3?auto=format&fit=crop&w=400&q=80",
+      has_variants: 0,
+      variants: [],
+      rx_required: false,
+      dosage_form: "Effervescent Tablets",
+      strength: "1000mg + 10mg",
+      pack_size: "Tube of 15",
+      active_ingredient: "Ascorbic Acid, Zinc",
+    },
+    {
+      id: "prod_savlon_250ml",
+      store_id: "store_demo_vine_pharmacy",
+      title: "Savlon Antiseptic Disinfectant Liquid (250ml)",
+      slug: "savlon-antiseptic-liquid-250ml",
+      description: "Gentle hospital-grade antiseptic for cleaning cuts, grazes, bites, and wound cleansing.",
+      price: 14000,
+      inventory_quantity: 50,
+      category_name: "First Aid",
+      badge: "Hospital Grade",
+      image_url: "https://images.unsplash.com/photo-1584017911766-d451b3d0e843?auto=format&fit=crop&w=400&q=80",
+      has_variants: 0,
+      variants: [],
+      rx_required: false,
+      dosage_form: "Liquid",
+      pack_size: "250ml Bottle",
+      active_ingredient: "Chlorhexidine Gluconate, Cetrimide",
+    },
+    {
+      id: "prod_omeprazole_20mg",
+      store_id: "store_demo_vine_pharmacy",
+      title: "Omeprazole 20mg Gastro-Resistant Capsules",
+      slug: "omeprazole-20mg-14s",
+      description: "Relief of frequent heartburn, acid indigestion, and gastric reflux.",
+      price: 10000,
+      inventory_quantity: 75,
+      category_name: "Digestion & Stomach",
+      badge: "Acid Relief",
+      image_url: "https://images.unsplash.com/photo-1585435557343-3b092031a831?auto=format&fit=crop&w=400&q=80",
+      has_variants: 0,
+      variants: [],
+      rx_required: false,
+      dosage_form: "Capsules",
+      strength: "20mg",
+      pack_size: "Strip of 14",
+      active_ingredient: "Omeprazole",
+    },
+    {
+      id: "prod_woodwards_gripe_water",
+      store_id: "store_demo_vine_pharmacy",
+      title: "Woodward's Gripe Water for Infants (150ml)",
+      slug: "woodwards-gripe-water-150ml",
+      description: "Non-alcoholic gentle herbal formula for rapid relief of infant colic, wind, and tummy discomfort during teething.",
+      price: 15000,
+      inventory_quantity: 35,
+      category_name: "Mother & Baby",
+      badge: "Infant Care",
+      image_url: "https://images.unsplash.com/photo-1515377905703-c4788e51af15?auto=format&fit=crop&w=400&q=80",
+      has_variants: 0,
+      variants: [],
+      rx_required: false,
+      dosage_form: "Syrup",
+      pack_size: "150ml Bottle",
+      active_ingredient: "Dill Oil, Sodium Bicarbonate",
+    },
+  ],
+  store_demo_first_pharmacy: [
+    {
+      id: "prod_hedex_extra",
+      store_id: "store_demo_first_pharmacy",
+      title: "Hedex Extra Fast Pain Relief Tablets",
+      slug: "hedex-extra-16s",
+      description: "Targeted fast headache and toothache relief formulation with paracetamol and caffeine.",
+      price: 4500,
+      inventory_quantity: 90,
+      category_name: "Pain & Fever",
+      badge: "Targeted Relief",
+      image_url: "https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?auto=format&fit=crop&w=400&q=80",
+      has_variants: 0,
+      variants: [],
+      rx_required: false,
+      dosage_form: "Tablets",
+      strength: "500mg / 65mg",
+      pack_size: "Pack of 16",
+      active_ingredient: "Paracetamol, Caffeine",
+    },
+    {
+      id: "prod_ascoril_cough",
+      store_id: "store_demo_first_pharmacy",
+      title: "Ascoril Expectorant Cough Syrup (100ml)",
+      slug: "ascoril-cough-syrup-100ml",
+      description: "Bronchodilator and expectorant syrup for chesty cough, bronchitis, and respiratory congestion.",
+      price: 16000,
+      compare_at_price: 18500,
+      inventory_quantity: 45,
+      category_name: "Cold & Allergy",
+      badge: "Chesty Cough",
+      image_url: "https://images.unsplash.com/photo-1587854692152-cbe660dbde88?auto=format&fit=crop&w=400&q=80",
+      has_variants: 0,
+      variants: [],
+      rx_required: false,
+      dosage_form: "Syrup",
+      strength: "100ml",
+      pack_size: "100ml Bottle",
+      active_ingredient: "Terbutaline, Bromhexine, Guaiphenesin",
+    },
+    {
+      id: "prod_sudocrem_60g",
+      store_id: "store_demo_first_pharmacy",
+      title: "Sudocrem Antiseptic Healing Cream (60g)",
+      slug: "sudocrem-healing-cream-60g",
+      description: "Clinically proven soothing protection for baby nappy rash, eczema, bedsores, and minor burns.",
+      price: 24000,
+      inventory_quantity: 30,
+      category_name: "Mother & Baby",
+      badge: "Dermatologist Approved",
+      image_url: "https://images.unsplash.com/photo-1556228720-195a672e8a03?auto=format&fit=crop&w=400&q=80",
+      has_variants: 0,
+      variants: [],
+      rx_required: false,
+      dosage_form: "Topical Cream",
+      pack_size: "60g Tub",
+      active_ingredient: "Zinc Oxide, Benzyl Benzoate",
+    },
+    {
+      id: "prod_digital_thermometer",
+      store_id: "store_demo_first_pharmacy",
+      title: "Accu-Scan Infrared Forehead & Ear Thermometer",
+      slug: "accu-scan-digital-thermometer",
+      description: "Instant 1-second non-contact clinical body temperature measurement with fever alarm.",
+      price: 45000,
+      compare_at_price: 52000,
+      inventory_quantity: 20,
+      category_name: "First Aid",
+      badge: "Clinical Precision",
+      image_url: "https://images.unsplash.com/photo-1584017911766-d451b3d0e843?auto=format&fit=crop&w=400&q=80",
+      has_variants: 0,
+      variants: [],
+      rx_required: false,
+      dosage_form: "Diagnostic Device",
+      pack_size: "1 Unit",
     },
   ],
 };
@@ -1167,7 +1466,7 @@ marketplaceRoutes.get("/marketplace/stores", async (c) => {
   let query = "SELECT * FROM stores WHERE status = 'active' AND environment = ?";
   const args: (string | number)[] = [environment];
 
-  if (category && (category === "groceries" || category === "stores")) {
+  if (category && (category === "groceries" || category === "stores" || category === "pharmacy")) {
     query += " AND category = ?";
     args.push(category);
   }
@@ -1585,5 +1884,113 @@ marketplaceRoutes.post("/marketplace/checkout", requireAuth, async (c) => {
   }
 
   return c.json({ ok: true, orders: createdOrders, order: createdOrders[0] }, 201);
+});
+
+// ---------------------------------------------------------------------------
+// Pharmacy Prescription Endpoints
+// ---------------------------------------------------------------------------
+
+interface InMemPrescription {
+  id: string;
+  customerId: string;
+  customerName: string;
+  customerPhone: string;
+  pharmacyId?: string;
+  pharmacyName?: string;
+  prescriptionImageUrl: string;
+  patientNotes?: string;
+  patientAge?: number;
+  patientGender?: string;
+  status: string;
+  pharmacistNotes?: string;
+  dosageInstructions?: string;
+  quotedItems: any[];
+  quotedTotalUgx: number;
+  deliveryAddress?: string;
+  deliveryFeeUgx: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+const MEMORY_PRESCRIPTIONS: InMemPrescription[] = [
+  {
+    id: "rx_demo_01",
+    customerId: "cust_demo_01",
+    customerName: "Prossy Kembabazi",
+    customerPhone: "+256 772 344 556",
+    pharmacyId: "store_demo_vine_pharmacy",
+    pharmacyName: "Vine Pharmacy — Acacia Mall",
+    prescriptionImageUrl: "https://images.unsplash.com/photo-1584017911766-d451b3d0e843?auto=format&fit=crop&w=600&q=80",
+    patientNotes: "Chesty cough x 3 days, low fever, throat irritation. Allergic to Amoxicillin/Penicillin.",
+    patientAge: 32,
+    patientGender: "female",
+    status: "pending_review",
+    quotedItems: [],
+    quotedTotalUgx: 35000,
+    deliveryAddress: "Kisementi, Plot 14 Acacia Avenue",
+    deliveryFeeUgx: 5000,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+];
+
+marketplaceRoutes.post("/pharmacy/prescriptions", async (c) => {
+  const user = c.get("user" as any);
+  const body = await c.req.json().catch(() => ({}));
+
+  const newRx: InMemPrescription = {
+    id: `rx_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    customerId: user?.id || "anonymous_customer",
+    customerName: user?.name || "Customer",
+    customerPhone: user?.phone || "+256 700 000 000",
+    pharmacyId: body.pharmacyId || "store_demo_vine_pharmacy",
+    pharmacyName: body.pharmacyName || "Vine Pharmacy — Acacia Mall",
+    prescriptionImageUrl: body.prescriptionImageUrl || "",
+    patientNotes: body.patientNotes || "",
+    patientAge: body.patientAge,
+    patientGender: body.patientGender || "female",
+    deliveryAddress: body.deliveryAddress || "Kampala",
+    status: "pending_review",
+    quotedItems: [],
+    quotedTotalUgx: 0,
+    deliveryFeeUgx: 5000,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+
+  MEMORY_PRESCRIPTIONS.unshift(newRx);
+  return c.json({ ok: true, prescription: newRx }, 201);
+});
+
+marketplaceRoutes.get("/pharmacy/prescriptions", async (c) => {
+  const user = c.get("user" as any);
+  const userId = user?.id;
+  const list = userId
+    ? MEMORY_PRESCRIPTIONS.filter((p) => p.customerId === userId)
+    : MEMORY_PRESCRIPTIONS;
+  return c.json({ prescriptions: list });
+});
+
+marketplaceRoutes.get("/pharmacy/pharmacist/prescriptions", async (c) => {
+  return c.json({ prescriptions: MEMORY_PRESCRIPTIONS });
+});
+
+marketplaceRoutes.patch("/pharmacy/pharmacist/prescriptions/:id", async (c) => {
+  const id = c.req.param("id");
+  const body = await c.req.json().catch(() => ({}));
+  const rx = MEMORY_PRESCRIPTIONS.find((p) => p.id === id);
+
+  if (!rx) {
+    return c.json({ ok: false, error: "Prescription not found" }, 404);
+  }
+
+  if (body.status) rx.status = body.status;
+  if (body.pharmacistNotes) rx.pharmacistNotes = body.pharmacistNotes;
+  if (body.dosageInstructions) rx.dosageInstructions = body.dosageInstructions;
+  if (body.quotedItems) rx.quotedItems = body.quotedItems;
+  if (typeof body.quotedTotalUgx === "number") rx.quotedTotalUgx = body.quotedTotalUgx;
+  rx.updatedAt = new Date().toISOString();
+
+  return c.json({ ok: true, prescription: rx });
 });
 

@@ -22,6 +22,7 @@ import {
   LocateFixed,
   LogOut,
   Plus,
+  Pill,
   RefreshCw,
   Search,
   ShieldCheck,
@@ -43,6 +44,7 @@ const labels: Record<OnboardingType, string> = {
   restaurant: "Food & Restaurant",
   merchant: "Store & Merchant",
   gas: "Fuel Station",
+  pharmacy: "Pharmacy & Health",
 };
 
 const subtitles: Record<OnboardingType, string> = {
@@ -52,6 +54,7 @@ const subtitles: Record<OnboardingType, string> = {
   restaurant: "Restaurants, eateries & commercial kitchens",
   merchant: "Retail stores, shops & supermarkets",
   gas: "Petrol stations, dealers & pump attendants",
+  pharmacy: "Licensed pharmacies, chemists & drug shops",
 };
 
 const icons = {
@@ -61,6 +64,7 @@ const icons = {
   restaurant: Utensils,
   merchant: Store,
   gas: Fuel,
+  pharmacy: Pill,
 };
 
 type Draft = {
@@ -75,6 +79,7 @@ const emptyDrafts = (): Record<OnboardingType, Draft> => ({
   restaurant: { profile: { businessType: "restaurant" }, files: {} },
   merchant: { profile: {}, files: {} },
   gas: { profile: { activePumps: 4, managerRole: "station_manager" }, files: {} },
+  pharmacy: { profile: { ndaVerified: true }, files: {} },
 });
 
 const riderFields = [
@@ -760,6 +765,8 @@ export default function Sales() {
                       ? "Partner & Vehicle Profile"
                       : type === "gas"
                       ? "Fuel Station & Outlet Profile"
+                      : type === "pharmacy"
+                      ? "Pharmacy & Chemist Profile"
                       : "Business Profile"}
                   </h2>
                   <p className="mt-1 text-xs text-ink-500">
@@ -910,6 +917,19 @@ export default function Sales() {
                   </div>
                 )}
 
+                {/* Pharmacy fields */}
+                {type === "pharmacy" && (
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    {field("pharmacyName", "Pharmacy brand / name", true, "text", "e.g. Vine Pharmacy")}
+                    {field("ndaLicense", "NDA premises license number", true, "text", "e.g. NDA/PREM/KLA/2026/0418")}
+                    {field("supervisingPharmacist", "Supervising pharmacist name", true, "text", "e.g. Dr. Sarah Namubiru")}
+                    {field("pharmacistApl", "Pharmacist APL number", true, "text", "e.g. NDA/APL/2026/0418")}
+                    <div className="sm:col-span-2">
+                      {field("address", "Physical pharmacy address", true, "text", "Plot, Street, Area")}
+                    </div>
+                  </div>
+                )}
+
                 <div className="flex items-center justify-between pt-4 border-t border-[var(--border-faint)]">
                   <button
                     type="button"
@@ -1004,6 +1024,12 @@ export default function Sales() {
                       <>
                         {upload("stationDoc", "Station Operating Permit / License", false)}
                         {upload("ownerId", "Manager ID Document", false)}
+                      </>
+                    )}
+                    {type === "pharmacy" && (
+                      <>
+                        {upload("ndaLicenseDoc", "NDA Premises Certificate", false)}
+                        {upload("pharmacistAplDoc", "Pharmacist Practicing License", false)}
                       </>
                     )}
                   </div>
@@ -1165,6 +1191,23 @@ export default function Sales() {
                           <span className="font-semibold text-ink-500">Branch Outlet</span>
                           <p className="font-bold text-ink mt-0.5">
                             {String(draft.profile.outletName || "Station")}
+                          </p>
+                        </div>
+                      </>
+                    )}
+
+                    {type === "pharmacy" && (
+                      <>
+                        <div>
+                          <span className="font-semibold text-ink-500">Pharmacy</span>
+                          <p className="font-bold text-ink mt-0.5">
+                            {String(draft.profile.pharmacyName || "Not set")}
+                          </p>
+                        </div>
+                        <div>
+                          <span className="font-semibold text-ink-500">NDA License</span>
+                          <p className="font-bold text-ink mt-0.5">
+                            {String(draft.profile.ndaLicense || "Pending")}
                           </p>
                         </div>
                       </>

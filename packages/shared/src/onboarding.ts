@@ -1,4 +1,4 @@
-export const ONBOARDING_TYPES = ['customer','rider','partner','restaurant','merchant','gas'] as const;
+export const ONBOARDING_TYPES = ['customer','rider','partner','restaurant','merchant','gas','pharmacy'] as const;
 export type OnboardingType = typeof ONBOARDING_TYPES[number];
 export type ActivationChannel = 'auto' | 'email' | 'sms' | 'whatsapp';
 export type OnboardingInput = {
