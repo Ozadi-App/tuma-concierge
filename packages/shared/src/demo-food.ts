@@ -92,6 +92,19 @@ const seeds = [
     { name: "Sugar doughnuts", description: "Pillowy doughnuts rolled in a light dusting of sugar.", price: 4000, art: "baked", category: "Pastries" },
     { name: "Spiced milk tea", description: "Black tea simmered with milk, ginger and warming spices.", price: 3500, art: "drink", category: "Drinks" },
   ] },
+  { slug: "sunburst-juice", name: "Sunburst Juice & Smoothie Bar", cuisine: "Cold-Pressed Juices · Smoothies · Booster Shots", businessType: "juices", address: "Demo location · Kololo", open: true, cover: "mango-smoothie", dishes: [
+    { name: "Green Vitality Cold-Pressed Juice", description: "Freshly pressed spinach, green apple, cucumber, celery and lemon. Sealed in spill-proof packaging to lock in nutrients and chill.", price: 12000, art: "drink", category: "Cold-Pressed Juices", featured: true, options: true, badge: "trending" },
+    { name: "Mango Passion Tropical Smoothie", description: "Velvety blend of ripe mango, passion fruit, yoghurt and a drizzle of honey. Leak-proof sealed for transit.", price: 14000, art: "drink", category: "Smoothies", featured: true, badge: "new" },
+    { name: "Ginger Turmeric Immunity Shot", description: "Concentrated cold-pressed organic ginger root, fresh turmeric, lemon and cayenne pepper.", price: 6000, art: "drink", category: "Wellness Shots" },
+    { name: "Watermelon Mint Hydration Juice", description: "Pure pressed sweet watermelon with crushed garden mint over ice. Prepared in spill-proof bottle.", price: 10000, art: "drink", category: "Cold-Pressed Juices" },
+    { name: "Acai Superberry Energy Bowl", description: "Blended organic berries and acai, topped with banana slices, chia seeds and granola.", price: 16000, art: "salad", category: "Wellness Bowls" },
+  ] },
+  { slug: "pure-press", name: "Pure Press Juice Co.", cuisine: "Fresh Juices · Wellness Shots · Smoothies", businessType: "juices", address: "Demo location · Bugolobi", open: true, cover: "lemon-cooler", dishes: [
+    { name: "Citrus Glow Orange Grapefruit", description: "Freshly pressed sweet Ugandan oranges, ruby grapefruit and a hint of lime. Sealed spill-proof.", price: 11000, art: "drink", category: "Cold-Pressed Juices", featured: true },
+    { name: "Avocado Green Protein Smoothie", description: "Creamy Hass avocado blended with spinach, banana, oat milk and plant protein. Spill-proof lid sealed.", price: 15000, art: "drink", category: "Smoothies", featured: true },
+    { name: "Wheatgrass Pure Energy Shot", description: "Potent raw cold-extracted wheatgrass shot packed with active chlorophyll and enzymes.", price: 7000, art: "drink", category: "Wellness Shots" },
+    { name: "Beetroot Apple Detox Juice", description: "Earthy beetroot pressed with crisp red apple, ginger root and fresh lemon.", price: 12000, art: "drink", category: "Cold-Pressed Juices" },
+  ] },
 ] satisfies Array<{ slug: string; name: string; cuisine: string; businessType: FoodBusinessType; address: string; open: boolean; cover: string; dishes: Dish[] }>;
 
 const restaurantDescriptions: Record<string, string> = {
@@ -105,6 +118,8 @@ const restaurantDescriptions: Record<string, string> = {
   "chapati-corner": "Char-grilled bites, fresh chapati and simple street-food favourites.",
   "golden-crumb": "Small-batch breads and pastries, baked fresh for everyday treats and sharing.",
   "sweet-oven": "Cakes and baked treats for everyday moments and special celebrations.",
+  "sunburst-juice": "Freshly pressed juices, nutrient smoothies and wellness shots prepared and sealed in spill-proof packaging to maintain freshness and cold temperature.",
+  "pure-press": "Handcrafted juices, cold-pressed tonics and booster shots sealed fresh for doorstep delivery.",
 };
 
 export const DEMO_FOOD_RESTAURANTS: Restaurant[] = seeds.map((seed) => ({

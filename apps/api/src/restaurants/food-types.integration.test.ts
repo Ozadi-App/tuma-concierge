@@ -33,7 +33,7 @@ test("food types persist, approval gates discovery, and missing migration stays 
     await setPlatformEnvironment("live");
     await setServiceSwitches({food:true});
     const app=new Hono().route("/v1",restaurantRoutes).route("/v1",customerRestaurantRoutes);
-    for (const [index,type] of ["restaurant","kitchen","street_food","bakery"].entries()) {
+    for (const [index,type] of ["restaurant","kitchen","street_food","bakery","juices"].entries()) {
       const id=`owner-${index}`;
       await client.execute({sql:"INSERT INTO users (id,name,password_hash,role) VALUES (?,?,?,?)",args:[id,id,"h","customer"]});
       const token=await signToken({sub:id,role:"customer"});
@@ -43,8 +43,8 @@ test("food types persist, approval gates discovery, and missing migration stays 
       assert.equal(data.restaurant.business_type,type);assert.equal(data.restaurant.status,"pending_approval");
       const pending=await (await call("/restaurants")).json() as {restaurants:Array<{id:string}>};assert(!pending.restaurants.some(r=>r.id===data.restaurant.id));
       await client.execute({sql:"UPDATE restaurants SET status='active' WHERE id=?",args:[data.restaurant.id]});
-      const updated=await call("/restaurants/me","PATCH",{businessType:"bakery"});assert.equal(updated.status,200);
-      assert.equal((await updated.json() as {restaurant:{business_type:string}}).restaurant.business_type,"bakery");
+      const updated=await call("/restaurants/me","PATCH",{businessType:"juices"});assert.equal(updated.status,200);
+      assert.equal((await updated.json() as {restaurant:{business_type:string}}).restaurant.business_type,"juices");
       const invalid=await call("/restaurants/me","PATCH",{businessType:"not-food"});assert.equal(invalid.status,400);
     }
     await client.execute("DROP INDEX idx_restaurants_business_type");

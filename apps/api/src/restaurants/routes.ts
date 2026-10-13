@@ -34,7 +34,7 @@ const timeOfDay = z
   .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Expected HH:MM (24-hour)");
 
 const profileSchema = z.object({
-  businessType: z.enum(["restaurant", "kitchen", "street_food", "bakery"]).optional(),
+  businessType: z.enum(["restaurant", "kitchen", "street_food", "bakery", "juices"]).optional(),
   name: z.string().min(1).max(120),
   description: z.string().max(2000).optional(),
   cuisine: z.string().max(120).optional(),

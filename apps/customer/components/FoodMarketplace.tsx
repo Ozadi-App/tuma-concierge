@@ -2,7 +2,7 @@
 
 import { FOOD_BUSINESS_TYPES, foodBusinessLabel, type FoodBusinessType, type Restaurant } from "@peebee/shared";
 import { demoRestaurantPhotoPath } from "@peebee/shared/demo-food";
-import { ArrowLeft, ArrowRight, ChefHat, CookingPot, Croissant, Search, SlidersHorizontal, UtensilsCrossed } from "lucide-react";
+import { ArrowLeft, ArrowRight, ChefHat, Citrus, CookingPot, Croissant, Search, ShieldCheck, SlidersHorizontal, UtensilsCrossed } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
@@ -12,8 +12,15 @@ type FoodMarketplaceProps =
   | { mode: "home" }
   | { mode: "directory"; category: FoodBusinessType };
 
-const categoryIcons = [UtensilsCrossed, ChefHat, CookingPot, Croissant];
+const categoryIcons: Record<FoodBusinessType, typeof UtensilsCrossed> = {
+  juices: Citrus,
+  restaurant: UtensilsCrossed,
+  kitchen: CookingPot,
+  street_food: ChefHat,
+  bakery: Croissant,
+};
 const categoryHrefs: Record<FoodBusinessType, string> = {
+  juices: "/juices",
   restaurant: "/restaurants",
   kitchen: "/kitchens",
   street_food: "/streetfood",
@@ -84,12 +91,12 @@ export function FoodMarketplace(props: FoodMarketplaceProps) {
             </div>
           </section>
           <div className="food-categories" aria-label="Browse food categories">
-            {FOOD_BUSINESS_TYPES.map((type, index) => {
-              const Icon = categoryIcons[index];
+            {FOOD_BUSINESS_TYPES.map((type) => {
+              const Icon = categoryIcons[type.value];
               return (
                 <Link key={type.value} href={categoryHrefs[type.value]}>
                   <span><Icon size={23} strokeWidth={1.5} /></span>
-                  <strong>{type.label}</strong>
+                  <strong>{type.navLabel}</strong>
                 </Link>
               );
             })}
@@ -105,13 +112,24 @@ export function FoodMarketplace(props: FoodMarketplaceProps) {
             <h1 className="mt-1 text-2xl font-bold">{categoryInfo?.label ?? "Food"}</h1>
             <p className="mt-1 text-sm text-ink-500">{categoryInfo?.description}</p>
           </div>
+          {selectedCategory === "juices" && (
+            <div className="rounded-2xl border border-gold/30 bg-gold/10 p-3.5 text-xs text-ink">
+              <div className="flex items-center gap-2 font-bold text-gold">
+                <ShieldCheck size={16} />
+                <span>Spill-Proof &amp; Freshness Guarantee</span>
+              </div>
+              <p className="mt-1 text-ink-500">
+                Drinks are freshly prepared and sealed in specialized spill-proof packaging to maintain optimal temperature and freshness during transit.
+              </p>
+            </div>
+          )}
         </>
       )}
 
       <div className="flex items-center gap-2">
         <div className="field-box flex min-h-12 min-w-0 flex-1 items-center gap-2 rounded-2xl px-3">
           <Search size={18} className="shrink-0 text-ink-500" />
-          <input aria-label={`Search ${categoryInfo?.label.toLowerCase() ?? "food businesses"}`} placeholder="Search food, kitchens, bakeries…" value={query} onChange={(event) => setQuery(event.target.value)} className="min-w-0 w-full border-0 outline-none" />
+          <input aria-label={`Search ${categoryInfo?.label.toLowerCase() ?? "food businesses"}`} placeholder="Search food, juices, kitchens, bakeries…" value={query} onChange={(event) => setQuery(event.target.value)} className="min-w-0 w-full border-0 outline-none" />
         </div>
         <button aria-label="Show only open businesses" aria-pressed={openOnly} onClick={() => setOpenOnly(!openOnly)} className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-[var(--border-faint)] ${openOnly ? "bg-gold/20 text-gold" : "bg-[rgb(var(--surface-card))]"}`}>
           <SlidersHorizontal size={20} />

@@ -22,7 +22,7 @@ export const normalizePhone = (value:string)=>{
 const optionalText=(max:number)=>z.preprocess(v=>v===''?undefined:v,z.string().trim().min(1).max(max).optional());
 const phone=z.preprocess(v=>typeof v==='string'&&v.trim()?normalizePhone(v):undefined,z.string().regex(/^\+[1-9]\d{7,14}$/,'Use a valid international phone number.').optional());
 const profileSchema=z.object({
-  businessType:z.enum(["restaurant","kitchen","street_food","bakery"]).optional(),
+  businessType:z.enum(["restaurant","kitchen","street_food","bakery","juices"]).optional(),
   firstName:optionalText(60),lastName:optionalText(60),area:optionalText(120),vehicleInfo:optionalText(120),momoMsisdn:phone,altPhone:phone,
   stageAddress:optionalText(240),homeAddress:optionalText(240),stageName:optionalText(120),stageChairmanName:optionalText(120),stageChairmanContact:phone,
   emergencyContactName:optionalText(120),emergencyContactPhone:phone,
