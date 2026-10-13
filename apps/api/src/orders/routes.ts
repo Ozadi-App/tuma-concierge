@@ -27,7 +27,7 @@ import { currentVisibilityRadiusKm, orderMatchPoint, parseDbTimestamp } from "./
 import { redactOrder } from "./visibility.js";
 import { assignAvailableRider } from "./assignment.js";
 import { computeBidding, loadBiddingContext, validateBid } from "./bidding.js";
-import { hasColumn } from "../lib/schema.js";
+import { hasColumn, hasTable } from "../lib/schema.js";
 import { findCarCandidate, isCarOrder, settleCarBooking, stampCarBooking } from "../car/service.js";
 import { getApplicantProfile } from "./applicant-profile.js";
 import { buildLugandaListNarration } from "./list-narration.js";
@@ -81,15 +81,19 @@ async function logEvent(orderId: string, stage: string, note: string, actorId: s
 }
 
 async function getOrder(orderId: string): Promise<Row | undefined> {
+  const supportsStoreId = (await hasColumn("orders", "store_id")) && (await hasTable("stores"));
+  const storeFields = supportsStoreId ? ", st.name AS store_name, st.category AS store_category, st.address AS store_address" : "";
+  const storeJoin = supportsStoreId ? "LEFT JOIN stores st ON st.id = o.store_id" : "";
   const res = await db.execute({
     sql: `SELECT o.*, c.name as customer_name, r.name as rider_name,
                  food.name AS restaurant_name, food_outlet.code AS restaurant_outlet_code,
-                 food_outlet.name AS restaurant_outlet_name
+                 food_outlet.name AS restaurant_outlet_name${storeFields}
           FROM orders o
           LEFT JOIN users c ON c.id = o.customer_id
           LEFT JOIN users r ON r.id = o.rider_id
           LEFT JOIN restaurants food ON food.id = o.restaurant_id
           LEFT JOIN merchant_outlets food_outlet ON food_outlet.id = food.outlet_id
+          ${storeJoin}
           WHERE o.id = ?`,
     args: [orderId],
   });

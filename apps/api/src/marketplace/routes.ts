@@ -3,8 +3,12 @@ import { z } from "zod";
 import { requireAuth, requireRole } from "../auth/middleware.js";
 import { db } from "../db/client.js";
 import { newId } from "../lib/ids.js";
-import { getMarketplaceSettings, getPlatformEnvironment } from "../lib/settings.js";
-import { hasColumn } from "../lib/schema.js";
+import { getDeliverySettings, getMarketplaceSettings, getMatchingSettings, getPlatformEnvironment } from "../lib/settings.js";
+import { hasColumn, hasTable } from "../lib/schema.js";
+import { haversineKm } from "../lib/geo.js";
+import { roundFare, type MatchingMode } from "@peebee/shared";
+import { snapshotTimeFees } from "../orders/time-fees.js";
+import { notifyUser } from "../lib/webpush.js";
 
 export const marketplaceRoutes = new Hono();
 
@@ -25,6 +29,8 @@ export const DEMO_MARKETPLACE_STORES = [
     phone: "+256 700 123 456",
     whatsapp_number: "+256 700 123 456",
     address: "Acacia Mall Ground Floor, Kololo",
+    lat: 0.3353,
+    lng: 32.5857,
     is_open: 1,
     delivery_enabled: 1,
     pickup_enabled: 1,
@@ -49,6 +55,8 @@ export const DEMO_MARKETPLACE_STORES = [
     phone: "+256 772 987 654",
     whatsapp_number: "+256 772 987 654",
     address: "Garden City Mall Level 2, Kampala",
+    lat: 0.3186,
+    lng: 32.5898,
     is_open: 1,
     delivery_enabled: 1,
     pickup_enabled: 1,
@@ -73,6 +81,8 @@ export const DEMO_MARKETPLACE_STORES = [
     phone: "+256 750 333 444",
     whatsapp_number: "+256 750 333 444",
     address: "Pioneer Mall, Kampala CBD",
+    lat: 0.3138,
+    lng: 32.5815,
     is_open: 1,
     delivery_enabled: 1,
     pickup_enabled: 1,
@@ -97,6 +107,8 @@ export const DEMO_MARKETPLACE_STORES = [
     phone: "+256 701 445 566",
     whatsapp_number: "+256 701 445 566",
     address: "Bukoto Street, Kamwokya",
+    lat: 0.3421,
+    lng: 32.5872,
     is_open: 1,
     delivery_enabled: 1,
     pickup_enabled: 1,
@@ -121,6 +133,8 @@ export const DEMO_MARKETPLACE_STORES = [
     phone: "+256 788 223 344",
     whatsapp_number: "+256 788 223 344",
     address: "Village Mall Bugolobi, Level 1",
+    lat: 0.3142,
+    lng: 32.6185,
     is_open: 1,
     delivery_enabled: 1,
     pickup_enabled: 1,
@@ -145,6 +159,8 @@ export const DEMO_MARKETPLACE_STORES = [
     phone: "+256 702 889 900",
     whatsapp_number: "+256 702 889 900",
     address: "Arena Mall, Nsambya",
+    lat: 0.2985,
+    lng: 32.5852,
     is_open: 1,
     delivery_enabled: 1,
     pickup_enabled: 1,
@@ -1299,5 +1315,235 @@ marketplaceRoutes.get("/marketplace/spotlight", async (c) => {
   }
 
   return c.json({ spotlight: items });
+});
+
+async function ensureDemoStoreInDb(demoStoreId: string, environment: string) {
+  if (!(await hasTable("stores"))) return;
+  const existing = await db.execute({ sql: "SELECT id FROM stores WHERE id = ?", args: [demoStoreId] });
+  if (existing.rows.length > 0) return;
+
+  const demo = DEMO_MARKETPLACE_STORES.find((s) => s.id === demoStoreId);
+  if (!demo) return;
+
+  const merchantId = `${demoStoreId}-merchant`;
+  await db.execute({
+    sql: `INSERT OR IGNORE INTO merchants (id, legal_name, display_name, status, trust_tier, environment)
+          VALUES (?, ?, ?, 'active', 'standard', ?)`,
+    args: [merchantId, demo.name, demo.name, environment],
+  });
+
+  await db.execute({
+    sql: `INSERT OR IGNORE INTO stores (
+      id, merchant_id, name, slug, category, sub_category, description,
+      announcement, phone, whatsapp_number, address, lat, lng,
+      min_order_amount, pro_tier, is_live, status, environment
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)`,
+    args: [
+      demo.id,
+      merchantId,
+      demo.name,
+      demo.slug,
+      demo.category,
+      demo.sub_category || "general",
+      demo.description,
+      demo.announcement || "",
+      demo.phone,
+      demo.whatsapp_number,
+      demo.address,
+      demo.lat || null,
+      demo.lng || null,
+      demo.min_order_amount,
+      demo.pro_tier,
+      demo.is_live,
+      environment,
+    ],
+  });
+}
+
+const checkoutItemSchema = z.object({
+  productId: z.string(),
+  storeId: z.string(),
+  title: z.string(),
+  price: z.number().int().nonnegative(),
+  quantity: z.number().int().positive().max(50),
+  variantId: z.string().optional(),
+  variantTitle: z.string().optional(),
+  imageUrl: z.string().optional(),
+});
+
+const marketplaceCheckoutSchema = z.object({
+  items: z.array(checkoutItemSchema).min(1),
+  paymentRail: z.enum(["escrow", "float"]).optional(),
+  paymentMethod: z.enum(["momo", "airtel", "wallet", "cod"]).optional(),
+  destinationAddress: z.string().optional(),
+  destinationArea: z.string().optional(),
+  destinationLat: z.number().optional(),
+  destinationLng: z.number().optional(),
+});
+
+// Marketplace Cart Checkout -> Real Orders linked to Boda Delivery System
+marketplaceRoutes.post("/marketplace/checkout", requireAuth, async (c) => {
+  const user = c.get("user");
+  const body = await c.req.json().catch(() => ({}));
+  const parsed = marketplaceCheckoutSchema.safeParse(body);
+  if (!parsed.success) return c.json({ error: "invalid_body", issues: parsed.error.issues }, 400);
+  const d = parsed.data;
+
+  const environment = await getPlatformEnvironment();
+  const deliverySettings = await getDeliverySettings();
+  const { enabledModes, nearestWindowSeconds, maxAssignmentMinutes } = await getMatchingSettings();
+  const userRow = await db.execute({ sql: "SELECT default_matching_mode FROM users WHERE id = ?", args: [user.sub] });
+  const preferredMode = userRow.rows[0]?.default_matching_mode as MatchingMode | null | undefined;
+  const matchingMode: MatchingMode = preferredMode && enabledModes.includes(preferredMode) ? preferredMode : enabledModes[0];
+  const matchingDeadlineAt =
+    matchingMode === "nearest_window"
+      ? new Date(Date.now() + nearestWindowSeconds * 1000).toISOString()
+      : matchingMode === "customer_selects"
+        ? new Date(Date.now() + maxAssignmentMinutes * 60 * 1000).toISOString()
+        : null;
+
+  const paymentRail = d.paymentRail ?? (d.paymentMethod === "cod" ? "float" : "escrow");
+  const stage = paymentRail === "float" ? "Match" : "Create";
+
+  const itemsByStore = new Map<string, typeof d.items>();
+  for (const it of d.items) {
+    const list = itemsByStore.get(it.storeId) ?? [];
+    list.push(it);
+    itemsByStore.set(it.storeId, list);
+  }
+
+  const createdOrders: Row[] = [];
+  const supportsStoreId = (await hasColumn("orders", "store_id")) && (await hasTable("stores"));
+
+  for (const [storeId, storeItems] of itemsByStore.entries()) {
+    await ensureDemoStoreInDb(storeId, environment);
+
+    let storeName = "Marketplace Store";
+    let storeAddress: string | null = null;
+    let storeLat: number | null = null;
+    let storeLng: number | null = null;
+
+    if (await hasTable("stores")) {
+      const sRes = await db.execute({ sql: "SELECT id, name, address, lat, lng, category FROM stores WHERE id = ?", args: [storeId] });
+      const sRow = sRes.rows[0] as Row | undefined;
+      if (sRow) {
+        storeName = String(sRow.name ?? storeName);
+        storeAddress = (sRow.address as string | null) ?? null;
+        storeLat = (sRow.lat as number | null) ?? null;
+        storeLng = (sRow.lng as number | null) ?? null;
+      }
+    }
+
+    if (storeName === "Marketplace Store") {
+      const demo = DEMO_MARKETPLACE_STORES.find((s) => s.id === storeId);
+      if (demo) {
+        storeName = demo.name;
+        storeAddress = demo.address;
+        storeLat = demo.lat ?? null;
+        storeLng = demo.lng ?? null;
+      }
+    }
+
+    const itemsTotal = storeItems.reduce((sum, it) => sum + it.price * it.quantity, 0);
+
+    let distanceKm: number | null = null;
+    if (storeLat != null && storeLng != null && d.destinationLat != null && d.destinationLng != null) {
+      distanceKm = Math.round(haversineKm(storeLat, storeLng, d.destinationLat, d.destinationLng) * 10) / 10;
+    }
+
+    const deliveryFee = distanceKm != null
+      ? roundFare(distanceKm * deliverySettings.deliveryRatePerKm, deliverySettings.minimumDeliveryFee)
+      : roundFare(deliverySettings.shoppingDeliveryFee);
+
+    const listId = newId("list");
+    await db.execute({
+      sql: "INSERT INTO lists (id, customer_id, title, status, environment) VALUES (?, ?, ?, 'active', ?)",
+      args: [listId, user.sub, `${storeName} Order`, environment],
+    });
+
+    for (const it of storeItems) {
+      const itemName = it.variantTitle ? `${it.title} (${it.variantTitle})` : it.title;
+      await db.execute({
+        sql: "INSERT INTO list_items (id, list_id, name, quantity, unit_price) VALUES (?, ?, ?, ?, ?)",
+        args: [newId("item"), listId, itemName, it.quantity, it.price],
+      });
+    }
+
+    const orderId = newId("ord");
+    const storeCol = supportsStoreId ? ", store_id" : "";
+    const storeVal = supportsStoreId ? ", ?" : "";
+    const storeArgs = supportsStoreId ? [storeId] : [];
+
+    await db.execute({
+      sql: `INSERT INTO orders (
+              id, list_id, customer_id, stage, type, payment_rail, estimated_total, delivery_fee,
+              pickup_area, pickup_address, pickup_lat, pickup_lng,
+              destination_area, destination_address, destination_lat, destination_lng, distance_km,
+              matching_mode, matching_deadline_at, environment${storeCol}
+            )
+            VALUES (?, ?, ?, ?, 'shopping', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?${storeVal})`,
+      args: [
+        orderId,
+        listId,
+        user.sub,
+        stage,
+        paymentRail,
+        itemsTotal,
+        deliveryFee,
+        storeAddress,
+        storeAddress,
+        storeLat,
+        storeLng,
+        d.destinationArea ?? null,
+        d.destinationAddress ?? null,
+        d.destinationLat ?? null,
+        d.destinationLng ?? null,
+        distanceKm,
+        matchingMode,
+        matchingDeadlineAt,
+        environment,
+        ...storeArgs,
+      ],
+    });
+
+    await db.execute({
+      sql: "INSERT INTO order_events (id, order_id, stage, note, actor_id) VALUES (?, ?, ?, ?, ?)",
+      args: [newId("evt"), orderId, stage, `Order placed from ${storeName}`, user.sub],
+    });
+
+    await snapshotTimeFees(orderId, deliveryFee);
+
+    // Notify online verified riders via WebPush
+    try {
+      const onlineRiders = await db.execute({
+        sql: `SELECT u.id FROM riders r JOIN users u ON u.id = r.user_id
+              WHERE r.verified = 1 AND r.is_online = 1`,
+        args: [],
+      });
+      for (const rider of onlineRiders.rows as Row[]) {
+        notifyUser(rider.id as string, {
+          title: `New delivery order: ${storeName}`,
+          body: `Pickup at ${storeName} · Delivery fee: UGX ${deliveryFee.toLocaleString()}`,
+          url: "/riders",
+          tag: `order-${orderId}`,
+        }).catch(() => {});
+      }
+    } catch {
+      // Ignore notification broadcast failures
+    }
+
+    const createdOrder = await db.execute({
+      sql: `SELECT o.*, c.name as customer_name, r.name as rider_name FROM orders o
+            LEFT JOIN users c ON c.id = o.customer_id
+            LEFT JOIN users r ON r.id = o.rider_id
+            WHERE o.id = ?`,
+      args: [orderId],
+    });
+    if (createdOrder.rows[0]) {
+      createdOrders.push(createdOrder.rows[0]);
+    }
+  }
+
+  return c.json({ ok: true, orders: createdOrders, order: createdOrders[0] }, 201);
 });
 

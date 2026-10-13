@@ -1632,6 +1632,29 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
       const q = category ? `?category=${category}` : "";
       return request<{ spotlight: any[] }>(`/v1/marketplace/spotlight${q}`);
     },
+    async checkoutMarketplace(input: {
+      items: Array<{
+        productId: string;
+        storeId: string;
+        title: string;
+        price: number;
+        quantity: number;
+        variantId?: string;
+        variantTitle?: string;
+        imageUrl?: string;
+      }>;
+      paymentRail?: "escrow" | "float";
+      paymentMethod?: "momo" | "airtel" | "wallet" | "cod";
+      destinationAddress?: string;
+      destinationArea?: string;
+      destinationLat?: number;
+      destinationLng?: number;
+    }) {
+      return request<{ ok: boolean; orders: OrderRow[]; order: OrderRow }>("/v1/marketplace/checkout", {
+        method: "POST",
+        body: JSON.stringify(input),
+      });
+    },
 
     // Merchant Pro Store Endpoints
     async getMerchantProStore() {

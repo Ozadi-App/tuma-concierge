@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { useCart, CartItem } from "../../lib/cart";
 import { ProductImage } from "../../components/ProductImage";
+import { api, errorMessage } from "../../lib/api";
 
 export default function CartPage() {
   const router = useRouter();
@@ -43,23 +44,57 @@ export default function CartPage() {
   const [paymentMethod, setPaymentMethod] = useState<"momo" | "airtel" | "wallet" | "cod">("momo");
   const [deliveryAddress, setDeliveryAddress] = useState("Acacia Mall / Kololo, Kampala");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [orderSuccess, setOrderSuccess] = useState<string | null>(null);
 
   const allSelected = items.length > 0 && items.every((i) => i.selected);
 
   const handleCheckout = () => {
     if (selectedItems.length === 0) return;
+    setCheckoutError(null);
     setCheckoutModalOpen(true);
   };
 
-  const handleConfirmOrder = () => {
+  const handleConfirmOrder = async () => {
+    if (selectedItems.length === 0) return;
     setIsSubmitting(true);
-    setTimeout(() => {
-      setIsSubmitting(false);
-      const fakeOrderId = `ORD-${Math.floor(100000 + Math.random() * 900000)}`;
-      setOrderSuccess(fakeOrderId);
+    setCheckoutError(null);
+    try {
+      const paymentRail = paymentMethod === "cod" ? "float" : "escrow";
+      const res = await api.checkoutMarketplace({
+        items: selectedItems.map((it) => ({
+          productId: it.productId,
+          storeId: it.storeId,
+          title: it.title,
+          price: it.price,
+          quantity: it.quantity,
+          variantId: it.variantId,
+          variantTitle: it.variantTitle,
+          imageUrl: it.imageUrl,
+        })),
+        paymentRail,
+        paymentMethod,
+        destinationAddress: deliveryAddress.trim() || "Acacia Mall / Kololo, Kampala",
+        destinationArea: "Kampala",
+        destinationLat: 0.3353,
+        destinationLng: 32.5857,
+      });
+
+      const firstOrder = res.order ?? res.orders?.[0];
       clearCart();
-    }, 1500);
+      setIsSubmitting(false);
+
+      if (paymentRail === "escrow" && firstOrder?.id) {
+        router.push(`/orders/${firstOrder.id}/pay`);
+      } else if (firstOrder?.id) {
+        router.push(`/orders/${firstOrder.id}`);
+      } else {
+        setOrderSuccess("CONFIRMED");
+      }
+    } catch (err) {
+      setCheckoutError(errorMessage(err));
+      setIsSubmitting(false);
+    }
   };
 
   if (!mounted) {
@@ -476,6 +511,12 @@ export default function CartPage() {
                 <span className="font-semibold text-ink-700">Amount Due</span>
                 <span className="font-black text-base text-gold">UGX {total.toLocaleString()}</span>
               </div>
+
+              {checkoutError && (
+                <p className="rounded-xl bg-red-500/10 border border-red-500/20 p-2.5 text-xs font-bold text-red-600">
+                  {checkoutError}
+                </p>
+              )}
 
               {/* Confirm Button */}
               <button

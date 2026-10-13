@@ -50,6 +50,13 @@ export function JobPreviewModal({ job, busy, offline, onClose, onClaim, onApply 
           {job.destination_area ? ` · ${job.destination_area}` : ""}
         </div>
 
+        {job.store_name && (
+          <div className="rounded-xl bg-gold/15 border border-gold/30 px-3 py-2 text-xs font-bold text-ink flex items-center justify-between">
+            <span>Store: {job.store_name}</span>
+            {job.store_category && <span className="uppercase text-[10px] text-ink-500 font-extrabold">{job.store_category}</span>}
+          </div>
+        )}
+
         {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
 
         {job.type === "shopping" ? (

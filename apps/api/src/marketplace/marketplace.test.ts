@@ -7,6 +7,7 @@ import app from "../app.js";
 import { setD1Binding, type D1Database } from "../db/client.js";
 import { splitSqlStatements } from "../db/split-sql.js";
 import { resetSchemaCache } from "../lib/schema.js";
+import { signToken } from "../auth/jwt.js";
 
 function bindDatabase(client: Client) {
   const prepare = (sql: string) => ({
@@ -87,3 +88,108 @@ test("marketplace routes: public browsing is accessible without authentication",
   const meStoreRes = await app.request("/v1/merchants/me/store");
   assert.equal(meStoreRes.status, 401);
 });
+
+test("marketplace checkout: links orders to delivery system and alerts boda riders", async () => {
+  process.env.JWT_SECRET = "marketplace-tests-only";
+  resetSchemaCache();
+  const client = createClient({ url: "file::memory:" });
+  const migrations = join(process.cwd(), "src/db/migrations");
+  for (const file of readdirSync(migrations).filter((f) => f.endsWith(".sql")).sort()) {
+    for (const sql of splitSqlStatements(readFileSync(join(migrations, file), "utf8"))) {
+      await client.execute(sql);
+    }
+  }
+  bindDatabase(client);
+
+  // Setup user and rider
+  await client.execute("INSERT INTO users (id, phone, name, password_hash, role, status) VALUES ('cust_1', '+256700111222', 'Alice Mukasa', 'hash', 'customer', 'active')");
+  await client.execute("INSERT INTO users (id, phone, name, password_hash, role, status) VALUES ('rider_1', '+256700333444', 'Bob Boda', 'hash', 'rider', 'active')");
+  await client.execute("INSERT INTO riders (user_id, verified, is_online, stage_lat, stage_lng, area) VALUES ('rider_1', 1, 1, 0.3353, 32.5857, 'Kololo')");
+
+  const customerToken = await signToken({ sub: "cust_1", role: "customer" });
+  const riderToken = await signToken({ sub: "rider_1", role: "rider" });
+
+  // Customer checks out items from FreshMart Supermarket
+  const checkoutRes = await app.request("/v1/marketplace/checkout", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${customerToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      items: [
+        {
+          productId: "prod_milk_1l",
+          storeId: "store_demo_fresh_mart",
+          title: "Farm Fresh Whole Milk",
+          price: 3500,
+          quantity: 2,
+          variantTitle: "1 Litre Bottle",
+        },
+        {
+          productId: "prod_eggs_tray",
+          storeId: "store_demo_fresh_mart",
+          title: "Farm Fresh Eggs",
+          price: 13500,
+          quantity: 1,
+          variantTitle: "Full Tray (30)",
+        },
+      ],
+      paymentMethod: "momo",
+      paymentRail: "escrow",
+      destinationAddress: "Acacia Mall / Kololo, Kampala",
+      destinationArea: "Kololo",
+      destinationLat: 0.3353,
+      destinationLng: 32.5857,
+    }),
+  });
+
+  assert.equal(checkoutRes.status, 201);
+  const checkoutData = (await checkoutRes.json()) as any;
+  assert.equal(checkoutData.ok, true);
+  assert.ok(checkoutData.order);
+  const orderId = checkoutData.order.id;
+  assert.equal(checkoutData.order.store_id, "store_demo_fresh_mart");
+  assert.equal(checkoutData.order.stage, "Create");
+  assert.equal(checkoutData.order.payment_rail, "escrow");
+
+  // Verify list and items in database
+  const listItems = await client.execute({ sql: "SELECT * FROM list_items WHERE list_id = ?", args: [checkoutData.order.list_id] });
+  assert.equal(listItems.rows.length, 2);
+
+  // Rider views available jobs feed
+  const availableRes = await app.request("/v1/riders/jobs/available", {
+    headers: { Authorization: `Bearer ${riderToken}` },
+  });
+  assert.equal(availableRes.status, 200);
+  const availableData = (await availableRes.json()) as any;
+  const job = availableData.jobs.find((j: any) => j.id === orderId);
+  assert.ok(job, "Marketplace order must appear in rider available jobs");
+  assert.equal(job.store_name, "FreshMart Supermarket");
+  assert.equal(job.store_category, "groceries");
+
+  // Rider previews job shopping list
+  const previewRes = await app.request(`/v1/riders/jobs/${orderId}/preview`, {
+    headers: { Authorization: `Bearer ${riderToken}` },
+  });
+  assert.equal(previewRes.status, 200);
+  const previewData = (await previewRes.json()) as any;
+  assert.equal(previewData.items.length, 2);
+
+  // Rider claims job
+  const claimRes = await app.request(`/v1/orders/${orderId}/claim`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${riderToken}` },
+  });
+  assert.equal(claimRes.status, 200);
+
+  // Check order details
+  const getOrderRes = await app.request(`/v1/orders/${orderId}`, {
+    headers: { Authorization: `Bearer ${riderToken}` },
+  });
+  assert.equal(getOrderRes.status, 200);
+  const getOrderData = (await getOrderRes.json()) as any;
+  assert.equal(getOrderData.order.store_name, "FreshMart Supermarket");
+  assert.equal(getOrderData.order.rider_id, "rider_1");
+});
+

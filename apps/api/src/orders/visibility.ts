@@ -91,6 +91,10 @@ export function toOpenJob(
     // categorize it as "Food" rather than plain "Shopping".
     restaurant_id: order.restaurant_id ?? null,
     restaurant_name: order.restaurant_name ?? null,
+    // A marketplace store / grocery order is `type: 'shopping'` with store_id set
+    store_id: order.store_id ?? null,
+    store_name: order.store_name ?? null,
+    store_category: order.store_category ?? null,
     bundle_order_count: Number(order.bundle_order_count ?? 1),
     // A passenger ride is `type: 'parcel'` with this flag set (see
     // 0039_ride_orders.sql) — surfaced here so the rider app can
