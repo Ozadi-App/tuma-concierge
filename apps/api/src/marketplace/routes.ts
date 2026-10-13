@@ -1157,6 +1157,11 @@ marketplaceRoutes.post("/merchants/me/store/live/end", requireAuth, async (c) =>
 
 marketplaceRoutes.get("/marketplace/stores", async (c) => {
   const category = c.req.query("category"); // 'groceries' | 'stores'
+  const latParam = c.req.query("lat");
+  const lngParam = c.req.query("lng");
+  const userLat = latParam != null && latParam !== "" ? parseFloat(latParam) : null;
+  const userLng = lngParam != null && lngParam !== "" ? parseFloat(lngParam) : null;
+  const hasUserCoords = userLat != null && !isNaN(userLat) && userLng != null && !isNaN(userLng);
   const environment = await getPlatformEnvironment();
 
   let query = "SELECT * FROM stores WHERE status = 'active' AND environment = ?";
@@ -1176,11 +1181,36 @@ marketplaceRoutes.get("/marketplace/stores", async (c) => {
     stores = DEMO_MARKETPLACE_STORES.filter((s) => !category || s.category === category);
   }
 
+  if (hasUserCoords) {
+    stores = stores.map((s) => {
+      const sLat = typeof s.lat === "number" ? s.lat : typeof s.lat === "string" ? parseFloat(s.lat) : null;
+      const sLng = typeof s.lng === "number" ? s.lng : typeof s.lng === "string" ? parseFloat(s.lng) : null;
+      const distanceKm = sLat != null && sLng != null && !isNaN(sLat) && !isNaN(sLng)
+        ? Math.round(haversineKm(userLat, userLng, sLat, sLng) * 10) / 10
+        : null;
+      return {
+        ...s,
+        distance_km: distanceKm,
+      };
+    });
+
+    stores.sort((a, b) => {
+      const distA = typeof a.distance_km === "number" ? a.distance_km : 999999;
+      const distB = typeof b.distance_km === "number" ? b.distance_km : 999999;
+      return distA - distB;
+    });
+  }
+
   return c.json({ stores });
 });
 
 marketplaceRoutes.get("/marketplace/stores/:id", async (c) => {
   const id = c.req.param("id");
+  const latParam = c.req.query("lat");
+  const lngParam = c.req.query("lng");
+  const userLat = latParam != null && latParam !== "" ? parseFloat(latParam) : null;
+  const userLng = lngParam != null && lngParam !== "" ? parseFloat(lngParam) : null;
+
   const res = await db.execute({
     sql: "SELECT * FROM stores WHERE id = ? OR slug = ?",
     args: [id, id],
@@ -1192,6 +1222,16 @@ marketplaceRoutes.get("/marketplace/stores/:id", async (c) => {
   }
 
   if (!store) return c.json({ error: "store_not_found" }, 404);
+
+  if (userLat != null && !isNaN(userLat) && userLng != null && !isNaN(userLng)) {
+    const sLat = typeof store.lat === "number" ? store.lat : typeof store.lat === "string" ? parseFloat(store.lat) : null;
+    const sLng = typeof store.lng === "number" ? store.lng : typeof store.lng === "string" ? parseFloat(store.lng) : null;
+    const distanceKm = sLat != null && sLng != null && !isNaN(sLat) && !isNaN(sLng)
+      ? Math.round(haversineKm(userLat, userLng, sLat, sLng) * 10) / 10
+      : null;
+    store = { ...store, distance_km: distanceKm };
+  }
+
   return c.json({ store });
 });
 

@@ -1,5 +1,6 @@
 import { PRACTICE_MODE_STORAGE_KEY, type PracticeRole } from "./practice.js";
 import { roundFare } from "./fare.js";
+import { haversineKm } from "./geo.js";
 import { DEMO_FOOD_RESTAURANTS, demoFoodImage, demoFoodMenu, demoFoodRestaurant } from "./demo-food.js";
 import { DEMO_MARKETPLACE_STORES, DEMO_MARKETPLACE_PRODUCTS, DEMO_MARKETPLACE_SPOTLIGHT } from "./demo-marketplace.js";
 import { CAR_MODEL_CATALOG } from "./car-model-catalog.js";
@@ -542,13 +543,49 @@ function handlePracticeRequest(role: PracticeRole, path: string, method: string,
 
     if (path === "/v1/marketplace/stores") {
       const cat = query.get("category");
-      const stores = cat ? DEMO_MARKETPLACE_STORES.filter((s) => s.category === cat) : DEMO_MARKETPLACE_STORES;
+      let stores = cat ? DEMO_MARKETPLACE_STORES.filter((s) => s.category === cat) : [...DEMO_MARKETPLACE_STORES];
+      const latParam = query.get("lat");
+      const lngParam = query.get("lng");
+      const userLat = latParam != null && latParam !== "" ? parseFloat(latParam) : null;
+      const userLng = lngParam != null && lngParam !== "" ? parseFloat(lngParam) : null;
+      if (userLat != null && !isNaN(userLat) && userLng != null && !isNaN(userLng)) {
+        stores = stores.map((s) => {
+          const sLat = typeof s.lat === "number" ? s.lat : null;
+          const sLng = typeof s.lng === "number" ? s.lng : null;
+          const distanceKm = sLat != null && sLng != null
+            ? Math.round(haversineKm(userLat, userLng, sLat, sLng) * 10) / 10
+            : null;
+          return {
+            ...s,
+            distance_km: distanceKm,
+          };
+        });
+        stores.sort((a, b) => {
+          const distA = typeof a.distance_km === "number" ? a.distance_km : 999999;
+          const distB = typeof b.distance_km === "number" ? b.distance_km : 999999;
+          return distA - distB;
+        });
+      }
       return jsonResponse({ stores });
     }
     const storeDetail = path.match(/^\/v1\/marketplace\/stores\/([^/]+)$/);
     if (storeDetail) {
-      const store = DEMO_MARKETPLACE_STORES.find((s) => s.id === storeDetail[1] || s.slug === storeDetail[1]);
-      if (store) return jsonResponse({ store });
+      let store = DEMO_MARKETPLACE_STORES.find((s) => s.id === storeDetail[1] || s.slug === storeDetail[1]);
+      if (store) {
+        const latParam = query.get("lat");
+        const lngParam = query.get("lng");
+        const userLat = latParam != null && latParam !== "" ? parseFloat(latParam) : null;
+        const userLng = lngParam != null && lngParam !== "" ? parseFloat(lngParam) : null;
+        if (userLat != null && !isNaN(userLat) && userLng != null && !isNaN(userLng)) {
+          const sLat = typeof store.lat === "number" ? store.lat : null;
+          const sLng = typeof store.lng === "number" ? store.lng : null;
+          const distanceKm = sLat != null && sLng != null
+            ? Math.round(haversineKm(userLat, userLng, sLat, sLng) * 10) / 10
+            : null;
+          store = { ...store, distance_km: distanceKm };
+        }
+        return jsonResponse({ store });
+      }
     }
     const storeProducts = path.match(/^\/v1\/marketplace\/stores\/([^/]+)\/products$/);
     if (storeProducts) {

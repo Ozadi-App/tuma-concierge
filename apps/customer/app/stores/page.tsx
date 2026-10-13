@@ -21,6 +21,9 @@ import { useEffect, useState } from "react";
 import { api, errorMessage } from "../../lib/api";
 import { LiveStreamChannel, LiveStreamViewer, PinnedProduct } from "../../components/LiveStreamViewer";
 import { ProductImage } from "../../components/ProductImage";
+import { CartDrawer, CartDrawerTrigger } from "../../components/CartDrawer";
+import { useCustomerLocation, formatDistanceKm, haversineKm } from "../../lib/location";
+import { useCart, addToCart as addMarketplaceCartItem } from "../../lib/cart";
 
 interface MarketplaceStore {
   id: string;
@@ -35,6 +38,9 @@ interface MarketplaceStore {
   phone: string | null;
   whatsapp_number?: string | null;
   address?: string | null;
+  lat?: number | null;
+  lng?: number | null;
+  distance_km?: number | null;
   is_open?: number | boolean;
   min_order_amount?: number;
   is_live?: number | boolean;
@@ -81,23 +87,36 @@ export default function StoresPage() {
   const [pinnedProduct, setPinnedProduct] = useState<PinnedProduct | null>(null);
 
   // Cart state
-  const [cart, setCart] = useState<Array<{ id: string; title: string; price: number; quantity: number }>>([]);
+  const [cartDrawerOpen, setCartDrawerOpen] = useState(false);
   const [cartNotice, setCartNotice] = useState("");
+
+  const { totalQuantity, total } = useCart();
+  const { lat: userLat, lng: userLng } = useCustomerLocation();
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [userLat, userLng]);
 
   async function loadData() {
     setLoading(true);
     setError("");
     try {
       const [storesRes, liveRes] = await Promise.all([
-        api.getMarketplaceStores("stores").catch(() => ({ stores: [] })),
+        api.getMarketplaceStores("stores", userLat, userLng).catch(() => ({ stores: [] })),
         api.getMarketplaceLiveChannels().catch(() => ({ liveChannels: [] })),
       ]);
 
-      const retailStores: MarketplaceStore[] = storesRes.stores || [];
+      let retailStores: MarketplaceStore[] = storesRes.stores || [];
+      if (userLat != null && userLng != null) {
+        retailStores = retailStores.map((s) => {
+          let dist = s.distance_km;
+          if (dist == null && s.lat != null && s.lng != null) {
+            dist = Math.round(haversineKm(userLat, userLng, Number(s.lat), Number(s.lng)) * 10) / 10;
+          }
+          return { ...s, distance_km: dist };
+        });
+        retailStores.sort((a, b) => (a.distance_km ?? 999999) - (b.distance_km ?? 999999));
+      }
       setStores(retailStores);
 
       // Filter live channels for retail stores
@@ -156,15 +175,29 @@ export default function StoresPage() {
     }
   }
 
-  function handleAddToCart(item: { id: string; title: string; price: number }) {
-    setCart((prev) => {
-      const existing = prev.find((i) => i.id === item.id);
-      if (existing) {
-        return prev.map((i) => (i.id === item.id ? { ...i, quantity: i.quantity + 1 } : i));
-      }
-      return [...prev, { id: item.id, title: item.title, price: item.price, quantity: 1 }];
+  function handleAddToCart(item: {
+    id: string;
+    title: string;
+    price: number;
+    store_id?: string;
+    store_name?: string;
+    compare_at_price?: number | null;
+    image_url?: string | null;
+    category_name?: string | null;
+  }) {
+    addMarketplaceCartItem({
+      productId: item.id,
+      storeId: item.store_id || "store_default",
+      storeName: item.store_name || "Partner Store",
+      title: item.title,
+      price: item.price,
+      compareAtPrice: item.compare_at_price || undefined,
+      imageUrl: item.image_url || undefined,
+      category: item.category_name || undefined,
+      quantity: 1,
     });
-    setCartNotice(`Added "${item.title}" to cart!`);
+    setCartDrawerOpen(true);
+    setCartNotice(`Added "${item.title}" to bag!`);
     setTimeout(() => setCartNotice(""), 2500);
   }
 
@@ -178,8 +211,8 @@ export default function StoresPage() {
     return matchesCat && matchesQuery;
   });
 
-  const cartTotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  const cartItemCount = cart.reduce((sum, item) => sum + item.quantity, 0);
+  const cartTotal = total;
+  const cartItemCount = totalQuantity;
 
   return (
     <div className="mx-auto max-w-xl space-y-5 px-4 pb-28 pt-4">
@@ -189,13 +222,19 @@ export default function StoresPage() {
           <span className="text-xs font-bold uppercase tracking-wider text-gold">Shopify Powered</span>
           <h1 className="font-serif text-2xl font-black text-ink">Boutiques & Stores</h1>
         </div>
-        <Link
-          href="/shoplist"
-          className="flex items-center gap-1.5 rounded-full bg-[rgb(var(--surface-muted))] px-3.5 py-1.5 text-xs font-bold text-ink hover:text-gold transition"
-        >
-          <span>Saved</span>
-          <ShoppingBag className="h-3.5 w-3.5 text-gold" />
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/shoplist"
+            className="flex items-center gap-1.5 rounded-full bg-[rgb(var(--surface-muted))] px-3.5 py-1.5 text-xs font-bold text-ink hover:text-gold transition"
+          >
+            <span>Saved</span>
+            <ShoppingBag className="h-3.5 w-3.5 text-gold" />
+          </Link>
+          <CartDrawerTrigger
+            onClick={() => setCartDrawerOpen(true)}
+            className="h-9 w-9"
+          />
+        </div>
       </header>
 
       {/* Search Input */}
@@ -418,11 +457,16 @@ export default function StoresPage() {
               </div>
 
               <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center justify-between gap-2">
                   <h3 className="font-bold text-sm text-ink truncate">{s.name}</h3>
+                  {s.distance_km != null && (
+                    <span className="shrink-0 text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-gold/15 text-gold border border-gold/25">
+                      📍 {formatDistanceKm(s.distance_km)}
+                    </span>
+                  )}
                 </div>
                 <p className="mt-0.5 text-xs text-ink-500 line-clamp-1">
-                  {s.description || s.address || "Curated fashion, accessories, and designer goods"}
+                  {s.address ? `${s.address.split(",")[0]} · ` : ""}{s.description || "Curated fashion, accessories, and designer goods"}
                 </p>
                 <div className="mt-2 flex items-center gap-3 text-[11px] font-semibold text-ink-500">
                   <span className="flex items-center gap-1 text-gold">
@@ -436,12 +480,13 @@ export default function StoresPage() {
         </div>
       </section>
 
-      {/* Floating Cart Button */}
+      {/* Floating Cart Button -> OPENS CART DRAWER */}
       {cartItemCount > 0 && (
         <div className="fixed inset-x-4 bottom-20 z-40 mx-auto max-w-md animate-slide-up">
-          <Link
-            href="/cart"
-            className="flex items-center justify-between rounded-full bg-ink px-5 py-3.5 text-cream shadow-xl transition active:scale-98"
+          <button
+            type="button"
+            onClick={() => setCartDrawerOpen(true)}
+            className="flex w-full items-center justify-between rounded-full bg-ink px-5 py-3.5 text-cream shadow-xl transition active:scale-98 cursor-pointer"
           >
             <div className="flex items-center gap-2.5">
               <span className="flex h-6 w-6 items-center justify-center rounded-full bg-gold text-xs font-black text-ink-gold">
@@ -451,11 +496,17 @@ export default function StoresPage() {
             </div>
             <div className="flex items-center gap-2">
               <span className="font-mono text-sm font-black text-gold">{ugx(cartTotal)}</span>
-              <span className="text-xs font-bold text-white/80">Checkout →</span>
+              <span className="text-xs font-bold text-white/80">View Bag →</span>
             </div>
-          </Link>
+          </button>
         </div>
       )}
+
+      {/* Slide-in Shopping Cart Drawer */}
+      <CartDrawer
+        isOpen={cartDrawerOpen}
+        onClose={() => setCartDrawerOpen(false)}
+      />
 
       {/* Live Stream Viewer Modal */}
       {activeLiveChannel && (
