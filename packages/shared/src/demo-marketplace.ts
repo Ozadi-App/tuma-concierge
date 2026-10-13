@@ -13,6 +13,7 @@ export interface DemoStore {
   address: string;
   lat?: number;
   lng?: number;
+  distance_km?: number | null;
   is_open: number;
   delivery_enabled: number;
   pickup_enabled: number;

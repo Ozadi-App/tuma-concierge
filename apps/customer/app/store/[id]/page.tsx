@@ -20,6 +20,8 @@ import { LiveStreamChannel, LiveStreamViewer, PinnedProduct } from "../../../com
 import { ProductCard } from "../../../components/ProductCard";
 import { ProductImage } from "../../../components/ProductImage";
 import { useCart } from "../../../lib/cart";
+import { CartDrawer, CartDrawerTrigger } from "../../../components/CartDrawer";
+import { useCustomerLocation, formatDistanceKm, haversineKm } from "../../../lib/location";
 
 interface StoreDetail {
   id: string;
@@ -34,6 +36,9 @@ interface StoreDetail {
   phone: string | null;
   whatsapp_number?: string | null;
   address?: string | null;
+  lat?: number | null;
+  lng?: number | null;
+  distance_km?: number | null;
   is_open?: number | boolean;
   min_order_amount?: number;
   is_live?: number | boolean;
@@ -80,8 +85,10 @@ export default function StoreDetailPage() {
   const [error, setError] = useState("");
   const [showLiveViewer, setShowLiveViewer] = useState(false);
   const [useShapesOnly, setUseShapesOnly] = useState(false);
+  const [cartDrawerOpen, setCartDrawerOpen] = useState(false);
 
   const { totalQuantity, total } = useCart();
+  const { lat: userLat, lng: userLng } = useCustomerLocation();
 
   useEffect(() => {
     let active = true;
@@ -93,14 +100,25 @@ export default function StoreDetailPage() {
 
       try {
         const [storeRes, productsRes] = await Promise.all([
-          api.getMarketplaceStore(storeId).catch(() => null),
+          api.getMarketplaceStore(storeId, userLat, userLng).catch(() => null),
           api.getMarketplaceStoreProducts(storeId).catch(() => null),
         ]);
 
         if (!active) return;
 
         if (storeRes && storeRes.store) {
-          setStore(storeRes.store);
+          const loadedStore: StoreDetail = storeRes.store;
+          if (
+            loadedStore.distance_km == null &&
+            userLat != null &&
+            userLng != null &&
+            loadedStore.lat != null &&
+            loadedStore.lng != null
+          ) {
+            loadedStore.distance_km =
+              Math.round(haversineKm(userLat, userLng, Number(loadedStore.lat), Number(loadedStore.lng)) * 10) / 10;
+          }
+          setStore(loadedStore);
         } else {
           setError("Store not found");
         }
@@ -120,7 +138,7 @@ export default function StoreDetailPage() {
     return () => {
       active = false;
     };
-  }, [storeId]);
+  }, [storeId, userLat, userLng]);
 
   // Filter Products by Tab, Search, and Category
   const filteredProducts = products.filter((p) => {
@@ -217,6 +235,7 @@ export default function StoreDetailPage() {
         {/* Center: Greeting & Store Name */}
         <div className="text-center min-w-0 px-2">
           <p className="text-[10px] font-bold uppercase tracking-wider text-ink-500 truncate">
+            {store.distance_km != null ? `${formatDistanceKm(store.distance_km)} · ` : ""}
             {store.address ? store.address.split(",")[0] : "Kampala, UG"}
           </p>
           <h1 className="text-base font-extrabold text-ink truncate leading-tight">
@@ -224,8 +243,12 @@ export default function StoreDetailPage() {
           </h1>
         </div>
 
-        {/* Right: Store Avatar / Profile */}
+        {/* Right: Cart Drawer Trigger & Store Avatar */}
         <div className="flex items-center gap-2">
+          <CartDrawerTrigger
+            onClick={() => setCartDrawerOpen(true)}
+            className="h-11 w-11"
+          />
           {store.logo_url ? (
             <img
               src={store.logo_url}
@@ -459,13 +482,14 @@ export default function StoreDetailPage() {
       </section>
 
       {/* =========================================================================
-          BOTTOM FLOATING CART CAPSULE
+          BOTTOM FLOATING CART CAPSULE -> OPENS CART DRAWER
       ========================================================================= */}
       {totalQuantity > 0 && (
         <div className="fixed inset-x-4 bottom-4 z-40 mx-auto max-w-md animate-in slide-in-from-bottom duration-300">
-          <Link
-            href="/cart"
-            className="flex w-full items-center justify-between rounded-full bg-ink px-5 py-3.5 text-cream shadow-2xl transition-transform active:scale-98 hover:bg-ink/90"
+          <button
+            type="button"
+            onClick={() => setCartDrawerOpen(true)}
+            className="flex w-full items-center justify-between rounded-full bg-ink px-5 py-3.5 text-cream shadow-2xl transition-transform active:scale-98 hover:bg-ink/90 cursor-pointer"
           >
             <div className="flex items-center gap-2.5">
               <span className="flex h-6 w-6 items-center justify-center rounded-full bg-gold text-xs font-black text-ink-gold">
@@ -477,11 +501,18 @@ export default function StoreDetailPage() {
               <span className="font-mono text-sm font-black text-gold">
                 UGX {total.toLocaleString()}
               </span>
-              <span className="text-xs font-bold text-white/80">View Cart →</span>
+              <span className="text-xs font-bold text-white/80">View Bag →</span>
             </div>
-          </Link>
+          </button>
         </div>
       )}
+
+      {/* Slide-in Shopping Cart Drawer */}
+      <CartDrawer
+        isOpen={cartDrawerOpen}
+        onClose={() => setCartDrawerOpen(false)}
+        forceShapes={useShapesOnly}
+      />
 
       {/* Live Stream Viewer Modal */}
       {showLiveViewer && (

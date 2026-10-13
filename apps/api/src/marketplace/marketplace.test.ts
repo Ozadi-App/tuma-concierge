@@ -53,6 +53,19 @@ test("marketplace routes: public browsing is accessible without authentication",
   assert.ok(freshMart);
   assert.equal(Number(freshMart.is_live), 1);
 
+  // 1b. Public stores sorted nearest first when lat & lng are provided
+  const nearRes = await app.request("/v1/marketplace/stores?lat=0.3353&lng=32.5857");
+  assert.equal(nearRes.status, 200);
+  const nearData = (await nearRes.json()) as any;
+  assert.ok(Array.isArray(nearData.stores));
+  assert.equal(nearData.stores[0].id, "store_demo_fresh_mart");
+  assert.equal(nearData.stores[0].distance_km, 0);
+  for (let i = 1; i < nearData.stores.length; i++) {
+    const prev = nearData.stores[i - 1].distance_km ?? 999999;
+    const curr = nearData.stores[i].distance_km ?? 999999;
+    assert.ok(prev <= curr, `stores should be sorted ascending by distance: ${prev} <= ${curr}`);
+  }
+
   // 2. Public live channels rail
   const liveRes = await app.request("/v1/marketplace/live");
   assert.equal(liveRes.status, 200);

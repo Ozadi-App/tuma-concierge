@@ -1612,12 +1612,20 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
     },
 
     // Marketplace Customer Endpoints
-    async getMarketplaceStores(category?: string) {
-      const q = category ? `?category=${category}` : "";
+    async getMarketplaceStores(category?: string, lat?: number | null, lng?: number | null) {
+      const params = new URLSearchParams();
+      if (category) params.set("category", category);
+      if (lat != null && !isNaN(lat)) params.set("lat", String(lat));
+      if (lng != null && !isNaN(lng)) params.set("lng", String(lng));
+      const q = params.toString() ? `?${params.toString()}` : "";
       return request<{ stores: any[] }>(`/v1/marketplace/stores${q}`);
     },
-    async getMarketplaceStore(id: string) {
-      return request<{ store: any }>(`/v1/marketplace/stores/${id}`);
+    async getMarketplaceStore(id: string, lat?: number | null, lng?: number | null) {
+      const params = new URLSearchParams();
+      if (lat != null && !isNaN(lat)) params.set("lat", String(lat));
+      if (lng != null && !isNaN(lng)) params.set("lng", String(lng));
+      const q = params.toString() ? `?${params.toString()}` : "";
+      return request<{ store: any }>(`/v1/marketplace/stores/${id}${q}`);
     },
     async getMarketplaceStoreProducts(id: string) {
       return request<{ products: any[] }>(`/v1/marketplace/stores/${id}/products`);

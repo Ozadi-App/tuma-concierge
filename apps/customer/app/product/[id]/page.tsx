@@ -21,6 +21,7 @@ import {
 import { api, errorMessage } from "../../../lib/api";
 import { ProductImage } from "../../../components/ProductImage";
 import { addToCart, useCart } from "../../../lib/cart";
+import { CartDrawer, CartDrawerTrigger } from "../../../components/CartDrawer";
 
 interface ProductVariant {
   id: string;
@@ -74,6 +75,7 @@ export default function SingleProductPage() {
   const [addedToast, setAddedToast] = useState(false);
   const [useShapesOnly, setUseShapesOnly] = useState(false);
   const [showFullDesc, setShowFullDesc] = useState(false);
+  const [cartDrawerOpen, setCartDrawerOpen] = useState(false);
 
   const { totalQuantity } = useCart();
 
@@ -145,6 +147,7 @@ export default function SingleProductPage() {
     if (directToCart) {
       router.push("/cart");
     } else {
+      setCartDrawerOpen(true);
       setAddedToast(true);
       setTimeout(() => setAddedToast(false), 2000);
     }
@@ -223,6 +226,12 @@ export default function SingleProductPage() {
               >
                 {useShapesOnly ? "Shapes Mode" : "Photo Mode"}
               </button>
+
+              {/* Cart Drawer Shortcut Button */}
+              <CartDrawerTrigger
+                onClick={() => setCartDrawerOpen(true)}
+                className="w-11 h-11 bg-black/40 text-white border-white/25 hover:bg-black/55 shadow-md"
+              />
 
               <button
                 type="button"
@@ -415,11 +424,12 @@ export default function SingleProductPage() {
         ========================================================================= */}
         <div className="fixed bottom-0 inset-x-0 z-40 bg-[rgb(var(--color-bg))]/90 backdrop-blur-md border-t border-surface-border p-4">
           <div className="mx-auto max-w-md flex items-center gap-3">
-            {/* Shopping Bag Button with Total Badge */}
-            <Link
-              href="/cart"
-              className="relative w-13 h-13 rounded-2xl bg-surface-subtle border border-surface-border flex items-center justify-center text-ink hover:bg-surface-card active:scale-95 transition shrink-0"
-              aria-label="View Cart"
+            {/* Shopping Bag Button with Total Badge -> OPENS CART DRAWER */}
+            <button
+              type="button"
+              onClick={() => setCartDrawerOpen(true)}
+              className="relative w-13 h-13 rounded-2xl bg-surface-subtle border border-surface-border flex items-center justify-center text-ink hover:bg-surface-card active:scale-95 transition shrink-0 cursor-pointer"
+              aria-label="Open Shopping Bag"
             >
               <ShoppingBag className="w-6 h-6" />
               {totalQuantity > 0 && (
@@ -427,7 +437,7 @@ export default function SingleProductPage() {
                   {totalQuantity}
                 </span>
               )}
-            </Link>
+            </button>
 
             {/* Main Action Button */}
             <button
@@ -442,6 +452,13 @@ export default function SingleProductPage() {
             </button>
           </div>
         </div>
+
+        {/* Slide-in Shopping Cart Drawer */}
+        <CartDrawer
+          isOpen={cartDrawerOpen}
+          onClose={() => setCartDrawerOpen(false)}
+          forceShapes={useShapesOnly}
+        />
       </div>
     </div>
   );
