@@ -1,13 +1,13 @@
 export const FOOD_BUSINESS_TYPES = [
+  { value: 'restaurant', label: 'Restaurants', navLabel: 'Restaurants', description: 'Established restaurants and dining venues' },
+  { value: 'kitchen', label: 'Kitchens', navLabel: 'Kitchens', description: 'Home cooks and independent kitchens' },
+  { value: 'street_food', label: 'Street Food', navLabel: 'Streetfood', description: 'Street stalls, Rolex, chapati and quick bites' },
   {
     value: 'juices',
     label: 'Juice and Smoothies',
     navLabel: 'Juices',
     description: 'Freshly pressed juices, smoothies, and wellness shots in spill-proof packaging',
   },
-  { value: 'restaurant', label: 'Restaurants', navLabel: 'Restaurants', description: 'Established restaurants and dining venues' },
-  { value: 'kitchen', label: 'Kitchens', navLabel: 'Kitchens', description: 'Home cooks and independent kitchens' },
-  { value: 'street_food', label: 'Street Food', navLabel: 'Streetfood', description: 'Street stalls, Rolex, chapati and quick bites' },
   { value: 'bakery', label: 'Bakeries', navLabel: 'Bakeries', description: 'Bread, cakes, pastries and baked treats' },
 ] as const;
 export type FoodBusinessType = typeof FOOD_BUSINESS_TYPES[number]['value'];
