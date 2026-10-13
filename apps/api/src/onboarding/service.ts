@@ -26,12 +26,21 @@ const profileSchema=z.object({
   firstName:optionalText(60),lastName:optionalText(60),area:optionalText(120),vehicleInfo:optionalText(120),momoMsisdn:phone,altPhone:phone,
   stageAddress:optionalText(240),homeAddress:optionalText(240),stageName:optionalText(120),stageChairmanName:optionalText(120),stageChairmanContact:phone,
   emergencyContactName:optionalText(120),emergencyContactPhone:phone,
-  lat:z.number().min(-90).max(90).optional(),lng:z.number().min(-180).max(180).optional(),
+  lat:z.preprocess(v=>v===''?undefined:typeof v==='string'?Number(v):v,z.number().min(-90).max(90).optional()),
+  lng:z.preprocess(v=>v===''?undefined:typeof v==='string'?Number(v):v,z.number().min(-180).max(180).optional()),
   businessName:optionalText(120),legalName:optionalText(160),description:optionalText(2000),cuisine:optionalText(120),address:optionalText(240),
   categoryId:optionalText(120),outletName:optionalText(120),openTime:z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional(),closeTime:z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional(),
+  partnerRole:z.enum(['driver','owner','both']).optional(),
+  needsVehicle:z.preprocess(v=>v===1||v==='1'||v==='true'||v===true?true:v===0||v==='0'||v==='false'||v===false?false:undefined,z.boolean().optional()),
+  vehiclePlate:optionalText(30),vehicleMake:optionalText(60),vehicleModel:optionalText(60),
+  vehicleYear:z.preprocess(v=>v===''?undefined:typeof v==='string'?Number(v):v,z.number().int().min(1980).max(2035).optional()),
+  vehicleColour:optionalText(40),licenceNumber:optionalText(60),licenceExpiry:optionalText(30),
+  stationBrand:optionalText(80),
+  activePumps:z.preprocess(v=>v===''?undefined:typeof v==='string'?Number(v):v,z.number().int().min(1).max(100).optional()),
+  managerRole:z.enum(['station_manager','supervisor','dealer']).optional(),managerPin:optionalText(10),
 });
 export const enrollmentSchema=z.object({
-  requestId:z.string().uuid(),accountType:z.enum(['customer','rider','restaurant','merchant']),name:z.string().trim().min(2).max(80),
+  requestId:z.string().uuid(),accountType:z.enum(['customer','rider','partner','restaurant','merchant','gas']),name:z.string().trim().min(2).max(80),
   email:z.preprocess(v=>typeof v==='string'&&v.trim()?v.trim().toLowerCase():undefined,z.string().email().max(160).optional()),phone,
   preferredChannel:z.enum(['auto','email','sms','whatsapp']).default('auto'),consent:z.literal(true),profile:profileSchema.default({}),
 }).superRefine((d,ctx)=>{
@@ -39,12 +48,21 @@ export const enrollmentSchema=z.object({
   if(d.preferredChannel==='email'&&!d.email)ctx.addIssue({code:'custom',path:['email'],message:'Email is required for email activation.'});
   if(['sms','whatsapp'].includes(d.preferredChannel)&&!d.phone)ctx.addIssue({code:'custom',path:['phone'],message:'Phone is required for this channel.'});
   if(['restaurant','merchant'].includes(d.accountType)&&!d.profile.businessName)ctx.addIssue({code:'custom',path:['profile','businessName'],message:'Business name is required.'});
+  if(d.accountType==='gas'&&!d.profile.stationBrand&&!d.profile.businessName)ctx.addIssue({code:'custom',path:['profile','stationBrand'],message:'Station brand or name is required.'});
   if(d.accountType==='merchant'&&(!d.profile.categoryId||!d.profile.legalName||!d.profile.outletName||d.profile.lat==null||d.profile.lng==null))ctx.addIssue({code:'custom',path:['profile'],message:'Add legal name, category, outlet and location.'});
 });
 export class OnboardingError extends Error {constructor(public code:string,public status:400|403|404|409|410|429|503,message:string){super(message);}}
 export function appUrl(type:string):string {
   const prod=(process.env.ENVIRONMENT??'development')!=='development';
-  const values:Record<string,[string,string,string]>={customer:['CUSTOMER_APP_URL','https://customer.peebee.online','http://localhost:3000'],rider:['RIDER_APP_URL','https://rider.peebee.online','http://localhost:3001'],restaurant:['RESTAURANT_APP_URL','https://food.peebee.online','http://localhost:3003'],merchant:['MERCHANT_APP_URL','https://merchant.peebee.online','http://localhost:3005'],agent:['SALES_APP_URL','https://sales.peebee.online','http://localhost:3007']};
+  const values:Record<string,[string,string,string]>={
+    customer:['CUSTOMER_APP_URL','https://customer.peebee.online','http://localhost:3000'],
+    rider:['RIDER_APP_URL','https://rider.peebee.online','http://localhost:3001'],
+    restaurant:['RESTAURANT_APP_URL','https://food.peebee.online','http://localhost:3003'],
+    merchant:['MERCHANT_APP_URL','https://merchant.peebee.online','http://localhost:3005'],
+    partner:['PARTNER_APP_URL','https://partner.peebee.online','http://localhost:3006'],
+    gas:['GAS_APP_URL','https://gas.peebee.online','http://localhost:3008'],
+    agent:['SALES_APP_URL','https://sales.peebee.online','http://localhost:3007']
+  };
   const [env,live,local]=values[type]??values.customer;
   return (process.env[env]??(prod?live:local)).replace(/\/$/,'');
 }
@@ -97,6 +115,68 @@ export async function enroll(input:z.infer<typeof enrollmentSchema>,agentId:stri
     statements.push(...business.statements);
     if(await hasColumn('merchants','merchant_code')) statements.push({sql:'UPDATE merchants SET merchant_code=? WHERE id=? AND (merchant_code IS NULL OR merchant_code=\'\')',args:[merchantCodeFor(business.created.merchantId),business.created.merchantId]});
     if(documents.ownerId||documents.businessDocument) statements.push({sql:'UPDATE merchant_kyc_cases SET owner_id_key=?, business_document_key=? WHERE merchant_id=?',args:[documents.ownerId??null,documents.businessDocument??null,business.created.merchantId]});
+  }
+  if(input.accountType==='partner' && await hasTable('car_partners')) {
+    const partnerRole = p.partnerRole ?? (p.needsVehicle ? 'driver' : 'owner');
+    const ownerStatus = (partnerRole === 'owner' || partnerRole === 'both') ? 'pending' : 'none';
+    const driverStatus = (partnerRole === 'driver' || partnerRole === 'both') ? 'pending' : 'none';
+    const needsVehicle = p.needsVehicle ? 1 : 0;
+    const hasNeedsCol = await hasColumn('car_partners', 'needs_vehicle');
+    statements.push({
+      sql: `INSERT INTO car_partners (user_id, owner_status, driver_status, id_document_key, licence_key, licence_expiry${hasNeedsCol ? ', needs_vehicle' : ''})
+            VALUES (?, ?, ?, ?, ?, ?${hasNeedsCol ? ', ?' : ''})
+            ON CONFLICT(user_id) DO UPDATE SET
+              owner_status = CASE WHEN ? != 'none' THEN ? ELSE owner_status END,
+              driver_status = CASE WHEN ? != 'none' THEN ? ELSE driver_status END`,
+      args: [
+        userId, ownerStatus, driverStatus,
+        documents.partnerId ?? documents.ownerId ?? null,
+        documents.drivingLicence ?? null,
+        p.licenceExpiry ?? null,
+        ...(hasNeedsCol ? [needsVehicle] : []),
+        ownerStatus, ownerStatus,
+        driverStatus, driverStatus,
+      ]
+    });
+    if(p.vehiclePlate && await hasTable('vehicles') && await hasTable('vehicle_categories')) {
+      const cat = await db.execute("SELECT id FROM vehicle_categories WHERE active = 1 ORDER BY sort LIMIT 1");
+      const categoryId = cat.rows[0]?.id ? String(cat.rows[0].id) : 'cat_sedan';
+      statements.push({
+        sql: `INSERT OR IGNORE INTO vehicles (id, owner_id, category_id, plate, make, model, year, colour, status)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
+        args: [newId('veh'), userId, categoryId, String(p.vehiclePlate).toUpperCase().trim(), p.vehicleMake ?? null, p.vehicleModel ?? null, p.vehicleYear ?? null, p.vehicleColour ?? null]
+      });
+    }
+  }
+  if(input.accountType==='gas' && await hasTable('fuel_stations') && await hasTable('fuel_station_outlets')) {
+    const brandName = String(p.stationBrand ?? p.businessName ?? 'Independent Fuel');
+    const outletName = String(p.outletName ?? p.businessName ?? `${brandName} Station`);
+    let stationId = 'fsta_independent';
+    const existingStation = await db.execute({ sql: "SELECT id FROM fuel_stations WHERE lower(brand_name) = lower(?) LIMIT 1", args: [brandName] });
+    if (existingStation.rows[0]?.id) {
+      stationId = String(existingStation.rows[0].id);
+    } else {
+      stationId = newId('fsta');
+      statements.push({
+        sql: "INSERT OR IGNORE INTO fuel_stations (id, brand_name, company_name, status) VALUES (?, ?, ?, 'active')",
+        args: [stationId, brandName, p.legalName ?? brandName]
+      });
+    }
+    const outletId = newId('fout');
+    const outletCode = `OUT-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
+    statements.push({
+      sql: `INSERT INTO fuel_station_outlets (id, station_id, name, code, address, lat, lng, phone, active_pumps, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
+      args: [outletId, stationId, outletName, outletCode, p.address ?? null, p.lat ?? null, p.lng ?? null, input.phone ?? null, p.activePumps ?? 4]
+    });
+    if (await hasTable('fuel_station_managers')) {
+      const mgrCode = `MGR-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
+      statements.push({
+        sql: `INSERT INTO fuel_station_managers (id, outlet_id, user_id, manager_code, full_name, phone, pin, role, status)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
+        args: [newId('fmgr'), outletId, userId, mgrCode, input.name, input.phone ?? '', p.managerPin ?? '1234', p.managerRole ?? 'station_manager']
+      });
+    }
   }
   try{await executeBatch(statements);}catch(error){
     const concurrent=await db.execute({sql:'SELECT id FROM onboarding_accounts WHERE agent_id=? AND request_id=?',args:[agentId,input.requestId]});

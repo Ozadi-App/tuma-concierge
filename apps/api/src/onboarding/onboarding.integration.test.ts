@@ -55,8 +55,8 @@ test('sales onboarding: access, atomic profiles, messaging and one-time activati
     return new Response(JSON.stringify({id:'test-email'}),{status:200,headers:{'Content-Type':'application/json'}});
   };
   const call=(method:string,path:string,body?:unknown,who='agent')=>app.request(`http://test/v1${path}`,{method,headers:{'Content-Type':'application/json',...(tokens[who]?{Authorization:`Bearer ${tokens[who]}`}:{})},...(body!==undefined?{body:JSON.stringify(body)}:{})});
-  const input=(type:'customer'|'rider'|'restaurant'|'merchant',suffix:string,profile:Record<string,string|number>={})=>enrollmentSchema.parse({requestId:crypto.randomUUID(),accountType:type,name:`Test ${suffix}`,email:`${suffix}@example.invalid`,phone:`+256700${suffix.length.toString().padStart(6,'0')}`,consent:true,preferredChannel:'email',profile});
-  const emailOnly=(type:'customer'|'rider'|'restaurant'|'merchant',suffix:string,profile:Record<string,string|number>={})=>{const d=input(type,suffix,profile);delete d.phone;return d;};
+  const input=(type:'customer'|'rider'|'partner'|'restaurant'|'merchant'|'gas',suffix:string,profile:Record<string,string|number>={})=>enrollmentSchema.parse({requestId:crypto.randomUUID(),accountType:type,name:`Test ${suffix}`,email:`${suffix}@example.invalid`,phone:`+256700${suffix.length.toString().padStart(6,'0')}`,consent:true,preferredChannel:'email',profile});
+  const emailOnly=(type:'customer'|'rider'|'partner'|'restaurant'|'merchant'|'gas',suffix:string,profile:Record<string,string|number>={})=>{const d=input(type,suffix,profile);delete d.phone;return d;};
   try {
     await t.test('agent access is narrow and enforced by the API',async()=>{
       assert.equal((await call('GET','/sales/me',undefined,'plain')).status,403);
@@ -114,6 +114,26 @@ test('sales onboarding: access, atomic profiles, messaging and one-time activati
       const rider=(await client.execute({sql:'SELECT * FROM riders WHERE user_id=?',args:[session.user.id]})).rows[0];
       assert.equal(isRiderProfileComplete(rider as unknown as Rider),true);assert.equal(rider.verified,0);assert.ok(rider.profile_completed_at);assert.equal(rider.national_id_key,'private/test-id');
       assert.match(String(rider.rider_code),/^RDR-/);assert.match(session.user.accountCode??'',/^PB-/);
+    });
+    await t.test('car partner onboarding creates pending partner and vehicle records',async()=>{
+      const data=emailOnly('partner','carpartner',{partnerRole:'driver',needsVehicle:1,licenceNumber:'DL12345',licenceExpiry:'2028-12-31',vehiclePlate:'UBF 999X',vehicleMake:'Toyota',vehicleModel:'Premio',vehicleYear:2018});
+      const created=await enroll(data,'agent',{partnerId:'private/test-partner-id',drivingLicence:'private/test-licence'});await invite(created.id);
+      const session=await activate(new URL(outbox.at(-1)!.link).hash.slice('#token='.length),'PartnerPassword123');
+      assert.equal(new URL(outbox.at(-1)!.link).port,'3006');
+      const partner=(await client.execute({sql:'SELECT * FROM car_partners WHERE user_id=?',args:[session.user.id]})).rows[0];
+      assert.equal(partner.driver_status,'pending');
+      assert.equal(partner.licence_key,'private/test-licence');
+      assert.match(session.user.accountCode??'',/^PB-/);
+    });
+    await t.test('fuel station onboarding creates outlet, station and manager records',async()=>{
+      const data=emailOnly('gas','gasstation',{stationBrand:'TotalEnergies',outletName:'Total Test Station',address:'Kampala Road',lat:0.31,lng:32.58,activePumps:6,managerRole:'dealer',managerPin:'5678'});
+      const created=await enroll(data,'agent',{stationDoc:'private/station-permit'});await invite(created.id);
+      const session=await activate(new URL(outbox.at(-1)!.link).hash.slice('#token='.length),'GasPassword123');
+      assert.equal(new URL(outbox.at(-1)!.link).port,'3008');
+      const manager=(await client.execute({sql:'SELECT * FROM fuel_station_managers WHERE user_id=?',args:[session.user.id]})).rows[0];
+      assert.equal(manager.role,'dealer');
+      assert.equal(manager.pin,'5678');
+      assert.match(String(manager.manager_code),/^MGR-/);
     });
     await t.test('invalid business data leaves no orphan account',async()=>{
       const data=emailOnly('merchant','badcategory',{businessName:'Bad category',legalName:'Business',outletName:'Outlet',categoryId:'does-not-exist',lat:0.3,lng:32.5});
