@@ -68,10 +68,10 @@ const submenuItems: Record<Exclude<MenuGroup, "original">, MenuItem[]> = {
     { id: "spotlight", label: "Spotlight", icon: Flame, href: "/spotlight" },
   ],
   food: [
-    { id: "juices", label: "Juices", icon: Citrus, href: "/juices" },
     { id: "restaurant", label: "Restaurants", icon: UtensilsCrossed, href: "/restaurants" },
     { id: "kitchen", label: "Kitchens", icon: CookingPot, href: "/kitchens" },
     { id: "street_food", label: "Streetfood", icon: ChefHat, href: "/streetfood" },
+    { id: "juices", label: "Juices", icon: Citrus, href: "/juices" },
     { id: "bakery", label: "Bakeries", icon: Croissant, href: "/bakeries" },
   ],
   deliver: [
@@ -89,7 +89,7 @@ const submenuItems: Record<Exclude<MenuGroup, "original">, MenuItem[]> = {
 };
 
 function groupForPath(pathname: string): MenuGroup {
-  if (["/food", "/juices", "/restaurants", "/kitchens", "/streetfood", "/bakeries"].some((path) => pathname === path || pathname.startsWith(`${path}/`))) return "food";
+  if (["/food", "/restaurants", "/kitchens", "/streetfood", "/juices", "/bakeries"].some((path) => pathname === path || pathname.startsWith(`${path}/`))) return "food";
   if (pathname === "/ride" || pathname === "/rent" || pathname === "/carpool" || pathname.startsWith("/ride/")) return "ride";
   if (["/shopping", "/shoplist", "/groceries", "/stores", "/store", "/spotlight"].some((path) => pathname === path || pathname.startsWith(`${path}/`)) || pathname.startsWith("/orders")) return "shopping";
   if (pathname === "/deliver" || pathname.startsWith("/deliver/")) return "deliver";
@@ -113,10 +113,10 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
   useEffect(() => {
     const group = groupForPath(pathname);
     setMenuGroup(group);
-    if (pathname === "/juices" || pathname.startsWith("/juices/")) setSelectedItem("juices");
-    else if (pathname === "/restaurants" || pathname.startsWith("/restaurants/")) setSelectedItem("restaurant");
+    if (pathname === "/restaurants" || pathname.startsWith("/restaurants/")) setSelectedItem("restaurant");
     else if (pathname === "/kitchens" || pathname.startsWith("/kitchens/")) setSelectedItem("kitchen");
     else if (pathname === "/streetfood" || pathname.startsWith("/streetfood/")) setSelectedItem("street_food");
+    else if (pathname === "/juices" || pathname.startsWith("/juices/")) setSelectedItem("juices");
     else if (pathname === "/bakeries" || pathname.startsWith("/bakeries/")) setSelectedItem("bakery");
     else if (pathname === "/ride/boda") setSelectedItem("boda");
     else if (pathname === "/ride/car") setSelectedItem("car");
