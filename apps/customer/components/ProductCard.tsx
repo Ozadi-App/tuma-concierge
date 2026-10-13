@@ -30,14 +30,12 @@ export interface ProductCardData {
 interface ProductCardProps {
   product: ProductCardData;
   storeName?: string;
-  forceShapes?: boolean;
   className?: string;
 }
 
 export function ProductCard({
   product,
   storeName,
-  forceShapes = false,
   className = "",
 }: ProductCardProps) {
   const [bookmarked, setBookmarked] = useState(false);
@@ -86,13 +84,12 @@ export function ProductCard({
       href={`/product/${product.id}`}
       className={`group relative flex flex-col rounded-3xl overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 bg-surface-card border border-surface-border/50 text-left cursor-pointer transform hover:-translate-y-1 ${className}`}
     >
-      {/* Visual Image / Shapes Area */}
+      {/* Visual Image Area */}
       <div className="relative w-full aspect-[4/5] overflow-hidden bg-surface-subtle">
         <ProductImage
           src={product.image_url}
           alt={product.title}
           category={product.category_name || undefined}
-          forceShapes={forceShapes}
           className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
         />
 

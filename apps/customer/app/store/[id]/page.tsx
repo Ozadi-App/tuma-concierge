@@ -84,7 +84,6 @@ export default function StoreDetailPage() {
   const [selectedCategory, setSelectedCategory] = useState<string>("All");
   const [error, setError] = useState("");
   const [showLiveViewer, setShowLiveViewer] = useState(false);
-  const [useShapesOnly, setUseShapesOnly] = useState(false);
   const [cartDrawerOpen, setCartDrawerOpen] = useState(false);
 
   const { totalQuantity, total } = useCart();
@@ -332,7 +331,6 @@ export default function StoreDetailPage() {
                 category={promoProduct.category_name || undefined}
                 className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
                 aspectRatio="square"
-                forceShapes={useShapesOnly}
               />
               <span className="absolute bottom-1 right-1 z-10 rounded-full bg-gold px-1.5 py-0.5 text-[9px] font-black text-ink-gold shadow-xs">
                 HOT
@@ -381,40 +379,24 @@ export default function StoreDetailPage() {
       {/* =========================================================================
           SEGMENTED FILTER TABS (Screen 1: All, Popular, Recent, Recommended)
       ========================================================================= */}
-      <div className="flex items-center justify-between gap-2 py-3">
-        <div className="flex gap-2 overflow-x-auto no-scrollbar scrollbar-none">
-          {(["All", "Popular", "Recent", "Recommended"] as const).map((tab) => {
-            const active = activeTab === tab;
-            return (
-              <button
-                key={tab}
-                type="button"
-                onClick={() => setActiveTab(tab)}
-                className={`shrink-0 rounded-full px-4 py-2 text-xs font-bold transition-all active:scale-95 ${
-                  active
-                    ? "bg-gold text-ink-gold shadow-sm font-extrabold"
-                    : "bg-surface-subtle text-ink-500 border border-surface-border hover:text-ink"
-                }`}
-              >
-                {tab}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Option 2 Shapes Toggle Button */}
-        <button
-          type="button"
-          onClick={() => setUseShapesOnly(!useShapesOnly)}
-          title="Toggle Option 2: Colored Geometric Shapes fallback"
-          className={`shrink-0 px-2.5 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider border transition-all ${
-            useShapesOnly
-              ? "bg-gold text-ink-gold border-gold"
-              : "bg-surface-subtle text-ink-500 border-surface-border hover:text-ink"
-          }`}
-        >
-          {useShapesOnly ? "Shapes Mode" : "Photos"}
-        </button>
+      <div className="flex items-center gap-2 py-3 overflow-x-auto no-scrollbar scrollbar-none">
+        {(["All", "Popular", "Recent", "Recommended"] as const).map((tab) => {
+          const active = activeTab === tab;
+          return (
+            <button
+              key={tab}
+              type="button"
+              onClick={() => setActiveTab(tab)}
+              className={`shrink-0 rounded-full px-4 py-2 text-xs font-bold transition-all active:scale-95 ${
+                active
+                  ? "bg-gold text-ink-gold shadow-sm font-extrabold"
+                  : "bg-surface-subtle text-ink-500 border border-surface-border hover:text-ink"
+              }`}
+            >
+              {tab}
+            </button>
+          );
+        })}
       </div>
 
       {/* Category Pills (Sub-filters) */}
@@ -474,7 +456,6 @@ export default function StoreDetailPage() {
                   variants: p.variants,
                 }}
                 storeName={store.name}
-                forceShapes={useShapesOnly}
               />
             ))}
           </div>
@@ -511,7 +492,6 @@ export default function StoreDetailPage() {
       <CartDrawer
         isOpen={cartDrawerOpen}
         onClose={() => setCartDrawerOpen(false)}
-        forceShapes={useShapesOnly}
       />
 
       {/* Live Stream Viewer Modal */}

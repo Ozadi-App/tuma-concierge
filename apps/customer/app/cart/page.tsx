@@ -39,7 +39,6 @@ export default function CartPage() {
     clearCart,
   } = useCart();
 
-  const [useShapesOnly, setUseShapesOnly] = useState(false);
   const [checkoutModalOpen, setCheckoutModalOpen] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<"momo" | "airtel" | "wallet" | "cod">("momo");
   const [deliveryAddress, setDeliveryAddress] = useState("Acacia Mall / Kololo, Kampala");
@@ -175,19 +174,6 @@ export default function CartPage() {
           <h1 className="text-lg font-black text-ink tracking-tight">Shopping Bag</h1>
 
           <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => setUseShapesOnly(!useShapesOnly)}
-              title="Toggle Option 2 Colored Shapes fallback"
-              className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border transition-all ${
-                useShapesOnly
-                  ? "bg-gold text-ink-gold border-gold"
-                  : "bg-surface-subtle text-ink-500 border-surface-border"
-              }`}
-            >
-              {useShapesOnly ? "Shapes" : "Photos"}
-            </button>
-
             {items.length > 0 && (
               <button
                 type="button"
@@ -268,13 +254,12 @@ export default function CartPage() {
                     {item.selected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
                   </button>
 
-                  {/* Square Thumbnail with Photo or Option 2 Colored Shapes */}
+                  {/* Square Thumbnail */}
                   <div className="relative w-20 h-20 rounded-2xl overflow-hidden shrink-0 bg-surface-subtle border border-surface-border/60">
                     <ProductImage
                       src={item.imageUrl}
                       alt={item.title}
                       category={item.category}
-                      forceShapes={useShapesOnly}
                       aspectRatio="square"
                       className="w-full h-full object-cover"
                     />
