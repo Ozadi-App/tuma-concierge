@@ -141,3 +141,40 @@ Then open:
 - Customer app: http://localhost:3000
 - Rider app: http://localhost:3001
 - API health: http://localhost:10000/health
+
+---
+
+## Database migrations (tracked)
+
+Migrations used to be applied by hand with nothing recording what had run. They are now
+tracked with wrangler's `d1_migrations` table (`migrations_dir` in `apps/api/wrangler.jsonc`).
+
+CI runs `pnpm migrate:check` on every PR: files must be `NNNN_snake_case.sql`, with no gaps, and
+no *new* reused number (0012, 0013, 0042, 0043 and 0090 were reused before the check and stay allowed).
+
+**One-time baseline (the live DB has no tracking table yet).** Do this before the first tracked apply,
+otherwise wrangler would try to re-run every migration:
+
+```bash
+node scripts/d1-migrations.mjs baseline <latest-file-already-applied-live>.sql > /tmp/baseline.sql
+# read it, then:
+cd apps/api && npx wrangler d1 execute peebee-api --remote --file /tmp/baseline.sql
+pnpm migrate:d1:status        # should now list only genuinely pending files
+```
+
+**After that, for every migration PR:** merge, run `pnpm migrate:d1:status`, then `pnpm migrate:d1:apply`
+*before* deploying code that needs the new column. Code must still use `hasColumn()` so a deploy that
+beats the migration does not break.
+
+---
+
+## Going live with payments
+
+Production runs on mock payments until these are done (admin → Settings → Payments / Platform):
+
+1. Add the real provider credentials in admin (Yo / MTN / Airtel / Flutterwave); each shows "configured".
+2. Turn demo mode off and confirm `collection.live` and `disbursement.live` are true in the integrations status.
+3. Run one small real collection and one real disbursement end to end; confirm the ledger postings and that
+   the two-minute reconciliation sweep (`sweepProviderOperations`) closes both.
+4. Test a failed and a refunded payment; confirm wallet balances return correctly.
+5. Switch the platform environment to live only after the above.
