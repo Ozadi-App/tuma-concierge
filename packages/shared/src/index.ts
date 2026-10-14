@@ -41,6 +41,7 @@ export {
   exitPracticeMode,
   isPracticeJourneyComplete,
   isPracticeMode,
+  demoDataDisabled,
   practicePaymentCode,
   practiceStartPath,
   startPracticeMode,

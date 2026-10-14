@@ -842,7 +842,15 @@ export async function setNavMode(mode: NavMode): Promise<void> {
   await setSetting("nav_mode", ALL_NAV_MODES.includes(mode) ? mode : "external");
 }
 
+/** Production gate: PEEBEE_DISABLE_DEMO=1 (Worker var) forces payments demo
+ * mode off regardless of the admin setting, so mock providers can never
+ * stand in for real money in production. */
+export function demoDisabledByEnv(): boolean {
+  return typeof process !== "undefined" && process.env.PEEBEE_DISABLE_DEMO === "1";
+}
+
 export async function getPaymentsDemoMode(): Promise<boolean> {
+  if (demoDisabledByEnv()) return false;
   return (await getSetting("payments_demo_mode")) === "1";
 }
 

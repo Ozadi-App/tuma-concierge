@@ -212,7 +212,15 @@ function advanceCustomerState(state: PracticeState): PracticeState {
   return next;
 }
 
+/** Production gate: when NEXT_PUBLIC_PEEBEE_DISABLE_DEMO=1 at build time,
+ * practice mode (and its demo catalog served by createPracticeFetch) is
+ * switched off entirely and every request goes to the real API. */
+export function demoDataDisabled(): boolean {
+  return typeof process !== "undefined" && process.env.NEXT_PUBLIC_PEEBEE_DISABLE_DEMO === "1";
+}
+
 export function isPracticeMode(): boolean {
+  if (demoDataDisabled()) return false;
   return canUseStorage() && window.localStorage.getItem(PRACTICE_MODE_STORAGE_KEY) === "1";
 }
 
@@ -221,7 +229,7 @@ export function practiceStartPath(role: PracticeRole): string {
 }
 
 export function startPracticeMode(role: PracticeRole): string {
-  if (canUseStorage()) {
+  if (canUseStorage() && !demoDataDisabled()) {
     window.localStorage.setItem(PRACTICE_MODE_STORAGE_KEY, "1");
     saveState(initialState(role));
   }
