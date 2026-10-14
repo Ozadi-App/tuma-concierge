@@ -15,20 +15,24 @@ export function ServiceTiles({
   onShopping,
   onParcel,
   paused = {},
+  hidden = {},
 }: {
   onRide: () => void;
   onShopping: () => void;
   onParcel: () => void;
   /** Services an admin has switched off — shown greyed out and not tappable. */
   paused?: Partial<Record<ServiceKey, boolean>>;
+  /** Modules an admin has hidden — removed from the row entirely. */
+  hidden?: Partial<Record<ServiceKey, boolean>>;
 }) {
   const t = useTranslate();
-  const tiles: Tile[] = [
+  const allTiles: Tile[] = [
     { key: "ride", labelKey: "service_ride", icon: Bike, onClick: onRide },
     { key: "food", labelKey: "service_food", icon: UtensilsCrossed, href: "/food" },
     { key: "shopping", labelKey: "service_shopping", icon: StickyNote, onClick: onShopping },
     { key: "parcel", labelKey: "service_parcel", icon: Package, onClick: onParcel },
   ];
+  const tiles = allTiles.filter((tile) => !hidden[tile.key]);
   const inner = (tile: Tile) => (
     <>
       <span data-service={tile.key} className={`service-glass relative z-[1] flex aspect-square w-full shrink-0 items-center justify-center rounded-2xl text-ink ${paused[tile.key] ? "opacity-40" : ""}`}>
@@ -39,8 +43,9 @@ export function ServiceTiles({
     </>
   );
   const cls = "service-shortcut relative isolate flex min-w-0 flex-col items-center gap-1.5 overflow-visible transition-transform active:scale-95";
+  if (tiles.length === 0) return null;
   return (
-    <div className="grid grid-cols-4 gap-3 overflow-visible">
+    <div className="grid gap-3 overflow-visible" style={{ gridTemplateColumns: "repeat(4, minmax(0, 1fr))" }}>
       {tiles.map((tile) =>
         paused[tile.key] ? (
           <button key={tile.key} data-service={tile.key} type="button" disabled className={cls}>

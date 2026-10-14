@@ -1,4 +1,4 @@
-import type { MatchingMode } from "@peebee/shared";
+import { allModulesOn, isModuleKey, isModuleOn, MODULE_KEYS, type MatchingMode, type ModuleKey, type ModuleSwitches } from "@peebee/shared";
 import { DEFAULT_RIDE_TRACKING_SETTINGS, DEFAULT_SHOPPING_UNIT_SETTINGS, DEFAULT_TIME_FEES, type JobExpirySettings, type TimeFeeSettings } from "@peebee/shared";
 import { db } from "../db/client.js";
 
@@ -48,6 +48,8 @@ const DEFAULTS = {
   service_ride_enabled: "1",
   service_food_enabled: "1",
   service_cargo_enabled: "1",
+  /** Customer-app modules an admin has hidden — JSON array of ModuleKey (see @peebee/shared modules.ts). Empty = all on. */
+  modules_disabled: "[]",
   ride_for_other_enabled: "1",
   ride_for_other_distance_m: "500",
   /** Ceiling on what a single order may charge into escrow (UGX). Guards
@@ -1254,6 +1256,28 @@ export async function setServiceSwitches(next: Partial<ServiceSwitches>): Promis
   for (const k of SERVICE_KEYS) {
     if (next[k] != null) await setSetting(`service_${k}_enabled` as SettingKey, next[k] ? "1" : "0");
   }
+}
+
+export async function getModuleSwitches(): Promise<ModuleSwitches> {
+  const switches = allModulesOn();
+  try {
+    const parsed: unknown = JSON.parse(await getSetting("modules_disabled"));
+    if (Array.isArray(parsed)) for (const k of parsed) if (isModuleKey(k)) switches[k] = false;
+  } catch {
+    // Unreadable value: fail open (everything on) rather than hide the app.
+  }
+  return switches;
+}
+
+export async function setModuleSwitches(next: Partial<ModuleSwitches>): Promise<void> {
+  const current = await getModuleSwitches();
+  for (const k of MODULE_KEYS) if (typeof next[k] === "boolean") current[k] = next[k]!;
+  await setSetting("modules_disabled", JSON.stringify(MODULE_KEYS.filter((k) => !current[k])));
+}
+
+/** Whether a module (and its group) is on. Used to refuse new orders for a hidden module. */
+export async function isModuleEnabled(key: ModuleKey): Promise<boolean> {
+  return isModuleOn(await getModuleSwitches(), key);
 }
 
 export async function isServiceEnabled(service: ServiceKey): Promise<boolean> {

@@ -8,9 +8,31 @@ import { BrandHeader } from "./BrandHeader";
 import { FoodBusinessTheme } from "./FoodBusinessTheme";
 import { OfflineBanner } from "./OfflineBanner";
 import { PracticeModeGuard, PracticeModePrompt } from "./PracticeMode";
+import Link from "next/link";
+import { ModulesProvider, useModules } from "../lib/modules-context";
 import { isNavigationOverlayOpen, subscribeToNavigationOverlay } from "../lib/location-flow-state";
 
+/** A page whose module an admin has switched off: nothing of it renders, only a way back home. */
+function ModuleGate({ pathname, children }: { pathname: string; children: React.ReactNode }) {
+  const { isHidden } = useModules();
+  if (!isHidden(pathname)) return <>{children}</>;
+  return (
+    <div className="flex min-h-[60dvh] flex-col items-center justify-center gap-3 px-6 text-center">
+      <p className="text-base font-bold text-ink">This isn&apos;t available right now</p>
+      <Link href="/" className="rounded-full bg-gold px-5 py-2.5 text-sm font-bold text-ink-gold">Back to home</Link>
+    </div>
+  );
+}
+
 export function AppShell({ children }: { children: React.ReactNode }) {
+  return (
+    <ModulesProvider>
+      <AppShellInner>{children}</AppShellInner>
+    </ModulesProvider>
+  );
+}
+
+function AppShellInner({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const navigationOverlayOpen = useSyncExternalStore(subscribeToNavigationOverlay, isNavigationOverlayOpen, () => false);
   const foodBusinessId=/^\/restaurants\/([^/]+)(?:\/items\/[^/]+)?$/.exec(pathname)?.[1];
@@ -41,7 +63,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <main
         className={`mx-auto max-w-lg ${showHeader ? "min-h-[calc(100dvh-4rem)]" : "min-h-dvh"} ${showNav ? "customer-nav-content-clearance" : ""}`}
       >
-        {foodBusinessId ? <FoodBusinessTheme key={foodBusinessId} id={foodBusinessId}>{children}</FoodBusinessTheme> : children}
+        <ModuleGate pathname={pathname}>{foodBusinessId ? <FoodBusinessTheme key={foodBusinessId} id={foodBusinessId}>{children}</FoodBusinessTheme> : children}</ModuleGate>
       </main>
       {showNav && <BottomNav />}
     </AuthGate>

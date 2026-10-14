@@ -17,8 +17,10 @@ import {
   getPlatformEnvironment,
   getRiderReserveSettings,
   isServiceEnabled,
+  isModuleEnabled,
   type ServiceKey,
 } from "../lib/settings.js";
+import { moduleHidden } from "../lib/module-gate.js";
 import { servicePaused } from "../lib/service-gate.js";
 import { getRideTrackingSettings } from "../settings/ride-tracking.js";
 import { computeCheckoutFees, isCashDepositOk, riderPayout } from "../lib/monetization.js";
@@ -327,6 +329,12 @@ export async function createOrderFromInput(
   // (anything already in flight carries on).
   const service: ServiceKey = d.type === "shopping" ? "shopping" : d.isRide ? "ride" : "parcel";
   if (!(await isServiceEnabled(service))) return servicePaused(c, service);
+  // A module hidden from the customer app can't take new orders either.
+  // Peebee Car bookings are gated separately (ride.car) on their own route.
+  if (!car) {
+    const module = d.type === "shopping" ? "shopping.list" : d.isRide ? "ride.boda" : "deliver.parcel";
+    if (!(await isModuleEnabled(module))) return moduleHidden(c, module);
+  }
 
   const list = await db.execute({
     sql: "SELECT * FROM lists WHERE id = ?",

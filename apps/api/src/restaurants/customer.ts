@@ -16,7 +16,8 @@ import { requireAuth, requireRole } from "../auth/middleware.js";
 import { db, executeBatch } from "../db/client.js";
 import { haversineKm } from "../lib/geo.js";
 import { newId } from "../lib/ids.js";
-import { getDeliverySettings, getMatchingSettings, getMaxOrderValue, getPlatformEnvironment, isServiceEnabled } from "../lib/settings.js";
+import { moduleHidden } from "../lib/module-gate.js";
+import { getDeliverySettings, getMatchingSettings, getMaxOrderValue, getPlatformEnvironment, isModuleEnabled, isServiceEnabled } from "../lib/settings.js";
 import { servicePaused } from "../lib/service-gate.js";
 import type { MatchingMode } from "@peebee/shared";
 import { roundFare } from "@peebee/shared";
@@ -38,7 +39,7 @@ function formatAmount(n: number): string {
  * open, and in the currently active platform environment. */
 customerRestaurantRoutes.get("/restaurants", requireAuth, async (c) => {
   // Food switched off by an admin: nothing to browse, and the app says why.
-  if (!(await isServiceEnabled("food"))) return c.json({ restaurants: [], paused: true });
+  if (!(await isServiceEnabled("food")) || !(await isModuleEnabled("food"))) return c.json({ restaurants: [], paused: true });
   const environment = await getPlatformEnvironment();
   const res = await db.execute({
     sql: "SELECT * FROM restaurants WHERE status = 'active' AND environment = ? ORDER BY is_open DESC, name",
@@ -149,6 +150,7 @@ const checkoutSchema = z.object({
 customerRestaurantRoutes.post("/restaurants/:id/order", requireAuth, requireRole("customer"), async (c) => {
   const user = c.get("user");
   if (!(await isServiceEnabled("food"))) return servicePaused(c, "food");
+  if (!(await isModuleEnabled("food"))) return moduleHidden(c, "food");
   const restaurantId = c.req.param("id") as string;
   const parsed = checkoutSchema.safeParse(await c.req.json().catch(() => ({})));
   if (!parsed.success) return c.json({ error: "invalid_body", issues: parsed.error.issues }, 400);

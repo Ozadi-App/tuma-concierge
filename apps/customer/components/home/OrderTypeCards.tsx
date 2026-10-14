@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { ServiceSwitches } from "@peebee/shared";
 import { api } from "../../lib/api";
+import { useModules } from "../../lib/modules-context";
 import { loadMapTiles } from "../../lib/map-tiles";
 import { useTranslate } from "../../lib/i18n";
 import { loadPlaces } from "../../lib/places";
@@ -17,6 +18,7 @@ import { ShoppingListModal } from "./ShoppingListModal";
 export function OrderTypeCards() {
   const [open, setOpen] = useState<"shopping" | "parcel" | "ride" | null>(null);
   const t = useTranslate();
+  const { isOn } = useModules();
   // Services an admin has switched off (all on until we hear otherwise).
   const [services, setServices] = useState<ServiceSwitches | null>(null);
   useEffect(() => {
@@ -43,12 +45,13 @@ export function OrderTypeCards() {
   return (
     <>
       <div className="space-y-4">
-        <SearchPill label={t("where_to")} onClick={() => setOpen("ride")} disabled={!!paused.ride} />
+        {isOn("ride.boda") && <SearchPill label={t("where_to")} onClick={() => setOpen("ride")} disabled={!!paused.ride} />}
         <ServiceTiles
           onRide={() => setOpen("ride")}
           onShopping={() => setOpen("shopping")}
           onParcel={() => setOpen("parcel")}
           paused={paused}
+          hidden={{ ride: !isOn("ride.boda"), food: !isOn("food"), shopping: !isOn("shopping.list"), parcel: !isOn("deliver.parcel") }}
         />
       </div>
       {open === "shopping" && <ShoppingListModal onClose={() => setOpen(null)} />}

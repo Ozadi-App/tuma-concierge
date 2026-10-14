@@ -348,6 +348,8 @@ export type DeliverySettings = {
    * that kind; anything already in flight finishes. Shopping, parcels, rides
    * (incl. Peebee Car bookings) and food. */
   services: ServiceSwitches;
+  /** Customer-app modules an admin has hidden (Settings → Modules). Off = gone from the nav, home and URLs. */
+  modules: import("./modules.js").ModuleSwitches;
   enabledModes: MatchingMode[];
   nearestWindowSeconds: number;
   maxAssignmentMinutes: number;

@@ -39,6 +39,7 @@ import { walletsRoutes } from "./wallet/wallets.js";
 
 import { gasRoutes } from "./gas/routes.js";
 import { marketplaceRoutes } from "./marketplace/routes.js";
+import { moduleGate } from "./lib/module-gate.js";
 
 /** Hono app shared by the Node entry (local dev) and the Cloudflare Worker entry. */
 const app = new Hono();
@@ -215,6 +216,7 @@ app.get("/v1", (c) =>
   }),
 );
 
+app.use("/v1/*", moduleGate);
 app.route("/v1/auth", authRoutes);
 app.route("/v1", onboardingRoutes);
 app.route("/v1/auth", verifyRoutes);
