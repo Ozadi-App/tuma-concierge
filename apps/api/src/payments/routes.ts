@@ -2,6 +2,7 @@ import { Hono, type Context } from "hono";
 import { db } from "../db/client.js";
 import { requireAuth } from "../auth/middleware.js";
 import { verifyWebhookSignature } from "./flutterwave/wire.js";
+import { callbackEventKey, claimCallbackEvent, releaseCallbackEvent } from "./callback-dedupe.js";
 import { reconcileMerchantSettlement, reconcilePayment } from "./reconciliation.js";
 
 export const paymentRoutes = new Hono();
@@ -51,8 +52,8 @@ paymentRoutes.get("/payments/:id/refresh", requireAuth, async (c) => {
  * Two rules here, and both matter:
  *
  * 1. **The caller has to prove it's Yo!.** The callback URL you register
- *    with them carries a secret (`?token=…`, or an `X-Peebee-Callback-Token`
- *    header), and anything without it is refused. Without this the endpoint
+ *    with them must send a secret in the `X-Peebee-Callback-Token` header
+ *    (query-string tokens are no longer accepted), and anything without it is refused. Without this the endpoint
  *    is an open door for anyone who wants to move payments around or just
  *    flood the logs.
  *
@@ -67,7 +68,8 @@ function callbackAuthorized(c: Context): boolean {
   // Refuse rather than wave everything through when unconfigured — an
   // endpoint that moves money shouldn't be open because a var is missing.
   if (!expected) return false;
-  const provided = c.req.header("x-peebee-callback-token") ?? c.req.query("token") ?? "";
+  // Header only: a query-string token leaks into access logs and proxies.
+  const provided = c.req.header("x-peebee-callback-token") ?? "";
   if (provided.length !== expected.length) return false;
   let diff = 0;
   for (let i = 0; i < provided.length; i += 1) diff |= provided.charCodeAt(i) ^ expected.charCodeAt(i);
@@ -115,12 +117,17 @@ paymentRoutes.post("/payments/yo/callback", async (c) => {
   }
   if (payment.status !== "pending") return c.json({ received: true, matched: true, changed: false });
 
+  const eventKey = callbackEventKey("yo", body);
+  if (eventKey && (await claimCallbackEvent("yo", eventKey, reference)) === "duplicate") {
+    return c.json({ received: true, matched: true, changed: false, duplicate: true });
+  }
   try {
     const before = String(payment.status);
     const status = await reconcilePayment(String(payment.id), "yo-callback");
     return c.json({ received: true, matched: true, changed: before !== status });
   } catch (err) {
     console.error("Yo! callback status check failed:", err);
+    if (eventKey) await releaseCallbackEvent("yo", eventKey);
     return c.json({ received: true, matched: true, changed: false });
   }
 });
@@ -139,7 +146,7 @@ paymentRoutes.post("/payments/flutterwave/callback", async (c) => {
     return c.json({ error: "unauthorized" }, 401);
   }
 
-  const body = (await c.req.json().catch(() => ({}))) as { data?: { tx_ref?: string } };
+  const body = (await c.req.json().catch(() => ({}))) as { data?: { tx_ref?: string; id?: unknown; status?: unknown } };
   const reference = (body.data?.tx_ref ?? "").trim();
   if (!reference) return c.json({ received: true, matched: false });
 
@@ -158,12 +165,17 @@ paymentRoutes.post("/payments/flutterwave/callback", async (c) => {
   }
   if (payment.status !== "pending") return c.json({ received: true, matched: true, changed: false });
 
+  const eventKey = callbackEventKey("flutterwave", body);
+  if (eventKey && (await claimCallbackEvent("flutterwave", eventKey, reference)) === "duplicate") {
+    return c.json({ received: true, matched: true, changed: false, duplicate: true });
+  }
   try {
     const before = String(payment.status);
     const status = await reconcilePayment(String(payment.id), "flutterwave-callback");
     return c.json({ received: true, matched: true, changed: before !== status });
   } catch (err) {
     console.error("Flutterwave callback status check failed:", err);
+    if (eventKey) await releaseCallbackEvent("flutterwave", eventKey);
     return c.json({ received: true, matched: true, changed: false });
   }
 });
