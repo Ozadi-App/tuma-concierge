@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { MODULE_KEYS } from "@peebee/shared";
 import { z } from "zod";
 import { logActivity } from "../admin/activity.js";
 import { hasPermission, requirePermission } from "../admin/permissions.js";
@@ -12,6 +13,8 @@ import {
   getActiveProviders,
   getDeliverySettings,
   getServiceSwitches,
+  getModuleSwitches,
+  setModuleSwitches,
   setServiceSwitches,
   getTimeFeeSettings,
   getJobExpirySettings,
@@ -78,7 +81,7 @@ import { getRideTrackingSettings, rideTrackingSchema } from "./ride-tracking.js"
 export const settingsRoutes = new Hono();
 
 async function fullSettings() {
-  const [delivery, matching, activeProviders, demoMode, wallet, voiceNoteMaxSeconds, monetization, platformEnvironment, practiceModeEnabled, riderReserve, callsActiveProvider, mapsActiveProvider, navMode, merchantPayments, merchantSandbox, merchantCustody, merchantFrozen, vsla, lugandaAudio, pro, services] =
+  const [delivery, matching, activeProviders, demoMode, wallet, voiceNoteMaxSeconds, monetization, platformEnvironment, practiceModeEnabled, riderReserve, callsActiveProvider, mapsActiveProvider, navMode, merchantPayments, merchantSandbox, merchantCustody, merchantFrozen, vsla, lugandaAudio, pro, services, modules] =
     await Promise.all([
       getDeliverySettings(),
       getMatchingSettings(),
@@ -101,6 +104,7 @@ async function fullSettings() {
       getLugandaAudioSettings(),
       getProSettings(),
       getServiceSwitches(),
+      getModuleSwitches(),
     ]);
 
   // The active provider's own key/token, handed to every signed-in client
@@ -144,6 +148,7 @@ async function fullSettings() {
     marketplace: await getMarketplaceSettings(),
     ...delivery,
     services,
+    modules,
     ...matching,
     paymentsActiveProviders: activeProviders,
     paymentsDemoMode: demoMode,
@@ -382,6 +387,7 @@ const updateSchema = z.object({
   rideTracking: rideTrackingSchema.optional(),
   rideRatePerKm: z.number().positive().max(1_000_000).optional(),
   rideMinimumFare: z.number().int().nonnegative().max(1_000_000).optional(),
+  modules: z.record(z.enum(MODULE_KEYS as [string, ...string[]]), z.boolean()).optional(),
   services: z.object({ shopping: z.boolean(), parcel: z.boolean(), ride: z.boolean(), food: z.boolean() }).partial().optional(),
   gas: z
     .object({
@@ -552,6 +558,7 @@ settingsRoutes.put(
       await setSetting("ride_minimum_fare", String(parsed.data.rideMinimumFare));
     }
     if (parsed.data.services) await setServiceSwitches(parsed.data.services);
+    if (parsed.data.modules) await setModuleSwitches(parsed.data.modules);
     if (parsed.data.rideForOtherEnabled != null) {
       await setSetting("ride_for_other_enabled", parsed.data.rideForOtherEnabled ? "1" : "0");
     }
@@ -669,7 +676,9 @@ settingsRoutes.put(
       actor: user,
       action: "settings.update",
       entityType: "settings",
-      summary: "Updated platform settings",
+      summary: parsed.data.modules
+        ? `Updated platform settings (modules hidden: ${MODULE_KEYS.filter((k) => !after.modules[k]).join(", ") || "none"})`
+        : "Updated platform settings",
       before,
       after,
       revertible: true,

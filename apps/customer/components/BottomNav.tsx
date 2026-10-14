@@ -37,54 +37,56 @@ import { useEffect, useRef, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth-context";
+import { useModules } from "../lib/modules-context";
+import type { ModuleKey } from "@peebee/shared";
 import { useTranslate } from "../lib/i18n";
 import { orderTitle, stageLabel } from "../lib/order-display";
 import { useLivePolling } from "../lib/use-live-polling";
 import { BottomDrawer } from "./BottomDrawer";
 
 type MenuGroup = "original" | "ride" | "shopping" | "food" | "deliver" | "services";
-type MenuItem = { id: string; label: string; icon: LucideIcon; href?: string; group?: Exclude<MenuGroup, "original">; disabled?: boolean };
+type MenuItem = { id: string; module: ModuleKey; label: string; icon: LucideIcon; href?: string; group?: Exclude<MenuGroup, "original">; disabled?: boolean };
 
 const originalMenu: MenuItem[] = [
-  { id: "ride", label: "Ride", icon: Route, group: "ride" },
-  { id: "shopping", label: "Buy", icon: ShoppingBag, group: "shopping" },
-  { id: "food", label: "Eat", icon: UtensilsCrossed, group: "food" },
-  { id: "deliver", label: "Send", icon: Package, group: "deliver" },
-  { id: "services", label: "Services", icon: Sparkles, group: "services" },
+  { id: "ride", module: "ride", label: "Ride", icon: Route, group: "ride" },
+  { id: "shopping", module: "shopping", label: "Buy", icon: ShoppingBag, group: "shopping" },
+  { id: "food", module: "food", label: "Eat", icon: UtensilsCrossed, group: "food" },
+  { id: "deliver", module: "deliver", label: "Send", icon: Package, group: "deliver" },
+  { id: "services", module: "services", label: "Services", icon: Sparkles, group: "services" },
 ];
 
 const submenuItems: Record<Exclude<MenuGroup, "original">, MenuItem[]> = {
   ride: [
-    { id: "boda", label: "Boda", icon: Bike, href: "/ride/boda" },
-    { id: "car", label: "Car", icon: Car, href: "/ride/car" },
-    { id: "rideshare", label: "Rideshare", icon: UsersRound, href: "/carpool" },
-    { id: "selfdrive", label: "Selfdrive", icon: CarFront, href: "/rent" },
-    { id: "move", label: "Move", icon: Truck, href: "/ride/move" },
+    { id: "boda", module: "ride.boda", label: "Boda", icon: Bike, href: "/ride/boda" },
+    { id: "car", module: "ride.car", label: "Car", icon: Car, href: "/ride/car" },
+    { id: "rideshare", module: "ride.rideshare", label: "Rideshare", icon: UsersRound, href: "/carpool" },
+    { id: "selfdrive", module: "ride.selfdrive", label: "Selfdrive", icon: CarFront, href: "/rent" },
+    { id: "move", module: "ride.move", label: "Move", icon: Truck, href: "/ride/move" },
   ],
   shopping: [
-    { id: "shoplist", label: "List", icon: ListChecks, href: "/shoplist" },
-    { id: "markets", label: "Groceries", icon: Store, href: "/groceries" },
-    { id: "stores", label: "Stores", icon: ShoppingBasket, href: "/stores" },
-    { id: "pharmacy", label: "Pharma", icon: Pill, href: "/pharmacy" },
-    { id: "spotlight", label: "Spotlight", icon: Flame, href: "/spotlight" },
+    { id: "shoplist", module: "shopping.list", label: "List", icon: ListChecks, href: "/shoplist" },
+    { id: "markets", module: "shopping.groceries", label: "Groceries", icon: Store, href: "/groceries" },
+    { id: "stores", module: "shopping.stores", label: "Stores", icon: ShoppingBasket, href: "/stores" },
+    { id: "pharmacy", module: "shopping.pharmacy", label: "Pharma", icon: Pill, href: "/pharmacy" },
+    { id: "spotlight", module: "shopping.spotlight", label: "Spotlight", icon: Flame, href: "/spotlight" },
   ],
   food: [
-    { id: "restaurant", label: "Restaurants", icon: UtensilsCrossed, href: "/restaurants" },
-    { id: "kitchen", label: "Kitchens", icon: CookingPot, href: "/kitchens" },
-    { id: "street_food", label: "Streetfood", icon: ChefHat, href: "/streetfood" },
-    { id: "juices", label: "Juices", icon: Citrus, href: "/juices" },
-    { id: "bakery", label: "Bakeries", icon: Croissant, href: "/bakeries" },
+    { id: "restaurant", module: "food.restaurants", label: "Restaurants", icon: UtensilsCrossed, href: "/restaurants" },
+    { id: "kitchen", module: "food.kitchens", label: "Kitchens", icon: CookingPot, href: "/kitchens" },
+    { id: "street_food", module: "food.streetfood", label: "Streetfood", icon: ChefHat, href: "/streetfood" },
+    { id: "juices", module: "food.juices", label: "Juices", icon: Citrus, href: "/juices" },
+    { id: "bakery", module: "food.bakeries", label: "Bakeries", icon: Croissant, href: "/bakeries" },
   ],
   deliver: [
-    { id: "parcel", label: "Parcels", icon: Package, href: "/deliver/parcel" },
-    { id: "goods", label: "Goods", icon: ShoppingBasket, disabled: true },
-    { id: "storage", label: "Storage", icon: Archive, disabled: true },
+    { id: "parcel", module: "deliver.parcel", label: "Parcels", icon: Package, href: "/deliver/parcel" },
+    { id: "goods", module: "deliver", label: "Goods", icon: ShoppingBasket, disabled: true },
+    { id: "storage", module: "deliver", label: "Storage", icon: Archive, disabled: true },
   ],
   services: [
-    { id: "laundry", label: "Laundry", icon: WashingMachine, href: "/services/laundry" },
-    { id: "fix", label: "Fix", icon: Wrench, href: "/services/fix" },
-    { id: "jobs", label: "Jobs", icon: Briefcase, href: "/service" },
-    { id: "learn", label: "Learn", icon: BookOpen, href: "/services/learn" },
+    { id: "laundry", module: "services.laundry", label: "Laundry", icon: WashingMachine, href: "/services/laundry" },
+    { id: "fix", module: "services.fix", label: "Fix", icon: Wrench, href: "/services/fix" },
+    { id: "jobs", module: "services.jobs", label: "Jobs", icon: Briefcase, href: "/service" },
+    { id: "learn", module: "services.learn", label: "Learn", icon: BookOpen, href: "/services/learn" },
   ],
 };
 
@@ -109,6 +111,13 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
   const [menuGroup, setMenuGroup] = useState<MenuGroup>(() => groupForPath(pathname));
   const [selectedItem, setSelectedItem] = useState<string | null>(null);
   const t = useTranslate();
+  const { isOn } = useModules();
+
+  // A group with nothing left inside it disappears too; a hidden group's submenu falls back to the main menu.
+  const groupHasItems = (g: Exclude<MenuGroup, "original">) => submenuItems[g].some((item) => isOn(item.module));
+  const mainItems = originalMenu.filter((item) => isOn(item.module) && (!item.group || groupHasItems(item.group)));
+  const subItems = menuGroup === "original" ? [] : submenuItems[menuGroup].filter((item) => isOn(item.module));
+  const visibleItems = menuGroup === "original" || subItems.length === 0 ? mainItems : subItems;
 
   useEffect(() => {
     const group = groupForPath(pathname);
@@ -242,7 +251,7 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
                 className="customer-nav-items flex h-full w-full items-stretch justify-around gap-1"
                 aria-label={menuGroup === "original" ? "Main menu" : `${menuGroup} menu`}
               >
-                {(menuGroup === "original" ? originalMenu : submenuItems[menuGroup]).map((item) => {
+                {visibleItems.map((item) => {
                   const Icon = item.icon;
                   const active = item.id === selectedItem;
 

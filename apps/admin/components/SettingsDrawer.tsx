@@ -120,6 +120,7 @@ export function SettingsListContent({ onItemClick }: { onItemClick?: () => void 
 
   const [platformMode, setPlatformMode] = useState<string | null>(null);
   const [activeServicesCount, setActiveServicesCount] = useState<number | null>(null);
+  const [hiddenModulesCount, setHiddenModulesCount] = useState(0);
   const [cacheStatus, setCacheStatus] = useState<string>("1.2 MB");
 
   useEffect(() => {
@@ -129,6 +130,7 @@ export function SettingsListContent({ onItemClick }: { onItemClick?: () => void 
         setPlatformMode(settings.platformEnvironment ?? "live");
         const activeCount = Object.values(settings.services ?? {}).filter(Boolean).length;
         setActiveServicesCount(activeCount);
+        setHiddenModulesCount(Object.values(settings.modules ?? {}).filter((on) => !on).length);
       })
       .catch(() => {});
   }, []);
@@ -158,6 +160,13 @@ export function SettingsListContent({ onItemClick }: { onItemClick?: () => void 
 
   // Group 1: Mobility, Fleet & Delivery Logistics
   const mobilityGroup: SettingsItem[] = [
+    {
+      href: "/settings/modules",
+      icon: Power,
+      label: "Modules",
+      value: hiddenModulesCount ? `${hiddenModulesCount} hidden` : "All visible",
+      show: true,
+    },
     {
       href: "/settings/services",
       icon: Power,

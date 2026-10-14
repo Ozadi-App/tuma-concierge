@@ -6,7 +6,7 @@
 
 import { db } from "../db/client.js";
 import { newId } from "../lib/ids.js";
-import { setBiddingSettings, setCarSettings, setJobExpirySettings, setMatchingModesEnabled, setSetting } from "../lib/settings.js";
+import { setBiddingSettings, setCarSettings, setJobExpirySettings, setMatchingModesEnabled, setModuleSwitches, setSetting } from "../lib/settings.js";
 import type { AdminRole } from "./permissions.js";
 
 type Row = Record<string, unknown>;
@@ -82,6 +82,7 @@ const REVERT_HANDLERS: Record<string, (entityId: string, before: Row) => Promise
     if (before.enabledModes != null) await setMatchingModesEnabled(before.enabledModes as never);
     if (before.nearestWindowSeconds != null) await setSetting("nearest_window_seconds", String(before.nearestWindowSeconds));
     if (before.maxAssignmentMinutes != null) await setSetting("max_assignment_minutes", String(before.maxAssignmentMinutes));
+    if (before.modules != null) await setModuleSwitches(before.modules as never);
   },
   "staff.role_change": async (entityId, before) => {
     await db.execute({
