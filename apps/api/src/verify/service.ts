@@ -58,7 +58,7 @@ export async function createAndSendOtp(
     const verifyLink = linkToken
       ? `${process.env.PUBLIC_API_URL ?? "https://peebee-api.peebeeapp.workers.dev"}/v1/auth/verify/confirm-link?token=${linkToken}`
       : undefined;
-    await sendVerificationEmail(target, code, verifyLink);
+    await sendVerificationEmail(target, code, verifyLink, purpose);
     return {};
   }
   if (channel === "sms" && isAfricasTalkingConfigured()) {

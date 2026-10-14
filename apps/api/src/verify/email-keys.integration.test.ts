@@ -69,7 +69,7 @@ test("email keys: admin access, encrypted storage, timed rotation and delivery s
     await t.test("before migration existing emails work and writes are unavailable", async () => {
       assert.equal((await json(await call("GET", ""))).tableReady, false);
       assert.equal((await call("POST", "", { keys: [] })).status, 503);
-      await sendVerificationEmail("customer@example.com", "123456");
+      await sendVerificationEmail("customer@example.com", "123456", undefined, "reset");
       assert.equal(used.at(-1)?.key, process.env.RESEND_API_KEY);
       assert.equal(used.at(-1)?.payload.subject, "Your Peebee password reset code");
       for (const sql of splitSqlStatements(readFileSync(join(process.cwd(), "src/db/migrations/0076_email_api_keys.sql"), "utf8"))) await client.execute(sql);
