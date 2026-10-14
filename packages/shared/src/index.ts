@@ -253,6 +253,10 @@ export type {
   FuelStationSalesSummary,
   FuelStationWithdrawal,
   FuelStationPayoutAccount,
+  PrescriptionItem,
+  PrescriptionStatus,
+  PrescriptionOrder,
+  PharmacyStoreProfile,
 } from "./domain.js";
 
 export { NotificationSnapshots, installNotificationSound, observeNotificationSnapshot, playNotificationSound, resetNotificationSnapshots } from "./notification-sound.js";

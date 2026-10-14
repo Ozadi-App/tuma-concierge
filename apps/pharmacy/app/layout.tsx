@@ -1,0 +1,65 @@
+import type { Metadata, Viewport } from "next";
+import "./globals.css";
+import { AppShell } from "../components/AppShell";
+import { AuthProvider } from "../lib/auth-context";
+
+const THEME_INIT_SCRIPT = `
+(function () {
+  try {
+    var stored = localStorage.getItem("peebee-theme");
+    var mode = stored === "light" || stored === "dark" || stored === "auto" ? stored : "auto";
+    var theme;
+    if (mode === "auto") {
+      var hour = new Date().getHours();
+      theme = hour >= 6 && hour < 19 ? "light" : "dark";
+    } else {
+      theme = mode;
+    }
+    document.documentElement.setAttribute("data-theme", theme);
+  } catch (e) {}
+})();
+`;
+
+export const metadata: Metadata = {
+  title: "Peebee Pharmacy — Pharmacist Dispensing Console",
+  description: "Licensed pharmacy prescription review, medicine dispensing and NDA compliance for Peebee",
+  manifest: "/manifest.json",
+  icons: {
+    icon: [
+      { url: "/favicon.svg?v=pharma-1", sizes: "any", type: "image/svg+xml" },
+    ],
+  },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Peebee Pharmacy",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#000000",
+  viewportFit: "cover",
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+};
+
+export default function RootLayout({
+  children,
+}: {
+  children: any;
+}) {
+  return (
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
+      </head>
+      <body>
+        <AuthProvider>
+          <AppShell>{children}</AppShell>
+        </AuthProvider>
+      </body>
+    </html>
+  );
+}

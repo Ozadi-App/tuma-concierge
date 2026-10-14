@@ -1664,6 +1664,39 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
       });
     },
 
+    // Pharmacy & Prescription Endpoints
+    async submitPrescription(input: {
+      prescriptionImageUrl: string;
+      patientNotes?: string;
+      pharmacyId?: string;
+      patientAge?: number;
+      patientGender?: string;
+      deliveryAddress?: string;
+    }) {
+      return request<{ ok: boolean; prescription: any }>("/v1/pharmacy/prescriptions", {
+        method: "POST",
+        body: JSON.stringify(input),
+      });
+    },
+    async getCustomerPrescriptions() {
+      return request<{ prescriptions: any[] }>("/v1/pharmacy/prescriptions");
+    },
+    async getPharmacistPrescriptions() {
+      return request<{ prescriptions: any[] }>("/v1/pharmacy/pharmacist/prescriptions");
+    },
+    async updatePrescriptionReview(id: string, input: {
+      status: string;
+      pharmacistNotes?: string;
+      dosageInstructions?: string;
+      quotedItems?: any[];
+      quotedTotalUgx?: number;
+    }) {
+      return request<{ ok: boolean; prescription: any }>(`/v1/pharmacy/pharmacist/prescriptions/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(input),
+      });
+    },
+
     // Merchant Pro Store Endpoints
     async getMerchantProStore() {
       return request<{ store: any; settings?: MarketplaceSettings; canCreate?: boolean; trialDays?: number; pricing?: any }>("/v1/merchants/me/store");
