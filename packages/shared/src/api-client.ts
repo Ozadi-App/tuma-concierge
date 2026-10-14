@@ -1,4 +1,5 @@
 import type { AdminRole } from "./permissions.js";
+import { workMethods } from "./work-client.js";
 import type { PracticeRole } from "./practice.js";
 import type {
   ActivityLogEntry,
@@ -2620,6 +2621,7 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
         body: JSON.stringify(data),
       });
     },
+    ...workMethods(request),
   };
 }
 

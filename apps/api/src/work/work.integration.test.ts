@@ -120,8 +120,15 @@ test("work: fixed price + broadcast — pay, accept, do, confirm, rate", async (
 
   const open = await call("/provider/jobs/open", { token: pro.token });
   assert.equal(open.json.jobs.length, 1);
+  assert.equal(open.json.jobs[0].customer, null, "who the customer is stays private until the job is theirs");
   assert.equal((await call(`/provider/jobs/${jobId}/accept`, { token: pro.token, body: {} })).status, 200);
   assert.equal((await dbJob(jobId)).status, "booked");
+  const mine = await call("/provider/jobs", { token: pro.token });
+  assert.equal(mine.json.jobs[0].customer.name, "User cust_1", "once it is theirs, they can reach the customer");
+  assert.equal(mine.json.jobs[0].commissionPercent, 15);
+  assert.equal((await call(`/provider/jobs/${jobId}`, { token: pro.token })).json.job.customer.name, "User cust_1");
+  const rival = await mkProvider("pro_rival");
+  assert.equal((await call(`/provider/jobs/${jobId}`, { token: rival.token })).status, 404, "another provider can't open it");
 
   assert.equal((await call(`/provider/jobs/${jobId}/complete`, { token: pro.token, body: {} })).status, 409, "can't finish a job that hasn't started");
   assert.equal((await call(`/provider/jobs/${jobId}/start`, { token: pro.token, body: {} })).status, 200);
