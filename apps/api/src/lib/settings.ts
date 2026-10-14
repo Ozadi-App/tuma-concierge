@@ -358,6 +358,10 @@ const DEFAULTS = {
   gas_withdrawal_min_ugx: "5000",
   gas_voucher_lookups_per_5min: "20",
   gas_platform_discount_percent: "0",
+  /** Pharmacy prescriptions (customer uploads a doctor's slip; the pharmacy quotes it) */
+  pharmacy_enabled: "1",
+  pharmacy_max_image_mb: "6",
+  pharmacy_submissions_per_hour: "10",
   /** Peebee Marketplace: Groceries & Stores, Live Commerce, Pro Paywalls, Social Ads */
   marketplace_enabled: "1",
   marketplace_live_enabled: "1",
@@ -1321,6 +1325,35 @@ export async function setGasSettings(next: Partial<GasSettings>): Promise<void> 
   if (next.pinMaxAttempts != null) writes.push(setSetting("gas_pin_max_attempts", String(Math.max(3, Math.min(20, Math.round(next.pinMaxAttempts))))));
   if (next.withdrawalMinUgx != null) writes.push(setSetting("gas_withdrawal_min_ugx", String(Math.max(1000, Math.round(next.withdrawalMinUgx)))));
   if (next.voucherLookupsPer5Min != null) writes.push(setSetting("gas_voucher_lookups_per_5min", String(Math.max(5, Math.min(200, Math.round(next.voucherLookupsPer5Min))))));
+  await Promise.all(writes);
+}
+
+export type PharmacySettings = {
+  enabled: boolean;
+  /** Largest prescription photo accepted. */
+  maxImageMb: number;
+  /** Prescriptions one customer may submit per hour. */
+  submissionsPerHour: number;
+};
+
+export async function getPharmacySettings(): Promise<PharmacySettings> {
+  const [enabled, mb, perHour] = await Promise.all([
+    getSetting("pharmacy_enabled"),
+    getSetting("pharmacy_max_image_mb"),
+    getSetting("pharmacy_submissions_per_hour"),
+  ]);
+  return {
+    enabled: enabled !== "0",
+    maxImageMb: Math.max(1, Math.min(20, Number(mb) || 6)),
+    submissionsPerHour: Math.max(1, Math.min(100, Number(perHour) || 10)),
+  };
+}
+
+export async function setPharmacySettings(next: Partial<PharmacySettings>): Promise<void> {
+  const writes: Promise<void>[] = [];
+  if (next.enabled != null) writes.push(setSetting("pharmacy_enabled", next.enabled ? "1" : "0"));
+  if (next.maxImageMb != null) writes.push(setSetting("pharmacy_max_image_mb", String(Math.max(1, Math.min(20, Math.round(next.maxImageMb))))));
+  if (next.submissionsPerHour != null) writes.push(setSetting("pharmacy_submissions_per_hour", String(Math.max(1, Math.min(100, Math.round(next.submissionsPerHour))))));
   await Promise.all(writes);
 }
 
