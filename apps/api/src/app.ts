@@ -39,6 +39,7 @@ import { walletsRoutes } from "./wallet/wallets.js";
 
 import { gasRoutes } from "./gas/routes.js";
 import { marketplaceRoutes } from "./marketplace/routes.js";
+import { pharmacyRoutes } from "./pharmacy/routes.js";
 
 /** Hono app shared by the Node entry (local dev) and the Cloudflare Worker entry. */
 const app = new Hono();
@@ -223,6 +224,7 @@ app.route("/v1/auth", verifyRoutes);
 app.route("/v1/trips", tripRoutes);
 app.route("/v1/gas", gasRoutes);
 app.route("/v1", marketplaceRoutes);
+app.route("/v1/pharmacy", pharmacyRoutes);
 app.route("/v1", orderRoutes);
 app.route("/v1", paymentRoutes);
 app.route("/v1", pushRoutes);
