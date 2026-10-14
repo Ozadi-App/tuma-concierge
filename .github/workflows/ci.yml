@@ -39,7 +39,7 @@ jobs:
       - name: Typecheck apps
         run: |
           set -e
-          for app in api admin customer merchant partner restaurant rider web sales preview-hub; do
+          for app in api admin customer gas merchant partner pharmacy restaurant rider web sales preview-hub; do
             echo "::group::tsc $app"
             (cd apps/$app && npx tsc --noEmit)
             echo "::endgroup::"
@@ -56,7 +56,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        app: [admin, customer, merchant, partner, restaurant, rider, web, sales]
+        app: [api, admin, customer, gas, merchant, partner, pharmacy, restaurant, rider, web, sales]
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -67,3 +67,16 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Build ${{ matrix.app }}
         run: pnpm --filter ${{ matrix.app }} build
+
+  # Fail on known high/moderate vulnerabilities in production dependencies.
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm audit --prod --audit-level moderate
