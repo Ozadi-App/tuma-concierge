@@ -35,6 +35,10 @@ export default function RiderFuelPage() {
   const [amountUgx, setAmountUgx] = useState<number>(20_000);
   const [selectedProductId, setSelectedProductId] = useState<string>("prod_petrol");
   const [generating, setGenerating] = useState<boolean>(false);
+  const [plate, setPlate] = useState<string>("");
+  useEffect(() => {
+    try { setPlate(window.localStorage.getItem("peebee_fuel_plate") ?? ""); } catch { /* private mode */ }
+  }, []);
   const [remainingTime, setRemainingTime] = useState<string>("");
 
   const loadData = useCallback(async () => {
@@ -45,7 +49,7 @@ export default function RiderFuelPage() {
         api.getActiveRiderFuelCode().catch(() => ({ code: null })),
         api.gasStations().catch(() => ({ outlets: [] })),
         api.gasProducts().catch(() => ({ products: [] })),
-        api.gasDispenses().catch(() => ({ dispenses: [] })),
+        api.gasRiderDispenses().catch(() => ({ dispenses: [] })),
       ]);
 
       setActiveCode(codeRes.code);
@@ -90,7 +94,9 @@ export default function RiderFuelPage() {
     setGenerating(true);
     setError(null);
     try {
+      try { window.localStorage.setItem("peebee_fuel_plate", plate.trim()); } catch { /* private mode */ }
       const res = await api.generateRiderFuelCode({
+        vehiclePlate: plate.trim() || undefined,
         amountUgx,
         productId: selectedProductId,
       });
@@ -236,6 +242,18 @@ export default function RiderFuelPage() {
                 Instant 6-digit PIN and QR code accepted at partner pump stations
               </p>
             </div>
+          </div>
+
+          <div>
+            <label className="mb-1.5 block text-xs font-bold text-ink-500">Motorcycle number plate</label>
+            <input
+              value={plate}
+              onChange={(e) => setPlate(e.target.value.toUpperCase())}
+              placeholder="e.g. UFE 123A"
+              maxLength={14}
+              autoCapitalize="characters"
+              className="w-full text-sm font-bold text-ink outline-none"
+            />
           </div>
 
           {/* Amount selector chips */}

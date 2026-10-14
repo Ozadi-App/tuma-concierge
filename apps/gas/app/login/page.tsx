@@ -29,8 +29,18 @@ export default function LoginPage() {
         sessionStorage.setItem(PWA_LOGIN_PROMPT_KEY, "1");
         sessionStorage.setItem(SESSION_START_KEY, String(Date.now()));
       }
+      if (!pin.trim()) {
+        setError("Please enter your PIN.");
+        setBusy(false);
+        return;
+      }
       if (selectedRole === "manager") {
-        await loginManager(code.trim().toUpperCase() || undefined, pin.trim() || undefined, selectedOutletId || undefined);
+        if (!code.trim()) {
+          setError("Please enter your station manager code.");
+          setBusy(false);
+          return;
+        }
+        await loginManager(code.trim().toUpperCase() || undefined, pin.trim(), selectedOutletId || undefined);
         router.push("/manager");
       } else {
         if (!code.trim()) {
@@ -38,7 +48,7 @@ export default function LoginPage() {
           setBusy(false);
           return;
         }
-        await login(code.trim().toUpperCase(), pin.trim() || undefined, selectedOutletId || undefined);
+        await login(code.trim().toUpperCase(), pin.trim(), selectedOutletId || undefined);
         router.push("/");
       }
     } catch (err) {
@@ -167,6 +177,8 @@ export default function LoginPage() {
             <KeyRound className="h-4 w-4 text-ink-500 shrink-0" />
             <input
               type="password"
+              inputMode="numeric"
+              maxLength={8}
               value={pin}
               onChange={(e) => setPin(e.target.value)}
               placeholder="••••"
@@ -174,7 +186,7 @@ export default function LoginPage() {
             />
           </div>
           <p className="mt-1 text-[11px] text-ink-500">
-            Default station terminal PIN: <span className="font-mono font-bold text-ink">1234</span>
+            Forgot your PIN? Ask your station manager to reset it.
           </p>
         </div>
 

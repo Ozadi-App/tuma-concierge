@@ -69,7 +69,7 @@ export default function StationManagerPage() {
   const [newPhone, setNewPhone] = useState("+256 ");
   const [newCode, setNewCode] = useState("");
   const [newPumpLane, setNewPumpLane] = useState("Pump 1");
-  const [newPin, setNewPin] = useState("1234");
+  const [newPin, setNewPin] = useState("");
   const [newApproveImmediately, setNewApproveImmediately] = useState(true);
   const [commissioningBusy, setCommissioningBusy] = useState(false);
 
@@ -197,11 +197,15 @@ export default function StationManagerPage() {
         phone: newPhone.trim(),
         attendantCode: newCode.trim() || undefined,
         pumpLane: newPumpLane.trim() || undefined,
-        pin: newPin.trim() || "1234",
+        pin: newPin.trim() || undefined,
         approveImmediately: newApproveImmediately,
       });
       if (res.ok) {
         showToast(`Commissioned ${res.attendant.full_name} (${res.attendant.attendant_code}) successfully.`);
+        if (res.temporary_pin) {
+          window.alert(`Staff PIN for ${res.attendant.full_name}: ${res.temporary_pin}\n\nGive it to them privately. It will not be shown again.`);
+        }
+        setNewPin("");
         setCommissionModalOpen(false);
         setNewFullName("");
         setNewPhone("+256 ");
@@ -253,11 +257,14 @@ export default function StationManagerPage() {
   }
 
   async function handleResetPin(id: string) {
-    const pin = window.prompt("Enter new 4-digit terminal PIN for this attendant:", "1234");
-    if (!pin) return;
+    const pin = window.prompt("Enter a new 4 to 8 digit PIN for this attendant, or leave blank to generate one:", "");
+    if (pin === null) return;
     try {
-      await api.gasManagerResetPin(id, pin.trim());
-      showToast(`PIN reset to ${pin.trim()}.`);
+      const res = await api.gasManagerResetPin(id, pin.trim() || undefined);
+      if (res.temporary_pin) {
+        window.alert(`New staff PIN: ${res.temporary_pin}\n\nGive it to them privately. It will not be shown again.`);
+      }
+      showToast("PIN reset.");
       void fetchAttendants();
     } catch (err) {
       setActionError(errorMessage(err));
@@ -1012,8 +1019,9 @@ export default function StationManagerPage() {
                   <input
                     value={newPin}
                     onChange={(e) => setNewPin(e.target.value)}
-                    placeholder="1234"
-                    maxLength={6}
+                    placeholder="Leave blank to generate"
+                    inputMode="numeric"
+                    maxLength={8}
                     className="w-full font-bold text-ink outline-none font-mono"
                   />
                 </div>

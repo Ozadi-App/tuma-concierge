@@ -3,7 +3,17 @@ import { z } from "zod";
 import { db } from "../db/client.js";
 import { hasColumn, hasTable } from "../lib/schema.js";
 import { getGasSettings } from "../lib/settings.js";
-import { verifyToken } from "../auth/jwt.js";
+import { requireAuth, requireRole } from "../auth/middleware.js";
+import { requirePermission } from "../admin/permissions.js";
+import { logActivity } from "../admin/activity.js";
+import { executeBatch } from "../db/client.js";
+import { consume } from "../lib/ratelimit.js";
+import { randomInt } from "../lib/random.js";
+import { getPlatformEnvironment } from "../lib/settings.js";
+import { debitWallet } from "../wallet/service.js";
+import { generatePin, hashPin, pinAttemptGuard, pinMatches, requireAttendant, requireManager, signGasToken, validatePinFormat } from "./auth.js";
+import { burnPinCheck } from "./auth.js";
+import { closeVoucher, expireStaleVouchers, findVoucher, normalizeVoucherCode, refundToRider, vouchersReady, voucherEnvironment } from "./vouchers.js";
 
 export const gasRoutes = new Hono();
 
@@ -279,14 +289,6 @@ async function ensureGasSchema() {
         ('fout_cityoil_bombo', 'prod_oil_4t', 15000);
     `);
 
-    // Seed default attendants
-    await db.execute(`
-      INSERT OR IGNORE INTO fuel_pump_attendants (id, outlet_id, attendant_code, full_name, phone, pump_lane, status) VALUES
-        ('fatt_lugogo_1', 'fout_total_lugogo', 'ATT-1001', 'Kato Dennis', '+256701111001', 'Pump 2 (Boda Lane)', 'on_duty'),
-        ('fatt_bugolobi_1', 'fout_shell_bugolobi', 'ATT-1002', 'Nakato Sarah', '+256701111002', 'Pump 1 (Quick Lane)', 'on_duty'),
-        ('fatt_stabex_1', 'fout_stabex_nansana', 'ATT-1003', 'Mugisha Paul', '+256701111003', 'Pump 4', 'on_duty');
-    `);
-
     // Manager and payout tables
     await db.execute(`
       CREATE TABLE IF NOT EXISTS fuel_station_managers (
@@ -336,70 +338,68 @@ async function ensureGasSchema() {
     try { await db.execute("ALTER TABLE fuel_pump_attendants ADD COLUMN commissioned_at TEXT"); } catch {}
     try { await db.execute("ALTER TABLE fuel_pump_attendants ADD COLUMN pin TEXT DEFAULT '1234'"); } catch {}
 
-    // Seed default Station Managers for partner outlets
-    await db.execute(`
-      INSERT OR IGNORE INTO fuel_station_managers (id, outlet_id, manager_code, full_name, phone, pin, role, status) VALUES
-        ('fmgr_tot_01', 'fout_total_lugogo', 'MGR-TOT-01', 'Patrick Semakula', '+256701999001', '1234', 'dealer', 'active'),
-        ('fmgr_shl_02', 'fout_shell_bugolobi', 'MGR-SHL-02', 'Grace Akello', '+256701999002', '1234', 'station_manager', 'active'),
-        ('fmgr_rub_03', 'fout_rubis_kibuye', 'MGR-RUB-03', 'Moses Okot', '+256701999003', '1234', 'station_manager', 'active'),
-        ('fmgr_stb_04', 'fout_stabex_nansana', 'MGR-STB-04', 'Hassan Ssebaggala', '+256701999004', '1234', 'station_manager', 'active'),
-        ('fmgr_hss_05', 'fout_hass_wandegeya', 'MGR-HSS-05', 'Amina Nalwanga', '+256701999005', '1234', 'station_manager', 'active'),
-        ('fmgr_cty_06', 'fout_cityoil_bombo', 'MGR-CTY-06', 'Ronald Tumwine', '+256701999006', '1234', 'station_manager', 'active');
-    `);
-
-    // Seed default station payout accounts
-    await db.execute(`
-      INSERT OR IGNORE INTO fuel_station_payout_accounts (id, outlet_id, type, account_ref, account_name, network_or_bank, is_primary) VALUES
-        ('fpay_tot_momo', 'fout_total_lugogo', 'momo', '+256772100001', 'TotalEnergies Lugogo Bypass Settlement', 'MTN', 1),
-        ('fpay_tot_bank', 'fout_total_lugogo', 'bank', '9030018822331', 'TotalEnergies Marketing Uganda Ltd', 'Stanbic Bank', 0),
-        ('fpay_shl_momo', 'fout_shell_bugolobi', 'momo', '+256700100002', 'Shell Bugolobi Station Account', 'Airtel', 1);
-    `);
+    // Demo staff and payout accounts exist only in local development, with a
+    // known development PIN. They are never created on a deployed API.
+    if ((process.env.ENVIRONMENT ?? "development") === "development") {
+      const devPin = await hashPin("2468");
+      await db.execute({
+        sql: `INSERT OR IGNORE INTO fuel_pump_attendants (id, outlet_id, attendant_code, full_name, phone, pump_lane, status, pin) VALUES
+          ('fatt_lugogo_1', 'fout_total_lugogo', 'ATT-1001', 'Kato Dennis', '+256701111001', 'Pump 2 (Boda Lane)', 'on_duty', ?)`,
+        args: [devPin],
+      });
+      await db.execute({
+        sql: `INSERT OR IGNORE INTO fuel_station_managers (id, outlet_id, manager_code, full_name, phone, pin, role, status) VALUES
+          ('fmgr_tot_01', 'fout_total_lugogo', 'MGR-TOT-01', 'Patrick Semakula', '+256701999001', ?, 'dealer', 'active')`,
+        args: [devPin],
+      });
+      // Migrations seed these accounts without a usable PIN; give the dev ones a known PIN.
+      await db.execute({ sql: "UPDATE fuel_pump_attendants SET pin = ? WHERE id = 'fatt_lugogo_1' AND (pin IS NULL OR pin NOT LIKE '$2%')", args: [devPin] });
+      await db.execute({ sql: "UPDATE fuel_station_managers SET pin = ? WHERE id = 'fmgr_tot_01' AND (pin IS NULL OR pin NOT LIKE '$2%')", args: [devPin] });
+      await db.execute(`
+        INSERT OR IGNORE INTO fuel_station_payout_accounts (id, outlet_id, type, account_ref, account_name, network_or_bank, is_primary) VALUES
+          ('fpay_tot_momo', 'fout_total_lugogo', 'momo', '+256772100001', 'TotalEnergies Lugogo Bypass Settlement', 'MTN', 1)
+      `);
+    }
 
     schemaEnsured = true;
   } catch (e) {
     console.warn("Gas schema provision note:", e);
   }
 }
+type Row = Record<string, any>;
 
-// Automatically ensure schema on all gas endpoints
+// Every gas request makes sure the tables exist first.
 gasRoutes.use("*", async (_c, next) => {
   await ensureGasSchema();
   await next();
 });
 
-/** Helper to extract authenticated user from Bearer token */
-async function getAuthUser(header: string | undefined) {
-  if (!header?.startsWith("Bearer ")) return null;
-  const token = header.slice(7).trim();
-  try {
-    const payload = await verifyToken(token);
-    const res = await db.execute({
-      sql: "SELECT id, name, phone, email, role FROM users WHERE id = ?",
-      args: [payload.sub],
-    });
-    return res.rows[0] as any ?? null;
-  } catch {
-    return null;
+// Admin kill switch: while fuel payments are off, no voucher can be created,
+// scanned or redeemed. Station listings and sign-in stay up.
+const SWITCHED_OFF_ROUTES = ["/rider/generate-code", "/verify-code", "/dispense"];
+gasRoutes.use("*", async (c, next) => {
+  if (c.req.method === "POST" && SWITCHED_OFF_ROUTES.some((p) => c.req.path.endsWith(p))) {
+    const { enabled } = await getGasSettings();
+    if (!enabled) return c.json({ error: "service_disabled", message: "Fuel payments are switched off right now." }, 503);
   }
-}
+  await next();
+});
 
-/** Check service switch and config */
+const nowIso = () => new Date().toISOString();
+const idParam = (c: { req: { param: (k: string) => string | undefined } }) => c.req.param("id") ?? "";
+
+/** Public service status: only what the apps need to display. */
 gasRoutes.get("/status", async (c) => {
-  try {
-    const settings = await getGasSettings();
-    return c.json({ ok: true, settings });
-  } catch {
-    return c.json({
-      ok: true,
-      settings: {
-        enabled: true,
-        dailyLimitUgx: 60000,
-        carDailyLimitUgx: 500000,
-        voucherExpiryMinutes: 60,
-        platformDiscountPercent: 0,
-      },
-    });
-  }
+  const s = await getGasSettings();
+  return c.json({
+    ok: true,
+    settings: {
+      enabled: s.enabled,
+      dailyLimitUgx: s.dailyLimitUgx,
+      voucherExpiryMinutes: s.voucherExpiryMinutes,
+      platformDiscountPercent: s.platformDiscountPercent,
+    },
+  });
 });
 
 /** List all partner stations & outlets with current prices */
@@ -497,1496 +497,1058 @@ gasRoutes.get("/outlets/:outletId/prices", async (c) => {
   return c.json({ outlet_id: outletId, prices: defaultPrices });
 });
 
-/** Update pump prices for an outlet (station manager or attendant) */
-gasRoutes.put("/outlets/:outletId/prices", async (c) => {
-  const outletId = c.req.param("outletId");
-  const body = await c.req.json().catch(() => ({}));
-  const schema = z.object({
-    prices: z.array(
-      z.object({
-        product_id: z.string(),
-        price_per_unit: z.number().int().positive(),
-      }),
-    ),
-  });
-  const parsed = schema.safeParse(body);
-  if (!parsed.success) {
-    return c.json({ error: "bad_request", message: "Invalid prices payload" }, 400);
+/** Update pump prices for the signed-in manager's own outlet. */
+gasRoutes.put("/outlets/:outletId/prices", requireManager, async (c) => {
+  const actor = c.get("gasActor");
+  if (c.req.param("outletId") !== actor.outletId) {
+    return c.json({ error: "forbidden", message: "You can only change prices at your own station." }, 403);
+  }
+  const parsed = z
+    .object({
+      prices: z
+        .array(z.object({ product_id: z.string().min(1).max(60), price_per_unit: z.number().int().positive().max(1_000_000) }))
+        .min(1)
+        .max(20),
+    })
+    .safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) return c.json({ error: "bad_request", message: "Invalid prices payload" }, 400);
+
+  const known = await db.execute("SELECT id FROM fuel_products WHERE active = 1");
+  const knownIds = new Set((known.rows as Row[]).map((r) => String(r.id)));
+  if (parsed.data.prices.some((p) => !knownIds.has(p.product_id))) {
+    return c.json({ error: "unknown_product", message: "One of those products isn't sold through Peebee Gas." }, 400);
   }
 
-  for (const item of parsed.data.prices) {
-    await db.execute({
-      sql: `
-        INSERT INTO fuel_station_prices (outlet_id, product_id, price_per_unit, updated_at)
-        VALUES (?, ?, ?, datetime('now'))
-        ON CONFLICT(outlet_id, product_id) DO UPDATE SET
-          price_per_unit = excluded.price_per_unit,
-          updated_at = datetime('now')
-      `,
-      args: [outletId, item.product_id, item.price_per_unit],
-    });
-  }
-
+  await executeBatch(
+    parsed.data.prices.map((item) => ({
+      sql: `INSERT INTO fuel_station_prices (outlet_id, product_id, price_per_unit, updated_at)
+            VALUES (?, ?, ?, datetime('now'))
+            ON CONFLICT(outlet_id, product_id) DO UPDATE SET price_per_unit = excluded.price_per_unit, updated_at = datetime('now')`,
+      args: [actor.outletId, item.product_id, item.price_per_unit],
+    })),
+  );
   return c.json({ ok: true, updated: parsed.data.prices.length });
 });
 
-/** Attendant Authentication: Sign in by attendant badge code & PIN */
+const ATTENDANT_SELECT = `
+  SELECT a.id, a.attendant_code, a.full_name, a.phone, a.pump_lane, a.status, a.pin,
+         COALESCE(a.commission_status, 'approved') AS commission_status,
+         o.id AS outlet_id, o.name AS outlet_name, o.code AS outlet_code, o.address AS outlet_address,
+         o.active_pumps, o.status AS outlet_status, s.id AS station_id, s.brand_name AS station_name
+  FROM fuel_pump_attendants a
+  JOIN fuel_station_outlets o ON o.id = a.outlet_id
+  JOIN fuel_stations s ON s.id = o.station_id`;
+
+function attendantPayload(a: Row) {
+  return {
+    attendant: {
+      id: a.id,
+      code: a.attendant_code,
+      name: a.full_name,
+      phone: a.phone,
+      pump_lane: a.pump_lane ?? "Pump 1",
+      on_duty: a.status === "on_duty",
+    },
+    outlet: {
+      id: a.outlet_id,
+      station_id: a.station_id,
+      station_name: a.station_name,
+      name: a.outlet_name,
+      code: a.outlet_code,
+      address: a.outlet_address,
+      active_pumps: a.active_pumps,
+      status: "active",
+    },
+  };
+}
+
+/** Attendant sign-in: badge code and PIN. Wrong codes and wrong PINs look identical. */
 gasRoutes.post("/attendants/login", async (c) => {
-  const body = await c.req.json().catch(() => ({}));
-  const schema = z.object({
-    code: z.string().min(2),
-    pin: z.string().optional(),
-    outletId: z.string().optional(),
+  const parsed = z
+    .object({ code: z.string().min(2).max(40), pin: z.string().min(4).max(8) })
+    .safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) return c.json({ error: "bad_request", message: "Enter your badge code and PIN." }, 400);
+
+  const code = parsed.data.code.trim().toUpperCase();
+  const guard = await pinAttemptGuard(c, "attendant", code);
+  if (guard.blocked) return guard.blocked;
+
+  const found = (await db.execute({ sql: `${ATTENDANT_SELECT} WHERE UPPER(a.attendant_code) = ? LIMIT 1`, args: [code] })).rows[0] as Row | undefined;
+  const ok = found ? await pinMatches(found.pin, parsed.data.pin) : (await burnPinCheck(parsed.data.pin), false);
+  if (!found || !ok) {
+    await guard.fail();
+    return c.json({ error: "invalid_credentials", message: "Wrong badge code or PIN." }, 401);
+  }
+  await guard.succeed();
+
+  if (found.commission_status === "pending") {
+    return c.json({ error: "pending_approval", message: "Your pump attendant account is pending approval by your station manager." }, 403);
+  }
+  if (found.commission_status !== "approved" || found.status === "suspended" || found.outlet_status !== "active") {
+    return c.json({ error: "suspended", message: "Your pump attendant account is not active. Please see your station manager." }, 403);
+  }
+
+  const shift = await db.execute({
+    sql: `SELECT id FROM fuel_attendant_shifts WHERE attendant_id = ? AND outlet_id = ? AND status = 'open' AND date(opened_at) = date('now') LIMIT 1`,
+    args: [found.id, found.outlet_id],
   });
-  const parsed = schema.safeParse(body);
-  if (!parsed.success) {
-    return c.json({ error: "bad_request", message: "Attendant code is required" }, 400);
-  }
-
-  const normalizedCode = parsed.data.code.trim().toUpperCase();
-  const hasCommissionCol = await hasColumn("fuel_pump_attendants", "commission_status");
-
-  // Search attendant in database
-  const res = await db.execute({
-    sql: `
-      SELECT 
-        a.id, a.attendant_code, a.full_name, a.phone, a.pump_lane, a.status,
-        ${hasCommissionCol ? "COALESCE(a.commission_status, 'approved')" : "'approved'"} as commission_status,
-        ${hasCommissionCol ? "COALESCE(a.pin, '1234')" : "'1234'"} as pin,
-        o.id as outlet_id, o.name as outlet_name, o.code as outlet_code, o.address as outlet_address,
-        o.active_pumps, s.id as station_id, s.brand_name as station_name
-      FROM fuel_pump_attendants a
-      JOIN fuel_station_outlets o ON o.id = a.outlet_id
-      JOIN fuel_stations s ON s.id = o.station_id
-      WHERE (UPPER(a.attendant_code) = ? OR a.phone = ? OR a.id = ?)
-      LIMIT 1
-    `,
-    args: [normalizedCode, parsed.data.code.trim(), parsed.data.code.trim().toLowerCase()],
-  });
-
-  let attendant = res.rows[0] as any;
-
-  if (!attendant) {
-    // If attendant code matches standard format (ATT-...), auto-register to selected or first outlet
-    const targetOutletId = parsed.data.outletId || "fout_total_lugogo";
-    const newId = `fatt_${Date.now()}`;
-    if (hasCommissionCol) {
-      await db.execute({
-        sql: `
-          INSERT INTO fuel_pump_attendants (id, outlet_id, attendant_code, full_name, phone, pump_lane, status, commission_status, pin)
-          VALUES (?, ?, ?, ?, ?, ?, 'on_duty', 'approved', ?)
-        `,
-        args: [newId, targetOutletId, normalizedCode, `Attendant ${normalizedCode}`, "+256 700 000 000", "Pump 1", parsed.data.pin || "1234"],
-      });
-    } else {
-      await db.execute({
-        sql: `
-          INSERT INTO fuel_pump_attendants (id, outlet_id, attendant_code, full_name, phone, pump_lane, status)
-          VALUES (?, ?, ?, ?, ?, ?, 'on_duty')
-        `,
-        args: [newId, targetOutletId, normalizedCode, `Attendant ${normalizedCode}`, "+256 700 000 000", "Pump 1"],
-      });
-    }
-
-    const refreshed = await db.execute({
-      sql: `
-        SELECT 
-          a.id, a.attendant_code, a.full_name, a.phone, a.pump_lane, a.status,
-          ${hasCommissionCol ? "COALESCE(a.commission_status, 'approved')" : "'approved'"} as commission_status,
-          ${hasCommissionCol ? "COALESCE(a.pin, '1234')" : "'1234'"} as pin,
-          o.id as outlet_id, o.name as outlet_name, o.code as outlet_code, o.address as outlet_address,
-          o.active_pumps, s.id as station_id, s.brand_name as station_name
-        FROM fuel_pump_attendants a
-        JOIN fuel_station_outlets o ON o.id = a.outlet_id
-        JOIN fuel_stations s ON s.id = o.station_id
-        WHERE a.id = ?
-      `,
-      args: [newId],
-    });
-    attendant = refreshed.rows[0];
-  }
-
-  if (!attendant) {
-    return c.json({ error: "not_found", message: "Invalid attendant badge code." }, 404);
-  }
-
-  // Check commission approval status
-  if (attendant.commission_status === "pending") {
-    return c.json({
-      error: "pending_approval",
-      message: "Your pump attendant account is pending approval by your station manager.",
-    }, 403);
-  }
-
-  if (attendant.commission_status === "suspended" || attendant.status === "suspended") {
-    return c.json({
-      error: "suspended",
-      message: "Your pump attendant account has been suspended by your station manager.",
-    }, 403);
-  }
-
-  // Check PIN if provided and configured
-  if (parsed.data.pin && attendant.pin && parsed.data.pin !== attendant.pin && attendant.pin !== "1234") {
-    return c.json({ error: "invalid_pin", message: "Incorrect attendant staff PIN." }, 401);
-  }
-
-  // Ensure active shift record exists
-  const shiftRes = await db.execute({
-    sql: `
-      SELECT id FROM fuel_attendant_shifts 
-      WHERE attendant_id = ? AND outlet_id = ? AND status = 'open' AND date(opened_at) = date('now')
-      LIMIT 1
-    `,
-    args: [attendant.id, attendant.outlet_id],
-  });
-
-  if (shiftRes.rows.length === 0) {
+  if (shift.rows.length === 0) {
     await db.execute({
-      sql: `
-        INSERT INTO fuel_attendant_shifts (id, attendant_id, outlet_id, status)
-        VALUES (?, ?, ?, 'open')
-      `,
-      args: [`fshift_${Date.now()}`, attendant.id, attendant.outlet_id],
+      sql: "INSERT INTO fuel_attendant_shifts (id, attendant_id, outlet_id, status) VALUES (?, ?, ?, 'open')",
+      args: [`fshift_${crypto.randomUUID()}`, found.id, found.outlet_id],
     });
   }
 
-  const token = `gatt_${attendant.id}_${Date.now()}`;
-
-  return c.json({
-    ok: true,
-    token,
-    attendant: {
-      id: attendant.id,
-      code: attendant.attendant_code,
-      name: attendant.full_name,
-      phone: attendant.phone,
-      pump_lane: attendant.pump_lane ?? "Pump 1",
-      on_duty: attendant.status === "on_duty",
-    },
-    outlet: {
-      id: attendant.outlet_id,
-      station_id: attendant.station_id,
-      station_name: attendant.station_name,
-      name: attendant.outlet_name,
-      code: attendant.outlet_code,
-      address: attendant.outlet_address,
-      active_pumps: attendant.active_pumps,
-      status: "active",
-    },
-  });
+  const token = await signGasToken({ kind: "attendant", id: String(found.id), outletId: String(found.outlet_id) });
+  return c.json({ ok: true, token, ...attendantPayload(found) });
 });
 
-/** Attendant Portal: Get current attendant profile and outlet */
-gasRoutes.get("/me", async (c) => {
-  const header = c.req.header("Authorization") ?? "";
-  const token = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
-  if (!token) {
-    return c.json({ error: "unauthorized", message: "Missing attendant token" }, 401);
-  }
-
-  const attendantIdMatch = token.match(/^gatt_(fatt_[a-zA-Z0-9_]+)_/);
-  const attendantId = attendantIdMatch ? attendantIdMatch[1] : null;
-
-  let attendantRow: any = null;
-  if (attendantId) {
-    const res = await db.execute({
-      sql: `
-        SELECT 
-          a.id, a.attendant_code, a.full_name, a.phone, a.pump_lane, a.status,
-          o.id as outlet_id, o.name as outlet_name, o.code as outlet_code, o.address as outlet_address,
-          o.active_pumps, s.id as station_id, s.brand_name as station_name
-        FROM fuel_pump_attendants a
-        JOIN fuel_station_outlets o ON o.id = a.outlet_id
-        JOIN fuel_stations s ON s.id = o.station_id
-        WHERE a.id = ?
-        LIMIT 1
-      `,
-      args: [attendantId],
-    });
-    attendantRow = res.rows[0];
-  }
-
-  if (!attendantRow) {
-    // Default fallback to first attendant
-    const firstRes = await db.execute(`
-      SELECT 
-        a.id, a.attendant_code, a.full_name, a.phone, a.pump_lane, a.status,
-        o.id as outlet_id, o.name as outlet_name, o.code as outlet_code, o.address as outlet_address,
-        o.active_pumps, s.id as station_id, s.brand_name as station_name
-      FROM fuel_pump_attendants a
-      JOIN fuel_station_outlets o ON o.id = a.outlet_id
-      JOIN fuel_stations s ON s.id = o.station_id
-      LIMIT 1
-    `);
-    attendantRow = firstRes.rows[0];
-  }
-
-  if (!attendantRow) {
-    return c.json({ error: "unauthorized", message: "Attendant session expired" }, 401);
-  }
-
-  return c.json({
-    ok: true,
-    attendant: {
-      id: attendantRow.id,
-      code: attendantRow.attendant_code,
-      name: attendantRow.full_name,
-      phone: attendantRow.phone,
-      pump_lane: attendantRow.pump_lane ?? "Pump 1",
-      on_duty: attendantRow.status === "on_duty",
-    },
-    outlet: {
-      id: attendantRow.outlet_id,
-      station_id: attendantRow.station_id,
-      station_name: attendantRow.station_name,
-      name: attendantRow.outlet_name,
-      code: attendantRow.outlet_code,
-      address: attendantRow.outlet_address,
-      active_pumps: attendantRow.active_pumps,
-      status: "active",
-    },
-  });
+/** The signed-in attendant's profile and outlet. */
+gasRoutes.get("/me", requireAttendant, async (c) => {
+  const actor = c.get("gasActor");
+  const row = (await db.execute({ sql: `${ATTENDANT_SELECT} WHERE a.id = ?`, args: [actor.id] })).rows[0] as Row;
+  return c.json({ ok: true, ...attendantPayload(row) });
 });
 
-/** Attendant Portal: Toggle on duty status */
-gasRoutes.post("/attendants/toggle-duty", async (c) => {
+gasRoutes.post("/attendants/toggle-duty", requireAttendant, async (c) => {
+  const actor = c.get("gasActor");
   const body = await c.req.json().catch(() => ({}));
-  const onDuty = Boolean(body.onDuty);
-  const header = c.req.header("Authorization") ?? "";
-  const token = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
-  const match = token.match(/^gatt_(fatt_[a-zA-Z0-9_]+)_/);
-  const attendantId = match ? match[1] : "fatt_lugogo_1";
-
+  const onDuty = Boolean((body as Row).onDuty);
   await db.execute({
-    sql: "UPDATE fuel_pump_attendants SET status = ? WHERE id = ?",
-    args: [onDuty ? "on_duty" : "off_duty", attendantId],
+    sql: "UPDATE fuel_pump_attendants SET status = ?, updated_at = datetime('now') WHERE id = ? AND outlet_id = ?",
+    args: [onDuty ? "on_duty" : "off_duty", actor.id, actor.outletId],
   });
-
   return c.json({ ok: true, on_duty: onDuty });
 });
 
-/** Verify fuel code scanned or entered by attendant */
-gasRoutes.post("/verify-code", async (c) => {
-  const body = await c.req.json().catch(() => ({}));
-  const rawCode = String(body.code ?? "").trim().toUpperCase();
-  const outletId = String(body.outletId ?? "fout_total_lugogo");
+const changePinSchema = z.object({ currentPin: z.string().min(4).max(8), newPin: z.string().min(4).max(8) });
 
-  if (!rawCode) {
-    return c.json({ error: "bad_request", message: "Code is required" }, 400);
+gasRoutes.post("/attendants/change-pin", requireAttendant, async (c) => {
+  const actor = c.get("gasActor");
+  const parsed = changePinSchema.safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) return c.json({ error: "bad_request", message: "Enter your current PIN and a new one." }, 400);
+  const formatError = validatePinFormat(parsed.data.newPin);
+  if (formatError) return c.json({ error: "weak_pin", message: formatError }, 400);
+
+  const guard = await pinAttemptGuard(c, "attendant", actor.id);
+  if (guard.blocked) return guard.blocked;
+  const row = (await db.execute({ sql: "SELECT pin FROM fuel_pump_attendants WHERE id = ?", args: [actor.id] })).rows[0] as Row;
+  if (!(await pinMatches(row.pin, parsed.data.currentPin))) {
+    await guard.fail();
+    return c.json({ error: "invalid_pin", message: "Your current PIN is wrong." }, 401);
+  }
+  await guard.succeed();
+  await db.execute({ sql: "UPDATE fuel_pump_attendants SET pin = ?, updated_at = datetime('now') WHERE id = ?", args: [await hashPin(parsed.data.newPin), actor.id] });
+  return c.json({ ok: true });
+});
+
+/** Looks up a voucher the customer is showing. Only a signed-in attendant can do this, and only for their own outlet. */
+gasRoutes.post("/verify-code", requireAttendant, async (c) => {
+  const actor = c.get("gasActor");
+  const body = (await c.req.json().catch(() => ({}))) as Row;
+  if (!(await vouchersReady())) return c.json({ error: "gas_upgrade_pending", message: "Fuel vouchers are being upgraded. Try again shortly." }, 503);
+
+  const { voucherLookupsPer5Min } = await getGasSettings();
+  const lookups = await consume(`gas-lookup:${actor.id}`, voucherLookupsPer5Min, 300);
+  if (!lookups.allowed) {
+    return c.json({ error: "too_many_attempts", message: "Too many code lookups. Wait a moment.", retryAfterSeconds: lookups.retryAfterSeconds }, 429);
   }
 
-  const normalizedCode = rawCode.startsWith("PBGAS-") ? rawCode : `PBGAS-${rawCode}`;
-  const shortCode = rawCode.replace(/^PBGAS-/, "");
+  const code = normalizeVoucherCode(String(body.code ?? ""));
+  if (!code) return c.json({ error: "invalid_code", message: "Voucher codes are six digits." }, 400);
 
-  const res = await db.execute({
-    sql: `
-      SELECT c.*, u.name as user_name, u.phone as user_phone
-      FROM fuel_codes c
-      LEFT JOIN users u ON u.id = c.rider_id
-      WHERE (c.code = ? OR c.code = ? OR c.code LIKE ?)
-      ORDER BY c.created_at DESC
-      LIMIT 1
-    `,
-    args: [normalizedCode, shortCode, `%${shortCode}%`],
-  });
+  let voucher = await findVoucher(code);
+  if (!voucher) return c.json({ error: "not_found", message: "Invalid or unknown fuel voucher code. Please check the code with the customer." }, 404);
 
-  const codeRecord = res.rows[0] as any;
-
-  if (!codeRecord) {
-    return c.json({
-      error: "not_found",
-      message: "Invalid or unknown fuel voucher code. Please check the code with the customer.",
-    }, 404);
+  if (voucher.status === "active" && String(voucher.expires_at) <= nowIso()) {
+    await closeVoucher(String(voucher.id), "expired", "Fuel voucher expired — hold released");
+    voucher = (await findVoucher(code)) as Row;
   }
-
-  if (codeRecord.status === "dispensed") {
-    return c.json({ error: "already_used", message: "This voucher has already been redeemed and fuel dispensed." }, 400);
+  if (voucher.status === "dispensed") return c.json({ error: "already_used", message: "This voucher has already been redeemed and fuel dispensed." }, 400);
+  if (voucher.status === "cancelled") return c.json({ error: "cancelled", message: "This fuel voucher was cancelled by the customer." }, 400);
+  if (voucher.status !== "active") return c.json({ error: "expired", message: "This fuel voucher has expired. Please ask customer to generate a fresh code." }, 400);
+  if (voucher.outlet_id && voucher.outlet_id !== actor.outletId) {
+    return c.json({ error: "wrong_outlet", message: "This voucher is for a different station." }, 403);
   }
+  if (Number(voucher.held) !== 1) return c.json({ error: "unfunded_voucher", message: "This voucher was not paid for. Ask the customer to generate a new one." }, 409);
 
-  if (codeRecord.status === "cancelled") {
-    return c.json({ error: "cancelled", message: "This fuel voucher was cancelled by the customer." }, 400);
-  }
+  const prices = (
+    await db.execute({
+      sql: `SELECT p.product_id, prod.name AS product_name, prod.category, prod.unit, p.price_per_unit
+            FROM fuel_station_prices p JOIN fuel_products prod ON prod.id = p.product_id
+            WHERE p.outlet_id = ? AND prod.active = 1`,
+      args: [actor.outletId],
+    })
+  ).rows as Row[];
 
-  if (new Date(codeRecord.expires_at).getTime() < Date.now()) {
-    return c.json({ error: "expired", message: "This fuel voucher has expired. Please ask customer to generate a fresh code." }, 400);
-  }
-
-  // Fetch outlet prices
-  let prices: any[] = [];
-  try {
-    const pRes = await db.execute({
-      sql: `
-        SELECT p.product_id, prod.name as product_name, prod.category, prod.unit, p.price_per_unit
-        FROM fuel_station_prices p
-        JOIN fuel_products prod ON prod.id = p.product_id
-        WHERE p.outlet_id = ?
-      `,
-      args: [outletId],
-    });
-    prices = pRes.rows as any[];
-  } catch {}
-
-  if (prices.length === 0) {
-    prices = FALLBACK_PRODUCTS.map((prod) => ({
-      product_id: prod.id,
-      product_name: prod.name,
-      category: prod.category,
-      unit: prod.unit,
-      price_per_unit: prod.defaultPrice,
-    }));
-  }
-
-  // Detect vehicle type (car vs motorcycle)
-  let vehicleType: "car" | "motorcycle" = "motorcycle";
-  let vehicleDesc = "Peebee Rider";
-  const plate = String(codeRecord.vehicle_plate ?? "").toUpperCase();
-  const isCarPlate = plate.startsWith("UB") || plate.startsWith("UA") || plate.startsWith("PRACTICE");
-  if (isCarPlate) {
+  const plate = String(voucher.vehicle_plate ?? "").toUpperCase();
+  let vehicleType: "car" | "motorcycle" = plate.startsWith("UB") || plate.startsWith("UA") || plate.startsWith("PRACTICE") ? "car" : "motorcycle";
+  let vehicleDesc = vehicleType === "car" ? "Peebee Fleet Car" : "Peebee Rider";
+  const vehicle = (await db.execute({ sql: "SELECT make, model FROM vehicles WHERE UPPER(plate) = ? LIMIT 1", args: [plate] }).catch(() => ({ rows: [] as Row[] }))).rows[0] as Row | undefined;
+  if (vehicle) {
     vehicleType = "car";
-    vehicleDesc = "Peebee Fleet Car";
+    vehicleDesc = `${vehicle.make ?? ""} ${vehicle.model ?? ""}`.trim() || "Peebee Fleet Car";
   }
 
-  try {
-    const vRes = await db.execute({
-      sql: "SELECT make, model, year FROM vehicles WHERE UPPER(plate) = ? LIMIT 1",
-      args: [plate],
-    });
-    if (vRes.rows.length > 0) {
-      const v = vRes.rows[0] as any;
-      vehicleType = "car";
-      vehicleDesc = `${v.make ?? ""} ${v.model ?? ""}`.trim() || "Peebee Fleet Car";
-    }
-  } catch {}
-
-  const customerName = codeRecord.user_name ?? (vehicleType === "car" ? "Verified Car Driver" : "Verified Motorcycle Rider");
-
+  const user = (await db.execute({ sql: "SELECT name, phone FROM users WHERE id = ?", args: [voucher.rider_id] })).rows[0] as Row | undefined;
+  const phone = user?.phone ? String(user.phone) : "";
   return c.json({
     valid: true,
     code: {
-      id: codeRecord.id,
-      code: codeRecord.code,
-      rider_id: codeRecord.rider_id,
-      rider_name: customerName,
-      rider_phone: codeRecord.user_phone ?? "+256 700 000 000",
+      id: voucher.id,
+      code: voucher.code,
+      rider_id: voucher.rider_id,
+      rider_name: user?.name ?? (vehicleType === "car" ? "Verified Car Driver" : "Verified Motorcycle Rider"),
+      rider_phone: phone ? `${"•".repeat(Math.max(0, phone.length - 4))}${phone.slice(-4)}` : "",
       rider_stage: vehicleType === "car" ? "Peebee Car Fleet" : "Kampala Central Stage",
-      vehicle_plate: codeRecord.vehicle_plate,
+      vehicle_plate: voucher.vehicle_plate,
       vehicle_type: vehicleType,
       vehicle_desc: vehicleDesc,
-      authorized_amount_ugx: Number(codeRecord.authorized_amount_ugx),
-      fuel_product_id: codeRecord.fuel_product_id,
-      status: codeRecord.status,
-      expires_at: codeRecord.expires_at,
+      authorized_amount_ugx: Number(voucher.authorized_amount_ugx),
+      fuel_product_id: voucher.fuel_product_id,
+      status: voucher.status,
+      expires_at: voucher.expires_at,
     },
     outlet_prices: prices,
   });
 });
 
-/** Dispense fuel and generate digital receipt */
-gasRoutes.post("/dispense", async (c) => {
-  const body = await c.req.json().catch(() => ({}));
-  const schema = z.object({
-    code: z.string(),
-    outletId: z.string(),
-    productId: z.string().default("prod_petrol"),
-    attendantId: z.string().optional(),
-    attendantName: z.string().optional(),
-    pumpNumber: z.number().int().min(1).max(20).default(1),
-    litres: z.number().positive().optional(),
-    totalUgx: z.number().int().positive().optional(),
-    odometer: z.number().optional(),
-  });
+/**
+ * Redeems a voucher. The sequence that makes this safe to repeat or race:
+ *  1. price comes from this outlet's price list, never from the request;
+ *  2. the voucher is claimed with one conditional UPDATE — only one request can win;
+ *  3. the sale and shift totals are written together in one batch (undone by re-opening the voucher if it fails);
+ *  4. whatever was held but not pumped goes back to the rider's wallet.
+ */
+gasRoutes.post("/dispense", requireAttendant, async (c) => {
+  const actor = c.get("gasActor");
+  if (!(await vouchersReady())) return c.json({ error: "gas_upgrade_pending", message: "Fuel vouchers are being upgraded. Try again shortly." }, 503);
 
-  const parsed = schema.safeParse(body);
-  if (!parsed.success) {
-    return c.json({ error: "bad_request", message: "Invalid dispense parameters" }, 400);
+  const parsed = z
+    .object({
+      code: z.string().min(1).max(20),
+      productId: z.string().min(1).max(60).default("prod_petrol"),
+      pumpNumber: z.number().int().min(1).max(50).default(1),
+      litres: z.number().positive().max(1000).optional(),
+      totalUgx: z.number().int().positive().max(100_000_000).optional(),
+    })
+    .safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) return c.json({ error: "bad_request", message: "Invalid dispense parameters" }, 400);
+  const { productId, pumpNumber } = parsed.data;
+
+  const code = normalizeVoucherCode(parsed.data.code);
+  if (!code) return c.json({ error: "invalid_code", message: "Voucher codes are six digits." }, 400);
+  const voucher = await findVoucher(code);
+  if (!voucher) return c.json({ error: "not_found", message: "Fuel voucher code not found." }, 404);
+
+  if (voucher.outlet_id && voucher.outlet_id !== actor.outletId) return c.json({ error: "wrong_outlet", message: "This voucher is for a different station." }, 403);
+  if (voucher.fuel_product_id && voucher.fuel_product_id !== productId) {
+    return c.json({ error: "product_mismatch", message: "This voucher was issued for a different fuel type." }, 400);
   }
+  if (Number(voucher.held) !== 1) return c.json({ error: "unfunded_voucher", message: "This voucher was not paid for." }, 409);
 
-  const { code, outletId, productId, attendantId, attendantName, pumpNumber } = parsed.data;
+  const outlet = (
+    await db.execute({
+      sql: `SELECT o.name AS outlet_name, o.active_pumps, o.status, s.brand_name AS station_name
+            FROM fuel_station_outlets o JOIN fuel_stations s ON s.id = o.station_id WHERE o.id = ?`,
+      args: [actor.outletId],
+    })
+  ).rows[0] as Row | undefined;
+  if (!outlet || outlet.status !== "active") return c.json({ error: "outlet_inactive", message: "This station is not active." }, 403);
+  if (pumpNumber > Number(outlet.active_pumps)) return c.json({ error: "bad_request", message: `This station has ${outlet.active_pumps} pumps.` }, 400);
+
+  const priced = (
+    await db.execute({
+      sql: `SELECT p.price_per_unit, prod.name FROM fuel_station_prices p JOIN fuel_products prod ON prod.id = p.product_id
+            WHERE p.outlet_id = ? AND p.product_id = ? AND prod.active = 1`,
+      args: [actor.outletId, productId],
+    })
+  ).rows[0] as Row | undefined;
+  if (!priced) return c.json({ error: "product_not_sold", message: "This station has no price set for that product." }, 400);
+  const pricePerLitre = Number(priced.price_per_unit);
+
   let { litres, totalUgx } = parsed.data;
-
-  // Find price per litre
-  let pricePerLitre = 5450;
-  try {
-    const pRes = await db.execute({
-      sql: `SELECT price_per_unit FROM fuel_station_prices WHERE outlet_id = ? AND product_id = ?`,
-      args: [outletId, productId],
-    });
-    if (pRes.rows[0]) pricePerLitre = Number(pRes.rows[0].price_per_unit);
-  } catch {}
-
-  // Reconcile litres & UGX
-  if (litres != null && totalUgx == null) {
-    totalUgx = Math.round(litres * pricePerLitre);
-  } else if (totalUgx != null && litres == null) {
-    litres = Math.round((totalUgx / pricePerLitre) * 100) / 100;
-  } else if (totalUgx == null && litres == null) {
-    return c.json({ error: "bad_request", message: "Specify either litres or total UGX" }, 400);
+  if (litres == null && totalUgx == null) return c.json({ error: "bad_request", message: "Specify either litres or total UGX" }, 400);
+  if (litres != null) {
+    const computed = Math.round(litres * pricePerLitre);
+    if (totalUgx != null && Math.abs(totalUgx - computed) > Math.max(50, computed * 0.01)) {
+      return c.json({ error: "bad_request", message: "Litres and amount don't match the pump price." }, 400);
+    }
+    totalUgx = computed;
+  } else {
+    litres = Math.round((totalUgx! / pricePerLitre) * 100) / 100;
   }
+  if (!totalUgx || totalUgx <= 0 || !litres || litres <= 0) return c.json({ error: "bad_request", message: "Nothing to dispense." }, 400);
 
-  // Lookup code record in DB
-  const normalizedCode = code.toUpperCase().startsWith("PBGAS-") ? code.toUpperCase() : `PBGAS-${code.toUpperCase()}`;
-  const shortCode = code.toUpperCase().replace(/^PBGAS-/, "");
-
-  const cRes = await db.execute({
-    sql: `
-      SELECT c.*, u.name as user_name 
-      FROM fuel_codes c 
-      LEFT JOIN users u ON u.id = c.rider_id 
-      WHERE c.code = ? OR c.code = ? OR c.code LIKE ? 
-      ORDER BY c.created_at DESC 
-      LIMIT 1
-    `,
-    args: [normalizedCode, shortCode, `%${shortCode}%`],
-  });
-
-  const codeRecord = cRes.rows[0] as any;
-
-  if (!codeRecord) {
-    return c.json({ error: "not_found", message: "Fuel voucher code not found." }, 404);
-  }
-
-  if (codeRecord.authorized_amount_ugx < totalUgx!) {
+  const authorized = Number(voucher.authorized_amount_ugx);
+  if (totalUgx > authorized) {
     return c.json({
       error: "limit_exceeded",
-      message: `Amount UGX ${totalUgx!.toLocaleString()} exceeds customer authorized limit of UGX ${Number(codeRecord.authorized_amount_ugx).toLocaleString()}`,
+      message: `Amount UGX ${totalUgx.toLocaleString()} exceeds customer authorized limit of UGX ${authorized.toLocaleString()}`,
     }, 400);
   }
 
-  const receiptRef = `RCP-GAS-${Date.now().toString(36).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`;
-  const dispenseId = `fdisp_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-  const now = new Date().toISOString();
-
-  // Find outlet brand name
-  let outletName = "TotalEnergies Lugogo Bypass";
-  let stationName = "TotalEnergies";
-  try {
-    const oRes = await db.execute({
-      sql: `
-        SELECT o.name as outlet_name, s.brand_name as station_name 
-        FROM fuel_station_outlets o 
-        JOIN fuel_stations s ON s.id = o.station_id 
-        WHERE o.id = ?
-      `,
-      args: [outletId],
-    });
-    if (oRes.rows[0]) {
-      outletName = String(oRes.rows[0].outlet_name);
-      stationName = String(oRes.rows[0].station_name);
-    }
-  } catch {}
-
-  // Find product name
-  let productName = "Unleaded Petrol";
-  try {
-    const prRes = await db.execute({ sql: "SELECT name FROM fuel_products WHERE id = ?", args: [productId] });
-    if (prRes.rows[0]?.name) productName = String(prRes.rows[0].name);
-  } catch {}
-
-  // Record dispense in DB
-  await db.execute({
-    sql: `
-      INSERT INTO fuel_dispenses (
-        id, code_id, outlet_id, attendant_id, rider_id, vehicle_plate,
-        product_id, price_per_litre, litres_dispensed, total_ugx, pump_number, receipt_ref, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-    `,
-    args: [
-      dispenseId,
-      codeRecord.id,
-      outletId,
-      attendantId ?? null,
-      codeRecord.rider_id,
-      codeRecord.vehicle_plate ?? "UFE 429K",
-      productId,
-      pricePerLitre,
-      litres!,
-      totalUgx!,
-      pumpNumber,
-      receiptRef,
-    ],
+  // Claim. Exactly one concurrent request can change active -> dispensed.
+  const claim = await db.execute({
+    sql: "UPDATE fuel_codes SET status = 'dispensed', dispensed_at = datetime('now') WHERE id = ? AND status = 'active' AND expires_at > ?",
+    args: [voucher.id, nowIso()],
   });
+  if ((claim.rowsAffected ?? 0) !== 1) {
+    return c.json({ error: "already_used", message: "This voucher is no longer valid (used, cancelled or expired)." }, 409);
+  }
 
-  // Mark code as dispensed
-  await db.execute({
-    sql: `UPDATE fuel_codes SET status = 'dispensed', dispensed_at = datetime('now') WHERE id = ?`,
-    args: [codeRecord.id],
-  });
-
-  // Update attendant shift aggregate
+  const dispenseId = `fdisp_${crypto.randomUUID()}`;
+  const receiptRef = `RCP-GAS-${Date.now().toString(36).toUpperCase()}-${1000 + randomInt(9000)}`;
   try {
+    await executeBatch([
+      {
+        sql: `INSERT INTO fuel_dispenses (id, code_id, outlet_id, attendant_id, rider_id, vehicle_plate, product_id, price_per_litre,
+                litres_dispensed, total_ugx, pump_number, receipt_ref, environment, created_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+        args: [dispenseId, voucher.id, actor.outletId, actor.id, voucher.rider_id, voucher.vehicle_plate, productId, pricePerLitre, litres, totalUgx, pumpNumber, receiptRef, voucherEnvironment(voucher)],
+      },
+      {
+        sql: `UPDATE fuel_attendant_shifts SET total_dispenses = total_dispenses + 1, total_litres = total_litres + ?, total_amount_ugx = total_amount_ugx + ?
+              WHERE attendant_id = ? AND outlet_id = ? AND status = 'open' AND date(opened_at) = date('now')`,
+        args: [litres, totalUgx, actor.id, actor.outletId],
+      },
+    ]);
+  } catch (err) {
+    // The sale was not recorded, so the voucher goes back to being usable.
+    await db.execute({ sql: "UPDATE fuel_codes SET status = 'active', dispensed_at = NULL WHERE id = ?", args: [voucher.id] }).catch(() => {});
+    console.error("[gas] dispense failed, voucher re-opened:", err);
+    return c.json({ error: "dispense_failed", message: "Couldn't record the sale. Nothing was charged — try again." }, 500);
+  }
+
+  // Held money that wasn't pumped goes back to the rider.
+  const refundOk = await refundToRider(voucher, authorized - totalUgx, `Unused fuel voucher balance (${voucher.code})`);
+
+  const rider = (await db.execute({ sql: "SELECT name FROM users WHERE id = ?", args: [voucher.rider_id] })).rows[0] as Row | undefined;
+  return c.json({
+    ok: true,
+    ...(refundOk ? {} : { refund_pending: true }),
+    receipt: {
+      id: dispenseId,
+      receipt_ref: receiptRef,
+      code_id: voucher.id,
+      outlet_id: actor.outletId,
+      outlet_name: outlet.outlet_name,
+      station_name: outlet.station_name,
+      attendant_id: actor.id,
+      attendant_name: actor.name,
+      rider_id: voucher.rider_id,
+      rider_name: rider?.name ?? "Peebee Customer",
+      vehicle_plate: voucher.vehicle_plate,
+      product_id: productId,
+      product_name: priced.name,
+      price_per_litre: pricePerLitre,
+      litres_dispensed: litres,
+      total_ugx: totalUgx,
+      pump_number: pumpNumber,
+      status: "completed",
+      created_at: nowIso(),
+    },
+  });
+});
+
+/** Recent dispenses at the attendant's own outlet. */
+gasRoutes.get("/dispenses", requireAttendant, async (c) => {
+  const actor = c.get("gasActor");
+  const res = await db.execute({
+    sql: `SELECT d.*, o.name AS outlet_name, s.brand_name AS station_name, p.name AS product_name, u.name AS rider_name
+          FROM fuel_dispenses d
+          JOIN fuel_station_outlets o ON o.id = d.outlet_id
+          JOIN fuel_stations s ON s.id = o.station_id
+          JOIN fuel_products p ON p.id = d.product_id
+          LEFT JOIN users u ON u.id = d.rider_id
+          WHERE d.outlet_id = ? ORDER BY d.created_at DESC LIMIT 50`,
+    args: [actor.outletId],
+  });
+  return c.json({ dispenses: res.rows });
+});
+
+/** Today's totals at the attendant's own outlet. */
+gasRoutes.get("/shift/summary", requireAttendant, async (c) => {
+  const actor = c.get("gasActor");
+  const totals = (
     await db.execute({
-      sql: `
-        UPDATE fuel_attendant_shifts 
-        SET 
-          total_dispenses = total_dispenses + 1,
-          total_litres = total_litres + ?,
-          total_amount_ugx = total_amount_ugx + ?
-        WHERE outlet_id = ? AND status = 'open' AND date(opened_at) = date('now')
-      `,
-      args: [litres!, totalUgx!, outletId],
-    });
-  } catch {}
-
-  const receipt = {
-    id: dispenseId,
-    receipt_ref: receiptRef,
-    code_id: codeRecord.id,
-    outlet_id: outletId,
-    outlet_name: outletName,
-    station_name: stationName,
-    attendant_id: attendantId ?? "att_duty",
-    attendant_name: attendantName ?? "Pump Attendant",
-    rider_id: codeRecord.rider_id,
-    rider_name: codeRecord.user_name ?? "Peebee Customer",
-    vehicle_plate: codeRecord.vehicle_plate,
-    product_id: productId,
-    product_name: productName,
-    price_per_litre: pricePerLitre,
-    litres_dispensed: litres!,
-    total_ugx: totalUgx!,
-    pump_number: pumpNumber,
-    status: "completed",
-    created_at: now,
-  };
-
-  return c.json({ ok: true, receipt });
-});
-
-/** Get recent dispenses for an outlet */
-gasRoutes.get("/dispenses", async (c) => {
-  const outletId = c.req.query("outletId");
-  try {
-    let sql = `
-      SELECT 
-        d.*, o.name as outlet_name, s.brand_name as station_name,
-        p.name as product_name, u.name as rider_name
-      FROM fuel_dispenses d
-      JOIN fuel_station_outlets o ON o.id = d.outlet_id
-      JOIN fuel_stations s ON s.id = o.station_id
-      JOIN fuel_products p ON p.id = d.product_id
-      LEFT JOIN users u ON u.id = d.rider_id
-    `;
-    const args: any[] = [];
-    if (outletId) {
-      sql += ` WHERE d.outlet_id = ? `;
-      args.push(outletId);
-    }
-    sql += ` ORDER BY d.created_at DESC LIMIT 50`;
-
-    const res = await db.execute({ sql, args });
-    return c.json({ dispenses: res.rows });
-  } catch {
-    return c.json({ dispenses: [] });
-  }
-});
-
-/** Get shift summary */
-gasRoutes.get("/shift/summary", async (c) => {
-  const outletId = c.req.query("outletId") ?? "fout_total_lugogo";
-  try {
-    const res = await db.execute({
-      sql: `
-        SELECT 
-          COUNT(*) as total_dispenses,
-          COALESCE(SUM(litres_dispensed), 0) as total_litres,
-          COALESCE(SUM(total_ugx), 0) as total_ugx
-        FROM fuel_dispenses
-        WHERE outlet_id = ? AND date(created_at) = date('now')
-      `,
-      args: [outletId],
-    });
-
-    const recentRes = await db.execute({
-      sql: `
-        SELECT 
-          d.*, p.name as product_name, u.name as rider_name
-        FROM fuel_dispenses d
-        JOIN fuel_products p ON p.id = d.product_id
-        LEFT JOIN users u ON u.id = d.rider_id
-        WHERE d.outlet_id = ? AND date(d.created_at) = date('now')
-        ORDER BY d.created_at DESC LIMIT 10
-      `,
-      args: [outletId],
-    });
-
-    const row = res.rows[0] as any;
-    return c.json({
-      summary: {
-        outlet_id: outletId,
-        total_dispenses: Number(row?.total_dispenses ?? 0),
-        total_litres: Math.round(Number(row?.total_litres ?? 0) * 100) / 100,
-        total_ugx: Number(row?.total_ugx ?? 0),
-        recent: recentRes.rows ?? [],
-      },
-    });
-  } catch {
-    return c.json({
-      summary: {
-        outlet_id: outletId,
-        total_dispenses: 0,
-        total_litres: 0,
-        total_ugx: 0,
-        recent: [],
-      },
-    });
-  }
-});
-
-/** Generate a new fuel code / voucher (Motorcycle Rider or Car Driver) */
-gasRoutes.post("/rider/generate-code", async (c) => {
-  const body = await c.req.json().catch(() => ({}));
-  const schema = z.object({
-    riderId: z.string().optional(),
-    vehiclePlate: z.string().default("UFE 429K"),
-    amountUgx: z.number().int().min(5000).max(500000).default(20000),
-    productId: z.string().default("prod_petrol"),
-    outletId: z.string().optional(),
-    vehicleType: z.enum(["motorcycle", "car"]).optional(),
+      sql: `SELECT COUNT(*) AS total_dispenses, COALESCE(SUM(litres_dispensed), 0) AS total_litres, COALESCE(SUM(total_ugx), 0) AS total_ugx
+            FROM fuel_dispenses WHERE outlet_id = ? AND date(created_at) = date('now')`,
+      args: [actor.outletId],
+    })
+  ).rows[0] as Row;
+  const recent = await db.execute({
+    sql: `SELECT d.*, p.name AS product_name, u.name AS rider_name
+          FROM fuel_dispenses d JOIN fuel_products p ON p.id = d.product_id LEFT JOIN users u ON u.id = d.rider_id
+          WHERE d.outlet_id = ? AND date(d.created_at) = date('now') ORDER BY d.created_at DESC LIMIT 10`,
+    args: [actor.outletId],
   });
+  return c.json({
+    summary: {
+      outlet_id: actor.outletId,
+      total_dispenses: Number(totals.total_dispenses),
+      total_litres: Math.round(Number(totals.total_litres) * 100) / 100,
+      total_ugx: Number(totals.total_ugx),
+      recent: recent.rows,
+    },
+  });
+});
 
-  const parsed = schema.safeParse(body);
-  if (!parsed.success) {
-    return c.json({ error: "bad_request", message: "Invalid code generation parameters" }, 400);
+// =========================================================================
+// RIDER / DRIVER VOUCHERS — money is held from the wallet when a voucher is made
+// =========================================================================
+
+const generateSchema = z.object({
+  vehiclePlate: z.string().max(16).optional(),
+  amountUgx: z.number().int().min(5000).max(500000).default(20000),
+  productId: z.string().min(1).max(60).default("prod_petrol"),
+  outletId: z.string().max(60).optional(),
+  vehicleType: z.enum(["motorcycle", "car"]).optional(),
+});
+
+function isUniqueError(err: unknown, needle: string): boolean {
+  const msg = String((err as Error)?.message ?? err);
+  return /unique|constraint/i.test(msg) && msg.includes(needle);
+}
+
+/** Makes a fuel voucher and holds its amount from the signed-in customer's wallet. */
+gasRoutes.post("/rider/generate-code", requireAuth, async (c) => {
+  const user = c.get("user");
+  if (user.role === "admin") return c.json({ error: "forbidden", message: "Staff accounts can't buy fuel." }, 403);
+  if (!(await vouchersReady())) return c.json({ error: "gas_upgrade_pending", message: "Fuel vouchers are being upgraded. Try again shortly." }, 503);
+
+  const burst = await consume(`gas-generate:${user.sub}`, 10, 60);
+  if (!burst.allowed) return c.json({ error: "too_many_requests", message: "Slow down a little.", retryAfterSeconds: burst.retryAfterSeconds }, 429);
+
+  const parsed = generateSchema.safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) return c.json({ error: "bad_request", message: "Invalid code generation parameters" }, 400);
+  const { amountUgx, productId, outletId } = parsed.data;
+
+  let plate = parsed.data.vehiclePlate?.trim().toUpperCase() ?? "";
+  if (!plate) {
+    const v = await db.execute({ sql: "SELECT plate FROM vehicles WHERE user_id = ? OR driver_id = ? LIMIT 1", args: [user.sub, user.sub] }).catch(() => ({ rows: [] as Row[] }));
+    plate = v.rows[0]?.plate ? String(v.rows[0].plate).toUpperCase() : "";
+  }
+  if (!/^[A-Z0-9][A-Z0-9 -]{2,14}$/.test(plate)) {
+    return c.json({ error: "plate_required", message: "Add your vehicle's number plate to get a fuel voucher." }, 400);
   }
 
-  // Check auth user if available
-  const authUser = await getAuthUser(c.req.header("Authorization"));
-  const riderId = authUser?.id ?? parsed.data.riderId ?? "user_rider_verified";
-  let vehiclePlate = parsed.data.vehiclePlate;
+  const product = await db.execute({ sql: "SELECT id FROM fuel_products WHERE id = ? AND active = 1", args: [productId] });
+  if (product.rows.length === 0) return c.json({ error: "unknown_product", message: "That fuel type isn't available." }, 400);
+  if (outletId) {
+    const priced = await db.execute({
+      sql: `SELECT 1 FROM fuel_station_outlets o JOIN fuel_station_prices p ON p.outlet_id = o.id
+            WHERE o.id = ? AND o.status = 'active' AND p.product_id = ?`,
+      args: [outletId, productId],
+    });
+    if (priced.rows.length === 0) return c.json({ error: "outlet_unavailable", message: "That station doesn't sell this fuel." }, 400);
+  }
 
-  // Auto-lookup registered car/bike plate if user didn't specify one
-  if (authUser && (!vehiclePlate || vehiclePlate === "UFE 429K")) {
+  const settings = await getGasSettings();
+  const environment = await getPlatformEnvironment();
+
+  // Release anything stale or superseded first, so its hold is back in the wallet.
+  await expireStaleVouchers(user.sub);
+  const open = await db.execute({ sql: "SELECT id FROM fuel_codes WHERE rider_id = ? AND status = 'active'", args: [user.sub] });
+  for (const r of open.rows as Row[]) await closeVoucher(String(r.id), "cancelled", "Replaced by a new fuel voucher — hold released");
+
+  if (settings.dailyLimitUgx > 0) {
+    const used = (
+      await db.execute({
+        sql: `SELECT
+                COALESCE((SELECT SUM(total_ugx) FROM fuel_dispenses WHERE rider_id = ? AND environment = ? AND date(created_at) = date('now')), 0)
+              + COALESCE((SELECT SUM(authorized_amount_ugx) FROM fuel_codes WHERE rider_id = ? AND status = 'active'), 0) AS used`,
+        args: [user.sub, environment, user.sub],
+      })
+    ).rows[0] as Row;
+    if (Number(used.used) + amountUgx > settings.dailyLimitUgx) {
+      return c.json({
+        error: "daily_limit_exceeded",
+        message: `Daily fuel limit is UGX ${settings.dailyLimitUgx.toLocaleString()}. You have UGX ${Math.max(0, settings.dailyLimitUgx - Number(used.used)).toLocaleString()} left today.`,
+      }, 400);
+    }
+  }
+
+  const held = await debitWallet(user.sub, amountUgx, {
+    type: "adjustment",
+    environment,
+    actorId: user.sub,
+    note: "Fuel voucher — amount held until the fuel is pumped",
+  });
+  if (held === null) {
+    return c.json({ error: "insufficient_wallet", message: `You need UGX ${amountUgx.toLocaleString()} in your wallet for this voucher. Top up and try again.` }, 402);
+  }
+
+  const expiresAt = new Date(Date.now() + settings.voucherExpiryMinutes * 60_000).toISOString();
+  const giveBack = (note: string) => refundToRider({ held: 1, rider_id: user.sub, environment }, amountUgx, note);
+
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const sixDigit = String(100000 + randomInt(900000));
+    const id = `fcode_${crypto.randomUUID()}`;
     try {
-      const vRes = await db.execute({
-        sql: "SELECT plate FROM vehicles WHERE user_id = ? OR driver_id = ? LIMIT 1",
-        args: [authUser.id, authUser.id],
+      await db.execute({
+        sql: `INSERT INTO fuel_codes (id, code, rider_id, vehicle_plate, authorized_amount_ugx, fuel_product_id, outlet_id, status, source, expires_at, held, environment, created_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, 'active', 'rider_wallet', ?, 1, ?, datetime('now'))`,
+        args: [id, `PBGAS-${sixDigit}`, user.sub, plate, amountUgx, productId, outletId ?? null, expiresAt, environment],
       });
-      if (vRes.rows[0]?.plate) vehiclePlate = String(vRes.rows[0].plate);
-    } catch {}
+      return c.json({
+        ok: true,
+        code: {
+          id,
+          code: `PBGAS-${sixDigit}`,
+          short_code: sixDigit,
+          rider_id: user.sub,
+          rider_name: user.name,
+          vehicle_plate: plate,
+          authorized_amount_ugx: amountUgx,
+          fuel_product_id: productId,
+          outlet_id: outletId ?? null,
+          status: "active",
+          source: "rider_wallet",
+          expires_at: expiresAt,
+          created_at: nowIso(),
+        },
+      });
+    } catch (err) {
+      if (isUniqueError(err, "rider_id")) {
+        await giveBack("Fuel voucher request repeated — hold released");
+        return c.json({ error: "voucher_in_progress", message: "You already have a fuel voucher being created." }, 409);
+      }
+      if (isUniqueError(err, "code")) continue; // six digits collided; draw again
+      await giveBack("Fuel voucher could not be created — hold released");
+      console.error("[gas] voucher insert failed:", err);
+      return c.json({ error: "voucher_failed", message: "Couldn't create the voucher. You were not charged." }, 500);
+    }
   }
+  await giveBack("Fuel voucher could not be created — hold released");
+  return c.json({ error: "voucher_failed", message: "Couldn't create the voucher. You were not charged." }, 503);
+});
 
-  // Generate 6-digit numeric code
-  const sixDigit = String(Math.floor(100000 + Math.random() * 900000));
-  const fullCode = `PBGAS-${sixDigit}`;
-  const codeId = `fcode_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-  const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString(); // 1 hour
+/** The signed-in customer's current voucher, if any. */
+gasRoutes.get("/rider/active-code", requireAuth, async (c) => {
+  const user = c.get("user");
+  if (!(await vouchersReady())) return c.json({ code: null });
+  await expireStaleVouchers(user.sub);
+  const row = (
+    await db.execute({
+      sql: `SELECT c.*, u.name AS rider_name FROM fuel_codes c LEFT JOIN users u ON u.id = c.rider_id
+            WHERE c.rider_id = ? AND c.status = 'active' AND c.expires_at > ? ORDER BY c.created_at DESC LIMIT 1`,
+      args: [user.sub, nowIso()],
+    })
+  ).rows[0] as Row | undefined;
+  return c.json({ code: row ? { ...row, short_code: String(row.code).replace(/^PBGAS-/, "") } : null });
+});
 
-  // Persist directly to DB
-  await db.execute({
-    sql: `
-      INSERT INTO fuel_codes (
-        id, code, rider_id, vehicle_plate, authorized_amount_ugx,
-        fuel_product_id, outlet_id, status, source, expires_at, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', 'rider_wallet', ?, datetime('now'))
-    `,
-    args: [
-      codeId,
-      fullCode,
-      riderId,
-      vehiclePlate,
-      parsed.data.amountUgx,
-      parsed.data.productId,
-      parsed.data.outletId ?? null,
-      expiresAt,
-    ],
+/** The signed-in customer's own fuel receipts. */
+gasRoutes.get("/rider/dispenses", requireAuth, async (c) => {
+  const user = c.get("user");
+  const res = await db.execute({
+    sql: `SELECT d.*, o.name AS outlet_name, s.brand_name AS station_name, p.name AS product_name
+          FROM fuel_dispenses d
+          JOIN fuel_station_outlets o ON o.id = d.outlet_id
+          JOIN fuel_stations s ON s.id = o.station_id
+          JOIN fuel_products p ON p.id = d.product_id
+          WHERE d.rider_id = ? ORDER BY d.created_at DESC LIMIT 30`,
+    args: [user.sub],
   });
+  return c.json({ dispenses: res.rows });
+});
 
-  const codeRecord = {
-    id: codeId,
-    code: fullCode,
-    short_code: sixDigit,
-    rider_id: riderId,
-    rider_name: authUser?.name ?? (parsed.data.vehicleType === "car" ? "Verified Car Driver" : "Verified Motorcycle Rider"),
-    vehicle_plate: vehiclePlate,
-    authorized_amount_ugx: parsed.data.amountUgx,
-    fuel_product_id: parsed.data.productId,
-    outlet_id: parsed.data.outletId ?? null,
-    status: "active",
-    source: "rider_wallet",
-    expires_at: expiresAt,
-    created_at: new Date().toISOString(),
+/** Cancels the customer's unused voucher and returns the held amount to their wallet. */
+gasRoutes.post("/rider/cancel-code", requireAuth, async (c) => {
+  const user = c.get("user");
+  if (!(await vouchersReady())) return c.json({ error: "gas_upgrade_pending", message: "Fuel vouchers are being upgraded." }, 503);
+  const row = (await db.execute({ sql: "SELECT id, authorized_amount_ugx FROM fuel_codes WHERE rider_id = ? AND status = 'active' LIMIT 1", args: [user.sub] })).rows[0] as Row | undefined;
+  if (!row) return c.json({ error: "not_found", message: "You have no active fuel voucher." }, 404);
+  const closed = await closeVoucher(String(row.id), "cancelled", "Fuel voucher cancelled — hold released");
+  if (!closed) return c.json({ error: "already_used", message: "That voucher was just used." }, 409);
+  return c.json({ ok: true, refunded_ugx: Number(row.authorized_amount_ugx) });
+});
+
+// =========================================================================
+// STATION MANAGER PORTAL — every route is limited to the manager's own outlet
+// =========================================================================
+
+const MANAGER_SELECT = `
+  SELECT m.id, m.outlet_id, m.manager_code, m.full_name, m.phone, m.pin, m.role, m.status,
+         o.name AS outlet_name, o.code AS outlet_code, o.address AS outlet_address, o.active_pumps,
+         s.id AS station_id, s.brand_name AS station_name
+  FROM fuel_station_managers m
+  JOIN fuel_station_outlets o ON o.id = m.outlet_id
+  JOIN fuel_stations s ON s.id = o.station_id`;
+
+function managerPayload(m: Row) {
+  return {
+    manager: {
+      id: m.id,
+      outlet_id: m.outlet_id,
+      manager_code: m.manager_code,
+      full_name: m.full_name,
+      phone: m.phone,
+      role: m.role,
+      status: m.status,
+    },
+    outlet: {
+      id: m.outlet_id,
+      station_id: m.station_id,
+      station_name: m.station_name,
+      name: m.outlet_name,
+      code: m.outlet_code,
+      address: m.outlet_address,
+      active_pumps: m.active_pumps,
+      status: "active",
+    },
   };
+}
 
-  return c.json({ ok: true, code: codeRecord });
-});
-
-/** Get rider active fuel code */
-gasRoutes.get("/rider/active-code", async (c) => {
-  const authUser = await getAuthUser(c.req.header("Authorization"));
-  const riderId = authUser?.id ?? c.req.query("riderId");
-
-  try {
-    let sql = `
-      SELECT c.*, u.name as rider_name 
-      FROM fuel_codes c 
-      LEFT JOIN users u ON u.id = c.rider_id
-      WHERE c.status = 'active' AND c.expires_at > datetime('now')
-    `;
-    const args: any[] = [];
-    if (riderId) {
-      sql += ` AND c.rider_id = ? `;
-      args.push(riderId);
-    }
-    sql += ` ORDER BY c.created_at DESC LIMIT 1`;
-
-    const res = await db.execute({ sql, args });
-    return c.json({ code: res.rows[0] ?? null });
-  } catch {
-    return c.json({ code: null });
-  }
-});
-
-// =========================================================================
-// STATION MANAGER PORTAL ROUTES
-// =========================================================================
-
-/** Station Manager Login */
 gasRoutes.post("/manager/login", async (c) => {
-  const body = await c.req.json().catch(() => ({}));
-  const schema = z.object({
-    code: z.string().optional(),
-    pin: z.string().optional(),
-    outletId: z.string().optional(),
-  });
-  const parsed = schema.safeParse(body);
-  if (!parsed.success) {
-    return c.json({ error: "bad_request", message: "Invalid manager login details" }, 400);
+  const parsed = z
+    .object({ code: z.string().min(2).max(40), pin: z.string().min(4).max(8) })
+    .safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) return c.json({ error: "bad_request", message: "Enter your manager code and PIN." }, 400);
+
+  const code = parsed.data.code.trim().toUpperCase();
+  const guard = await pinAttemptGuard(c, "manager", code);
+  if (guard.blocked) return guard.blocked;
+
+  const found = (await db.execute({ sql: `${MANAGER_SELECT} WHERE UPPER(m.manager_code) = ? AND m.status = 'active' LIMIT 1`, args: [code] })).rows[0] as Row | undefined;
+  const ok = found ? await pinMatches(found.pin, parsed.data.pin) : (await burnPinCheck(parsed.data.pin), false);
+  if (!found || !ok) {
+    await guard.fail();
+    return c.json({ error: "invalid_credentials", message: "Wrong manager code or PIN." }, 401);
   }
+  await guard.succeed();
 
-  const code = (parsed.data.code || "").trim().toUpperCase();
-  const pin = (parsed.data.pin || "").trim();
-  const outletId = parsed.data.outletId?.trim();
-
-  let sql = `
-    SELECT 
-      m.id, m.outlet_id, m.manager_code, m.full_name, m.phone, m.pin, m.role, m.status,
-      o.id as outlet_id, o.name as outlet_name, o.code as outlet_code, o.address as outlet_address,
-      o.active_pumps, s.id as station_id, s.brand_name as station_name
-    FROM fuel_station_managers m
-    JOIN fuel_station_outlets o ON o.id = m.outlet_id
-    JOIN fuel_stations s ON s.id = o.station_id
-    WHERE m.status = 'active'
-  `;
-  const args: any[] = [];
-
-  if (code) {
-    sql += ` AND (UPPER(m.manager_code) = ? OR m.phone = ? OR m.id = ?)`;
-    args.push(code, code, code.toLowerCase());
-  } else if (outletId) {
-    sql += ` AND m.outlet_id = ?`;
-    args.push(outletId);
-  }
-  sql += ` LIMIT 1`;
-
-  let res = await db.execute({ sql, args });
-  let manager = res.rows[0] as any;
-
-  // Fallback to first manager if code was not provided or not matched
-  if (!manager) {
-    const fallbackRes = await db.execute(`
-      SELECT 
-        m.id, m.outlet_id, m.manager_code, m.full_name, m.phone, m.pin, m.role, m.status,
-        o.id as outlet_id, o.name as outlet_name, o.code as outlet_code, o.address as outlet_address,
-        o.active_pumps, s.id as station_id, s.brand_name as station_name
-      FROM fuel_station_managers m
-      JOIN fuel_station_outlets o ON o.id = m.outlet_id
-      JOIN fuel_stations s ON s.id = o.station_id
-      WHERE m.status = 'active'
-      ORDER BY m.id
-      LIMIT 1
-    `);
-    manager = fallbackRes.rows[0] as any;
-  }
-
-  if (!manager) {
-    return c.json({ error: "not_found", message: "Station manager account not found" }, 404);
-  }
-
-  if (pin && manager.pin && pin !== manager.pin && manager.pin !== "1234") {
-    return c.json({ error: "invalid_pin", message: "Incorrect manager PIN" }, 401);
-  }
-
-  const token = `gmgr_${manager.id}_${Date.now()}`;
-  return c.json({
-    ok: true,
-    token,
-    manager: {
-      id: manager.id,
-      outlet_id: manager.outlet_id,
-      manager_code: manager.manager_code,
-      full_name: manager.full_name,
-      phone: manager.phone,
-      role: manager.role,
-      status: manager.status,
-    },
-    outlet: {
-      id: manager.outlet_id,
-      station_id: manager.station_id,
-      station_name: manager.station_name,
-      name: manager.outlet_name,
-      code: manager.outlet_code,
-      address: manager.outlet_address,
-      active_pumps: manager.active_pumps,
-      status: "active",
-    },
-  });
+  const token = await signGasToken({ kind: "manager", id: String(found.id), outletId: String(found.outlet_id) });
+  return c.json({ ok: true, token, ...managerPayload(found) });
 });
 
-/** Station Manager Current Profile */
-gasRoutes.get("/manager/me", async (c) => {
-  const header = c.req.header("Authorization") ?? "";
-  const token = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
-  const match = token.match(/^gmgr_(fmgr_[a-zA-Z0-9_]+)_/);
-  const managerId = match ? match[1] : null;
-
-  let managerRow: any = null;
-  if (managerId) {
-    const res = await db.execute({
-      sql: `
-        SELECT 
-          m.id, m.outlet_id, m.manager_code, m.full_name, m.phone, m.role, m.status,
-          o.id as outlet_id, o.name as outlet_name, o.code as outlet_code, o.address as outlet_address,
-          o.active_pumps, s.id as station_id, s.brand_name as station_name
-        FROM fuel_station_managers m
-        JOIN fuel_station_outlets o ON o.id = m.outlet_id
-        JOIN fuel_stations s ON s.id = o.station_id
-        WHERE m.id = ? AND m.status = 'active'
-        LIMIT 1
-      `,
-      args: [managerId],
-    });
-    managerRow = res.rows[0];
-  }
-
-  if (!managerRow) {
-    const firstRes = await db.execute(`
-      SELECT 
-        m.id, m.outlet_id, m.manager_code, m.full_name, m.phone, m.role, m.status,
-        o.id as outlet_id, o.name as outlet_name, o.code as outlet_code, o.address as outlet_address,
-        o.active_pumps, s.id as station_id, s.brand_name as station_name
-      FROM fuel_station_managers m
-      JOIN fuel_station_outlets o ON o.id = m.outlet_id
-      JOIN fuel_stations s ON s.id = o.station_id
-      WHERE m.status = 'active'
-      ORDER BY m.id
-      LIMIT 1
-    `);
-    managerRow = firstRes.rows[0];
-  }
-
-  if (!managerRow) {
-    return c.json({ error: "unauthorized", message: "Station manager session expired" }, 401);
-  }
-
-  return c.json({
-    ok: true,
-    manager: {
-      id: managerRow.id,
-      outlet_id: managerRow.outlet_id,
-      manager_code: managerRow.manager_code,
-      full_name: managerRow.full_name,
-      phone: managerRow.phone,
-      role: managerRow.role,
-      status: managerRow.status,
-    },
-    outlet: {
-      id: managerRow.outlet_id,
-      station_id: managerRow.station_id,
-      station_name: managerRow.station_name,
-      name: managerRow.outlet_name,
-      code: managerRow.outlet_code,
-      address: managerRow.outlet_address,
-      active_pumps: managerRow.active_pumps,
-      status: "active",
-    },
-  });
+gasRoutes.get("/manager/me", requireManager, async (c) => {
+  const actor = c.get("gasActor");
+  const row = (await db.execute({ sql: `${MANAGER_SELECT} WHERE m.id = ?`, args: [actor.id] })).rows[0] as Row;
+  return c.json({ ok: true, ...managerPayload(row) });
 });
 
-/** List Station Attendants with Stats & Commissioning Status */
-gasRoutes.get("/manager/attendants", async (c) => {
-  const outletId = c.req.query("outletId") || "fout_total_lugogo";
+gasRoutes.post("/manager/change-pin", requireManager, async (c) => {
+  const actor = c.get("gasActor");
+  const parsed = changePinSchema.safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) return c.json({ error: "bad_request", message: "Enter your current PIN and a new one." }, 400);
+  const formatError = validatePinFormat(parsed.data.newPin);
+  if (formatError) return c.json({ error: "weak_pin", message: formatError }, 400);
+
+  const guard = await pinAttemptGuard(c, "manager", actor.id);
+  if (guard.blocked) return guard.blocked;
+  const row = (await db.execute({ sql: "SELECT pin FROM fuel_station_managers WHERE id = ?", args: [actor.id] })).rows[0] as Row;
+  if (!(await pinMatches(row.pin, parsed.data.currentPin))) {
+    await guard.fail();
+    return c.json({ error: "invalid_pin", message: "Your current PIN is wrong." }, 401);
+  }
+  await guard.succeed();
+  await db.execute({ sql: "UPDATE fuel_station_managers SET pin = ?, updated_at = datetime('now') WHERE id = ?", args: [await hashPin(parsed.data.newPin), actor.id] });
+  return c.json({ ok: true });
+});
+
+/** Attendant rows without the PIN hash. */
+const ATTENDANT_PUBLIC = `a.id, a.outlet_id, a.attendant_code, a.full_name, a.phone, a.pump_lane, a.status,
+  COALESCE(a.commission_status, 'approved') AS commission_status, a.commissioned_by, a.commissioned_at, a.created_at`;
+
+async function attendantAtOutlet(id: string, outletId: string): Promise<Row | null> {
+  const res = await db.execute({
+    sql: `SELECT ${ATTENDANT_PUBLIC} FROM fuel_pump_attendants a WHERE a.id = ? AND a.outlet_id = ? AND COALESCE(a.commission_status, 'approved') != 'removed'`,
+    args: [id, outletId],
+  });
+  return (res.rows[0] as Row | undefined) ?? null;
+}
+
+gasRoutes.get("/manager/attendants", requireManager, async (c) => {
+  const actor = c.get("gasActor");
   const status = c.req.query("status");
-  const hasCommissionCol = await hasColumn("fuel_pump_attendants", "commission_status");
-
-  let sql = `
-    SELECT 
-      a.id, a.outlet_id, a.attendant_code, a.full_name, a.phone, a.pump_lane, a.status,
-      ${hasCommissionCol ? "COALESCE(a.commission_status, 'approved')" : "'approved'"} as commission_status,
-      ${hasCommissionCol ? "a.commissioned_by" : "NULL"} as commissioned_by,
-      ${hasCommissionCol ? "a.commissioned_at" : "NULL"} as commissioned_at,
-      a.created_at
-    FROM fuel_pump_attendants a
-    WHERE a.outlet_id = ?
-  `;
-  const args: any[] = [outletId];
-  if (status) {
-    sql += ` AND a.status = ? `;
-    args.push(status);
+  const res = await db.execute({
+    sql: `SELECT ${ATTENDANT_PUBLIC} FROM fuel_pump_attendants a
+          WHERE a.outlet_id = ? AND COALESCE(a.commission_status, 'approved') != 'removed' ${status ? "AND a.status = ?" : ""}
+          ORDER BY a.created_at DESC`,
+    args: status ? [actor.outletId, status] : [actor.outletId],
+  });
+  const attendants = res.rows as Row[];
+  const stats = await db.execute({
+    sql: `SELECT attendant_id, COUNT(*) AS total_dispenses, COALESCE(SUM(litres_dispensed), 0) AS total_litres, COALESCE(SUM(total_ugx), 0) AS total_ugx
+          FROM fuel_dispenses WHERE outlet_id = ? AND date(created_at) = date('now') GROUP BY attendant_id`,
+    args: [actor.outletId],
+  });
+  const byId = new Map((stats.rows as Row[]).map((r) => [String(r.attendant_id), r]));
+  for (const a of attendants) {
+    const s = byId.get(String(a.id));
+    a.total_dispenses_today = Number(s?.total_dispenses ?? 0);
+    a.total_litres_today = Math.round(Number(s?.total_litres ?? 0) * 100) / 100;
+    a.total_ugx_today = Number(s?.total_ugx ?? 0);
   }
-  sql += ` ORDER BY a.created_at DESC`;
-
-  const res = await db.execute({ sql, args });
-  const attendants = res.rows as any[];
-
-  // Fetch today's sales stats per attendant
-  try {
-    const statsRes = await db.execute({
-      sql: `
-        SELECT 
-          attendant_id,
-          COUNT(*) as total_dispenses,
-          COALESCE(SUM(litres_dispensed), 0) as total_litres,
-          COALESCE(SUM(total_ugx), 0) as total_ugx
-        FROM fuel_dispenses
-        WHERE outlet_id = ? AND date(created_at) = date('now')
-        GROUP BY attendant_id
-      `,
-      args: [outletId],
-    });
-    const statsMap = new Map<string, any>();
-    for (const r of statsRes.rows) {
-      if (r.attendant_id) statsMap.set(String(r.attendant_id), r);
-    }
-    for (const a of attendants) {
-      const s = statsMap.get(a.id) ?? statsMap.get(a.attendant_code);
-      a.total_dispenses_today = Number(s?.total_dispenses ?? 0);
-      a.total_litres_today = Math.round(Number(s?.total_litres ?? 0) * 100) / 100;
-      a.total_ugx_today = Number(s?.total_ugx ?? 0);
-    }
-  } catch {}
-
   return c.json({ ok: true, attendants });
 });
 
-/** Commission / Sign Up a New Pump Attendant */
-gasRoutes.post("/manager/attendants/commission", async (c) => {
-  const body = await c.req.json().catch(() => ({}));
-  const schema = z.object({
-    outletId: z.string().default("fout_total_lugogo"),
-    fullName: z.string().min(2),
-    phone: z.string().min(7),
-    attendantCode: z.string().optional(),
-    pumpLane: z.string().optional(),
-    pin: z.string().optional(),
-    approveImmediately: z.boolean().optional(),
-  });
-  const parsed = schema.safeParse(body);
-  if (!parsed.success) {
-    return c.json({ error: "bad_request", message: "Invalid attendant commissioning details" }, 400);
-  }
+/** Adds an attendant to this outlet. If no PIN is given a random one is generated and shown once. */
+gasRoutes.post("/manager/attendants/commission", requireManager, async (c) => {
+  const actor = c.get("gasActor");
+  const parsed = z
+    .object({
+      fullName: z.string().min(2).max(80),
+      phone: z.string().min(7).max(20),
+      attendantCode: z.string().min(3).max(20).optional(),
+      pumpLane: z.string().max(40).optional(),
+      pin: z.string().optional(),
+      approveImmediately: z.boolean().optional(),
+    })
+    .safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) return c.json({ error: "bad_request", message: "Invalid attendant commissioning details" }, 400);
 
-  const { outletId, fullName, phone, pumpLane } = parsed.data;
-  const pin = parsed.data.pin || "1234";
-  const approveImmediately = parsed.data.approveImmediately ?? true;
-  const attendantCode = parsed.data.attendantCode?.trim().toUpperCase() || `ATT-${Math.floor(1000 + Math.random() * 9000)}`;
-  const id = `fatt_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-  const commissionStatus = approveImmediately ? "approved" : "pending";
-  const status = approveImmediately ? "on_duty" : "off_duty";
-  const now = new Date().toISOString();
-
-  const hasCommissionCol = await hasColumn("fuel_pump_attendants", "commission_status");
-
-  if (hasCommissionCol) {
-    await db.execute({
-      sql: `
-        INSERT INTO fuel_pump_attendants (
-          id, outlet_id, attendant_code, full_name, phone, pump_lane,
-          status, commission_status, commissioned_by, commissioned_at, pin, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'station_manager', ?, ?, datetime('now'), datetime('now'))
-      `,
-      args: [id, outletId, attendantCode, fullName, phone, pumpLane ?? "Pump 1", status, commissionStatus, now, pin],
-    });
+  let pin = parsed.data.pin?.trim();
+  let temporaryPin: string | undefined;
+  if (pin) {
+    const formatError = validatePinFormat(pin);
+    if (formatError) return c.json({ error: "weak_pin", message: formatError }, 400);
   } else {
-    await db.execute({
-      sql: `
-        INSERT INTO fuel_pump_attendants (
-          id, outlet_id, attendant_code, full_name, phone, pump_lane, status, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
-      `,
-      args: [id, outletId, attendantCode, fullName, phone, pumpLane ?? "Pump 1", status],
-    });
+    pin = temporaryPin = generatePin();
   }
 
-  const attendant = {
-    id,
-    outlet_id: outletId,
-    attendant_code: attendantCode,
-    full_name: fullName,
-    phone,
-    pump_lane: pumpLane ?? "Pump 1",
-    status,
-    commission_status: commissionStatus,
-    commissioned_by: "station_manager",
-    commissioned_at: now,
-    total_dispenses_today: 0,
-    total_ugx_today: 0,
-    total_litres_today: 0,
-    created_at: now,
-  };
-
-  return c.json({ ok: true, attendant });
+  const approve = parsed.data.approveImmediately ?? true;
+  const id = `fatt_${crypto.randomUUID()}`;
+  const attendantCode = parsed.data.attendantCode?.trim().toUpperCase() || `ATT-${1000 + randomInt(9000)}`;
+  const now = nowIso();
+  try {
+    await db.execute({
+      sql: `INSERT INTO fuel_pump_attendants (id, outlet_id, attendant_code, full_name, phone, pump_lane, status, commission_status, commissioned_by, commissioned_at, pin, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+      args: [id, actor.outletId, attendantCode, parsed.data.fullName, parsed.data.phone, parsed.data.pumpLane ?? "Pump 1", approve ? "on_duty" : "off_duty", approve ? "approved" : "pending", actor.id, now, await hashPin(pin)],
+    });
+  } catch (err) {
+    if (isUniqueError(err, "attendant_code")) return c.json({ error: "code_taken", message: "That badge code is already in use." }, 409);
+    throw err;
+  }
+  const attendant = await attendantAtOutlet(id, actor.outletId);
+  return c.json({ ok: true, attendant: { ...attendant, total_dispenses_today: 0, total_ugx_today: 0, total_litres_today: 0 }, ...(temporaryPin ? { temporary_pin: temporaryPin } : {}) });
 });
 
-/** Approve a Pending Attendant */
-gasRoutes.post("/manager/attendants/:id/approve", async (c) => {
-  const attendantId = c.req.param("id");
-  const hasCommissionCol = await hasColumn("fuel_pump_attendants", "commission_status");
-
-  if (hasCommissionCol) {
-    await db.execute({
-      sql: `
-        UPDATE fuel_pump_attendants 
-        SET commission_status = 'approved', status = 'on_duty', updated_at = datetime('now')
-        WHERE id = ? OR attendant_code = ?
-      `,
-      args: [attendantId, attendantId],
+/** approve / suspend / reactivate share one shape: a state change limited to this outlet. */
+function attendantStateRoute(action: "approve" | "suspend" | "reactivate", commission: string, status: string) {
+  gasRoutes.post(`/manager/attendants/:id/${action}`, requireManager, async (c) => {
+    const actor = c.get("gasActor");
+    const res = await db.execute({
+      sql: `UPDATE fuel_pump_attendants SET commission_status = ?, status = ?, updated_at = datetime('now')
+            WHERE id = ? AND outlet_id = ? AND COALESCE(commission_status, 'approved') != 'removed'`,
+      args: [commission, status, idParam(c), actor.outletId],
     });
+    if ((res.rowsAffected ?? 0) === 0) return c.json({ error: "not_found", message: "Attendant not found at your station." }, 404);
+    return c.json({ ok: true, attendant: await attendantAtOutlet(idParam(c), actor.outletId) });
+  });
+}
+attendantStateRoute("approve", "approved", "on_duty");
+attendantStateRoute("suspend", "suspended", "suspended");
+attendantStateRoute("reactivate", "approved", "on_duty");
+
+gasRoutes.post("/manager/attendants/:id/reassign-pump", requireManager, async (c) => {
+  const actor = c.get("gasActor");
+  const body = (await c.req.json().catch(() => ({}))) as Row;
+  const pumpLane = String(body.pumpLane || "Pump 1").trim().slice(0, 40);
+  const res = await db.execute({
+    sql: "UPDATE fuel_pump_attendants SET pump_lane = ?, updated_at = datetime('now') WHERE id = ? AND outlet_id = ?",
+    args: [pumpLane, idParam(c), actor.outletId],
+  });
+  if ((res.rowsAffected ?? 0) === 0) return c.json({ error: "not_found", message: "Attendant not found at your station." }, 404);
+  return c.json({ ok: true, attendant: await attendantAtOutlet(idParam(c), actor.outletId) });
+});
+
+/** Sets a new PIN for one of this outlet's attendants. Leave `pin` out to generate one, shown once. */
+gasRoutes.post("/manager/attendants/:id/reset-pin", requireManager, async (c) => {
+  const actor = c.get("gasActor");
+  const body = (await c.req.json().catch(() => ({}))) as Row;
+  let pin = typeof body.pin === "string" ? body.pin.trim() : "";
+  let temporaryPin: string | undefined;
+  if (pin) {
+    const formatError = validatePinFormat(pin);
+    if (formatError) return c.json({ error: "weak_pin", message: formatError }, 400);
   } else {
-    await db.execute({
-      sql: `UPDATE fuel_pump_attendants SET status = 'on_duty', updated_at = datetime('now') WHERE id = ? OR attendant_code = ?`,
-      args: [attendantId, attendantId],
-    });
+    pin = temporaryPin = generatePin();
   }
-
   const res = await db.execute({
-    sql: `SELECT * FROM fuel_pump_attendants WHERE id = ? OR attendant_code = ? LIMIT 1`,
-    args: [attendantId, attendantId],
+    sql: "UPDATE fuel_pump_attendants SET pin = ?, updated_at = datetime('now') WHERE id = ? AND outlet_id = ?",
+    args: [await hashPin(pin), idParam(c), actor.outletId],
   });
-
-  return c.json({ ok: true, attendant: res.rows[0] });
+  if ((res.rowsAffected ?? 0) === 0) return c.json({ error: "not_found", message: "Attendant not found at your station." }, 404);
+  return c.json({ ok: true, ...(temporaryPin ? { temporary_pin: temporaryPin } : {}) });
 });
 
-/** Suspend an Attendant */
-gasRoutes.post("/manager/attendants/:id/suspend", async (c) => {
-  const attendantId = c.req.param("id");
-  const hasCommissionCol = await hasColumn("fuel_pump_attendants", "commission_status");
-
-  if (hasCommissionCol) {
-    await db.execute({
-      sql: `
-        UPDATE fuel_pump_attendants 
-        SET commission_status = 'suspended', status = 'suspended', updated_at = datetime('now')
-        WHERE id = ? OR attendant_code = ?
-      `,
-      args: [attendantId, attendantId],
-    });
-  } else {
-    await db.execute({
-      sql: `UPDATE fuel_pump_attendants SET status = 'suspended', updated_at = datetime('now') WHERE id = ? OR attendant_code = ?`,
-      args: [attendantId, attendantId],
-    });
-  }
-
+/** Removes an attendant. Their sales history stays; they can no longer sign in. */
+gasRoutes.delete("/manager/attendants/:id", requireManager, async (c) => {
+  const actor = c.get("gasActor");
   const res = await db.execute({
-    sql: `SELECT * FROM fuel_pump_attendants WHERE id = ? OR attendant_code = ? LIMIT 1`,
-    args: [attendantId, attendantId],
+    sql: `UPDATE fuel_pump_attendants SET commission_status = 'removed', status = 'suspended', updated_at = datetime('now')
+          WHERE id = ? AND outlet_id = ? AND COALESCE(commission_status, 'approved') != 'removed'`,
+    args: [idParam(c), actor.outletId],
   });
-
-  return c.json({ ok: true, attendant: res.rows[0] });
-});
-
-/** Reactivate an Attendant */
-gasRoutes.post("/manager/attendants/:id/reactivate", async (c) => {
-  const attendantId = c.req.param("id");
-  const hasCommissionCol = await hasColumn("fuel_pump_attendants", "commission_status");
-
-  if (hasCommissionCol) {
-    await db.execute({
-      sql: `
-        UPDATE fuel_pump_attendants 
-        SET commission_status = 'approved', status = 'on_duty', updated_at = datetime('now')
-        WHERE id = ? OR attendant_code = ?
-      `,
-      args: [attendantId, attendantId],
-    });
-  } else {
-    await db.execute({
-      sql: `UPDATE fuel_pump_attendants SET status = 'on_duty', updated_at = datetime('now') WHERE id = ? OR attendant_code = ?`,
-      args: [attendantId, attendantId],
-    });
-  }
-
-  const res = await db.execute({
-    sql: `SELECT * FROM fuel_pump_attendants WHERE id = ? OR attendant_code = ? LIMIT 1`,
-    args: [attendantId, attendantId],
-  });
-
-  return c.json({ ok: true, attendant: res.rows[0] });
-});
-
-/** Reassign Attendant Pump Lane */
-gasRoutes.post("/manager/attendants/:id/reassign-pump", async (c) => {
-  const attendantId = c.req.param("id");
-  const body = await c.req.json().catch(() => ({}));
-  const pumpLane = String(body.pumpLane || "Pump 1").trim();
-
-  await db.execute({
-    sql: `UPDATE fuel_pump_attendants SET pump_lane = ?, updated_at = datetime('now') WHERE id = ? OR attendant_code = ?`,
-    args: [pumpLane, attendantId, attendantId],
-  });
-
-  const res = await db.execute({
-    sql: `SELECT * FROM fuel_pump_attendants WHERE id = ? OR attendant_code = ? LIMIT 1`,
-    args: [attendantId, attendantId],
-  });
-
-  return c.json({ ok: true, attendant: res.rows[0] });
-});
-
-/** Reset Attendant Staff PIN */
-gasRoutes.post("/manager/attendants/:id/reset-pin", async (c) => {
-  const attendantId = c.req.param("id");
-  const body = await c.req.json().catch(() => ({}));
-  const pin = String(body.pin || "1234").trim();
-
-  const hasPinCol = await hasColumn("fuel_pump_attendants", "pin");
-  if (hasPinCol) {
-    await db.execute({
-      sql: `UPDATE fuel_pump_attendants SET pin = ?, updated_at = datetime('now') WHERE id = ? OR attendant_code = ?`,
-      args: [pin, attendantId, attendantId],
-    });
-  }
-
+  if ((res.rowsAffected ?? 0) === 0) return c.json({ error: "not_found", message: "Attendant not found at your station." }, 404);
   return c.json({ ok: true });
 });
 
-/** Delete / Uncommission Attendant */
-gasRoutes.delete("/manager/attendants/:id", async (c) => {
-  const attendantId = c.req.param("id");
-  await db.execute({
-    sql: `DELETE FROM fuel_pump_attendants WHERE id = ? OR attendant_code = ?`,
-    args: [attendantId, attendantId],
-  });
-  return c.json({ ok: true });
-});
+const WITHDRAWAL_HELD = "('pending', 'processing', 'completed')";
 
-/** Station Sales Summary & Comprehensive Stats */
-gasRoutes.get("/manager/sales-summary", async (c) => {
-  const outletId = c.req.query("outletId") || "fout_total_lugogo";
+/** What the station is owed: pumped sales minus withdrawals that are paid out or waiting to be. */
+async function availableBalance(outletId: string, environment: string): Promise<{ revenue: number; withdrawn: number; available: number }> {
+  const rev = (await db.execute({
+    sql: "SELECT COALESCE(SUM(total_ugx), 0) AS v FROM fuel_dispenses WHERE outlet_id = ? AND environment = ? AND status = 'completed'",
+    args: [outletId, environment],
+  })).rows[0] as Row;
+  const wd = (await db.execute({
+    sql: `SELECT COALESCE(SUM(amount_ugx + fee_ugx), 0) AS v FROM fuel_station_withdrawals WHERE outlet_id = ? AND status IN ${WITHDRAWAL_HELD}`,
+    args: [outletId],
+  })).rows[0] as Row;
+  const revenue = Number(rev.v);
+  const withdrawn = Number(wd.v);
+  return { revenue, withdrawn, available: Math.max(0, revenue - withdrawn) };
+}
+
+gasRoutes.get("/manager/sales-summary", requireManager, async (c) => {
+  const actor = c.get("gasActor");
   const period = c.req.query("period") || "today";
+  const environment = await getPlatformEnvironment();
+  const dateFilter =
+    period === "week" ? "datetime(d.created_at) >= datetime('now', '-7 days')"
+    : period === "month" ? "datetime(d.created_at) >= datetime('now', '-30 days')"
+    : period === "all" ? "1=1"
+    : "date(d.created_at) = date('now')";
 
-  // Outlet Details
-  let outletName = "TotalEnergies Lugogo Bypass";
-  try {
-    const oRes = await db.execute({
-      sql: `SELECT name FROM fuel_station_outlets WHERE id = ? LIMIT 1`,
-      args: [outletId],
-    });
-    if (oRes.rows[0]?.name) outletName = String(oRes.rows[0].name);
-  } catch {}
+  const outlet = (await db.execute({ sql: "SELECT name FROM fuel_station_outlets WHERE id = ?", args: [actor.outletId] })).rows[0] as Row | undefined;
+  const totals = (await db.execute({
+    sql: `SELECT COUNT(*) AS count, COALESCE(SUM(total_ugx), 0) AS revenue, COALESCE(SUM(litres_dispensed), 0) AS litres
+          FROM fuel_dispenses d WHERE d.outlet_id = ? AND d.environment = ? AND ${dateFilter}`,
+    args: [actor.outletId, environment],
+  })).rows[0] as Row;
+  const balance = await availableBalance(actor.outletId, environment);
 
-  // Date filter for period
-  let dateFilter = "date(d.created_at) = date('now')";
-  if (period === "week") {
-    dateFilter = "datetime(d.created_at) >= datetime('now', '-7 days')";
-  } else if (period === "month") {
-    dateFilter = "datetime(d.created_at) >= datetime('now', '-30 days')";
-  } else if (period === "all") {
-    dateFilter = "1=1";
-  }
-
-  // Aggregate totals
-  let totalRevenueUgx = 0;
-  let totalLitres = 0;
-  let totalTransactions = 0;
-
-  try {
-    const sumRes = await db.execute({
-      sql: `
-        SELECT 
-          COUNT(*) as count,
-          COALESCE(SUM(total_ugx), 0) as revenue,
-          COALESCE(SUM(litres_dispensed), 0) as litres
-        FROM fuel_dispenses d
-        WHERE d.outlet_id = ? AND ${dateFilter}
-      `,
-      args: [outletId],
-    });
-    const row = sumRes.rows[0] as any;
-    totalTransactions = Number(row?.count ?? 0);
-    totalRevenueUgx = Number(row?.revenue ?? 0);
-    totalLitres = Math.round(Number(row?.litres ?? 0) * 100) / 100;
-  } catch {}
-
-  // Withdrawn Total
-  let withdrawnTotalUgx = 0;
-  try {
-    const wRes = await db.execute({
-      sql: `
-        SELECT COALESCE(SUM(amount_ugx), 0) as withdrawn
-        FROM fuel_station_withdrawals
-        WHERE outlet_id = ? AND status = 'completed'
-      `,
-      args: [outletId],
-    });
-    withdrawnTotalUgx = Number(wRes.rows[0]?.withdrawn ?? 0);
-  } catch {}
-
-  const availableBalanceUgx = Math.max(0, totalRevenueUgx - withdrawnTotalUgx);
-
-  // Product breakdown
-  let productBreakdown: any[] = [];
-  try {
-    const pRes = await db.execute({
-      sql: `
-        SELECT 
-          d.product_id,
-          p.name as product_name,
-          COALESCE(SUM(d.litres_dispensed), 0) as total_litres,
-          COALESCE(SUM(d.total_ugx), 0) as total_ugx
-        FROM fuel_dispenses d
-        JOIN fuel_products p ON p.id = d.product_id
-        WHERE d.outlet_id = ? AND ${dateFilter}
-        GROUP BY d.product_id
-        ORDER BY total_ugx DESC
-      `,
-      args: [outletId],
-    });
-    productBreakdown = pRes.rows.map((r: any) => ({
-      product_id: r.product_id,
-      product_name: r.product_name,
-      total_litres: Math.round(Number(r.total_litres) * 100) / 100,
-      total_ugx: Number(r.total_ugx),
-    }));
-  } catch {}
-
-  // Attendant breakdown
-  let attendantBreakdown: any[] = [];
-  try {
-    const aRes = await db.execute({
-      sql: `
-        SELECT 
-          d.attendant_id,
-          COALESCE(a.full_name, 'Pump Attendant') as attendant_name,
-          COALESCE(a.attendant_code, 'ATT-000') as attendant_code,
-          COUNT(*) as total_dispenses,
-          COALESCE(SUM(d.litres_dispensed), 0) as total_litres,
-          COALESCE(SUM(d.total_ugx), 0) as total_ugx
-        FROM fuel_dispenses d
-        LEFT JOIN fuel_pump_attendants a ON a.id = d.attendant_id
-        WHERE d.outlet_id = ? AND ${dateFilter}
-        GROUP BY d.attendant_id
-        ORDER BY total_ugx DESC
-      `,
-      args: [outletId],
-    });
-    attendantBreakdown = aRes.rows.map((r: any) => ({
-      attendant_id: r.attendant_id ?? "unknown",
-      attendant_name: r.attendant_name,
-      attendant_code: r.attendant_code,
-      total_dispenses: Number(r.total_dispenses),
-      total_litres: Math.round(Number(r.total_litres) * 100) / 100,
-      total_ugx: Number(r.total_ugx),
-    }));
-  } catch {}
+  const products = (await db.execute({
+    sql: `SELECT d.product_id, p.name AS product_name, COALESCE(SUM(d.litres_dispensed), 0) AS total_litres, COALESCE(SUM(d.total_ugx), 0) AS total_ugx
+          FROM fuel_dispenses d JOIN fuel_products p ON p.id = d.product_id
+          WHERE d.outlet_id = ? AND d.environment = ? AND ${dateFilter} GROUP BY d.product_id ORDER BY total_ugx DESC`,
+    args: [actor.outletId, environment],
+  })).rows as Row[];
+  const attendants = (await db.execute({
+    sql: `SELECT d.attendant_id, COALESCE(a.full_name, 'Pump Attendant') AS attendant_name, COALESCE(a.attendant_code, 'ATT-000') AS attendant_code,
+                 COUNT(*) AS total_dispenses, COALESCE(SUM(d.litres_dispensed), 0) AS total_litres, COALESCE(SUM(d.total_ugx), 0) AS total_ugx
+          FROM fuel_dispenses d LEFT JOIN fuel_pump_attendants a ON a.id = d.attendant_id
+          WHERE d.outlet_id = ? AND d.environment = ? AND ${dateFilter} GROUP BY d.attendant_id ORDER BY total_ugx DESC`,
+    args: [actor.outletId, environment],
+  })).rows as Row[];
 
   return c.json({
     ok: true,
     summary: {
-      outlet_id: outletId,
-      outlet_name: outletName,
+      outlet_id: actor.outletId,
+      outlet_name: outlet?.name ?? "",
       period,
-      totalRevenueUgx,
-      totalLitres,
-      totalTransactions,
-      withdrawnTotalUgx,
-      availableBalanceUgx,
-      productBreakdown,
-      attendantBreakdown,
+      totalRevenueUgx: Number(totals.revenue),
+      totalLitres: Math.round(Number(totals.litres) * 100) / 100,
+      totalTransactions: Number(totals.count),
+      withdrawnTotalUgx: balance.withdrawn,
+      availableBalanceUgx: balance.available,
+      productBreakdown: products.map((r) => ({ product_id: r.product_id, product_name: r.product_name, total_litres: Math.round(Number(r.total_litres) * 100) / 100, total_ugx: Number(r.total_ugx) })),
+      attendantBreakdown: attendants.map((r) => ({
+        attendant_id: r.attendant_id ?? "unknown",
+        attendant_name: r.attendant_name,
+        attendant_code: r.attendant_code,
+        total_dispenses: Number(r.total_dispenses),
+        total_litres: Math.round(Number(r.total_litres) * 100) / 100,
+        total_ugx: Number(r.total_ugx),
+      })),
     },
   });
 });
 
-/** List Station Dispense Transactions */
-gasRoutes.get("/manager/transactions", async (c) => {
-  const outletId = c.req.query("outletId") || "fout_total_lugogo";
-  const limit = Math.min(100, Math.max(1, Number(c.req.query("limit") || 50)));
-  const offset = Math.max(0, Number(c.req.query("offset") || 0));
-
-  try {
-    const res = await db.execute({
-      sql: `
-        SELECT 
-          d.*,
-          o.name as outlet_name,
-          s.brand_name as station_name,
-          p.name as product_name,
-          COALESCE(u.name, 'Peebee Customer') as rider_name,
-          COALESCE(a.full_name, 'Pump Attendant') as attendant_name
-        FROM fuel_dispenses d
-        JOIN fuel_station_outlets o ON o.id = d.outlet_id
-        JOIN fuel_stations s ON s.id = o.station_id
-        JOIN fuel_products p ON p.id = d.product_id
-        LEFT JOIN users u ON u.id = d.rider_id
-        LEFT JOIN fuel_pump_attendants a ON a.id = d.attendant_id
-        WHERE d.outlet_id = ?
-        ORDER BY d.created_at DESC
-        LIMIT ? OFFSET ?
-      `,
-      args: [outletId, limit, offset],
-    });
-    return c.json({ ok: true, transactions: res.rows });
-  } catch {
-    return c.json({ ok: true, transactions: [] });
-  }
-});
-
-/** List Station Payout Accounts */
-gasRoutes.get("/manager/payout-accounts", async (c) => {
-  const outletId = c.req.query("outletId") || "fout_total_lugogo";
-  try {
-    const res = await db.execute({
-      sql: `SELECT * FROM fuel_station_payout_accounts WHERE outlet_id = ? ORDER BY is_primary DESC, created_at DESC`,
-      args: [outletId],
-    });
-    const accounts = res.rows.map((r: any) => ({
-      ...r,
-      is_primary: Boolean(r.is_primary),
-    }));
-    return c.json({ ok: true, accounts });
-  } catch {
-    return c.json({ ok: true, accounts: [] });
-  }
-});
-
-/** Register a New Station Payout Account */
-gasRoutes.post("/manager/payout-accounts", async (c) => {
-  const body = await c.req.json().catch(() => ({}));
-  const schema = z.object({
-    outletId: z.string().default("fout_total_lugogo"),
-    type: z.enum(["momo", "bank"]),
-    accountRef: z.string().min(5),
-    accountName: z.string().min(2),
-    networkOrBank: z.string().min(2),
-    isPrimary: z.boolean().optional(),
+gasRoutes.get("/manager/transactions", requireManager, async (c) => {
+  const actor = c.get("gasActor");
+  const limit = Math.min(100, Math.max(1, Number(c.req.query("limit")) || 50));
+  const offset = Math.max(0, Number(c.req.query("offset")) || 0);
+  const res = await db.execute({
+    sql: `SELECT d.*, o.name AS outlet_name, s.brand_name AS station_name, p.name AS product_name,
+                 COALESCE(u.name, 'Peebee Customer') AS rider_name, COALESCE(a.full_name, 'Pump Attendant') AS attendant_name
+          FROM fuel_dispenses d
+          JOIN fuel_station_outlets o ON o.id = d.outlet_id
+          JOIN fuel_stations s ON s.id = o.station_id
+          JOIN fuel_products p ON p.id = d.product_id
+          LEFT JOIN users u ON u.id = d.rider_id
+          LEFT JOIN fuel_pump_attendants a ON a.id = d.attendant_id
+          WHERE d.outlet_id = ? ORDER BY d.created_at DESC LIMIT ? OFFSET ?`,
+    args: [actor.outletId, limit, offset],
   });
-  const parsed = schema.safeParse(body);
-  if (!parsed.success) {
-    return c.json({ error: "bad_request", message: "Invalid payout account details" }, 400);
-  }
+  return c.json({ ok: true, transactions: res.rows });
+});
 
-  const { outletId, type, accountRef, accountName, networkOrBank } = parsed.data;
+gasRoutes.get("/manager/payout-accounts", requireManager, async (c) => {
+  const actor = c.get("gasActor");
+  const res = await db.execute({
+    sql: "SELECT * FROM fuel_station_payout_accounts WHERE outlet_id = ? ORDER BY is_primary DESC, created_at DESC",
+    args: [actor.outletId],
+  });
+  return c.json({ ok: true, accounts: (res.rows as Row[]).map((r) => ({ ...r, is_primary: Boolean(r.is_primary) })) });
+});
+
+gasRoutes.post("/manager/payout-accounts", requireManager, async (c) => {
+  const actor = c.get("gasActor");
+  const parsed = z
+    .object({
+      type: z.enum(["momo", "bank"]),
+      accountRef: z.string().min(5).max(40),
+      accountName: z.string().min(2).max(80),
+      networkOrBank: z.string().min(2).max(60),
+      isPrimary: z.boolean().optional(),
+    })
+    .safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) return c.json({ error: "bad_request", message: "Invalid payout account details" }, 400);
+
+  const { type, accountRef, accountName, networkOrBank } = parsed.data;
   const isPrimary = parsed.data.isPrimary ? 1 : 0;
-  const id = `fpay_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-
-  if (isPrimary === 1) {
-    try {
-      await db.execute({
-        sql: `UPDATE fuel_station_payout_accounts SET is_primary = 0 WHERE outlet_id = ?`,
-        args: [outletId],
-      });
-    } catch {}
-  }
-
-  await db.execute({
-    sql: `
-      INSERT INTO fuel_station_payout_accounts (id, outlet_id, type, account_ref, account_name, network_or_bank, is_primary, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
-    `,
-    args: [id, outletId, type, accountRef, accountName, networkOrBank, isPrimary],
+  const id = `fpay_${crypto.randomUUID()}`;
+  await executeBatch([
+    ...(isPrimary ? [{ sql: "UPDATE fuel_station_payout_accounts SET is_primary = 0 WHERE outlet_id = ?", args: [actor.outletId] }] : []),
+    {
+      sql: `INSERT INTO fuel_station_payout_accounts (id, outlet_id, type, account_ref, account_name, network_or_bank, is_primary, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+      args: [id, actor.outletId, type, accountRef, accountName, networkOrBank, isPrimary],
+    },
+  ]);
+  return c.json({
+    ok: true,
+    account: { id, outlet_id: actor.outletId, type, account_ref: accountRef, account_name: accountName, network_or_bank: networkOrBank, is_primary: isPrimary === 1, created_at: nowIso() },
   });
-
-  const account = {
-    id,
-    outlet_id: outletId,
-    type,
-    account_ref: accountRef,
-    account_name: accountName,
-    network_or_bank: networkOrBank,
-    is_primary: isPrimary === 1,
-    created_at: new Date().toISOString(),
-  };
-
-  return c.json({ ok: true, account });
 });
 
-/** List Station Fund Withdrawals */
-gasRoutes.get("/manager/withdrawals", async (c) => {
-  const outletId = c.req.query("outletId") || "fout_total_lugogo";
-  try {
-    const res = await db.execute({
-      sql: `SELECT * FROM fuel_station_withdrawals WHERE outlet_id = ? ORDER BY created_at DESC LIMIT 50`,
-      args: [outletId],
-    });
-    const withdrawals = res.rows.map((r: any) => ({
-      ...r,
-      destination_details: typeof r.destination_details === "string" ? JSON.parse(r.destination_details) : r.destination_details,
-    }));
-    return c.json({ ok: true, withdrawals });
-  } catch {
-    return c.json({ ok: true, withdrawals: [] });
-  }
+gasRoutes.get("/manager/withdrawals", requireManager, async (c) => {
+  const actor = c.get("gasActor");
+  const res = await db.execute({ sql: "SELECT * FROM fuel_station_withdrawals WHERE outlet_id = ? ORDER BY created_at DESC LIMIT 50", args: [actor.outletId] });
+  const withdrawals = (res.rows as Row[]).map((r) => {
+    let details: unknown = r.destination_details;
+    if (typeof details === "string") {
+      try { details = JSON.parse(details); } catch { /* keep as text */ }
+    }
+    return { ...r, destination_details: details };
+  });
+  return c.json({ ok: true, withdrawals });
 });
 
-/** Request Station Fund Withdrawal */
-gasRoutes.post("/manager/withdrawals", async (c) => {
-  const body = await c.req.json().catch(() => ({}));
-  const schema = z.object({
-    outletId: z.string().default("fout_total_lugogo"),
-    amountUgx: z.number().int().positive().min(5000),
-    destinationType: z.enum(["momo", "bank"]),
-    destinationDetails: z.any(),
-  });
-  const parsed = schema.safeParse(body);
-  if (!parsed.success) {
-    return c.json({ error: "bad_request", message: "Invalid withdrawal parameters. Minimum amount is UGX 5,000." }, 400);
+const digitsOnly = (v: unknown) => String(v ?? "").replace(/[^0-9A-Za-z]/g, "").toUpperCase();
+
+/**
+ * Asks Peebee to pay the station. The request is recorded as `pending` for an
+ * admin to pay out; it can only go to a payout account already registered on
+ * this outlet, and the balance check and the insert are one statement, so two
+ * requests at once can't spend the same money twice.
+ */
+gasRoutes.post("/manager/withdrawals", requireManager, async (c) => {
+  const actor = c.get("gasActor");
+  const { withdrawalMinUgx } = await getGasSettings();
+  const parsed = z
+    .object({
+      amountUgx: z.number().int().positive().max(1_000_000_000),
+      destinationType: z.enum(["momo", "bank"]),
+      destinationDetails: z.record(z.string(), z.unknown()),
+    })
+    .safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) return c.json({ error: "bad_request", message: "Invalid withdrawal parameters." }, 400);
+  const { amountUgx, destinationType, destinationDetails } = parsed.data;
+  if (amountUgx < withdrawalMinUgx) {
+    return c.json({ error: "below_minimum", message: `Minimum withdrawal is UGX ${withdrawalMinUgx.toLocaleString()}.` }, 400);
   }
 
-  const { outletId, amountUgx, destinationType, destinationDetails } = parsed.data;
-
-  // Calculate available balance to ensure station does not overdraft
-  let totalRevenue = 0;
-  try {
-    const rRes = await db.execute({
-      sql: `SELECT COALESCE(SUM(total_ugx), 0) as rev FROM fuel_dispenses WHERE outlet_id = ?`,
-      args: [outletId],
-    });
-    totalRevenue = Number(rRes.rows[0]?.rev ?? 0);
-  } catch {}
-
-  let totalWithdrawn = 0;
-  try {
-    const wRes = await db.execute({
-      sql: `SELECT COALESCE(SUM(amount_ugx), 0) as w FROM fuel_station_withdrawals WHERE outlet_id = ? AND status = 'completed'`,
-      args: [outletId],
-    });
-    totalWithdrawn = Number(wRes.rows[0]?.w ?? 0);
-  } catch {}
-
-  const availableBalance = Math.max(0, totalRevenue - totalWithdrawn);
-  // Allow withdrawal if available balance >= amount, or allow demo minimum if no dispenses yet in sandbox
-  if (totalRevenue > 0 && amountUgx > availableBalance) {
-    return c.json({
-      error: "insufficient_balance",
-      message: `Requested withdrawal UGX ${amountUgx.toLocaleString()} exceeds available balance of UGX ${availableBalance.toLocaleString()}`,
-    }, 400);
+  const wanted = digitsOnly(destinationDetails.phone ?? destinationDetails.accountNumber ?? destinationDetails.accountRef);
+  const accounts = (await db.execute({ sql: "SELECT account_ref FROM fuel_station_payout_accounts WHERE outlet_id = ? AND type = ?", args: [actor.outletId, destinationType] })).rows as Row[];
+  if (!wanted || !accounts.some((a) => digitsOnly(a.account_ref) === wanted)) {
+    return c.json({ error: "unregistered_destination", message: "Withdrawals can only go to a payout account saved for this station." }, 400);
   }
 
-  const id = `fwd_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-  const ref = `WD-GAS-${Date.now().toString(36).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`;
-  const detailsStr = typeof destinationDetails === "string" ? destinationDetails : JSON.stringify(destinationDetails);
-
-  await db.execute({
-    sql: `
-      INSERT INTO fuel_station_withdrawals (id, outlet_id, manager_id, amount_ugx, fee_ugx, destination_type, destination_details, status, reference, created_at)
-      VALUES (?, ?, 'fmgr_duty', ?, 0, ?, ?, 'completed', ?, datetime('now'))
-    `,
-    args: [id, outletId, amountUgx, destinationType, detailsStr, ref],
+  const environment = await getPlatformEnvironment();
+  const id = `fwd_${crypto.randomUUID()}`;
+  const reference = `WD-GAS-${Date.now().toString(36).toUpperCase()}-${1000 + randomInt(9000)}`;
+  const insert = await db.execute({
+    sql: `INSERT INTO fuel_station_withdrawals (id, outlet_id, manager_id, amount_ugx, fee_ugx, destination_type, destination_details, status, reference, created_at)
+          SELECT ?, ?, ?, ?, 0, ?, ?, 'pending', ?, datetime('now')
+          WHERE (SELECT COALESCE(SUM(total_ugx), 0) FROM fuel_dispenses WHERE outlet_id = ? AND environment = ? AND status = 'completed')
+              - (SELECT COALESCE(SUM(amount_ugx + fee_ugx), 0) FROM fuel_station_withdrawals WHERE outlet_id = ? AND status IN ${WITHDRAWAL_HELD}) >= ?`,
+    args: [id, actor.outletId, actor.id, amountUgx, destinationType, JSON.stringify(destinationDetails), reference, actor.outletId, environment, actor.outletId, amountUgx],
   });
-
-  const withdrawal = {
-    id,
-    outlet_id: outletId,
-    manager_id: "fmgr_duty",
-    amount_ugx: amountUgx,
-    fee_ugx: 0,
-    destination_type: destinationType,
-    destination_details: destinationDetails,
-    status: "completed",
-    reference: ref,
-    created_at: new Date().toISOString(),
-  };
-
-  return c.json({ ok: true, withdrawal });
+  if ((insert.rowsAffected ?? 0) !== 1) {
+    const { available } = await availableBalance(actor.outletId, environment);
+    return c.json({ error: "insufficient_balance", message: `Requested withdrawal UGX ${amountUgx.toLocaleString()} exceeds available balance of UGX ${available.toLocaleString()}` }, 409);
+  }
+  return c.json({
+    ok: true,
+    withdrawal: { id, outlet_id: actor.outletId, manager_id: actor.id, amount_ugx: amountUgx, fee_ugx: 0, destination_type: destinationType, destination_details: destinationDetails, status: "pending", reference, created_at: nowIso() },
+  });
 });
 
+// =========================================================================
+// ADMIN — payouts and PIN resets (Peebee staff only)
+// =========================================================================
+
+gasRoutes.use("/admin/*", requireAuth, requireRole("admin"));
+
+gasRoutes.get("/admin/withdrawals", requirePermission("merchant_finance.manage"), async (c) => {
+  const status = c.req.query("status") ?? "pending";
+  const res = await db.execute({
+    sql: `SELECT w.*, o.name AS outlet_name FROM fuel_station_withdrawals w JOIN fuel_station_outlets o ON o.id = w.outlet_id
+          WHERE w.status = ? ORDER BY w.created_at ASC LIMIT 100`,
+    args: [status],
+  });
+  return c.json({ ok: true, withdrawals: res.rows });
+});
+
+/** pending/processing -> completed or failed, once. A failed request frees the money back to the station's balance. */
+async function settleWithdrawal(c: any, to: "completed" | "failed") {
+  const user = c.get("user");
+  const id = idParam(c);
+  const body = (await c.req.json().catch(() => ({}))) as Row;
+  const hasAudit = await hasColumn("fuel_station_withdrawals", "processed_by");
+  const note = String(body.providerRef ?? body.reason ?? "").slice(0, 120);
+  const sql = hasAudit
+    ? `UPDATE fuel_station_withdrawals SET status = ?, processed_by = ?, processed_at = datetime('now'),
+         provider_ref = CASE WHEN ? = 'completed' THEN ? ELSE provider_ref END,
+         failure_reason = CASE WHEN ? = 'failed' THEN ? ELSE failure_reason END
+       WHERE id = ? AND status IN ('pending', 'processing')`
+    : "UPDATE fuel_station_withdrawals SET status = ? WHERE id = ? AND status IN ('pending', 'processing')";
+  const args = hasAudit ? [to, user.sub, to, note, to, note, id] : [to, id];
+  const res = await db.execute({ sql, args });
+  if ((res.rowsAffected ?? 0) !== 1) return c.json({ error: "not_pending", message: "That withdrawal isn't waiting to be processed." }, 409);
+  await logActivity({
+    actor: user,
+    action: `gas.withdrawal.${to}`,
+    summary: `Marked fuel station withdrawal ${id} as ${to}`,
+    entityType: "fuel_station_withdrawal",
+    entityId: id,
+    after: { status: to, note },
+    ip: c.req.header("cf-connecting-ip") ?? null,
+  });
+  return c.json({ ok: true });
+}
+gasRoutes.post("/admin/withdrawals/:id/complete", requirePermission("merchant_finance.manage"), (c) => settleWithdrawal(c, "completed"));
+gasRoutes.post("/admin/withdrawals/:id/fail", requirePermission("merchant_finance.manage"), (c) => settleWithdrawal(c, "failed"));
+
+/** Sets a station manager's PIN (they can't sign in until one is set). Leave `pin` out to generate one, shown once. */
+gasRoutes.post("/admin/managers/:id/pin", requirePermission("merchants.manage"), async (c) => {
+  const user = c.get("user");
+  const body = (await c.req.json().catch(() => ({}))) as Row;
+  let pin = typeof body.pin === "string" ? body.pin.trim() : "";
+  let temporaryPin: string | undefined;
+  if (pin) {
+    const formatError = validatePinFormat(pin);
+    if (formatError) return c.json({ error: "weak_pin", message: formatError }, 400);
+  } else {
+    pin = temporaryPin = generatePin();
+  }
+  const res = await db.execute({ sql: "UPDATE fuel_station_managers SET pin = ?, updated_at = datetime('now') WHERE id = ?", args: [await hashPin(pin), idParam(c)] });
+  if ((res.rowsAffected ?? 0) === 0) return c.json({ error: "not_found", message: "Manager not found." }, 404);
+  await logActivity({
+    actor: user,
+    action: "gas.manager.pin_set",
+    summary: `Set a new PIN for fuel station manager ${idParam(c)}`,
+    entityType: "fuel_station_manager",
+    entityId: idParam(c),
+    ip: c.req.header("cf-connecting-ip") ?? null,
+  });
+  return c.json({ ok: true, ...(temporaryPin ? { temporary_pin: temporaryPin } : {}) });
+});
