@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { logActivity } from "../admin/activity.js";
+import { getWorkSettings, setWorkSettings, WORK_MATCHING_MODES, WORK_PRICING_MODES, WORK_PROVIDER_KINDS, WORK_SERVICE_TYPES } from "../work/settings.js";
 import { hasPermission, requirePermission } from "../admin/permissions.js";
 import { requireAuth, requireRole } from "../auth/middleware.js";
 import { db } from "../db/client.js";
@@ -141,6 +142,7 @@ async function fullSettings() {
     bidding: await getBiddingSettings(),
     car: await getCarSettings(),
     gas: await getGasSettings(),
+    work: await getWorkSettings(),
     marketplace: await getMarketplaceSettings(),
     ...delivery,
     services,
@@ -392,6 +394,31 @@ const updateSchema = z.object({
     })
     .partial()
     .optional(),
+  work: z
+    .object({
+      enabled: z.boolean(),
+      serviceTypes: z.array(z.enum(WORK_SERVICE_TYPES)),
+      pricingModes: z.array(z.enum(WORK_PRICING_MODES)).min(1),
+      matchingModes: z.array(z.enum(WORK_MATCHING_MODES)).min(1),
+      defaultMatching: z.enum(WORK_MATCHING_MODES),
+      providerKinds: z.array(z.enum(WORK_PROVIDER_KINDS)).min(1),
+      commissionPercent: z.number().int().min(0).max(60),
+      requireApproval: z.boolean(),
+      offerWindowMinutes: z.number().int().min(5).max(10080),
+      radiusKm: z.number().int().min(1).max(200),
+      maxNotified: z.number().int().min(1).max(200),
+      minLeadMinutes: z.number().int().min(0).max(10080),
+      maxAdvanceDays: z.number().int().min(1).max(365),
+      quoteValidHours: z.number().int().min(1).max(336),
+      maxQuoteUgx: z.number().int().min(1000).max(1_000_000_000),
+      freeCancelMinutes: z.number().int().min(0).max(1440),
+      lateCancelFeePercent: z.number().int().min(0).max(100),
+      autoConfirmHours: z.number().int().min(1).max(336),
+      disputeWindowHours: z.number().int().min(1).max(720),
+      jobsPerHour: z.number().int().min(1).max(100),
+    })
+    .partial()
+    .optional(),
   marketplace: z
     .object({
       enabled: z.boolean(),
@@ -537,6 +564,7 @@ settingsRoutes.put(
     if (parsed.data.bidding) await setBiddingSettings(parsed.data.bidding);
     if (parsed.data.car) await setCarSettings(parsed.data.car);
     if (parsed.data.gas) await setGasSettings(parsed.data.gas);
+    if (parsed.data.work) await setWorkSettings(parsed.data.work);
     if (parsed.data.marketplace) await setMarketplaceSettings(parsed.data.marketplace);
 
     if (parsed.data.deliveryRatePerKm != null) {
