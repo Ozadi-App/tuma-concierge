@@ -4,7 +4,7 @@ import { db } from "../db/client.js";
 import { newId } from "../lib/ids.js";
 import { getPlatformEnvironment } from "../lib/settings.js";
 import { notifyUser } from "../lib/webpush.js";
-import { assignProvider, cancelJob, getJob, jobView } from "./jobs.js";
+import { assignProvider, getJob, jobView, providerCancel } from "./jobs.js";
 import { canWork, inHours, logEvent, notifyCustomer, openJobsFor, providerFor, toDb, transition, type Row } from "./service.js";
 import { getWorkSettings } from "./settings.js";
 
@@ -378,9 +378,9 @@ providerRoutes.post("/provider/jobs/:id/cancel", async (c) => {
   const job = await myJob(w.ctx, c.get("user").sub, c.req.param("id") as string);
   if (!job) return c.json({ error: "not_found", message: "Job not found." }, 404);
   const body = (await c.req.json().catch(() => ({}))) as { reason?: string };
-  const result = await cancelJob(job, "provider", c.get("user").sub, w.settings, String(body.reason ?? "Cancelled by provider"));
+  const result = await providerCancel(job, c.get("user").sub, w.settings, String(body.reason ?? "Cancelled by provider"));
   if (!result.ok) return c.json({ error: result.error, message: result.message }, result.status);
-  return c.json({ ok: true });
+  return c.json({ ok: true, rematched: result.rematched });
 });
 
 // ---------------------------------------------------------------------------

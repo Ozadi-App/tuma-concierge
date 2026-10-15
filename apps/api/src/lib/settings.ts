@@ -396,6 +396,13 @@ const DEFAULTS = {
   work_auto_confirm_hours: "24",
   work_dispute_window_hours: "48",
   work_jobs_per_hour: "6",
+  work_rematch_on_provider_cancel: "1",
+  work_max_rematches: "2",
+  work_photos_enabled: "1",
+  work_max_photos_per_job: "8",
+  work_max_photo_kb: "4096",
+  work_chat_enabled: "1",
+  work_tracking_enabled: "1",
 } as const;
 
 export type SettingKey = keyof typeof DEFAULTS;

@@ -337,7 +337,8 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
       await f(`${root}${path}`, {
         ...init,
         headers: {
-          "Content-Type": "application/json",
+          // A file upload (FormData) must not carry a JSON content type; the browser sets the multipart boundary itself.
+          ...(typeof FormData !== "undefined" && init?.body instanceof FormData ? {} : { "Content-Type": "application/json" }),
           ...authHeaders(),
           ...(init?.headers ?? {}),
         },
@@ -2678,6 +2679,12 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
       });
     },
     ...workMethods(request),
+    /** A job photo as a Blob (private: the request carries the sign-in header, so it can't be a plain image URL). */
+    async workPhotoBlob(photoId: string): Promise<Blob> {
+      const res = await f(`${root}/v1/work/photos/${encodeURIComponent(photoId)}`, { headers: authHeaders() });
+      if (!res.ok) throw new Error("Couldn't load the photo.");
+      return res.blob();
+    },
   };
 }
 

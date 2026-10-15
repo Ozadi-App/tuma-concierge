@@ -23,8 +23,10 @@ export const inHours = (h: number) => inMinutes(h * 60);
 // ---------------------------------------------------------------------------
 
 let readyCache: { at: number; ok: boolean } | null = null;
+let extrasCache: { at: number; ok: boolean } | null = null;
 export function resetWorkSchemaCache() {
   readyCache = null;
+  extrasCache = null;
 }
 export async function workReady(): Promise<boolean> {
   if (readyCache && Date.now() - readyCache.at < 30_000) return readyCache.ok;
@@ -34,6 +36,23 @@ export async function workReady(): Promise<boolean> {
   });
   const ok = Number((res.rows[0] as Row).n) === 8;
   readyCache = { at: Date.now(), ok };
+  return ok;
+}
+
+/** Migration 0099 (re-matching, photos, chat, tracking). Those features switch on once it is applied; until then the engine behaves as before. */
+export async function workExtrasReady(): Promise<boolean> {
+  if (extrasCache && (extrasCache.ok || Date.now() - extrasCache.at < 30_000)) return extrasCache.ok;
+  let ok = false;
+  try {
+    const tables = Number(
+      ((await db.execute({ sql: "SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table' AND name IN ('work_job_photos', 'work_messages')", args: [] })).rows[0] as Row).n,
+    );
+    const col = (await db.execute({ sql: "SELECT 1 FROM pragma_table_info('work_jobs') WHERE name = 'rematch_count'", args: [] })).rows.length > 0;
+    ok = tables === 2 && col;
+  } catch {
+    ok = false;
+  }
+  extrasCache = { at: Date.now(), ok };
   return ok;
 }
 
@@ -246,8 +265,9 @@ export async function openJobsFor(provider: Row, settings: WorkSettings): Promis
             WHERE j.status = 'open' AND j.matching_mode IN ('broadcast', 'customer_picks') AND j.environment = ?
               AND (j.expires_at IS NULL OR j.expires_at > datetime('now'))
               AND j.service_id IN (SELECT service_id FROM work_provider_services WHERE provider_id = ?)
+              AND NOT EXISTS (SELECT 1 FROM work_events e WHERE e.job_id = j.id AND e.action = 'provider_cancelled' AND json_extract(e.detail, '$.providerId') = ?)
             ORDER BY j.created_at DESC LIMIT 100`,
-      args: [provider.environment, provider.id],
+      args: [provider.environment, provider.id, provider.id],
     })
   ).rows as Row[];
   return rows.filter((j) => {

@@ -1,18 +1,23 @@
 "use client";
 
-import type { WorkJob, WorkStaffMember } from "@peebee/shared";
+import type { WorkJob, WorkPublicSettings, WorkStaffMember } from "@peebee/shared";
 import { Phone } from "lucide-react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { StatusBadge } from "../../../components/StatusBadge";
 import { api, errorMessage } from "../../../lib/api";
+import { JobChat } from "../../../components/JobChat";
+import { JobPhotos } from "../../../components/JobPhotos";
+import { ShareLocation } from "../../../components/ShareLocation";
 import { estimatedEarnings, ugx, whenLabel } from "../../../lib/format";
 
 export default function JobPage() {
   const { id } = useParams<{ id: string }>();
+  const router = useRouter();
   const [job, setJob] = useState<WorkJob | null>(null);
   const [role, setRole] = useState<"owner" | "staff">("owner");
   const [staff, setStaff] = useState<WorkStaffMember[]>([]);
+  const [flags, setFlags] = useState<WorkPublicSettings | null>(null);
   const [quote, setQuote] = useState("");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
@@ -30,6 +35,7 @@ export default function JobPage() {
   }, [id]);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { api.workCatalog().then((r) => setFlags(r.settings)).catch(() => {}); }, []);
 
   async function run(fn: () => Promise<unknown>) {
     setBusy(true);
@@ -114,11 +120,28 @@ export default function JobPage() {
       {job.status === "completed" && <p className="text-xs font-medium text-ink-500">Finished. You are paid when the customer confirms{job.confirmBy ? `, or automatically ${whenLabel(job.confirmBy)}` : ""}.</p>}
       {job.status === "settled" && <p className="text-xs font-black text-green">Paid out to your wallet.</p>}
 
+      {flags?.trackingEnabled && <ShareLocation jobId={job.id} active={["booked", "in_progress"].includes(job.status)} />}
+      {flags?.photosEnabled && <JobPhotos jobId={job.id} canAdd={["booked", "in_progress", "completed"].includes(job.status)} maxPhotos={flags.maxPhotosPerJob} />}
+      {flags?.chatEnabled && job.status !== "open" && <JobChat jobId={job.id} canSend={["assigned", "quoted", "booked", "in_progress", "completed", "disputed"].includes(job.status)} />}
+
       {owner && ["assigned", "quoted", "booked"].includes(job.status) && (
         <button
           type="button"
           disabled={busy}
-          onClick={() => { if (confirm("Cancel this job? The customer is refunded.")) run(() => api.workProviderCancel(job.id)); }}
+          onClick={async () => {
+            if (!confirm("Cancel this job? It may be offered to another provider, or the customer refunded.")) return;
+            setBusy(true);
+            setError(null);
+            try {
+              await api.workProviderCancel(job.id);
+              // The job is no longer yours, so there is nothing left to show here.
+              router.push("/jobs");
+            } catch (err) {
+              setError(errorMessage(err));
+              setBusy(false);
+              await load();
+            }
+          }}
           className="w-full rounded-2xl border border-red-500/40 py-3 text-sm font-black text-red-600 transition active:scale-[0.98] disabled:opacity-50"
         >
           Cancel job

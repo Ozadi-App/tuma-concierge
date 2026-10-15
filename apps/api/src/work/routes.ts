@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { requireAuth, requireRole } from "../auth/middleware.js";
 import { adminRoutes } from "./admin.js";
 import { customerRoutes } from "./customer.js";
+import { extrasRoutes } from "./extras.js";
 import { providerRoutes } from "./provider.js";
 import { workReady } from "./service.js";
 import { getWorkSettings } from "./settings.js";
@@ -28,6 +29,7 @@ workRoutes.use("*", async (c, next) => {
 
 workRoutes.use("/admin/*", requireRole("admin"));
 
+workRoutes.route("/", extrasRoutes);
 workRoutes.route("/", customerRoutes);
 workRoutes.route("/", providerRoutes);
 workRoutes.route("/", adminRoutes);

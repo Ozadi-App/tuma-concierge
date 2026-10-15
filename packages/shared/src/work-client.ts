@@ -28,6 +28,12 @@ export type WorkPublicSettings = {
   matchingModes: WorkMatchingMode[];
   defaultMatching: WorkMatchingMode;
   providerKinds?: string[];
+  /** Photos, chat and live location for jobs; each is off until its migration is in and admin allows it. */
+  photosEnabled?: boolean;
+  maxPhotosPerJob?: number;
+  maxPhotoKb?: number;
+  chatEnabled?: boolean;
+  trackingEnabled?: boolean;
   quoteValidHours: number;
   freeCancelMinutes: number;
   lateCancelFeePercent: number;
@@ -79,6 +85,10 @@ export type WorkJob = {
   startedAt: string | null;
   completedAt: string | null;
   settledAt: string | null;
+  /** How many times this job has gone back out to other providers. */
+  rematchCount?: number;
+  /** Where the provider is while the job is booked or in progress (customer and staff only). */
+  providerLocation?: { lat: number; lng: number; updatedAt: string | null } | null;
   /** On the provider's open-jobs feed: their own offer, if any. */
   myOffer?: { price_ugx: number; eta_minutes: number | null; status: string } | null;
 };
@@ -103,6 +113,9 @@ export type WorkProviderProfile = {
 };
 
 export type WorkStaffMember = { user_id: string; role: "owner" | "staff"; status: "active" | "revoked"; name: string; phone: string | null };
+
+export type WorkPhoto = { id: string; phase: "request" | "before" | "after"; uploaderKind: "customer" | "provider"; note: string | null; sizeBytes: number; createdAt: string };
+export type WorkMessage = { id: string; from: "customer" | "provider"; senderName?: string; body: string; createdAt: string };
 
 type Request = <T>(path: string, init?: RequestInit) => Promise<T>;
 
@@ -155,6 +168,22 @@ export function workMethods(request: Request) {
       return post<{ ok: true }>(`/v1/work/jobs/${encodeURIComponent(jobId)}/rate`, { rating, review });
     },
 
+    workJobPhotos(jobId: string) {
+      return request<{ photos: WorkPhoto[] }>(`/v1/work/jobs/${encodeURIComponent(jobId)}/photos`);
+    },
+    workUploadJobPhoto(jobId: string, file: Blob, note?: string) {
+      const form = new FormData();
+      form.append("file", file, "photo.jpg");
+      if (note) form.append("note", note);
+      return request<{ photo: WorkPhoto }>(`/v1/work/jobs/${encodeURIComponent(jobId)}/photos`, { method: "POST", body: form });
+    },
+    workJobMessages(jobId: string, after?: string) {
+      return request<{ messages: WorkMessage[] }>(`/v1/work/jobs/${encodeURIComponent(jobId)}/messages${after ? `?after=${encodeURIComponent(after)}` : ""}`);
+    },
+    workSendJobMessage(jobId: string, body: string) {
+      return post<{ message: WorkMessage }>(`/v1/work/jobs/${encodeURIComponent(jobId)}/messages`, { body });
+    },
+
     // ---- Provider ----
     workProviderRegister(input: { kind: "individual" | "company"; displayName: string; companyName?: string; phone?: string; bio?: string; serviceIds: string[] }) {
       return post<{ provider: WorkProviderProfile }>("/v1/work/provider/register", input);
@@ -205,7 +234,26 @@ export function workMethods(request: Request) {
       return post<{ job: WorkJob }>(`/v1/work/provider/jobs/${encodeURIComponent(jobId)}/complete`, { note });
     },
     workProviderCancel(jobId: string, reason?: string) {
-      return post<{ ok: true }>(`/v1/work/provider/jobs/${encodeURIComponent(jobId)}/cancel`, { reason });
+      return post<{ ok: true; rematched?: boolean }>(`/v1/work/provider/jobs/${encodeURIComponent(jobId)}/cancel`, { reason });
+    },
+    workProviderJobPhotos(jobId: string) {
+      return request<{ photos: WorkPhoto[] }>(`/v1/work/provider/jobs/${encodeURIComponent(jobId)}/photos`);
+    },
+    workProviderUploadPhoto(jobId: string, file: Blob, phase: "before" | "after", note?: string) {
+      const form = new FormData();
+      form.append("file", file, "photo.jpg");
+      form.append("phase", phase);
+      if (note) form.append("note", note);
+      return request<{ photo: WorkPhoto }>(`/v1/work/provider/jobs/${encodeURIComponent(jobId)}/photos`, { method: "POST", body: form });
+    },
+    workProviderMessages(jobId: string, after?: string) {
+      return request<{ messages: WorkMessage[] }>(`/v1/work/provider/jobs/${encodeURIComponent(jobId)}/messages${after ? `?after=${encodeURIComponent(after)}` : ""}`);
+    },
+    workProviderSendMessage(jobId: string, body: string) {
+      return post<{ message: WorkMessage }>(`/v1/work/provider/jobs/${encodeURIComponent(jobId)}/messages`, { body });
+    },
+    workShareLocation(jobId: string, lat: number, lng: number) {
+      return post<{ ok: true; stored: boolean }>(`/v1/work/provider/jobs/${encodeURIComponent(jobId)}/location`, { lat, lng });
     },
     workEarnings() {
       return request<{ paidUgx: number; paidJobs: number; upcomingUgx: number; upcomingJobs: number; jobsCompleted: number }>("/v1/work/provider/earnings");

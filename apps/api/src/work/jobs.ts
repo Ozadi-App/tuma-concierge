@@ -2,8 +2,8 @@ import { db } from "../db/client.js";
 import type { PlatformEnvironment } from "../lib/settings.js";
 import type { WorkSettings } from "./settings.js";
 import {
-  applyMoney, applyPendingMoney, chargeCustomer, dropUnpaidHold, fromDb, logEvent, notifyCustomer, percentOf, publicProvider, splitHeld,
-  toDb, transition, type ActorKind, type MoneyPlan, type Row,
+  applyMoney, applyPendingMoney, chargeCustomer, dropUnpaidHold, fromDb, inMinutes, logEvent, notifyCustomer, notifyProviders, percentOf, publicProvider,
+  splitHeld, toDb, transition, workExtrasReady, type ActorKind, type MoneyPlan, type Row,
 } from "./service.js";
 
 export type Actor = { id: string | null; kind: ActorKind };
@@ -142,6 +142,52 @@ export async function cancelJob(job: Row, by: ActorKind, actorId: string | null,
 }
 
 // ---------------------------------------------------------------------------
+// A provider backing out. If admin allows it (and migration 0099 is applied), the
+// job goes back to the other providers instead of being refunded and closed, so
+// the customer is not left to start again. The money stays held.
+// ---------------------------------------------------------------------------
+
+export async function providerCancel(job: Row, actorId: string | null, settings: WorkSettings, reason: string): Promise<(Done & { rematched: boolean }) | Failure> {
+  const status = String(job.status);
+  const quote = job.pricing_mode === "quote";
+  // A fixed-price job stays paid for and can go back out as it is. A quote job can go back out before the customer
+  // has accepted a price (the call-out fee stays held). Once a quote is accepted the customer paid for that provider's
+  // price, so a cancellation there is refunded as before.
+  const reopenable = quote ? ["assigned", "quoted"].includes(status) : status === "booked";
+  const canRematch =
+    settings.rematchOnProviderCancel && reopenable && Number(job.rematch_count ?? 0) < settings.maxRematches && job.provider_id && (await workExtrasReady());
+  if (!canRematch) {
+    const done = await cancelJob(job, "provider", actorId, settings, reason);
+    return done.ok ? { ok: true, rematched: false } : done;
+  }
+
+  const providerId = String(job.provider_id);
+  const ok = await transition({
+    jobId: String(job.id), from: [status], to: "open",
+    set: {
+      provider_id: null, worker_id: null, assigned_at: null, booked_at: null, quoted_at: null, quote_expires_at: null,
+      ...(quote ? { price_ugx: 0 } : {}),
+      expires_at: inMinutes(settings.offerWindowMinutes),
+      rematch_count: Number(job.rematch_count ?? 0) + 1,
+      provider_lat: null, provider_lng: null, provider_located_at: null,
+    },
+    where: { sql: "provider_id = ?", args: [providerId] },
+    environment: env(job), actor: { id: actorId, kind: "provider" }, action: "provider_cancelled", detail: { providerId, reason: reason.slice(0, 300) },
+  });
+  if (!ok) return fail(409, "cannot_cancel", "This job just changed. Refresh and try again.");
+
+  // Others' offers come back to the customer; this provider's does not.
+  await db.execute({ sql: "UPDATE work_offers SET status = 'withdrawn' WHERE job_id = ? AND provider_id = ?", args: [job.id, providerId] });
+  await db.execute({ sql: "UPDATE work_offers SET status = 'pending' WHERE job_id = ? AND provider_id != ? AND status IN ('selected', 'declined')", args: [job.id, providerId] });
+  await logEvent(String(job.id), null, "system", "rematched", { attempt: Number(job.rematch_count ?? 0) + 1 });
+
+  const fresh = (await getJob(String(job.id))) as Row;
+  notifyCustomer(fresh, "Your provider had to cancel", "We're finding you another one.");
+  if (fresh.matching_mode === "broadcast" || fresh.matching_mode === "customer_picks") await notifyProviders(fresh, settings);
+  return { ok: true, rematched: true };
+}
+
+// ---------------------------------------------------------------------------
 // Paying out (customer confirms, auto-confirm, or an admin rules on a dispute)
 // ---------------------------------------------------------------------------
 
@@ -222,6 +268,12 @@ export async function jobView(job: Row, viewer: "customer" | "provider" | "admin
     startedAt: job.started_at ?? null,
     completedAt: job.completed_at ?? null,
     settledAt: job.settled_at ?? null,
+    rematchCount: Number(job.rematch_count ?? 0),
+    // Where the provider is while the job is on (customer and staff only; the provider already knows).
+    providerLocation:
+      viewer !== "provider" && job.provider_lat != null && job.provider_lng != null && ["booked", "in_progress"].includes(String(job.status))
+        ? { lat: Number(job.provider_lat), lng: Number(job.provider_lng), updatedAt: job.provider_located_at ?? null }
+        : null,
   };
 }
 
