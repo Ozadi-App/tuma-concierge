@@ -1,5 +1,6 @@
 "use client";
 
+import { useRegisterNavPrimaryAction } from "../../lib/nav-primary-action";
 import { DEFAULT_SHOPPING_UNIT_SETTINGS, roundFare, serializeShoppingItem, shoppingItemTotal, type ShoppingUnitSettings } from "@peebee/shared";
 import { List, Mic, Plus } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -129,6 +130,17 @@ export function ShoppingListModal({ onClose }: { onClose: () => void }) {
     }
   }
 
+  // Each step's primary action is the bottom nav's right capsule (white in
+  // light, grey in dark): "Next: delivery" on the list, "Next: payment" once a
+  // delivery place is set. While the place picker is open it owns the nav.
+  useRegisterNavPrimaryAction(
+    step === "items"
+      ? { tone: "step", label: t("list_next_delivery"), detail: total > 0 ? currency(total) : undefined, onClick: goToLocation }
+      : !choosing && delivery
+        ? { tone: "step", label: busy ? "Please wait…" : "Next: payment", detail: total > 0 ? currency(total) : undefined, disabled: busy, busy, onClick: () => void submit().catch(() => {}) }
+        : null,
+  );
+
   return (
     <Modal withMap heroImage={step === "items" ? "/brand/auth-illustration.webp" : undefined} title={step === "items" ? t("list_title") : t("list_delivery_location")} onClose={onClose}>
       {step === "items" ? (
@@ -211,12 +223,6 @@ export function ShoppingListModal({ onClose }: { onClose: () => void }) {
 
           {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
 
-          <button
-            onClick={goToLocation}
-            className="min-h-14 w-full rounded-full bg-gold px-4 text-lg font-bold text-ink-gold shadow-[0_4px_12px_rgba(201,162,39,0.35)]"
-          >
-            {t("list_next_delivery")}
-          </button>
         </div>
       ) : (
         <div className="space-y-4">
@@ -238,12 +244,9 @@ export function ShoppingListModal({ onClose }: { onClose: () => void }) {
           {/* Voice mode already recorded the list itself as this same voice note — asking again here would be redundant. */}
           {mode === "list" && <OrderVoiceNoteRecorder blob={voiceNote} onChange={setVoiceNote} />}
 
-
-
           {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
 
           <div className="space-y-3 pt-2">
-            <button type="button" onClick={() => void submit().catch(() => {})} disabled={busy} className="min-h-12 w-full rounded-full bg-gold px-4 text-base font-bold text-ink-gold disabled:opacity-60">{busy ? "Please wait…" : "Next: payment"}</button>
             <button
               type="button"
               onClick={() => setStep("items")}

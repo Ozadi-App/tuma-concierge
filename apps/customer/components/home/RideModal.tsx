@@ -15,6 +15,7 @@ import { RouteSummary } from "./RouteSummary";
 import { RideTimeEstimate } from "./RideTimeEstimate";
 import { WhoIsRiding } from "../WhoIsRiding";
 import { saveSelfDriveRoute } from "../../lib/selfdrive-route";
+import { useRegisterNavPrimaryAction } from "../../lib/nav-primary-action";
 
 const FALLBACK_CARGO_CATEGORIES: CarCategory[] = [
   { id: "peebee-cargo-van", kind: "cargo", name: "Cargo Van", seats: 2, cargo_type: "van", size_label: "Up to 800 kg", rate_per_km: 2500, minimum_fare: 15000 },
@@ -130,6 +131,27 @@ export function RideModal({
       .catch(() => { if (active) setTierOptions([]); });
     return () => { active = false; };
   }, [tierPricing, pickupLat, pickupLng, destinationLat, destinationLng]);
+
+  // "Next: payment" is the bottom nav's right capsule (an intermediate step:
+  // white in light, grey in dark), not an in-sheet button. Same handler,
+  // validation and busy state as before.
+  const navCargoList = categories.filter((c) => c.kind === "cargo" || c.id.startsWith("peebee-cargo-"));
+  const navCargo = (navCargoList.length > 0 ? navCargoList : FALLBACK_CARGO_CATEGORIES).find((c) => c.id === selectedCargoCatId);
+  const navCarOption = tierOptions.find((o) => o.size === vehicleSize && o.tier === tier);
+  const navFare = mode === "car" && carSubMode === "cargo"
+    ? navCargo ? (distanceKm != null ? roundFare(distanceKm * navCargo.rate_per_km, navCargo.minimum_fare) : navCargo.minimum_fare) : null
+    : mode === "car" && tierPricing ? navCarOption?.fare ?? null
+    : liveEstimate ?? (estimatedTotal ? Number(estimatedTotal) : null);
+  const submitDisabled = busy || (mode === "car" && carSubMode === "passenger" && (tierOptions.length === 0 || (when === "now" && !navCarOption?.nearby) || (when === "later" && !pickupAt))) || (mode === "car" && carSubMode === "cargo" && when === "later" && !pickupAt);
+  const submitShown = !choosing && !!route && !pickingWho && (!carMenuOpen || !!tierPricing || carSubMode === "cargo");
+  useRegisterNavPrimaryAction(submitShown ? {
+    tone: "step",
+    label: busy ? "Please wait…" : "Next: payment",
+    detail: navFare != null && Number.isFinite(navFare) && navFare > 0 ? `UGX ${navFare.toLocaleString("en-UG")}` : undefined,
+    disabled: submitDisabled,
+    busy,
+    onClick: () => void submit(),
+  } : null);
 
   if (choosing || !route) {
     return (
@@ -447,14 +469,6 @@ export function RideModal({
         ) : null}
 
         {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
-
-        {(!carMenuOpen || tierPricing || carSubMode === "cargo") && <button
-          onClick={submit}
-          disabled={busy || (mode === "car" && carSubMode === "passenger" && (tierOptions.length === 0 || (when === "now" && !tierOptions.find((o) => o.size === vehicleSize && o.tier === tier)?.nearby) || (when === "later" && !pickupAt))) || (mode === "car" && carSubMode === "cargo" && when === "later" && !pickupAt)}
-          className="min-h-12 w-full rounded-full bg-gold px-4 text-base font-bold text-ink-gold shadow-[0_4px_12px_rgba(201,162,39,0.35)] disabled:opacity-60"
-        >
-          {busy ? "Please wait…" : "Next: payment"}
-        </button>}
       </div>
     </Modal>
   );

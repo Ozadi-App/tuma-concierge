@@ -1,5 +1,6 @@
 "use client";
 
+import { useRegisterNavPrimaryAction } from "../../../lib/nav-primary-action";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -61,8 +62,18 @@ export default function FixPage() {
     }, 900);
   };
 
+  // Requesting the specialist is the bottom nav's gold right capsule.
+  useRegisterNavPrimaryAction(orderConfirmed ? null : {
+    tone: "gold",
+    label: isSubmitting ? "Dispatching Pro…" : "Request Fix Specialist",
+    detail: `UGX ${totalCalloutFeeUgx.toLocaleString("en-UG")}`,
+    disabled: !issueTitle.trim() || isSubmitting,
+    busy: isSubmitting,
+    onClick: () => (document.getElementById("fix-request-form") as HTMLFormElement | null)?.requestSubmit(),
+  });
+
   return (
-    <div className="min-h-screen bg-[rgb(var(--color-bg))] pb-28 pt-4 px-4 max-w-lg mx-auto text-ink">
+    <div className="min-h-screen bg-[rgb(var(--color-bg))] pb-6 pt-4 px-4 max-w-lg mx-auto text-ink">
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <button
@@ -124,7 +135,7 @@ export default function FixPage() {
           </div>
         </div>
       ) : (
-        <form onSubmit={handleSubmit} className="space-y-5">
+        <form id="fix-request-form" onSubmit={handleSubmit} className="space-y-5">
           {/* Hero Banner */}
           <div className="home-card rounded-3xl border border-gold/30 bg-gradient-to-br from-gold/15 via-gold/5 to-transparent p-5">
             <div className="flex items-start gap-3">
@@ -282,22 +293,6 @@ export default function FixPage() {
               <span className="text-base font-extrabold text-gold">UGX {totalCalloutFeeUgx.toLocaleString("en-UG")}</span>
             </div>
 
-            <button
-              type="submit"
-              disabled={!issueTitle.trim() || isSubmitting}
-              className={`w-full flex h-12 items-center justify-center gap-2 rounded-2xl bg-gold font-bold text-ink-gold shadow-[var(--shadow-glow-gold)] transition-all active:scale-95 ${
-                !issueTitle.trim() ? "opacity-50 cursor-not-allowed" : ""
-              }`}
-            >
-              {isSubmitting ? (
-                <span className="animate-pulse">Dispatching Pro...</span>
-              ) : (
-                <>
-                  <Wrench className="h-4 w-4" />
-                  <span>Request Fix Specialist</span>
-                </>
-              )}
-            </button>
             <div className="flex items-center justify-center gap-1.5 text-[11px] text-ink-500">
               <ShieldCheck className="h-3.5 w-3.5 text-gold" />
               <span>14-day warranty on all completed labor & fittings</span>

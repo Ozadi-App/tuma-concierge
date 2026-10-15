@@ -5,6 +5,7 @@ import { Route } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Modal } from "../Modal";
+import { useRegisterNavPrimaryAction } from "../../lib/nav-primary-action";
 import { PlaceFlow, type PlaceResult } from "../PlaceFlow";
 import { api, errorMessage } from "../../lib/api";
 import { useTranslate } from "../../lib/i18n";
@@ -47,6 +48,17 @@ export function ParcelModal({ onClose }: { onClose: () => void }) {
   const d = route?.destination;
   const distanceKm = p?.lat != null && p.lng != null && d?.lat != null && d.lng != null ? haversineKm(p.lat, p.lng, d.lat, d.lng) : null;
   const liveEstimate = distanceKm != null && pricing != null ? roundFare(distanceKm * pricing.ratePerKm, pricing.minimum) : null;
+
+  // "Next: payment" is the bottom nav's right capsule (intermediate step).
+  const navFare = liveEstimate ?? (estimatedTotal ? Number(estimatedTotal) : null);
+  useRegisterNavPrimaryAction(!choosing && route ? {
+    tone: "step",
+    label: busy ? "Please wait…" : "Next: payment",
+    detail: navFare != null && Number.isFinite(navFare) && navFare > 0 ? `UGX ${navFare.toLocaleString("en-UG")}` : undefined,
+    disabled: busy,
+    busy,
+    onClick: () => void submit(),
+  } : null);
 
   if (choosing || !route) {
     return (
@@ -129,14 +141,6 @@ export function ParcelModal({ onClose }: { onClose: () => void }) {
 
         {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
 
-        <button
-          type="button"
-          onClick={() => void submit()}
-          disabled={busy}
-          className="min-h-12 w-full rounded-full bg-gold px-4 text-base font-bold text-ink-gold disabled:opacity-60"
-        >
-          {busy ? "Please wait…" : "Next: payment"}
-        </button>
       </div>
     </Modal>
   );

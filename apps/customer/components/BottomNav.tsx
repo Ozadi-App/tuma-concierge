@@ -283,6 +283,28 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
                 )}
                 <ChevronRight className="customer-nav-cart__muted h-4 w-4 shrink-0" aria-hidden />
               </button>
+            ) : rightMode === "action" && primaryAction && actionTone === "step" ? (
+              <button
+                key="nav-action-step"
+                type="button"
+                onClick={primaryAction.onClick}
+                disabled={primaryAction.disabled}
+                aria-busy={primaryAction.busy || undefined}
+                aria-label={[primaryAction.label, primaryAction.sublabel, primaryAction.detail].filter(Boolean).join(", ")}
+                className="customer-nav-swap customer-nav-cart flex h-[70px] min-w-0 flex-1 items-center gap-3 rounded-[24px] px-5 transition active:scale-[0.98] disabled:opacity-60"
+              >
+                {primaryAction.busy && <Loader2 className="h-5 w-5 shrink-0 animate-spin" aria-hidden />}
+                <span className="min-w-0 flex-1 text-left">
+                  <span className="block truncate text-base font-bold leading-tight">{primaryAction.label}</span>
+                  {primaryAction.sublabel && (
+                    <span className="customer-nav-cart__muted block truncate text-[11px] font-medium">{primaryAction.sublabel}</span>
+                  )}
+                </span>
+                {primaryAction.detail && (
+                  <span className="shrink-0 text-sm font-bold tabular-nums">{primaryAction.detail}</span>
+                )}
+                <ChevronRight className="customer-nav-cart__muted h-5 w-5 shrink-0" aria-hidden />
+              </button>
             ) : rightMode === "action" && primaryAction ? (
               <button
                 key="nav-action"
@@ -298,7 +320,10 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
                   ) : (
                     <ShoppingBag className="h-5 w-5 shrink-0" strokeWidth={2.2} aria-hidden />
                   )}
-                  <span className="truncate text-base font-bold">{primaryAction.label}</span>
+                  <span className="min-w-0 text-left">
+                    <span className="block truncate text-base font-bold leading-tight">{primaryAction.label}</span>
+                    {primaryAction.sublabel && <span className="block truncate text-[11px] font-semibold opacity-80">{primaryAction.sublabel}</span>}
+                  </span>
                 </span>
                 {primaryAction.detail && (
                   <span className="shrink-0 text-sm font-bold tabular-nums opacity-90">{primaryAction.detail}</span>

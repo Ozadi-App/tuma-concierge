@@ -1,5 +1,6 @@
 "use client";
 
+import { useRegisterNavPrimaryAction } from "../../../lib/nav-primary-action";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -82,8 +83,18 @@ export default function LaundryPage() {
     }, 900);
   };
 
+  // Booking the pickup is the bottom nav's gold right capsule.
+  useRegisterNavPrimaryAction(orderConfirmed ? null : {
+    tone: "gold",
+    label: isSubmitting ? "Confirming booking…" : "Book Laundry Pickup",
+    detail: totalUgx > 0 ? `UGX ${totalUgx.toLocaleString("en-UG")}` : undefined,
+    disabled: subtotalUgx === 0 || isSubmitting,
+    busy: isSubmitting,
+    onClick: handleBookPickup,
+  });
+
   return (
-    <div className="min-h-screen bg-[rgb(var(--color-bg))] pb-28 pt-4 px-4 max-w-lg mx-auto text-ink">
+    <div className="min-h-screen bg-[rgb(var(--color-bg))] pb-6 pt-4 px-4 max-w-lg mx-auto text-ink">
       {/* Top Header */}
       <div className="flex items-center justify-between mb-4">
         <button
@@ -335,23 +346,6 @@ export default function LaundryPage() {
               <span className="text-base font-extrabold text-gold">UGX {totalUgx.toLocaleString("en-UG")}</span>
             </div>
 
-            <button
-              type="button"
-              disabled={subtotalUgx === 0 || isSubmitting}
-              onClick={handleBookPickup}
-              className={`w-full flex h-12 items-center justify-center gap-2 rounded-2xl bg-gold font-bold text-ink-gold shadow-[var(--shadow-glow-gold)] transition-all active:scale-95 ${
-                subtotalUgx === 0 ? "opacity-50 cursor-not-allowed" : ""
-              }`}
-            >
-              {isSubmitting ? (
-                <span className="animate-pulse">Confirming Booking...</span>
-              ) : (
-                <>
-                  <Calendar className="h-4 w-4" />
-                  <span>Book Laundry Pickup</span>
-                </>
-              )}
-            </button>
             <div className="flex items-center justify-center gap-1.5 text-[11px] text-ink-500">
               <ShieldCheck className="h-3.5 w-3.5 text-gold" />
               <span>Garment damage guarantee up to UGX 500,000</span>
