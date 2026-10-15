@@ -157,6 +157,15 @@ export default function StoresPage() {
           badge: p.badge,
           image_url: p.image_url,
           category_name: p.category_name,
+          // Keep options so cards can show "from" pricing and add the default option.
+          variants: Array.isArray(p.variants)
+            ? p.variants.map((v: any) => ({
+                id: String(v.id),
+                title: String(v.title),
+                price: Number(v.price) || 0,
+                compare_at_price: v.compare_at_price ? Number(v.compare_at_price) : null,
+              }))
+            : null,
         }));
         setFeaturedProducts(prods);
       }
