@@ -15,7 +15,7 @@ import { RouteSummary } from "./RouteSummary";
 import { RideTimeEstimate } from "./RideTimeEstimate";
 import { WhoIsRiding } from "../WhoIsRiding";
 import { saveSelfDriveRoute } from "../../lib/selfdrive-route";
-import { useRegisterNavPrimaryAction } from "../../lib/nav-primary-action";
+import { useRegisterNavPrimaryAction, useRegisterNavBack, goBackOr } from "../../lib/nav-primary-action";
 
 const FALLBACK_CARGO_CATEGORIES: CarCategory[] = [
   { id: "peebee-cargo-van", kind: "cargo", name: "Cargo Van", seats: 2, cargo_type: "van", size_label: "Up to 800 kg", rate_per_km: 2500, minimum_fare: 15000 },
@@ -153,12 +153,16 @@ export function RideModal({
     onClick: () => void submit(),
   } : null);
 
+  // On the fare/confirm sheet, nav Back returns to the route picker.
+  useRegisterNavBack(!choosing && !!route && !pickingWho, () => setChoosing(true));
+
   if (choosing || !route) {
     return (
       <PlaceFlow
         concept="ride"
         initial={route ? { ...route, passenger } : undefined}
         onClose={() => (route ? setChoosing(false) : onClose())}
+        onBack={() => (route ? setChoosing(false) : goBackOr(router, "/ride"))}
         onDone={(r) => {
           setRoute(r);
           if (r.passenger !== undefined) setPassenger(r.passenger);

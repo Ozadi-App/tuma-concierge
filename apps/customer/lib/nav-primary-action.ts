@@ -108,3 +108,82 @@ export function useRegisterNavPrimaryAction(action: NavPrimaryAction | null, pri
     recompute();
   }, [enabled, tone, count, sublabel, label, detail, disabled, busy, priority]);
 }
+
+/* ------------------------------------------------------------------ */
+/* Nav "Back": while a cart/checkout is open or a flow is past its     */
+/* landing step, the detached Home button becomes a one-step Back.      */
+/* Same stacking rules as the primary action: most recently activated   */
+/* (or higher priority) wins; clearing restores the previous one.       */
+/* ------------------------------------------------------------------ */
+
+type BackSlot = { handler: (() => void) | null; seq: number; priority: number };
+const backSlots = new Map<number, BackSlot>();
+let backCurrent: (() => void) | null = null;
+const backListeners = new Set<() => void>();
+
+function recomputeBack() {
+  let best: BackSlot | null = null;
+  for (const slot of backSlots.values()) {
+    if (slot.handler && (!best || slot.priority > best.priority || (slot.priority === best.priority && slot.seq > best.seq))) best = slot;
+  }
+  const next = best?.handler ?? null;
+  if (next !== backCurrent) {
+    backCurrent = next;
+    backListeners.forEach((l) => l());
+  }
+}
+
+/** The active one-step Back handler, or null when Home should show. */
+export function useNavBack(): (() => void) | null {
+  return useSyncExternalStore(
+    (l) => {
+      backListeners.add(l);
+      return () => backListeners.delete(l);
+    },
+    () => backCurrent,
+    () => null,
+  );
+}
+
+/** While `active`, the nav shows Back and runs `onBack` (latest closure) when tapped. */
+export function useRegisterNavBack(active: boolean, onBack: () => void, priority = 0) {
+  const handlerRef = useRef(onBack);
+  handlerRef.current = onBack;
+  const idRef = useRef<number | null>(null);
+  if (idRef.current === null) idRef.current = nextId++;
+
+  useEffect(() => {
+    const id = idRef.current!;
+    return () => {
+      backSlots.delete(id);
+      recomputeBack();
+    };
+  }, []);
+
+  useEffect(() => {
+    const id = idRef.current!;
+    const prev = backSlots.get(id);
+    if (!active) {
+      backSlots.set(id, { handler: null, seq: prev?.seq ?? 0, priority });
+    } else {
+      const seq = prev?.handler ? prev.seq : nextSeq++;
+      // A stable wrapper per activation so subscribers don't churn on re-renders.
+      backSlots.set(id, { handler: prev?.handler ?? (() => handlerRef.current()), seq, priority });
+    }
+    recomputeBack();
+  }, [active, priority]);
+}
+
+/* In-app history: lets "Back" use router.back() only when the previous
+   screen is inside the app; otherwise it goes to the module's parent route. */
+let inAppNavigations = 0;
+export function noteInAppNavigation() {
+  inAppNavigations += 1;
+}
+export function hasInAppHistory() {
+  return inAppNavigations > 1;
+}
+export function goBackOr(router: { back: () => void; push: (href: string) => void }, fallback: string) {
+  if (hasInAppHistory()) router.back();
+  else router.push(fallback);
+}

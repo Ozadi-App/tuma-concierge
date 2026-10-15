@@ -22,7 +22,7 @@ import { ProductImage } from "../../components/ProductImage";
 import { RoundCheck } from "../../components/marketplace/MarketplaceUI";
 import { api, errorMessage } from "../../lib/api";
 import { getCachedCustomerCoordinates } from "../../lib/location";
-import { useRegisterNavPrimaryAction } from "../../lib/nav-primary-action";
+import { useRegisterNavPrimaryAction, useRegisterNavBack, goBackOr } from "../../lib/nav-primary-action";
 
 export default function CartPage() {
   const router = useRouter();
@@ -90,6 +90,8 @@ export default function CartPage() {
 
   // Checkout lives in the bottom nav (gold button replacing its right capsule)
   // instead of a floating pay bar on top of the nav. Same handler, same states.
+  // On /cart the nav's Home is Back: return to the shopping screen they came from.
+  useRegisterNavBack(true, () => goBackOr(router, "/shopping"));
   useRegisterNavPrimaryAction(
     mounted && items.length > 0
       ? {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRegisterNavPrimaryAction } from "../../lib/nav-primary-action";
+import { useRegisterNavPrimaryAction, useRegisterNavBack } from "../../lib/nav-primary-action";
 import type { Rental, RentalInspection, RentalVehicle, SelfDriveResidenceMethod, SelfDriveRenterKycProfile } from "@peebee/shared";
 import { ChevronLeft } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -237,6 +237,11 @@ export default function RentPage() {
   // details step submits the form so its built-in field validation still runs.
   const rentalTotal = selectedVehicle ? rentalQuote(selectedVehicle, periodType, hourCount) + selectedVehicle.deposit : 0;
   const periodOff = !!selectedVehicle && ((periodType === "hourly" && selectedVehicle.hourlyEnabled === false) || (periodType === "half_day" && selectedVehicle.halfDayEnabled === false) || (periodType === "full_day" && selectedVehicle.fullDayEnabled === false));
+  // Booking steps: Back goes payment → details → available cars.
+  useRegisterNavBack(!!selectedVehicle && !!bookingStep, () => {
+    if (bookingStep === "payment") { setBookingStep("details"); return; }
+    setSelectedVehicle(null); setPendingVehicle(null); setBookingStep(null); setKycOpen(false); setError(""); setNotice("");
+  });
   useRegisterNavPrimaryAction(
     selectedVehicle && bookingStep === "details"
       ? {

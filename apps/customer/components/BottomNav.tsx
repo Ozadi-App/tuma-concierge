@@ -11,6 +11,7 @@ import {
   Car,
   CarFront,
   ChefHat,
+  ChevronLeft,
   ChevronRight,
   Loader2,
   Citrus,
@@ -44,7 +45,7 @@ import { useLivePolling } from "../lib/use-live-polling";
 import { BottomDrawer } from "./BottomDrawer";
 import { CartDrawer } from "./CartDrawer";
 import { useCart } from "../lib/cart";
-import { useNavPrimaryAction } from "../lib/nav-primary-action";
+import { useNavBack, useNavPrimaryAction } from "../lib/nav-primary-action";
 
 type MenuGroup = "original" | "ride" | "shopping" | "food" | "deliver" | "services";
 type MenuItem = { id: string; label: string; icon: LucideIcon; href?: string; group?: Exclude<MenuGroup, "original">; disabled?: boolean };
@@ -115,6 +116,8 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
   const t = useTranslate();
   const { totalQuantity: cartCount, total: cartTotal } = useCart();
   const primaryAction = useNavPrimaryAction();
+  // A cart/checkout or a flow step is open: Home becomes a one-step Back.
+  const navBack = useNavBack();
   const [cartOpen, setCartOpen] = useState(false);
 
   // Right-hand capsule mode:
@@ -234,7 +237,20 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
           <div className="pointer-events-auto flex w-full items-center gap-1.5">
             {/* Detached Home Capsule on Left */}
             <div className="customer-nav-capsule flex w-[64px] sm:w-[72px] shrink-0 items-center justify-center rounded-[24px] p-1.5 shadow-[var(--shadow-float-capsule)]">
+              {navBack ? (
               <button
+                key="nav-back"
+                type="button"
+                aria-label="Back"
+                onClick={navBack}
+                className="customer-nav-item customer-nav-icon-swap relative flex h-[58px] w-full flex-col items-center justify-center gap-1 rounded-[18px] px-1 py-1 text-[11px] font-bold transition-all duration-200 active:scale-95"
+              >
+                <ChevronLeft className="h-5 w-5" strokeWidth={2.2} aria-hidden />
+                <span className="leading-none truncate max-w-[54px]">Back</span>
+              </button>
+              ) : (
+              <button
+                key="nav-home"
                 type="button"
                 aria-label="Home and reset menu"
                 aria-current={pathname === "/" ? "page" : undefined}
@@ -243,7 +259,7 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
                   setSelectedItem(null);
                   router.push("/");
                 }}
-                className={`customer-nav-item relative flex h-[58px] w-full flex-col items-center justify-center gap-1 rounded-[18px] px-1 py-1 text-[11px] font-bold transition-all duration-200 active:scale-95 ${
+                className={`customer-nav-item customer-nav-icon-swap relative flex h-[58px] w-full flex-col items-center justify-center gap-1 rounded-[18px] px-1 py-1 text-[11px] font-bold transition-all duration-200 active:scale-95 ${
                   pathname === "/" ? "is-active" : ""
                 }`}
               >
@@ -256,6 +272,7 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
                   />
                 )}
               </button>
+              )}
             </div>
 
             {rightMode === "action" && primaryAction && actionTone === "cart" ? (
@@ -265,17 +282,16 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
                 onClick={primaryAction.onClick}
                 disabled={primaryAction.disabled}
                 aria-label={[primaryAction.label, primaryAction.sublabel, primaryAction.detail].filter(Boolean).join(", ")}
-                className="customer-nav-cart flex min-w-0 items-center gap-2 pl-2 pr-2.5 transition active:scale-[0.98] disabled:opacity-60 h-full w-full rounded-[18px]"
+                className="customer-nav-cart flex min-w-0 items-center gap-2 pl-2 pr-2.5 transition active:scale-[0.98] h-full w-full rounded-[18px]"
               >
-                <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-[13px] bg-gold/15 text-gold max-[380px]:h-9 max-[380px]:w-9">
-                  <ShoppingBag className="h-[18px] w-[18px]" strokeWidth={2.2} aria-hidden />
-                  {primaryAction.count != null && (
-                    <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-gold px-1 text-[10px] font-black text-ink-gold">
-                      {primaryAction.count}
-                    </span>
+                <span className="customer-nav-tile flex h-10 w-10 shrink-0 items-center justify-center rounded-[13px] max-[380px]:h-9 max-[380px]:w-9">
+                  {primaryAction.count != null ? (
+                    <span className="text-[15px] font-black tabular-nums leading-none">{primaryAction.count}</span>
+                  ) : (
+                    <ShoppingBag className="h-[18px] w-[18px]" strokeWidth={2.2} aria-hidden />
                   )}
                 </span>
-                <span className="min-w-0 flex-1 text-left">
+                <span className="ml-1 min-w-0 flex-1 text-left">
                   <span className="block truncate whitespace-nowrap text-sm font-bold leading-tight">{primaryAction.label}</span>
                   {primaryAction.sublabel && (
                     <span className="customer-nav-cart__muted block truncate whitespace-nowrap text-[11px] font-medium">{primaryAction.sublabel}</span>
@@ -295,7 +311,7 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
                 disabled={primaryAction.disabled}
                 aria-busy={primaryAction.busy || undefined}
                 aria-label={[primaryAction.label, primaryAction.sublabel, primaryAction.detail].filter(Boolean).join(", ")}
-                className="customer-nav-cart flex min-w-0 items-center gap-2 pl-4 pr-3 transition active:scale-[0.98] disabled:opacity-60 h-full w-full rounded-[18px]"
+                className="customer-nav-cart flex min-w-0 items-center gap-2 pl-4 pr-3 transition active:scale-[0.98] h-full w-full rounded-[18px]"
               >
                 {primaryAction.busy && <Loader2 className="h-5 w-5 shrink-0 animate-spin" aria-hidden />}
                 <span className="min-w-0 flex-1 text-left">
@@ -317,7 +333,7 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
                 onClick={primaryAction.onClick}
                 disabled={primaryAction.disabled}
                 aria-busy={primaryAction.busy || undefined}
-                className="customer-nav-checkout flex min-w-0 items-center justify-between gap-2 pl-4 pr-3.5 transition active:scale-[0.98] disabled:opacity-60 h-full w-full rounded-[18px]"
+                className="customer-nav-checkout flex min-w-0 items-center justify-between gap-2 pl-4 pr-3.5 transition active:scale-[0.98] h-full w-full rounded-[18px]"
               >
                 <span className="flex min-w-0 items-center gap-2">
                   {primaryAction.busy ? (
@@ -344,13 +360,10 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
                 aria-haspopup="dialog"
                 className="customer-nav-cart flex min-w-0 items-center gap-2 pl-2 pr-2.5 transition active:scale-[0.98] h-full w-full rounded-[18px]"
               >
-                <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-[13px] bg-gold/15 text-gold max-[380px]:h-9 max-[380px]:w-9">
-                  <ShoppingBag className="h-[18px] w-[18px]" strokeWidth={2.2} aria-hidden />
-                  <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-gold px-1 text-[10px] font-black text-ink-gold">
-                    {cartCount}
-                  </span>
+                <span className="customer-nav-tile flex h-10 w-10 shrink-0 items-center justify-center rounded-[13px] max-[380px]:h-9 max-[380px]:w-9">
+                  <span className="text-[15px] font-black tabular-nums leading-none">{cartCount}</span>
                 </span>
-                <span className="min-w-0 flex-1 text-left">
+                <span className="ml-1 min-w-0 flex-1 text-left">
                   <span className="block truncate whitespace-nowrap text-sm font-bold leading-tight">View cart</span>
                   <span className="customer-nav-cart__muted block truncate whitespace-nowrap text-[11px] font-medium">
                     {cartCount} item{cartCount === 1 ? "" : "s"}

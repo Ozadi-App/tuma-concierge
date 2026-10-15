@@ -16,7 +16,7 @@ import { DishReviews } from "../../../components/DishReviews";
 import { BusinessLogo } from "../../../components/BusinessLogo";
 import { useAuth } from "../../../lib/auth-context";
 import { api, errorMessage } from "../../../lib/api";
-import { useRegisterNavPrimaryAction } from "../../../lib/nav-primary-action";
+import { useRegisterNavPrimaryAction, useRegisterNavBack } from "../../../lib/nav-primary-action";
 import { useTranslate } from "../../../lib/i18n";
 import { formatUgx } from "../../../lib/order-display";
 
@@ -994,6 +994,8 @@ export default function RestaurantPage() {
   const onCheckoutStep = checkoutRequested || step === "checkout";
   const orderingUnavailable = !!restaurant && !!restaurant.is_demo && !restaurant.demo_checkout_enabled;
   const estimatedFee = selectedBundle ? bundleExtraDeliveryFee : estimatedDeliveryFee;
+  // Checkout step: nav Back returns to the menu (the place picker has its own Back).
+  useRegisterNavBack(!!restaurant && (checkoutRequested || step === "checkout"), backToMenu);
   useRegisterNavPrimaryAction(
     !restaurant || !menu || itemId || cart.length === 0
       ? null

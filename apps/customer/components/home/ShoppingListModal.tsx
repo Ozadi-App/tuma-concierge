@@ -1,6 +1,6 @@
 "use client";
 
-import { useRegisterNavPrimaryAction } from "../../lib/nav-primary-action";
+import { useRegisterNavPrimaryAction, useRegisterNavBack } from "../../lib/nav-primary-action";
 import { DEFAULT_SHOPPING_UNIT_SETTINGS, roundFare, serializeShoppingItem, shoppingItemTotal, type ShoppingUnitSettings } from "@peebee/shared";
 import { List, Mic, Plus } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -140,6 +140,9 @@ export function ShoppingListModal({ onClose }: { onClose: () => void }) {
         ? { tone: "step", label: busy ? "Please wait…" : "Next: payment", detail: total > 0 ? currency(total) : undefined, disabled: busy, busy, onClick: () => void submit().catch(() => {}) }
         : null,
   );
+
+  // Delivery step: nav Back returns to the list (the picker handles its own Back).
+  useRegisterNavBack(step === "location" && !choosing && !!delivery, () => setStep("items"));
 
   return (
     <Modal withMap heroImage={step === "items" ? "/brand/auth-illustration.webp" : undefined} title={step === "items" ? t("list_title") : t("list_delivery_location")} onClose={onClose}>
