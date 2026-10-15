@@ -1,0 +1,42 @@
+/* Spotlight feed: immersive, low-noise overlays. Uses existing tokens only. */
+.sl-root { --sl-ease: cubic-bezier(0.22, 1, 0.36, 1); --sl-dur: 420ms; }
+
+/* Idle transparency: overlays rest at ~0.55 and become fully opaque while the
+   viewer is interacting (tap / hover / keyboard focus), then fade back. */
+.sl-idle { opacity: .55; transition: opacity 320ms ease; }
+[data-active="true"] .sl-idle,
+.sl-idle:focus-within { opacity: 1; }
+
+/* Live comments fade out towards the vertical middle of the screen. The
+   container spans from the midpoint down to the bottom controls, so the mask
+   reaches full transparency right at the midpoint. */
+.sl-live-comments {
+  -webkit-mask-image: linear-gradient(to top, #000 0%, #000 45%, transparent 100%);
+          mask-image: linear-gradient(to top, #000 0%, #000 45%, transparent 100%);
+}
+@keyframes sl-comment-in { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
+.sl-comment-in { animation: sl-comment-in 360ms var(--sl-ease) both; }
+
+/* Cover-show / reveal drawer for VOD and images. The comments panel already
+   sits behind the media; the media slides left by 90% (leaving a 10% slice)
+   while the panel zooms in from .96 to 1. --sl-p is 0 (closed) .. 1 (open). */
+.sl-stage { --sl-p: 0; touch-action: pan-y; }
+.sl-media {
+  transform: translate3d(calc(var(--sl-p) * -90%), 0, 0);
+  transition: transform var(--sl-dur) var(--sl-ease), border-radius var(--sl-dur) var(--sl-ease);
+  will-change: transform;
+}
+.sl-stage[data-open="true"] .sl-media { border-top-right-radius: 20px; border-bottom-right-radius: 20px; }
+.sl-panel {
+  opacity: var(--sl-p);
+  transform: scale(calc(0.96 + 0.04 * var(--sl-p)));
+  transform-origin: 70% 50%;
+  transition: opacity var(--sl-dur) var(--sl-ease), transform var(--sl-dur) var(--sl-ease);
+}
+.sl-stage[data-dragging="true"] .sl-media,
+.sl-stage[data-dragging="true"] .sl-panel { transition: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .sl-idle, .sl-media, .sl-panel { transition: none; }
+  .sl-comment-in { animation: none; }
+}
