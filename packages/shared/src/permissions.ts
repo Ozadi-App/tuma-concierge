@@ -61,6 +61,8 @@ export type Permission =
   | "settings.view"
   | "settings.manage"
   | "car.view"
+  | "work.view"
+  | "work.manage"
   | "car.manage"
   | "staff.manage"
   | "activity_log.view"
@@ -79,10 +81,10 @@ const ROLE_PERMISSIONS: Record<AdminRole, readonly Permission[]> = {
   // edit at the same time, which is exactly the failure mode to avoid for
   // the one role that's supposed to mean "everything".
   super_admin: [],
-  finance_manager: ["stats.view", "orders.view", "payments.view", "payments.manage", "wallets.manage", "integrations.view", "merchants.view", "merchant_finance.manage"],
+  finance_manager: ["stats.view", "orders.view", "payments.view", "payments.manage", "wallets.manage", "integrations.view", "merchants.view", "merchant_finance.manage", "work.view"],
   customer_manager: ["stats.view", "orders.view", "customers.view", "customers.manage", "chat.view_support"],
   rider_manager: ["stats.view", "orders.view", "riders.view", "riders.verify", "riders.manage"],
-  support_manager: ["stats.view", "orders.view", "customers.view", "riders.view", "chat.view_support"],
+  support_manager: ["stats.view", "orders.view", "customers.view", "riders.view", "chat.view_support", "work.view"],
   operations_manager: [
     "stats.view",
     "orders.view",
@@ -91,13 +93,15 @@ const ROLE_PERMISSIONS: Record<AdminRole, readonly Permission[]> = {
     "settings.manage",
     "car.view",
     "car.manage",
+    "work.view",
+    "work.manage",
     "integrations.view",
     "restaurants.view",
     "restaurants.manage",
     "merchants.view",
     "merchants.manage",
   ],
-  compliance_manager: ["stats.view", "orders.view", "riders.view", "customers.view", "restaurants.view", "merchants.view", "activity_log.view"],
+  compliance_manager: ["stats.view", "orders.view", "riders.view", "customers.view", "restaurants.view", "merchants.view", "activity_log.view", "work.view"],
 };
 
 export function hasPermission(role: AdminRole | null | undefined, permission: Permission): boolean {
@@ -127,6 +131,8 @@ const ALL_PERMISSIONS: Permission[] = [
   "settings.manage",
   "car.view",
   "car.manage",
+  "work.view",
+  "work.manage",
   "staff.manage",
   "activity_log.view",
   "activity_log.revert",

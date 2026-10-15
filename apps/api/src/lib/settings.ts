@@ -375,6 +375,27 @@ const DEFAULTS = {
   marketplace_min_order_amount: "5000",
   marketplace_live_max_duration_mins: "180",
   marketplace_delivery_base_fee: "3000",
+  /** Peebee Work: clean / fix / laundry jobs done by independent providers and companies */
+  work_enabled: "1",
+  work_service_types: "clean",
+  work_pricing_modes: "fixed,quote",
+  work_matching_modes: "broadcast,customer_picks",
+  work_default_matching: "broadcast",
+  work_provider_kinds: "individual,company",
+  work_commission_percent: "15",
+  work_require_approval: "1",
+  work_offer_window_minutes: "60",
+  work_radius_km: "15",
+  work_max_notified: "20",
+  work_min_lead_minutes: "30",
+  work_max_advance_days: "30",
+  work_quote_valid_hours: "24",
+  work_max_quote_ugx: "5000000",
+  work_free_cancel_minutes: "10",
+  work_late_cancel_fee_percent: "20",
+  work_auto_confirm_hours: "24",
+  work_dispute_window_hours: "48",
+  work_jobs_per_hour: "6",
 } as const;
 
 export type SettingKey = keyof typeof DEFAULTS;
