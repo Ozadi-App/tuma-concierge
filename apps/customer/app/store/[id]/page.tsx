@@ -3,23 +3,12 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import {
-  ArrowLeft,
-  ChevronRight,
-  Flame,
-  LayoutGrid,
-  Radio,
-  Search,
-  SlidersHorizontal,
-  Sparkles,
-  Store,
-  X,
-} from "lucide-react";
+import { ChevronRight, LayoutGrid } from "lucide-react";
 import { api, errorMessage } from "../../../lib/api";
 import { LiveStreamChannel, LiveStreamViewer, PinnedProduct } from "../../../components/LiveStreamViewer";
-import { ProductCard } from "../../../components/ProductCard";
+import { CategoryChips, MarketProductCard, MarketSearchBar, softCard, ugx } from "../../../components/marketplace/MarketplaceUI";
 import { ProductImage } from "../../../components/ProductImage";
-import { useCart } from "../../../lib/cart";
+import { addToCart, useCart } from "../../../lib/cart";
 import { CartDrawer, CartDrawerTrigger } from "../../../components/CartDrawer";
 import { useCustomerLocation, formatDistanceKm, haversineKm } from "../../../lib/location";
 
@@ -80,8 +69,9 @@ export default function StoreDetailPage() {
   const [store, setStore] = useState<StoreDetail | null>(null);
   const [products, setProducts] = useState<StoreProduct[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
-  const [activeTab, setActiveTab] = useState<"All" | "Popular" | "Recent" | "Recommended">("All");
-  const [selectedCategory, setSelectedCategory] = useState<string>("All");
+  // "All", "Deals" (badged or discounted items) or one of the store's categories.
+  const [activeChip, setActiveChip] = useState<string>("All");
+  const [filtersOpen, setFiltersOpen] = useState(true);
   const [error, setError] = useState("");
   const [showLiveViewer, setShowLiveViewer] = useState(false);
   const [cartDrawerOpen, setCartDrawerOpen] = useState(false);
@@ -139,21 +129,11 @@ export default function StoreDetailPage() {
     };
   }, [storeId, userLat, userLng]);
 
-  // Filter Products by Tab, Search, and Category
-  const filteredProducts = products.filter((p) => {
-    if (activeTab === "Popular" && !p.badge && (!p.compare_at_price || p.compare_at_price <= p.price)) {
-      return false;
-    }
-    if (activeTab === "Recent" && p.badge !== "New" && p.badge !== "Trending" && p.badge !== "Limited Drop") {
-      // allow recent items
-    }
-    if (activeTab === "Recommended" && !p.badge && !p.has_variants) {
-      // allow recommended items
-    }
+  const isDeal = (p: StoreProduct) => !!p.badge || (p.compare_at_price != null && p.compare_at_price > p.price);
 
-    if (selectedCategory !== "All" && p.category_name !== selectedCategory) {
-      return false;
-    }
+  const filteredProducts = products.filter((p) => {
+    if (activeChip === "Deals" && !isDeal(p)) return false;
+    if (activeChip !== "All" && activeChip !== "Deals" && p.category_name !== activeChip) return false;
 
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
@@ -166,14 +146,41 @@ export default function StoreDetailPage() {
     return true;
   });
 
-  const categories = [
+  const categoryNames = Array.from(
+    new Set(products.map((p) => p.category_name).filter((c): c is string => !!c)),
+  );
+  const chips = [
     "All",
-    ...Array.from(new Set(products.map((p) => p.category_name).filter(Boolean))),
+    ...(products.some(isDeal) ? ["Deals"] : []),
+    ...(categoryNames.length > 1 ? categoryNames : []),
   ];
 
   const promoProduct =
     products.find((p) => p.compare_at_price && p.compare_at_price > p.price) ||
     products[0];
+  const promoDiscount =
+    promoProduct?.compare_at_price && promoProduct.compare_at_price > promoProduct.price
+      ? Math.round(((promoProduct.compare_at_price - promoProduct.price) / promoProduct.compare_at_price) * 100)
+      : 0;
+
+  // Same default as the product page: first variant when the product has variants.
+  function addProduct(p: StoreProduct) {
+    const v = p.variants?.[0];
+    addToCart({
+      productId: p.id,
+      storeId: p.store_id,
+      storeName: store?.name || "Partner Store",
+      storeSlug: store?.slug,
+      title: p.title,
+      variantId: v?.id,
+      variantTitle: v?.title,
+      price: v?.price ?? p.price,
+      compareAtPrice: (v?.compare_at_price ?? p.compare_at_price) || undefined,
+      imageUrl: p.image_url || undefined,
+      category: p.category_name || undefined,
+      quantity: 1,
+    });
+  }
 
   if (loading) {
     return (
@@ -269,193 +276,109 @@ export default function StoreDetailPage() {
         </div>
       </header>
 
-      {/* =========================================================================
-          SEARCH & FILTER BAR (Screen 1 with field-box)
-      ========================================================================= */}
-      <div className="flex items-center gap-2.5 mt-3">
-        <div className="field-box flex-1 flex items-center rounded-2xl px-3.5 py-3 shadow-xs">
-          <Search className="h-4 w-4 text-ink-500 mr-2.5 shrink-0" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder={`Search ${store.name}…`}
-            className="w-full text-xs font-semibold outline-none bg-transparent placeholder:text-ink-500/70"
-          />
-          {searchQuery && (
-            <button
-              type="button"
-              onClick={() => setSearchQuery("")}
-              className="text-ink-500"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          )}
-        </div>
-
-        <button
-          type="button"
-          onClick={() => {
-            const nextTab =
-              activeTab === "All"
-                ? "Popular"
-                : activeTab === "Popular"
-                ? "Recent"
-                : activeTab === "Recent"
-                ? "Recommended"
-                : "All";
-            setActiveTab(nextTab);
-          }}
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gold/15 text-gold border border-gold/30 transition-transform active:scale-95 shadow-xs"
-          aria-label="Filter"
-          title={`Filter: ${activeTab}`}
-        >
-          <SlidersHorizontal className="h-4 w-4" />
-        </button>
+      {/* Search + filter toggle (shared marketplace search bar). */}
+      <div className="mt-3">
+        <MarketSearchBar
+          value={searchQuery}
+          onChange={setSearchQuery}
+          placeholder={`Search ${store.name}…`}
+          filtersOpen={filtersOpen}
+          onToggleFilters={() => setFiltersOpen((v) => !v)}
+        />
       </div>
 
-      {/* =========================================================================
-          HERO PROMO BANNER: "Big Sale" / Store Feature (Inspiration Screen 1)
-      ========================================================================= */}
+      {/* Featured deal: compact, one line of copy. */}
       {promoProduct && (
         <Link
           href={`/product/${promoProduct.id}`}
-          className="block relative overflow-hidden rounded-[28px] border border-gold/30 bg-gradient-to-r from-gold/25 via-gold/10 to-surface-card p-4 mt-4 shadow-sm group transition-transform hover:scale-[1.01]"
+          className={`${softCard} mt-4 flex items-center gap-3 p-2.5 pr-4 transition active:scale-[0.99]`}
         >
-          <div className="flex items-center justify-between gap-3">
-            {/* Promo Graphic */}
-            <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-2xl bg-neutral-900 shadow-md">
-              <ProductImage
-                src={promoProduct.image_url}
-                alt={promoProduct.title}
-                category={promoProduct.category_name || undefined}
-                className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-                aspectRatio="square"
-              />
-              <span className="absolute bottom-1 right-1 z-10 rounded-full bg-gold px-1.5 py-0.5 text-[9px] font-black text-ink-gold shadow-xs">
-                HOT
-              </span>
-            </div>
-
-            {/* Promo Copy */}
-            <div className="flex-1 min-w-0 pr-1">
-              <span className="rounded-full bg-gold/25 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-gold">
-                Big Sale
-              </span>
-              <h2 className="text-sm font-extrabold text-ink mt-1 truncate">
-                {promoProduct.title}
-              </h2>
-              <p className="text-[11px] text-ink-500 line-clamp-2 mt-0.5 leading-snug">
-                {promoProduct.description || "Discover featured items at up to 40% discount with fast citywide dispatch."}
-              </p>
-              <div className="mt-2 text-[11px] font-bold text-gold flex items-center gap-1">
-                <span>View Product</span>
-                <ChevronRight className="h-3 w-3" />
-              </div>
-            </div>
+          <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-[16px] bg-[rgb(var(--surface-muted))]">
+            <ProductImage
+              src={promoProduct.image_url}
+              alt={promoProduct.title}
+              category={promoProduct.category_name || undefined}
+              className="h-full w-full object-cover"
+              aspectRatio="square"
+            />
           </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-gold">
+              {promoDiscount ? `Featured deal · -${promoDiscount}%` : "Featured"}
+            </p>
+            <h2 className="mt-0.5 truncate text-sm font-bold text-ink">{promoProduct.title}</h2>
+            <p className="mt-0.5 whitespace-nowrap text-xs font-semibold tabular-nums text-ink">
+              {ugx(promoProduct.price)}
+              {promoDiscount ? (
+                <span className="ml-1.5 text-[10px] font-medium text-ink-500 line-through">
+                  {Number(promoProduct.compare_at_price).toLocaleString()}
+                </span>
+              ) : null}
+            </p>
+          </div>
+          <ChevronRight className="h-4 w-4 shrink-0 text-ink-500" aria-hidden />
         </Link>
       )}
 
-      {/* Live Stream Alert (if Store is broadcasting Live) */}
-      {store.is_live && (
+      {/* Live now: slim row instead of a full-width banner. */}
+      {store.is_live ? (
         <button
           type="button"
           onClick={() => setShowLiveViewer(true)}
-          className="mt-3 w-full flex items-center justify-between rounded-2xl bg-gradient-to-r from-red-600 to-rose-600 p-3 text-white shadow-md transition-transform active:scale-98"
+          className={`${softCard} mt-3 flex w-full items-center gap-3 px-3.5 py-2.5 text-left transition active:scale-[0.99]`}
         >
-          <div className="flex items-center gap-2">
-            <span className="flex h-2.5 w-2.5 rounded-full bg-white animate-ping" />
-            <span className="text-xs font-bold uppercase tracking-wide">
-              Live Stream Broadcast Active
-            </span>
-          </div>
-          <span className="rounded-full bg-black/40 px-2.5 py-0.5 text-[10px] font-bold">
-            Watch & Buy →
+          <span className="relative flex h-2.5 w-2.5 shrink-0">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-60" />
+            <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-red-600" />
           </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-[10px] font-bold uppercase tracking-wider text-red-600">Live now</span>
+            <span className="block truncate text-xs font-semibold text-ink">
+              {store.live_channel_title || `${store.name} is live`}
+            </span>
+          </span>
+          <span className="shrink-0 rounded-full bg-gold px-3 py-1.5 text-[11px] font-bold text-ink-gold">Watch</span>
         </button>
-      )}
+      ) : null}
 
-      {/* =========================================================================
-          SEGMENTED FILTER TABS (Screen 1: All, Popular, Recent, Recommended)
-      ========================================================================= */}
-      <div className="flex items-center gap-2 py-3 overflow-x-auto no-scrollbar scrollbar-none">
-        {(["All", "Popular", "Recent", "Recommended"] as const).map((tab) => {
-          const active = activeTab === tab;
-          return (
-            <button
-              key={tab}
-              type="button"
-              onClick={() => setActiveTab(tab)}
-              className={`shrink-0 rounded-full px-4 py-2 text-xs font-bold transition-all active:scale-95 ${
-                active
-                  ? "bg-gold text-ink-gold shadow-sm font-extrabold"
-                  : "bg-surface-subtle text-ink-500 border border-surface-border hover:text-ink"
-              }`}
-            >
-              {tab}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Category Pills (Sub-filters) */}
-      {categories.length > 2 && (
-        <div className="flex gap-1.5 overflow-x-auto no-scrollbar pb-2 scrollbar-none text-[11px]">
-          {categories.map((cat) => (
-            <button
-              key={cat}
-              type="button"
-              onClick={() => setSelectedCategory(cat || "All")}
-              className={`shrink-0 rounded-xl px-2.5 py-1 font-semibold transition ${
-                selectedCategory === cat
-                  ? "bg-ink text-cream"
-                  : "bg-surface-card text-ink-500 border border-surface-border"
-              }`}
-            >
-              {cat}
-            </button>
-          ))}
+      {/* One chip row: All, Deals and the store's own categories. */}
+      {filtersOpen && chips.length > 1 && (
+        <div className="mt-3">
+          <CategoryChips items={chips} active={activeChip} onSelect={setActiveChip} />
         </div>
       )}
 
       {/* =========================================================================
-          2-COLUMN PRODUCT GRID (Screen 1 using Image 1 ProductCards)
+          2-COLUMN PRODUCT GRID
       ========================================================================= */}
-      <section className="mt-1 space-y-3">
-        <div className="flex items-center justify-between text-xs text-ink-500 font-semibold px-0.5">
-          <span>{filteredProducts.length} items found</span>
-          <span>Delivery 20-35 mins</span>
-        </div>
+      <section className="mt-3">
+        <p className="mb-3 px-0.5 text-[11px] font-medium text-ink-500">
+          {filteredProducts.length} item{filteredProducts.length === 1 ? "" : "s"} · Delivery 20–35 min
+        </p>
 
         {filteredProducts.length === 0 ? (
-          <div className="rounded-3xl border border-surface-border bg-surface-card p-8 text-center space-y-2">
+          <div className={`${softCard} space-y-2 p-8 text-center`}>
             <p className="text-sm font-bold text-ink">No items match your filter</p>
-            <p className="text-xs text-ink-500">
-              Try switching to the &quot;All&quot; tab or clearing your search keywords.
-            </p>
+            <p className="text-xs text-ink-500">Try &quot;All&quot; or clear your search.</p>
             <button
               type="button"
               onClick={() => {
-                setActiveTab("All");
-                setSelectedCategory("All");
+                setActiveChip("All");
                 setSearchQuery("");
               }}
               className="mt-2 text-xs font-bold text-gold underline"
             >
-              Reset Filters
+              Reset filters
             </button>
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-x-3 gap-y-5">
             {filteredProducts.map((p) => (
-              <ProductCard
+              <MarketProductCard
                 key={p.id}
-                product={{
-                  ...p,
-                  variants: p.variants,
-                }}
-                storeName={store.name}
+                product={p}
+                fallbackCategory={store.category}
+                onAdd={() => addProduct(p)}
               />
             ))}
           </div>
@@ -512,7 +435,7 @@ export default function StoreDetailPage() {
               : null
           }
           onAddToCart={() => {
-            // Added via live stream
+            if (promoProduct) addProduct(promoProduct);
           }}
         />
       )}

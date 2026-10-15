@@ -6,9 +6,9 @@
  * rounded corners and soft shadows, using Peebee's existing colour tokens
  * only (gold is the accent; no new colours are introduced).
  */
-import { MapPin, Plus, Search, SlidersHorizontal, X } from "lucide-react";
+import { Check, MapPin, Plus, Search, SlidersHorizontal, X } from "lucide-react";
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { useAuth } from "../../lib/auth-context";
 import { useLocationLabel } from "../../lib/use-location-label";
 import { ProductImage } from "../ProductImage";
@@ -163,11 +163,26 @@ export type MarketProduct = {
   category_name?: string | null;
 };
 
-/** Rounded image card: tap the image/name for detail, round button adds to cart. */
+/**
+ * Rounded image card: tap the image/name for detail, round button adds to cart.
+ * Shows only the essentials: image, one-line name, one-line price (strike
+ * price small and optional) and at most one small badge.
+ */
 export function MarketProductCard({ product, fallbackCategory, onAdd }: { product: MarketProduct; fallbackCategory?: string; onAdd: () => void }) {
+  const [added, setAdded] = useState(false);
   const onSale = product.compare_at_price != null && product.compare_at_price > product.price;
+  const discount = onSale ? Math.round(((product.compare_at_price! - product.price) / product.compare_at_price!) * 100) : 0;
+  // One badge at most: a real discount beats a merchandising tag.
+  const badge = discount >= 5 ? `-${discount}%` : product.badge || null;
+
+  function handleAdd() {
+    onAdd();
+    setAdded(true);
+    window.setTimeout(() => setAdded(false), 1200);
+  }
+
   return (
-    <article className="flex flex-col">
+    <article className="flex min-w-0 flex-col">
       <Link href={`/product/${product.id}`} className="group block">
         <div className="relative aspect-[4/5] w-full overflow-hidden rounded-[22px] bg-[rgb(var(--surface-muted))] shadow-[var(--shadow-card)]">
           <ProductImage
@@ -176,33 +191,34 @@ export function MarketProductCard({ product, fallbackCategory, onAdd }: { produc
             category={product.category_name || fallbackCategory}
             className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
           />
-          {product.badge && (
-            <span className="absolute left-2.5 top-2.5 z-10 rounded-full bg-[rgb(var(--surface-card)/.92)] px-2.5 py-1 text-[10px] font-semibold text-ink shadow-sm">
-              {product.badge}
-            </span>
-          )}
-          {onSale && (
-            <span className="absolute right-2.5 top-2.5 z-10 rounded-full bg-red-600 px-2 py-0.5 text-[10px] font-semibold text-white">
-              Sale
+          {badge && (
+            <span className="absolute left-2.5 top-2.5 z-10 max-w-[75%] truncate rounded-full bg-[rgb(var(--surface-card)/.92)] px-2.5 py-1 text-[10px] font-semibold text-ink shadow-sm">
+              {badge}
             </span>
           )}
         </div>
       </Link>
-      <div className="mt-2.5 flex items-start justify-between gap-2 px-1">
+      <div className="mt-2.5 flex items-center justify-between gap-2 px-1">
         <Link href={`/product/${product.id}`} className="min-w-0 flex-1">
-          <h3 className="line-clamp-1 text-sm font-semibold text-ink">{product.title}</h3>
-          <p className="mt-0.5 text-xs font-medium text-ink-500">
-            <span className="text-ink">{ugx(product.price)}</span>
-            {onSale && <span className="ml-1 text-[10px] line-through">{ugx(product.compare_at_price!)}</span>}
+          <h3 className="truncate text-sm font-semibold text-ink">{product.title}</h3>
+          <p className="mt-0.5 flex min-w-0 items-baseline gap-1.5 whitespace-nowrap">
+            <span className="shrink-0 text-[13px] font-bold tabular-nums text-ink">{ugx(product.price)}</span>
+            {onSale && (
+              <span className="truncate text-[10px] font-medium tabular-nums text-ink-500 line-through">
+                {Number(product.compare_at_price).toLocaleString()}
+              </span>
+            )}
           </p>
         </Link>
         <button
           type="button"
-          onClick={onAdd}
-          aria-label={`Add ${product.title} to cart`}
-          className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gold text-ink-gold shadow-[var(--shadow-glow-gold)] transition active:scale-90"
+          onClick={handleAdd}
+          aria-label={added ? `${product.title} added to cart` : `Add ${product.title} to cart`}
+          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition active:scale-90 ${
+            added ? "bg-ink text-cream" : "bg-gold text-ink-gold shadow-[var(--shadow-glow-gold)]"
+          }`}
         >
-          <Plus className="h-4 w-4" aria-hidden />
+          {added ? <Check className="h-4 w-4" aria-hidden /> : <Plus className="h-4 w-4" aria-hidden />}
         </button>
       </div>
     </article>

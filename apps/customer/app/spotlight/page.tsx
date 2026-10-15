@@ -1,10 +1,12 @@
 "use client";
 
 import { ArrowLeft, Volume2, VolumeX } from "lucide-react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { api, errorMessage } from "../../lib/api";
+import { useCart } from "../../lib/cart";
+import { addSpotlightItemToCart } from "../../lib/spotlight-cart";
+import { CartDrawer } from "../../components/CartDrawer";
 import { SpotlightCard, type SpotlightItem } from "../../components/spotlight/SpotlightCard";
 import "../../components/spotlight/spotlight.css";
 
@@ -32,8 +34,10 @@ export default function SpotlightPage() {
   const [activeCommentsId, setActiveCommentsId] = useState<string | null>(null);
   const [itemComments, setItemComments] = useState<Record<string, Array<{ user: string; text: string }>>>({});
 
-  // Quick Cart state
-  const [cart, setCart] = useState<Array<{ id: string; title: string; price: number; quantity: number }>>([]);
+  // Quick buy writes to the shared marketplace cart (lib/cart.ts), the same
+  // one the cart drawer and /cart read. It used to be local page state.
+  const { totalQuantity: cartItemCount, total: cartTotal } = useCart();
+  const [cartOpen, setCartOpen] = useState(false);
   const [quickBuyNotice, setQuickBuyNotice] = useState("");
 
   // Carousel current indexes per item
@@ -88,15 +92,9 @@ export default function SpotlightPage() {
     }));
   }
 
-  function handleQuickBuy(prod: SpotlightItem["product"]) {
-    setCart((prev) => {
-      const existing = prev.find((i) => i.id === prod.id);
-      if (existing) {
-        return prev.map((i) => (i.id === prod.id ? { ...i, quantity: i.quantity + 1 } : i));
-      }
-      return [...prev, { id: prod.id, title: prod.title, price: prod.price, quantity: 1 }];
-    });
-    setQuickBuyNotice(`Added "${prod.title}" to cart!`);
+  async function handleQuickBuy(item: SpotlightItem) {
+    await addSpotlightItemToCart(item, (id) => api.getMarketplaceProduct(id));
+    setQuickBuyNotice(`Added "${item.product.title}" to cart`);
     setTimeout(() => setQuickBuyNotice(""), 2400);
   }
 
@@ -108,8 +106,6 @@ export default function SpotlightPage() {
     });
   }
 
-  const cartTotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  const cartItemCount = cart.reduce((sum, item) => sum + item.quantity, 0);
   // Room reserved at the bottom of each card for the floating cart pill.
   const bottomPad = cartItemCount > 0 ? 72 : 0;
 
@@ -199,7 +195,7 @@ export default function SpotlightPage() {
               bottomPad={bottomPad}
               onToggleLike={() => handleToggleLike(item.id)}
               onCarouselNav={(dir, total) => handleCarouselNav(item.id, dir, total)}
-              onQuickBuy={() => handleQuickBuy(item.product)}
+              onQuickBuy={() => void handleQuickBuy(item)}
               onAddComment={(text) => handleAddComment(item.id, text)}
               onDrawerChange={(open) => setActiveCommentsId(open ? item.id : null)}
             />
@@ -209,18 +205,22 @@ export default function SpotlightPage() {
 
       {cartItemCount > 0 && !activeCommentsId && (
         <div className="absolute inset-x-4 z-40 mx-auto max-w-md animate-slide-up" style={{ bottom: "max(1rem, env(safe-area-inset-bottom))" }}>
-          <Link
-            href="/cart"
-            className="flex h-14 items-center justify-between rounded-full bg-[rgb(var(--surface-card))] pl-2 pr-5 text-ink shadow-[var(--shadow-float-capsule)] transition active:scale-[0.98]"
+          <button
+            type="button"
+            onClick={() => setCartOpen(true)}
+            aria-label={`View cart, ${cartItemCount} items`}
+            className="flex h-14 w-full items-center justify-between rounded-full bg-[rgb(var(--surface-card))] pl-2 pr-5 text-ink shadow-[var(--shadow-float-capsule)] transition active:scale-[0.98]"
           >
             <span className="flex items-center gap-2.5">
               <span className="flex h-10 w-10 items-center justify-center rounded-full bg-gold text-sm font-bold text-ink-gold">{cartItemCount}</span>
               <span className="text-sm font-semibold">View cart</span>
             </span>
             <span className="text-sm font-bold">{ugx(cartTotal)}</span>
-          </Link>
+          </button>
         </div>
       )}
+
+      <CartDrawer isOpen={cartOpen} onClose={() => setCartOpen(false)} />
     </div>
   );
 }
