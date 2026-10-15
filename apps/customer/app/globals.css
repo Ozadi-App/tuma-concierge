@@ -1384,58 +1384,63 @@ select:focus {
 @keyframes customer-nav-swap-in { from { opacity: 0; transform: translateY(6px) scale(.97); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .customer-nav-swap { animation: none; } }
 
-/* Intermediate nav actions (View cart, Confirm route, Next: payment…): a faint
-   brand-gold tint over cream (light) or grey (dark), from the existing gold token. */
+/* Intermediate nav actions (View cart, Confirm route, Next: payment…):
+   "transparent gold" — the brand gold token as a translucent horizontal
+   gradient (more gold on the left, more transparent on the right) with a
+   soft gold edge and a faint top sheen. Final actions stay solid gold. */
 .customer-nav-cart {
   background:
-    linear-gradient(135deg, rgb(var(--color-gold) / .10), rgb(var(--color-gold) / .17)),
-    #fff;
+    linear-gradient(90deg, rgb(var(--color-gold) / .64) 0%, rgb(var(--color-gold) / .40) 55%, rgb(var(--color-gold) / .22) 100%),
+    #fffdf6;
   color: rgb(var(--color-ink));
-  border: 1px solid rgb(var(--color-gold) / .22);
-  box-shadow: 0 12px 32px rgb(0 0 0 / .18);
+  border: 1px solid rgb(var(--color-gold) / .7);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / .55), 0 12px 32px rgb(0 0 0 / .18);
 }
-.customer-nav-cart__muted { color: rgb(var(--color-ink-500)); }
+.customer-nav-cart__muted { color: rgb(var(--color-ink) / .68); }
 /* Icon tile on tinted buttons: dark tile + white icon/count (light), white tile + dark (dark). */
 .customer-nav-tile { background: #1a1a1a; color: #fff; }
 :root[data-theme="dark"] .customer-nav-cart {
   background:
-    linear-gradient(135deg, rgb(var(--color-gold) / .13), rgb(var(--color-gold) / .19)),
-    #3a3a3c;
-  color: #f7f5ef;
-  border-color: rgb(var(--color-gold) / .22);
-  box-shadow: 0 12px 32px rgb(0 0 0 / .45);
+    linear-gradient(90deg, rgb(var(--color-gold) / .58) 0%, rgb(var(--color-gold) / .36) 55%, rgb(var(--color-gold) / .18) 100%),
+    #262628;
+  color: #fbf8ef;
+  border-color: rgb(var(--color-gold) / .6);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / .16), 0 12px 32px rgb(0 0 0 / .45);
 }
-:root[data-theme="dark"] .customer-nav-cart__muted { color: rgb(255 255 255 / .66); }
-:root[data-theme="dark"] .customer-nav-tile { background: #f7f5ef; color: #141414; }
+:root[data-theme="dark"] .customer-nav-cart__muted { color: rgb(255 255 255 / .74); }
+:root[data-theme="dark"] .customer-nav-tile { background: #fbf8ef; color: #141414; }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .customer-nav-cart { background: linear-gradient(135deg, rgb(var(--color-gold) / .13), rgb(var(--color-gold) / .19)), #3a3a3c; color: #f7f5ef; border-color: rgb(var(--color-gold) / .22); }
-  :root:not([data-theme="light"]) .customer-nav-cart__muted { color: rgb(255 255 255 / .66); }
-  :root:not([data-theme="light"]) .customer-nav-tile { background: #f7f5ef; color: #141414; }
+  :root:not([data-theme="light"]) .customer-nav-cart { background: linear-gradient(90deg, rgb(var(--color-gold) / .58) 0%, rgb(var(--color-gold) / .36) 55%, rgb(var(--color-gold) / .18) 100%), #262628; color: #fbf8ef; border-color: rgb(var(--color-gold) / .6); box-shadow: inset 0 1px 0 rgb(255 255 255 / .16); }
+  :root:not([data-theme="light"]) .customer-nav-cart__muted { color: rgb(255 255 255 / .74); }
+  :root:not([data-theme="light"]) .customer-nav-tile { background: #fbf8ef; color: #141414; }
 }
-/* Disabled: keep the button's own fill (no muddy grey from fading over the
-   black frame) but fade its text/icons and drop the tint, so it reads clearly
-   as "not yet". No press feedback. */
-.customer-nav-cart:disabled,
-.customer-nav-checkout:disabled { cursor: not-allowed; transform: none; box-shadow: none; }
-.customer-nav-cart:disabled {
-  background: linear-gradient(135deg, rgb(var(--color-gold) / .04), rgb(var(--color-gold) / .07)), #fff;
-  color: rgb(var(--color-ink) / .38);
-}
-.customer-nav-cart:disabled .customer-nav-cart__muted { color: rgb(var(--color-ink) / .3); }
-:root[data-theme="dark"] .customer-nav-cart:disabled {
-  background: linear-gradient(135deg, rgb(var(--color-gold) / .05), rgb(var(--color-gold) / .08)), #3a3a3c;
-  color: rgb(255 255 255 / .38);
-}
-:root[data-theme="dark"] .customer-nav-cart:disabled .customer-nav-cart__muted { color: rgb(255 255 255 / .3); }
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .customer-nav-cart:disabled { background: linear-gradient(135deg, rgb(var(--color-gold) / .05), rgb(var(--color-gold) / .08)), #3a3a3c; color: rgb(255 255 255 / .38); }
-}
-.customer-nav-checkout:disabled { color: rgb(var(--color-ink-gold, 10 10 10) / .45); }
-
 /* Nav action buttons sit inside the same black capsule as the menu, inset
    like the menu items, so the frame reads as one nav in both themes. */
-.customer-nav-frame > .customer-nav-cart,
 .customer-nav-frame > .customer-nav-checkout { box-shadow: none; }
+.customer-nav-frame > .customer-nav-cart { box-shadow: inset 0 1px 0 rgb(255 255 255 / .55); }
+:root[data-theme="dark"] .customer-nav-frame > .customer-nav-cart { box-shadow: inset 0 1px 0 rgb(255 255 255 / .16); }
+
+/* Disabled: much lower gold and faded text (no whole-button fade, which goes
+   muddy grey over the black frame). No press feedback. */
+.customer-nav-cart:disabled,
+.customer-nav-checkout:disabled { cursor: not-allowed; transform: none; }
+.customer-nav-frame > .customer-nav-cart:disabled { box-shadow: none; }
+.customer-nav-cart:disabled {
+  background: linear-gradient(90deg, rgb(var(--color-gold) / .16), rgb(var(--color-gold) / .06)), #fffdf6;
+  border-color: rgb(var(--color-gold) / .25);
+  color: rgb(var(--color-ink) / .4);
+}
+.customer-nav-cart:disabled .customer-nav-cart__muted { color: rgb(var(--color-ink) / .32); }
+:root[data-theme="dark"] .customer-nav-cart:disabled {
+  background: linear-gradient(90deg, rgb(var(--color-gold) / .14), rgb(var(--color-gold) / .05)), #262628;
+  border-color: rgb(var(--color-gold) / .2);
+  color: rgb(255 255 255 / .4);
+}
+:root[data-theme="dark"] .customer-nav-cart:disabled .customer-nav-cart__muted { color: rgb(255 255 255 / .32); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .customer-nav-cart:disabled { background: linear-gradient(90deg, rgb(var(--color-gold) / .14), rgb(var(--color-gold) / .05)), #262628; border-color: rgb(var(--color-gold) / .2); color: rgb(255 255 255 / .4); }
+}
+.customer-nav-checkout:disabled { color: rgb(var(--color-ink-gold, 10 10 10) / .45); }
 
 /* Glass scrim behind the bottom nav. The tint and the blur both fade out
    toward the top (mask), so content stays visible while scrolling behind. */
