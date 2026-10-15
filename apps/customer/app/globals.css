@@ -1414,8 +1414,9 @@ select:focus {
 /* Glass scrim behind the bottom nav. The tint and the blur both fade out
    toward the top (mask), so content stays visible while scrolling behind. */
 .customer-nav-scrim {
-  --scrim-tint: 0 0 0;
-  --scrim-strength: .46;
+  /* Light mode: a bright white frosted fade. Dark mode: a dark tint. */
+  --scrim-tint: 255 255 255;
+  --scrim-strength: .78;
   position: fixed;
   inset-inline: 0;
   bottom: 0;
@@ -1431,9 +1432,9 @@ select:focus {
   -webkit-mask-image: linear-gradient(to top, #000 0%, #000 30%, rgb(0 0 0 / .5) 65%, transparent 100%);
   mask-image: linear-gradient(to top, #000 0%, #000 30%, rgb(0 0 0 / .5) 65%, transparent 100%);
 }
-:root[data-theme="dark"] .customer-nav-scrim { --scrim-strength: .6; }
+:root[data-theme="dark"] .customer-nav-scrim { --scrim-tint: 0 0 0; --scrim-strength: .6; }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .customer-nav-scrim { --scrim-strength: .6; }
+  :root:not([data-theme="light"]) .customer-nav-scrim { --scrim-tint: 0 0 0; --scrim-strength: .6; }
 }
 
 /* /cart Checkout in the nav: brand gold in both themes. */
