@@ -1,7 +1,17 @@
 -- Migration 0094: Expand restaurants business_type check constraint to include 'juices'
-PRAGMA foreign_keys=OFF;
+--
+-- SQLite cannot alter a CHECK, so the table is rebuilt. Other tables (orders, menu_items,
+-- menu_categories, calls, restaurant_chat_messages) reference restaurants(id), and D1 always
+-- enforces foreign keys, so the usual "create _new, drop old, rename" fails there. Instead the
+-- rows are parked in a plain copy, the table is recreated under its own name, and the rows are
+-- put back, which satisfies the deferred foreign key checks at commit.
+PRAGMA defer_foreign_keys = on;
 
-CREATE TABLE IF NOT EXISTS restaurants_new (
+CREATE TABLE restaurants_backup AS SELECT * FROM restaurants;
+
+DROP TABLE restaurants;
+
+CREATE TABLE restaurants (
   id TEXT PRIMARY KEY,
   owner_id TEXT NOT NULL REFERENCES users(id),
   name TEXT NOT NULL,
@@ -27,22 +37,19 @@ CREATE TABLE IF NOT EXISTS restaurants_new (
   theme_mode TEXT CHECK (theme_mode IS NULL OR theme_mode IN ('auto','light','dark'))
 );
 
-INSERT INTO restaurants_new (
+INSERT INTO restaurants (
   id, owner_id, name, description, cuisine, phone, address, lat, lng, logo_key, cover_key,
   status, is_open, environment, created_at, updated_at, open_time, close_time, merchant_id, outlet_id,
   business_type, theme_scene, theme_mode
 )
-SELECT 
+SELECT
   id, owner_id, name, description, cuisine, phone, address, lat, lng, logo_key, cover_key,
   status, is_open, environment, created_at, updated_at, open_time, close_time, merchant_id, outlet_id,
   business_type, theme_scene, theme_mode
-FROM restaurants;
+FROM restaurants_backup;
 
-DROP TABLE restaurants;
-ALTER TABLE restaurants_new RENAME TO restaurants;
+DROP TABLE restaurants_backup;
 
 CREATE INDEX IF NOT EXISTS idx_restaurants_owner ON restaurants(owner_id);
 CREATE INDEX IF NOT EXISTS idx_restaurants_status ON restaurants(status, environment);
 CREATE INDEX IF NOT EXISTS idx_restaurants_business_type ON restaurants(business_type, status, environment);
-
-PRAGMA foreign_keys=ON;
