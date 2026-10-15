@@ -504,194 +504,15 @@ select:focus {
 @media (prefers-reduced-motion:no-preference) { .food-hero,.food-menu-card { animation:food-enter .45s ease-out both; } .food-categories span { transition:transform .2s ease,background .2s ease; } .food-categories a:hover span,.food-categories button:hover span { transform:translateY(-2px); } }
 @keyframes food-enter { from { opacity:0; transform:translateY(7px); } to { opacity:1; transform:translateY(0); } }
 @media (prefers-reduced-motion: no-preference) {
-  .food-dish-rail.rail-visible > button { animation: food-card-arrive .55s ease-out both; }
-  .food-dish-rail.rail-visible > button:nth-child(2) { animation-delay: .06s; }
-  .food-dish-rail.rail-visible > button:nth-child(3) { animation-delay: .12s; }
+  .food-dish-rail.rail-visible > * { animation: food-card-arrive .55s ease-out both; }
+  .food-dish-rail.rail-visible > :nth-child(2) { animation-delay: .06s; }
+  .food-dish-rail.rail-visible > :nth-child(3) { animation-delay: .12s; }
   @keyframes food-card-arrive { from { opacity:.65; transform:translateX(-18px); } to { opacity:1; transform:translateX(0); } }
 }
 
 .food-dish-rail { scrollbar-width: none; }
 .food-dish-rail::-webkit-scrollbar { display: none; }
 
-.food-item-card {
-  position: relative;
-  display: block;
-  flex: 0 0 auto;
-  overflow: hidden;
-  padding: 0;
-  border: 1px solid rgb(var(--color-ink) / .12);
-  border-radius: 28px;
-  text-align: left;
-  scroll-snap-align: start;
-  box-shadow: var(--shadow-card);
-  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
-}
-.food-item-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-card-hover); }
-.food-item-card:active { transform: scale(.985); }
-.food-item-card:focus-visible { outline: 3px solid rgb(var(--color-gold)); outline-offset: 3px; }
-.food-item-card--featured {
-  width: min(calc(68vw + 10px), 206px);
-  aspect-ratio: 2 / 3;
-  isolation: isolate;
-  color: rgb(var(--color-ink));
-  background: rgb(var(--surface-card));
-  border-color: rgb(var(--glass-shine) / .72);
-  border-radius: 32px;
-  box-shadow: 0 12px 30px rgb(10 10 10 / .16), 0 2px 8px rgb(10 10 10 / .08);
-}
-.food-item-card__image-base {
-  position: absolute;
-  z-index: 0;
-  inset: 7px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-  color: rgb(var(--color-gold));
-  background: rgb(var(--surface-muted));
-  border-radius: 24px;
-}
-.food-item-card__image-base img {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  filter: blur(22px) brightness(.9);
-  transform: scale(1.1);
-}
-.food-item-card__photo {
-  position: absolute;
-  z-index: 1;
-  inset: 7px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-  background: transparent;
-  color: rgb(var(--color-gold));
-  border-radius: 22px;
-}
-.food-item-card__photo--empty {
-  inset: 7px 7px auto;
-  height: 68%;
-  -webkit-mask-image: none;
-  mask-image: none;
-}
-.food-item-card__photo img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-.food-item-card__topline {
-  position: absolute;
-  z-index: 2;
-  inset: 12px 12px auto;
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 8px;
-}
-.food-item-card__orders {
-  flex: 0 0 auto;
-  border: 1px solid rgb(var(--color-ink) / .12);
-  border-radius: 999px;
-  padding: 7px 10px;
-  background: rgb(var(--surface-card) / .78);
-  color: rgb(var(--color-ink));
-  font-size: 11px;
-  font-weight: 700;
-  backdrop-filter: blur(12px);
-}
-.food-item-card__glass {
-  position: absolute;
-  z-index: 2;
-  inset: 52% 7px 7px;
-  display: grid;
-  align-content: end;
-  gap: 4px;
-  overflow: hidden;
-  border-radius: 0 0 22px 22px;
-  padding: 8px 12px 12px;
-  background: transparent;
-  color: rgb(var(--color-ink));
-}
-.food-item-card__glass::before {
-  position: absolute;
-  z-index: 0;
-  inset: 0;
-  border-radius: inherit;
-  background: rgb(var(--surface-card) / .64);
-  content: "";
-}
-.food-item-card__glass > * {
-  position: relative;
-  z-index: 1;
-}
-.food-item-card--category {
-  width: 176px;
-  background: rgb(var(--surface-card));
-  color: rgb(var(--color-ink));
-  box-shadow: var(--shadow-card);
-}
-.food-item-card--category:hover { border-color: rgb(var(--color-gold) / .5); }
-.food-item-card--featured:hover { border-color: rgb(var(--color-ink) / .24); }
-:root[data-theme="dark"] .food-item-card--featured { border-color: rgb(255 255 255 / .12); }
-:root[data-theme="dark"] .food-item-card--featured:hover { border-color: rgb(var(--color-gold) / .9); }
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .food-item-card--featured { border-color: rgb(255 255 255 / .12); }
-  :root:not([data-theme="light"]) .food-item-card--featured:hover { border-color: rgb(var(--color-gold) / .9); }
-}
-.food-item-card__category-image {
-  position: relative;
-  display: flex;
-  aspect-ratio: 1 / 1;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-  background: rgb(var(--surface-muted));
-  color: rgb(var(--color-gold));
-  margin: 7px 7px 0;
-  border-radius: 22px;
-}
-.food-item-card__category-image img {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  transition: transform 220ms ease;
-}
-.food-item-card--category:hover .food-item-card__category-image img { transform: scale(1.035); }
-.food-item-card__category-copy {
-  display: grid;
-  gap: 6px;
-  padding: 12px 14px 14px;
-}
-.food-item-card__description {
-  display: -webkit-box;
-  overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  line-height: 1.4;
-}
-.food-item-card__details {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-top: 2px;
-}
-.food-item-card__price {
-  flex: 0 0 auto;
-  border: 1px solid var(--border-faint);
-  border-radius: 999px;
-  padding: 6px 9px;
-  background: rgb(var(--surface-muted));
-  font-size: 12px;
-  font-weight: 700;
-  line-height: 1.2;
-}
 .menu-item-cart-layer {
   --item-cart-width: 80vw;
   position: fixed;
@@ -1308,8 +1129,7 @@ select:focus {
   .menu-item-detail-card { max-height: min(36dvh, 270px); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .food-item-card,
-  .food-item-card__category-image img { transition: none; }
+
 }
 
 /* Peebee's customer palette is fixed; restaurant scenes stay inside their content scope. */

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { defaultVariant, productPricing } from "./product-pricing";
+import { defaultVariant, menuItemPricing, productPricing } from "./product-pricing";
 
 const milk = {
   price: 3500,
@@ -36,4 +36,18 @@ test("default option priced differently from the listing triggers 'from'", () =>
 test("no options: plain price; strike only when higher", () => {
   assert.deepEqual(productPricing({ price: 28000, compare_at_price: 32000 }), { price: 28000, from: false, compareAt: 32000, discount: 13 });
   assert.equal(productPricing({ price: 5000, compare_at_price: 5000 }).compareAt, null);
+});
+
+test("menu item: required size with different prices shows 'from' the cheapest size", () => {
+  const pilau = { price: 18000, options: [
+    { required: 1, choices: [{ price_delta: 0 }, { price_delta: 5000 }] },
+    { required: 0, choices: [{ price_delta: 3000 }] },
+  ] };
+  assert.deepEqual(menuItemPricing(pilau), { price: 18000, from: true });
+});
+
+test("menu item: required choice that always costs extra is added; optional extras never make it 'from'", () => {
+  assert.deepEqual(menuItemPricing({ price: 10000, options: [{ required: 1, choices: [{ price_delta: 2000 }] }] }), { price: 12000, from: false });
+  assert.deepEqual(menuItemPricing({ price: 7000, options: [{ required: 0, choices: [{ price_delta: 1000 }, { price_delta: 2000 }] }] }), { price: 7000, from: false });
+  assert.deepEqual(menuItemPricing({ price: 5000 }), { price: 5000, from: false });
 });

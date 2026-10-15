@@ -4,7 +4,7 @@ import { FoodCover } from "@peebee/shared/food-cover";
 import type { FoodItemInsight, FoodRestaurantTrust, MenuCategory, MenuItem, MenuItemBadge, MenuItemOption, Restaurant, RestaurantMenu } from "@peebee/shared";
 import { foodBusinessLabel, roundFare } from "@peebee/shared";
 import { demoFoodPhotoPath, demoRestaurantPhotoPath } from "@peebee/shared/demo-food";
-import { ArrowUpRight, ChevronLeft, ChevronDown, ChevronRight, Star, MessageCircle, Minus, Plus, ShoppingBag, ShoppingCart, Store, Trash2, UtensilsCrossed, X } from "lucide-react";
+import { ArrowUpRight, BadgeCheck, ChevronLeft, ChevronDown, ChevronRight, Clock, Star, MessageCircle, Minus, Plus, ShoppingBag, ShoppingCart, Store, Trash2, UtensilsCrossed, X } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -19,6 +19,7 @@ import { api, errorMessage } from "../../../lib/api";
 import { useRegisterNavPrimaryAction, useRegisterNavBack } from "../../../lib/nav-primary-action";
 import { useTranslate } from "../../../lib/i18n";
 import { formatUgx } from "../../../lib/order-display";
+import { menuItemPricing } from "../../../lib/product-pricing";
 
 /** Matches the server's own haversine — see apps/api/src/lib/geo.ts. Used
  * here only for a live estimate before checkout; the actual delivery fee
@@ -84,75 +85,135 @@ const BADGE_KEYS: Record<MenuItemBadge, "restaurant_badge_sale" | "restaurant_ba
   trending: "restaurant_badge_trending",
 };
 
-/** Grid-card presentation for a menu item — image on a tinted backdrop
- * (visible around/behind a photo with transparency, or as the whole
- * background when there's no photo yet), a badge pill top-left when the
- * restaurant's set one, and price + "Order Now" bottom-right. */
+/** Horizontal, snap-scrolling rail for the featured dish cards. */
 function DishRail({children,label}:{children:React.ReactNode;label:string}){
   const ref=useRef<HTMLDivElement>(null);
   useEffect(()=>{const node=ref.current;if(!node)return;if(!('IntersectionObserver' in window)){node.classList.add('rail-visible');return;}const observer=new IntersectionObserver(entries=>{if(entries.some(entry=>entry.isIntersecting)){node.classList.add('rail-visible');observer.disconnect();}},{threshold:.1});observer.observe(node);return()=>observer.disconnect();},[]);
-  return <div ref={ref} aria-label={label} dir="ltr" className="edge-carousel food-dish-rail flex snap-x snap-mandatory gap-3 overflow-x-auto pb-10 pt-3">{children}</div>;
+  return <div ref={ref} aria-label={label} dir="ltr" className="edge-carousel food-dish-rail flex snap-x snap-mandatory gap-3 overflow-x-auto pb-8 pt-2">{children}</div>;
 }
-function FoodItemCard({item,onOpen,featured=false,insight}:{item:MenuItem;onOpen:()=>void;featured?:boolean;insight?:FoodItemInsight}){
- const t=useTranslate();
- const photoUrl=useMenuItemPhoto(item.id,!!item.photo_key,item.updated_at);
- const rating=insight?.averageRating==null?'New':insight.averageRating.toFixed(1);
- return <button
-   type="button"
-   onClick={onOpen}
-   aria-label={`View ${item.name}`}
-   className={`food-item-card ${featured?'food-item-card--featured':'food-item-card--category'}`}
- >
-   {featured ? (
-     <>
-       <span className="food-item-card__image-base" aria-hidden="true">
-         {photoUrl && <img src={photoUrl} alt="" />}
-       </span>
-       <span className={`food-item-card__photo ${photoUrl ? "" : "food-item-card__photo--empty"}`} aria-hidden="true">
-         {photoUrl ? <img src={photoUrl} alt="" /> : <UtensilsCrossed size={48} className="text-gold" />}
-       </span>
-       <span className="food-item-card__topline">
-         {item.badge
-           ? <span className={`rounded-full px-2.5 py-1.5 text-[11px] font-bold uppercase ${BADGE_STYLES[item.badge]}`}>{t(BADGE_KEYS[item.badge])}</span>
-           : <span />}
-         <span title="Orders recorded since dish tracking was enabled" className="food-item-card__orders">
-           {insight ? `${insight.orderCount} orders` : "Orders —"}
-         </span>
-       </span>
-       <span className="food-item-card__glass">
-         <span className="block truncate text-base font-bold leading-tight" title={item.name}>{item.name}</span>
-         {item.description && <span className="food-item-card__description text-xs text-ink-500">{item.description}</span>}
-         <span className="food-item-card__details">
-           <span className="flex min-w-0 items-center gap-1 text-xs text-ink-500">
-             <Star size={13} className="shrink-0 text-gold" />{rating}
-             {insight?.ratingCount ? ` · ${insight.ratingCount}` : ""}
-           </span>
-           <span className="food-item-card__price">{formatUgx(item.price)}</span>
-         </span>
-       </span>
-     </>
-   ) : (
-     <>
-       <span className="food-item-card__category-image">
-         {photoUrl
-           ? <img src={photoUrl} alt={item.name} />
-           : <UtensilsCrossed size={40} className="text-gold" />}
-         {item.badge && <span className={`absolute left-3 top-3 rounded-full px-2 py-1 text-[11px] font-bold uppercase ${BADGE_STYLES[item.badge]}`}>{t(BADGE_KEYS[item.badge])}</span>}
-       </span>
-       <span className="food-item-card__category-copy">
-         <span className="block truncate text-base font-bold" title={item.name}>{item.name}</span>
-         {item.description && <span className="food-item-card__description text-xs text-ink-500">{item.description}</span>}
-         <span className="food-item-card__details">
-           <span className="flex min-w-0 items-center gap-1 text-xs text-ink-500">
-             <Star size={13} className="shrink-0 text-gold" />{rating}
-             {insight?.ratingCount ? ` · ${insight.ratingCount}` : ""}
-           </span>
-           <span className="food-item-card__price">{formatUgx(item.price)}</span>
-         </span>
-       </span>
-     </>
-   )}
- </button>;
+
+/** Short, calm labels for the small gold badge beside a dish name. */
+const DISH_BADGE_LABEL: Record<MenuItemBadge, string> = { trending: "Popular", new: "New", sale: "Offer" };
+
+type DishCardProps = {
+  item: MenuItem;
+  insight?: FoodItemInsight;
+  /** How many of this dish (any options) are in the restaurant cart. */
+  quantity: number;
+  restaurantOpen: boolean;
+  onOpen: () => void;
+  /** Adds one plain portion; only called for dishes with no required choices. */
+  onAdd: () => void;
+};
+
+function DishMeta({ item, insight }: { item: MenuItem; insight?: FoodItemInsight }) {
+  const rating = insight?.averageRating != null ? insight.averageRating.toFixed(1) : null;
+  return (
+    <span className="fc-meta">
+      {item.prep_time_minutes ? <span className="fc-meta__item"><Clock size={13} aria-hidden="true" />{item.prep_time_minutes} min</span> : null}
+      {rating ? (
+        <span className="fc-meta__item fc-meta__extra" aria-label={`Rated ${rating} out of 5`}><Star size={13} aria-hidden="true" />{rating}</span>
+      ) : insight?.orderCount ? (
+        <span className="fc-meta__item fc-meta__extra"><ShoppingBag size={13} aria-hidden="true" />{insight.orderCount.toLocaleString()}</span>
+      ) : null}
+    </span>
+  );
+}
+
+function DishPrice({ item }: { item: MenuItem }) {
+  const pricing = menuItemPricing(item);
+  return (
+    <span className="fc-price">
+      {pricing.from && <span className="fc-price__from">from</span>}
+      <span className="fc-price__ccy">UGX</span>
+      <span className="fc-price__amount">{pricing.price.toLocaleString("en-UG")}</span>
+    </span>
+  );
+}
+
+/** "Add +" pill: adds a plain portion, or opens the dish when it needs a
+ * choice first (e.g. Size). Once in the cart it shows the quantity. */
+function DishAddButton({ item, quantity, restaurantOpen, onOpen, onAdd }: Omit<DishCardProps, "insight">) {
+  const needsChoice = item.options.some((option) => option.required && option.choices.length > 0);
+  const soldOut = item.available !== 1;
+  const [pop, setPop] = useState(0);
+  if (!restaurantOpen || soldOut) {
+    return <button type="button" className="fc-add" disabled>{soldOut ? "Sold out" : "Closed"}</button>;
+  }
+  return (
+    <button
+      type="button"
+      className={`fc-add ${quantity > 0 ? "is-in" : ""}`}
+      data-direct={needsChoice ? undefined : ""}
+      data-choose={needsChoice ? "" : undefined}
+      aria-label={needsChoice ? `Choose options for ${item.name}${quantity ? `, ${quantity} in cart` : ""}` : quantity ? `Add another ${item.name}, ${quantity} in cart` : `Add ${item.name}`}
+      onClick={() => { if (needsChoice) { onOpen(); return; } onAdd(); setPop((n) => n + 1); }}
+    >
+      {quantity > 0 ? <span key={pop} className="fc-add__qty">{quantity}</span> : <span>Add</span>}
+      <Plus size={15} strokeWidth={2.4} aria-hidden="true" />
+    </button>
+  );
+}
+
+function DishName({ item, badge }: { item: MenuItem; badge: string | null }) {
+  return (
+    <h3 className="fc-name" title={item.name}>
+      {item.name}
+      {badge && <span className="fc-badge"><BadgeCheck size={12} strokeWidth={2.4} aria-hidden="true" />{badge}</span>}
+    </h3>
+  );
+}
+
+/** Featured dish: the photo fills the card and its lower part is frosted
+ * (a progressive blur under a soft tint), carrying white copy and a white
+ * "Add +" pill. Frame, tint and shadow are tuned per theme in globals.css. */
+function FeaturedDishCard(props: DishCardProps) {
+  const { item, insight, onOpen } = props;
+  const photoUrl = useMenuItemPhoto(item.id, !!item.photo_key, item.updated_at);
+  const badge = item.badge ? DISH_BADGE_LABEL[item.badge] : "Chef's pick";
+  return (
+    <article className="fc-card fc-card--featured">
+      <button type="button" className="fc-hit" onClick={onOpen} aria-label={`View ${item.name}`} />
+      <span className={`fc-feature__media ${photoUrl ? "" : "is-empty"}`} aria-hidden="true">
+        {photoUrl ? <img src={photoUrl} alt="" loading="lazy" decoding="async" /> : <UtensilsCrossed size={44} />}
+        <span className="fc-feature__blur" />
+        <span className="fc-feature__tint" />
+      </span>
+      <span className="fc-feature__body">
+        <DishName item={item} badge={badge} />
+        {item.description && <span className="fc-desc">{item.description}</span>}
+        <DishPrice item={item} />
+        <span className="fc-row">
+          <DishMeta item={item} insight={insight} />
+          <DishAddButton {...props} />
+        </span>
+      </span>
+    </article>
+  );
+}
+
+/** General menu dish: photo inset in the top of the card, then name, short
+ * muted description, price, and a meta row with a subtle "Add +" pill. */
+function GeneralDishCard(props: DishCardProps) {
+  const { item, insight, onOpen } = props;
+  const photoUrl = useMenuItemPhoto(item.id, !!item.photo_key, item.updated_at);
+  return (
+    <article className="fc-card fc-card--general">
+      <button type="button" className="fc-hit" onClick={onOpen} aria-label={`View ${item.name}`} />
+      <span className={`fc-general__media ${photoUrl ? "" : "is-empty"}`} aria-hidden="true">
+        {photoUrl ? <img src={photoUrl} alt="" loading="lazy" decoding="async" /> : <UtensilsCrossed size={34} />}
+      </span>
+      <span className="fc-general__body">
+        <DishName item={item} badge={item.badge ? DISH_BADGE_LABEL[item.badge] : null} />
+        {item.description && <span className="fc-desc">{item.description}</span>}
+        <DishPrice item={item} />
+        <span className="fc-row">
+          <DishMeta item={item} insight={insight} />
+          <DishAddButton {...props} />
+        </span>
+      </span>
+    </article>
+  );
 }
 type CartLine = {
   key: string;
@@ -1027,6 +1088,9 @@ export default function RestaurantPage() {
 
   const allItems=[...menu.categories.flatMap(category=>category.items),...menu.uncategorizedItems];
   const featuredItems=allItems.filter(item=>item.is_featured);
+  const menuSections=[...menu.categories.filter(category=>category.items.length>0).map(category=>({key:category.id,name:category.name,items:category.items})),...(menu.uncategorizedItems.length?[{key:"more",name:menu.categories.length?"More":t("restaurant_menu_items"),items:menu.uncategorizedItems}]:[])];
+  const quantityByItem=cart.reduce<Record<string,number>>((acc,line)=>{acc[line.menuItemId]=(acc[line.menuItemId]??0)+line.quantity;return acc;},{});
+  const dishProps=(item:MenuItem)=>({item,insight:insights[item.id],quantity:quantityByItem[item.id]??0,restaurantOpen:!!restaurant.is_open,onOpen:()=>router.push(`/restaurants/${id}/items/${item.id}`),onAdd:()=>{requestAddToCart(item,{unitPrice:item.price,choiceIds:[],choiceNames:[],quantity:1});}});
   const restaurantRating=restaurantTrustStatus==="loading"?"…":restaurantTrustStatus==="unavailable"?"—":restaurantTrust?.averageMenuRating==null?"New":`${restaurantTrust.averageMenuRating.toFixed(1)}/5`;
   const restaurantRatingDetail=restaurantTrustStatus==="loading"?"Loading":restaurantTrustStatus==="unavailable"?"Unavailable":restaurantTrust?.menuReviewCount?`${restaurantTrust.menuReviewCount.toLocaleString()} dish ratings`:"No dish ratings yet";
   const completedOrderCount=restaurantTrustStatus==="ready"&&restaurantTrust?restaurantTrust.completedOrderCount.toLocaleString():restaurantTrustStatus==="loading"?"…":"—";
@@ -1172,8 +1236,8 @@ export default function RestaurantPage() {
         </div>
         {error && <p className="mb-6 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
 
-        {featuredItems.length>0&&<section className="mb-6 space-y-4"><div className="flex items-center justify-between"><h2 className="text-2xl font-bold text-ink">Featured</h2><span className="text-xs text-ink-500">Selected by the kitchen</span></div><DishRail label="Featured dishes">{featuredItems.map(item=><FoodItemCard key={item.id} featured item={item} insight={insights[item.id]} onOpen={()=>router.push(`/restaurants/${id}/items/${item.id}`)}/>)}</DishRail></section>}
-        {allItems.length>0&&<section className="mb-6 space-y-4"><h2 className="text-2xl font-bold text-ink">Main dishes</h2><DishRail label="Main dishes">{allItems.map(item=><FoodItemCard key={item.id} item={item} insight={insights[item.id]} onOpen={()=>router.push(`/restaurants/${id}/items/${item.id}`)}/>)}</DishRail></section>}
+        {featuredItems.length>0&&<section className="mb-7 space-y-3"><div className="flex items-baseline justify-between"><h2 className="text-2xl font-bold tracking-tight text-ink">Featured</h2><span className="text-xs text-ink-500">Selected by the kitchen</span></div><DishRail label="Featured dishes">{featuredItems.map(item=><FeaturedDishCard key={item.id} {...dishProps(item)}/>)}</DishRail></section>}
+        {menuSections.length>0&&<section className="mb-6 space-y-3" aria-label="Menu"><h2 className="text-2xl font-bold tracking-tight text-ink">Menu</h2>{menuSections.map(section=><div key={section.key} className="fc-section"><h3 className="fc-section__title">{section.name}</h3><div className="fc-grid">{section.items.map(item=><GeneralDishCard key={item.id} {...dishProps(item)}/>)}</div></div>)}</section>}
         {menu.categories.length === 0 && menu.uncategorizedItems.length === 0 && (
           <p className="py-10 text-center text-sm text-ink-500">{t("restaurant_no_menu_yet")}</p>
         )}
