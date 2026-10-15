@@ -16,8 +16,8 @@ import { useAuth } from "../../lib/auth-context";
 export default function PharmacyLoginPage() {
   const router = useRouter();
   const { login } = useAuth();
-  const [phone, setPhone] = useState("+256 772 110 220");
-  const [pin, setPin] = useState("1234");
+  const [identifier, setIdentifier] = useState("");
+  const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -26,7 +26,7 @@ export default function PharmacyLoginPage() {
     setBusy(true);
     setError(null);
     try {
-      await login(phone, pin);
+      await login(identifier, password);
       router.push("/");
     } catch (err: any) {
       setError(err?.message || "Sign in failed");
@@ -56,28 +56,30 @@ export default function PharmacyLoginPage() {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1">
-            <label className="text-xs font-bold text-ink-500">Pharmacist Phone Number</label>
+            <label className="text-xs font-bold text-ink-500">Phone number or email</label>
             <div className="field-box flex items-center rounded-2xl border border-[var(--border-faint)] px-3 py-2.5">
               <Phone className="h-4 w-4 text-ink-500 shrink-0" />
               <input
-                type="tel"
+                type="text"
                 required
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
+                autoComplete="username"
+                value={identifier}
+                onChange={(e) => setIdentifier(e.target.value)}
                 className="w-full bg-transparent px-2.5 text-xs text-ink focus:outline-none"
               />
             </div>
           </div>
 
           <div className="space-y-1">
-            <label className="text-xs font-bold text-ink-500">Security PIN</label>
+            <label className="text-xs font-bold text-ink-500">Password</label>
             <div className="field-box flex items-center rounded-2xl border border-[var(--border-faint)] px-3 py-2.5">
               <KeyRound className="h-4 w-4 text-ink-500 shrink-0" />
               <input
                 type="password"
                 required
-                value={pin}
-                onChange={(e) => setPin(e.target.value)}
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
                 className="w-full bg-transparent px-2.5 text-xs text-ink focus:outline-none"
               />
             </div>

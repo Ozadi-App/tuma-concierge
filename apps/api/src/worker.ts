@@ -10,6 +10,7 @@ import { sweepScheduledRides } from "./car/scheduled.js";
 import { releaseStaleSeats } from "./car/carpool.js";
 import { sweepRentalRequests } from "./car/selfdrive.js";
 import { sweepWork } from "./work/scheduled.js";
+import { expireStaleVouchers } from "./gas/vouchers.js";
 import { sweepStageEscalations, sweepStageFines, sweepElectionSessions } from "./stages/escalation.js";
 import { sweepActivationMessages } from "./onboarding/service.js";
 import { sweepFoodHours } from "./restaurants/hours.js";
@@ -80,6 +81,11 @@ export default {
       sweepWork()
         .then((r) => console.log("Peebee Work sweep:", JSON.stringify(r)))
         .catch((err) => console.error("Peebee Work sweep failed:", err)),
+    );
+    ctx.waitUntil(
+      expireStaleVouchers()
+        .then((n) => console.log("Fuel voucher expiry sweep:", n))
+        .catch((err) => console.error("Fuel voucher expiry sweep failed:", err)),
     );
     ctx.waitUntil(
       sweepRentalRequests()
