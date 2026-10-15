@@ -2,16 +2,13 @@
 
 import {
   Flame,
-  Plus,
   Radio,
-  Search,
   ShoppingBag,
   Sparkles,
   Store,
   Tag,
   Truck,
   Users,
-  X,
   Zap,
 } from "lucide-react";
 import Image from "next/image";
@@ -19,10 +16,16 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api, errorMessage } from "../../lib/api";
 import { LiveStreamChannel, LiveStreamViewer, PinnedProduct } from "../../components/LiveStreamViewer";
-import { ProductImage } from "../../components/ProductImage";
 import { CartDrawer, CartDrawerTrigger } from "../../components/CartDrawer";
 import { useCustomerLocation, formatDistanceKm, haversineKm } from "../../lib/location";
 import { useCart, addToCart as addMarketplaceCartItem } from "../../lib/cart";
+import {
+  CategoryChips,
+  MarketGreetingHeader,
+  MarketProductCard,
+  MarketSearchBar,
+  PromoBanner,
+} from "../../components/marketplace/MarketplaceUI";
 
 interface MarketplaceStore {
   id: string;
@@ -79,6 +82,7 @@ export default function GroceriesPage() {
   const [featuredProducts, setFeaturedProducts] = useState<ProductItem[]>([]);
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [searchQuery, setSearchQuery] = useState("");
+  const [filtersOpen, setFiltersOpen] = useState(true);
   const [error, setError] = useState("");
 
   // Live Stream modal state
@@ -215,47 +219,39 @@ export default function GroceriesPage() {
   const cartItemCount = totalQuantity;
 
   return (
-    <div className="mx-auto max-w-xl space-y-5 px-4 pb-28 pt-4">
-      {/* Top Header */}
-      <header className="flex items-center justify-between">
-        <div>
-          <span className="text-xs font-bold uppercase tracking-wider text-gold">Fast Delivery</span>
-          <h1 className="font-serif text-2xl font-black text-ink">Groceries & Supermarkets</h1>
-        </div>
-        <div className="flex items-center gap-2">
-          <Link
-            href="/shoplist"
-            className="flex items-center gap-1.5 rounded-full bg-[rgb(var(--surface-muted))] px-3.5 py-1.5 text-xs font-bold text-ink hover:text-gold transition"
-          >
-            <span>Quick List</span>
-            <Sparkles className="h-3.5 w-3.5 text-gold" />
-          </Link>
-          <CartDrawerTrigger
-            onClick={() => setCartDrawerOpen(true)}
-            className="h-9 w-9"
-          />
-        </div>
-      </header>
+    <div className="mx-auto max-w-xl space-y-6 px-4 pb-28 pt-4">
+      <MarketGreetingHeader
+        trailing={<CartDrawerTrigger onClick={() => setCartDrawerOpen(true)} className="h-11 w-11" />}
+      />
 
-      {/* Search Input */}
-      <div className="relative">
-        <input
-          type="text"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Search fresh produce, milk, eggs, pantry staples…"
-          className="w-full rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] pl-10 pr-4 py-3 text-sm text-ink placeholder:text-ink-500/60 shadow-sm focus:border-gold focus:outline-none"
-        />
-        <Search className="absolute left-3.5 top-3.5 h-4 w-4 text-ink-500" />
-        {searchQuery && (
-          <button
-            onClick={() => setSearchQuery("")}
-            className="absolute right-3.5 top-3.5 text-ink-500 hover:text-ink"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        )}
+      <div className="flex items-end justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-[22px] font-bold leading-tight tracking-tight text-ink">Groceries & Supermarkets</h1>
+          <p className="mt-0.5 text-sm text-ink-500">Fresh produce and pantry staples, delivered fast.</p>
+        </div>
+        <Link
+          href="/shoplist"
+          className="flex shrink-0 items-center gap-1.5 rounded-full bg-[rgb(var(--surface-muted))] px-3.5 py-2 text-xs font-semibold text-ink transition hover:text-gold"
+        >
+          <span>Quick List</span>
+          <Sparkles className="h-3.5 w-3.5 text-gold" />
+        </Link>
       </div>
+
+      <MarketSearchBar
+        value={searchQuery}
+        onChange={setSearchQuery}
+        placeholder="Search fresh produce, milk, eggs…"
+        filtersOpen={filtersOpen}
+        onToggleFilters={() => setFiltersOpen((open) => !open)}
+      />
+
+      <PromoBanner
+        eyebrow="Fast delivery"
+        title="Free delivery over UGX 50,000"
+        body="Stock up on fresh produce and pantry staples from nearby markets."
+        icon={<ShoppingBag className="h-8 w-8" aria-hidden />}
+      />
 
       {/* "LIVE NOW" Story Rail (TikTok Live Shopping) */}
       {liveChannels.length > 0 && (
@@ -276,7 +272,7 @@ export default function GroceriesPage() {
                 className="group flex flex-col items-center gap-1.5 shrink-0 transition active:scale-95"
               >
                 <div className="relative rounded-full p-[2.5px] bg-gradient-to-tr from-amber-500 via-red-500 to-pink-500 shadow-md">
-                  <div className="relative h-15 w-15 overflow-hidden rounded-full border-2 border-[rgb(var(--color-cream))] bg-neutral-900">
+                  <div className="relative h-[60px] w-[60px] overflow-hidden rounded-full border-2 border-[rgb(var(--color-cream))] bg-neutral-900">
                     {c.logo_url ? (
                       <img
                         src={c.logo_url}
@@ -309,26 +305,13 @@ export default function GroceriesPage() {
         </section>
       )}
 
-      {/* Category Pills */}
-      <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1">
-        {GROCERY_CATEGORIES.map((cat) => (
-          <button
-            key={cat}
-            onClick={() => setSelectedCategory(cat)}
-            className={`shrink-0 rounded-full px-4 py-2 text-xs font-bold transition active:scale-95 ${
-              selectedCategory === cat
-                ? "bg-gold text-ink-gold shadow-sm"
-                : "bg-[rgb(var(--surface-card))] text-ink-500 border border-[var(--border-faint)] hover:text-ink"
-            }`}
-          >
-            {cat}
-          </button>
-        ))}
-      </div>
+      {filtersOpen && (
+        <CategoryChips items={GROCERY_CATEGORIES} active={selectedCategory} onSelect={setSelectedCategory} />
+      )}
 
       {/* Notice Banner */}
       {cartNotice && (
-        <div className="flex items-center justify-between rounded-2xl bg-gold/15 p-3 text-xs font-bold text-ink animate-fade-in">
+        <div className="flex items-center justify-between rounded-[20px] bg-gold/15 px-4 py-3 text-xs font-semibold text-ink animate-fade-in">
           <span>{cartNotice}</span>
           <span className="text-gold font-mono">{cartItemCount} items</span>
         </div>
@@ -337,80 +320,29 @@ export default function GroceriesPage() {
       {/* Featured Groceries Catalog Grid */}
       <section className="space-y-3">
         <div className="flex items-center justify-between">
-          <h2 className="text-base font-bold text-ink">
+          <h2 className="text-lg font-bold tracking-tight text-ink">
             {selectedCategory === "All" ? "Fresh & Trending Today" : selectedCategory}
           </h2>
           <span className="text-xs font-medium text-ink-500">{filteredProducts.length} items</span>
         </div>
 
         {loading ? (
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-6">
             {[1, 2, 3, 4].map((n) => (
               <div
                 key={n}
-                className="h-48 animate-pulse rounded-[22px] bg-[rgb(var(--surface-muted))]"
+                className="aspect-[4/5] animate-pulse rounded-[22px] bg-[rgb(var(--surface-muted))]"
               />
             ))}
           </div>
         ) : filteredProducts.length === 0 ? (
-          <div className="rounded-[24px] border border-dashed border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-8 text-center text-xs text-ink-500">
+          <div className="rounded-[24px] bg-[rgb(var(--surface-muted))] p-8 text-center text-sm text-ink-500">
             No items matching your filter in this category.
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-6">
             {filteredProducts.map((p) => (
-              <div
-                key={p.id}
-                className="flex flex-col justify-between rounded-[22px] border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-3 shadow-sm transition hover:shadow-md"
-              >
-                <div>
-                  <div className="relative aspect-square w-full overflow-hidden rounded-xl bg-neutral-100 dark:bg-neutral-800">
-                    <ProductImage
-                      src={p.image_url}
-                      alt={p.title}
-                      category={p.category_name || "Groceries"}
-                      className="h-full w-full object-cover transition duration-300 hover:scale-105"
-                      aspectRatio="square"
-                    />
-                    {p.badge && (
-                      <span className="absolute top-2 left-2 z-10 rounded-full bg-gold px-2 py-0.5 text-[9px] font-black text-ink-gold uppercase">
-                        {p.badge}
-                      </span>
-                    )}
-                    {p.compare_at_price && p.compare_at_price > p.price && (
-                      <span className="absolute top-2 right-2 z-10 rounded-full bg-red-600 px-2 py-0.5 text-[9px] font-bold text-white">
-                        Sale
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="mt-2.5">
-                    <h3 className="font-bold text-xs leading-snug text-ink line-clamp-1">{p.title}</h3>
-                    {p.description && (
-                      <p className="mt-0.5 text-[11px] text-ink-500 line-clamp-1">{p.description}</p>
-                    )}
-                  </div>
-                </div>
-
-                <div className="mt-3 flex items-center justify-between border-t border-[var(--border-faint)] pt-2">
-                  <div>
-                    <span className="font-mono font-black text-xs text-ink">{ugx(p.price)}</span>
-                    {p.compare_at_price && (
-                      <span className="ml-1 font-mono text-[10px] text-ink-500 line-through">
-                        {ugx(p.compare_at_price)}
-                      </span>
-                    )}
-                  </div>
-
-                  <button
-                    onClick={() => handleAddToCart(p)}
-                    className="flex h-7 w-7 items-center justify-center rounded-full bg-gold text-ink-gold shadow transition active:scale-90"
-                    title="Add to Cart"
-                  >
-                    <Plus className="h-4 w-4" />
-                  </button>
-                </div>
-              </div>
+              <MarketProductCard key={p.id} product={p} fallbackCategory={"Groceries"} onAdd={() => handleAddToCart(p)} />
             ))}
           </div>
         )}
@@ -419,7 +351,7 @@ export default function GroceriesPage() {
       {/* Supermarkets / Grocery Stores List */}
       <section className="space-y-3 pt-2">
         <div className="flex items-center justify-between">
-          <h2 className="text-base font-bold text-ink">Supermarkets & Produce Hubs</h2>
+          <h2 className="text-lg font-bold tracking-tight text-ink">Supermarkets & Produce Hubs</h2>
           <span className="text-xs font-medium text-ink-500">{filteredStores.length} stores</span>
         </div>
 
@@ -428,9 +360,9 @@ export default function GroceriesPage() {
             <Link
               key={s.id}
               href={`/store/${s.id}`}
-              className="flex items-center gap-3.5 rounded-[24px] border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-3.5 shadow-sm transition hover:shadow-md active:scale-98"
+              className="flex items-center gap-3.5 rounded-[24px] border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-3.5 shadow-[var(--shadow-card)] transition hover:shadow-[var(--shadow-card-hover)] active:scale-[0.98]"
             >
-              <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-2xl bg-neutral-100 dark:bg-neutral-800">
+              <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-[18px] bg-[rgb(var(--surface-muted))]">
                 {s.logo_url ? (
                   <img
                     src={s.logo_url}

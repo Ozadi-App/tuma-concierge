@@ -184,13 +184,14 @@ export default function SingleProductPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[rgb(var(--color-bg))] pb-32 text-ink">
+    <div className="min-h-screen pb-32 text-ink">
       {/* Container restricted to mobile/tablet column */}
       <div className="mx-auto max-w-md relative">
         {/* =========================================================================
             HERO IMAGE MEDIA CARD (Screen 2: Curved Bottom [40px] & Floating Buttons)
         ========================================================================= */}
-        <div className="relative w-full aspect-[4/5] sm:aspect-[1/1] overflow-hidden rounded-b-[40px] bg-neutral-900 shadow-lg">
+        <div className="px-4 pt-4">
+        <div className="relative w-full aspect-[4/5] sm:aspect-[1/1] overflow-hidden rounded-[32px] bg-[rgb(var(--surface-muted))] shadow-[var(--shadow-card-hover)]">
           <ProductImage
             src={product.image_url}
             alt={product.title}
@@ -205,7 +206,7 @@ export default function SingleProductPage() {
               type="button"
               onClick={() => router.back()}
               aria-label="Back"
-              className="w-11 h-11 rounded-full flex items-center justify-center bg-black/40 backdrop-blur-md border border-white/25 text-white shadow-md active:scale-95 transition-transform"
+              className="w-11 h-11 rounded-full flex items-center justify-center bg-[rgb(var(--surface-card)/.9)] backdrop-blur-md border border-[var(--border-faint)] text-ink shadow-[var(--shadow-card)] active:scale-95 transition-transform"
             >
               <ArrowLeft className="w-5 h-5 stroke-[2.5]" />
             </button>
@@ -214,7 +215,7 @@ export default function SingleProductPage() {
               {/* Cart Drawer Shortcut Button */}
               <CartDrawerTrigger
                 onClick={() => setCartDrawerOpen(true)}
-                className="w-11 h-11 bg-black/40 text-white border-white/25 hover:bg-black/55 shadow-md"
+                className="w-11 h-11"
               />
 
               <button
@@ -224,7 +225,7 @@ export default function SingleProductPage() {
                 className={`w-11 h-11 rounded-full flex items-center justify-center backdrop-blur-md border shadow-md active:scale-95 transition-transform ${
                   isFavorited
                     ? "bg-red-500 text-white border-red-400"
-                    : "bg-black/40 text-white border-white/25 hover:bg-black/55"
+                    : "bg-[rgb(var(--surface-card)/.9)] text-ink border-[var(--border-faint)]"
                 }`}
               >
                 <Heart
@@ -236,14 +237,13 @@ export default function SingleProductPage() {
             </div>
           </div>
 
-          {/* Subtle bottom gradient tint */}
-          <div className="absolute bottom-0 inset-x-0 h-16 bg-gradient-to-t from-black/60 to-transparent pointer-events-none" />
+        </div>
         </div>
 
         {/* =========================================================================
             PRODUCT DETAILS & PRICE (Screen 2: Title Left, Bold Price Right)
         ========================================================================= */}
-        <div className="px-5 pt-5 space-y-4">
+        <div className="px-6 pt-6 space-y-5">
           {/* Header Row: Title on Left, Price on Right */}
           <div className="flex items-start justify-between gap-4">
             <div className="flex-1 min-w-0">
@@ -265,7 +265,7 @@ export default function SingleProductPage() {
                 )}
               </div>
 
-              <h1 className="text-xl sm:text-2xl font-black text-ink tracking-tight leading-tight">
+              <h1 className="text-2xl font-bold text-ink tracking-tight leading-tight">
                 {product.title}
               </h1>
 
@@ -284,7 +284,7 @@ export default function SingleProductPage() {
 
             {/* Right: Bold Price */}
             <div className="text-right shrink-0">
-              <div className="text-xl sm:text-2xl font-black text-ink tracking-tight">
+              <div className="text-xl font-bold text-ink tracking-tight">
                 UGX {activePrice.toLocaleString()}
               </div>
               {activeCompareAt && activeCompareAt > activePrice && (
@@ -297,12 +297,10 @@ export default function SingleProductPage() {
 
           {/* Description Section */}
           {product.description && (
-            <div className="pt-2 border-t border-surface-border/60">
-              <h2 className="text-xs font-bold uppercase tracking-wider text-ink-500 mb-1.5">
-                Description
-              </h2>
+            <div>
+              <h2 className="sr-only">Description</h2>
               <p
-                className={`text-xs sm:text-sm text-ink-700 leading-relaxed font-normal ${
+                className={`text-sm text-ink-500 leading-relaxed font-normal ${
                   showFullDesc ? "" : "line-clamp-3"
                 }`}
               >
@@ -324,7 +322,7 @@ export default function SingleProductPage() {
               VARIANT SELECTOR (Screen 2: Sizes / Options Pills)
           ========================================================================= */}
           {product.variants && product.variants.length > 0 && (
-            <div className="pt-2 border-t border-surface-border/60">
+            <div className="pt-2 ">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-bold uppercase tracking-wider text-ink-500">
                   Select Option
@@ -344,10 +342,10 @@ export default function SingleProductPage() {
                       key={v.id}
                       type="button"
                       onClick={() => setSelectedVariant(v)}
-                      className={`px-4 py-2.5 rounded-2xl text-xs font-bold transition-all border active:scale-95 ${
+                      className={`px-4 py-2.5 rounded-full text-xs font-semibold transition-all border active:scale-95 ${
                         isSelected
-                          ? "bg-ink text-cream border-ink shadow-sm"
-                          : "bg-surface-subtle text-ink-700 border-surface-border hover:border-ink/40"
+                          ? "bg-gold text-ink-gold border-gold shadow-[var(--shadow-glow-gold)]"
+                          : "bg-[rgb(var(--surface-muted))] text-ink-500 border-transparent hover:text-ink"
                       }`}
                     >
                       {v.title}
@@ -359,16 +357,16 @@ export default function SingleProductPage() {
           )}
 
           {/* Quantity Stepper & Stock Status */}
-          <div className="pt-3 border-t border-surface-border/60 flex items-center justify-between">
+          <div className="pt-3  flex items-center justify-between">
             <div>
               <span className="text-xs font-bold uppercase tracking-wider text-ink-500 block mb-1">
                 Quantity
               </span>
-              <div className="inline-flex items-center gap-3 bg-surface-subtle border border-surface-border rounded-full px-3 py-1.5 shadow-xs">
+              <div className="inline-flex items-center gap-3 rounded-full bg-[rgb(var(--surface-muted))] px-2 py-1.5">
                 <button
                   type="button"
                   onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-                  className="w-7 h-7 rounded-full flex items-center justify-center text-ink hover:bg-surface-card active:scale-90 transition"
+                  className="w-7 h-7 rounded-full flex items-center justify-center text-ink hover:bg-[rgb(var(--surface-card))] active:scale-90 transition"
                   aria-label="Decrease quantity"
                 >
                   <Minus className="w-3.5 h-3.5" />
@@ -377,7 +375,7 @@ export default function SingleProductPage() {
                 <button
                   type="button"
                   onClick={() => setQuantity((q) => q + 1)}
-                  className="w-7 h-7 rounded-full flex items-center justify-center text-ink hover:bg-surface-card active:scale-90 transition"
+                  className="w-7 h-7 rounded-full flex items-center justify-center text-ink hover:bg-[rgb(var(--surface-card))] active:scale-90 transition"
                   aria-label="Increase quantity"
                 >
                   <Plus className="w-3.5 h-3.5" />
@@ -406,33 +404,31 @@ export default function SingleProductPage() {
         {/* =========================================================================
             BOTTOM FIXED ACTION BAR (Screen 2: Cart Shortcut + Big "Add to Cart" Pill)
         ========================================================================= */}
-        <div className="fixed bottom-0 inset-x-0 z-40 bg-[rgb(var(--color-bg))]/90 backdrop-blur-md border-t border-surface-border p-4">
+        <div className="fixed bottom-0 inset-x-0 z-40 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 bg-gradient-to-t from-[rgb(var(--color-cream))] via-[rgb(var(--color-cream)/.92)] to-transparent">
           <div className="mx-auto max-w-md flex items-center gap-3">
-            {/* Shopping Bag Button with Total Badge -> OPENS CART DRAWER */}
+            {/* Wide pill: add to bag and go straight to the cart */}
             <button
               type="button"
-              onClick={() => setCartDrawerOpen(true)}
-              className="relative w-13 h-13 rounded-2xl bg-surface-subtle border border-surface-border flex items-center justify-center text-ink hover:bg-surface-card active:scale-95 transition shrink-0 cursor-pointer"
-              aria-label="Open Shopping Bag"
+              onClick={() => handleAddToCart(true)}
+              className="flex-1 h-14 px-6 rounded-full bg-gold text-ink-gold active:scale-[0.98] transition font-semibold text-base shadow-[var(--shadow-glow-gold)] flex items-center justify-between"
             >
-              <ShoppingBag className="w-6 h-6" />
-              {totalQuantity > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 min-w-[20px] h-5 rounded-full bg-gold text-ink-gold text-[10px] font-black flex items-center justify-center px-1 shadow-sm">
-                  {totalQuantity}
-                </span>
-              )}
+              <span>Buy Now</span>
+              <span className="font-bold">UGX {(activePrice * quantity).toLocaleString()}</span>
             </button>
 
-            {/* Main Action Button */}
+            {/* Round cart button: add to bag and keep browsing (opens the bag drawer) */}
             <button
               type="button"
               onClick={() => handleAddToCart(false)}
-              className="flex-1 py-4 px-6 rounded-full bg-ink text-cream hover:bg-ink/90 active:scale-[0.98] transition font-bold text-sm sm:text-base shadow-xl flex items-center justify-between"
+              className="relative h-14 w-14 rounded-full bg-[rgb(var(--surface-card))] border border-[var(--border-faint)] shadow-[var(--shadow-card)] flex items-center justify-center text-ink active:scale-95 transition shrink-0"
+              aria-label="Add to cart"
             >
-              <span>Add to Cart</span>
-              <span className="font-black text-gold">
-                UGX {(activePrice * quantity).toLocaleString()}
-              </span>
+              <ShoppingBag className="w-6 h-6" aria-hidden />
+              {totalQuantity > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[20px] h-5 rounded-full bg-gold text-ink-gold text-[10px] font-black flex items-center justify-center px-1 shadow-sm">
+                  {totalQuantity}
+                </span>
+              )}
             </button>
           </div>
         </div>
