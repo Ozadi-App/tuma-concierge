@@ -1,12 +1,57 @@
 "use client";
 
-import type { WorkAdminJobDetail, WorkAdminProvider, WorkResolveOutcome } from "@peebee/shared";
+import type { WorkAdminJobDetail, WorkAdminPhoto, WorkAdminProvider, WorkResolveOutcome } from "@peebee/shared";
 import { ChevronLeft } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { Badge, ConfirmDialog, ErrorNote, Field, inputCls, label, ugx, useWorkPermissions, when } from "../../../../components/work/ui";
 import { api, errorMessage } from "../../../../lib/api";
+
+const EVENT_LABEL: Record<string, string> = {
+  provider_cancelled: "Provider cancelled the job",
+  rematched: "Job offered to other providers again",
+  photo_added: "Photo added",
+};
+const eventLabel = (a: string) => EVENT_LABEL[a] ?? label(a);
+
+/** Photos are private, so they load with the sign-in header and show from an object URL. */
+function PhotoThumb({ photo }: { photo: WorkAdminPhoto }) {
+  const [url, setUrl] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    let made: string | null = null;
+    let cancelled = false;
+    api
+      .workPhotoBlob(photo.id)
+      .then((blob) => {
+        if (cancelled) return;
+        made = URL.createObjectURL(blob);
+        setUrl(made);
+      })
+      .catch(() => !cancelled && setFailed(true));
+    return () => {
+      cancelled = true;
+      if (made) URL.revokeObjectURL(made);
+    };
+  }, [photo.id]);
+  return (
+    <figure className="space-y-1">
+      <div className="flex aspect-square items-center justify-center overflow-hidden rounded-xl bg-[rgb(var(--surface-muted))]">
+        {url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={url} alt={`${label(photo.phase)} photo by ${photo.uploader_kind}`} className="h-full w-full object-cover" />
+        ) : (
+          <span className="text-xs text-ink-500">{failed ? "Couldn't load" : "Loading…"}</span>
+        )}
+      </div>
+      <figcaption className="text-[11px] text-ink-500">
+        {label(photo.phase)} · {label(photo.uploader_kind)} · {when(photo.created_at)}
+        {photo.note ? ` · ${photo.note}` : ""}
+      </figcaption>
+    </figure>
+  );
+}
 
 type Dialog = "assign" | "broadcast" | "cancel" | "resolve" | null;
 
@@ -103,6 +148,22 @@ export default function WorkJobDetailPage() {
         <Row k="Type" v={`${label(job.service.type)} · ${label(job.pricingMode)}`} />
         <Row k="Matching" v={label(job.matchingMode)} />
         <Row k="Quantity" v={job.quantity} />
+        {(job.rematchCount ?? 0) > 0 && <Row k="Re-matched" v={`${job.rematchCount} time${job.rematchCount === 1 ? "" : "s"}`} />}
+        {job.providerLocation && (
+          <Row
+            k="Provider last seen"
+            v={
+              <a
+                href={`https://www.google.com/maps?q=${job.providerLocation.lat},${job.providerLocation.lng}`}
+                target="_blank"
+                rel="noreferrer"
+                className="underline"
+              >
+                {job.providerLocation.lat.toFixed(5)}, {job.providerLocation.lng.toFixed(5)} · {when(job.providerLocation.updatedAt)}
+              </a>
+            }
+          />
+        )}
         <Row k="Address" v={[job.address, job.area].filter(Boolean).join(", ") || "—"} />
         <Row k="Scheduled" v={when(job.scheduledFor)} />
         <Row k="Provider" v={job.provider ? `${job.provider.display_name} (${label(job.provider.kind)})` : "None yet"} />
@@ -164,12 +225,39 @@ export default function WorkJobDetailPage() {
       </section>
 
       <section className="home-card space-y-2">
+        <h3 className="text-sm font-bold text-ink">Photos</h3>
+        {(data.photos ?? []).length === 0 && <p className="text-sm text-ink-500">No photos.</p>}
+        <div className="grid grid-cols-2 gap-3">
+          {(data.photos ?? []).map((p) => (
+            <PhotoThumb key={p.id} photo={p} />
+          ))}
+        </div>
+      </section>
+
+      <section className="home-card space-y-2">
+        <h3 className="text-sm font-bold text-ink">Messages (read only)</h3>
+        {(data.messages ?? []).length === 0 && <p className="text-sm text-ink-500">No messages.</p>}
+        <ul className="space-y-2">
+          {(data.messages ?? []).map((m) => (
+            <li key={m.id} className={`flex flex-col ${m.sender_kind === "customer" ? "items-start" : "items-end"}`}>
+              <div className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm text-ink ${m.sender_kind === "customer" ? "bg-[rgb(var(--surface-muted))]" : "bg-gold/15"}`}>
+                <p className="whitespace-pre-wrap break-words">{m.body}</p>
+              </div>
+              <p className="mt-0.5 text-[11px] text-ink-500">
+                {label(m.sender_kind)}{m.sender_name ? ` · ${m.sender_name}` : ""} · {when(m.created_at)}
+              </p>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      <section className="home-card space-y-2">
         <h3 className="text-sm font-bold text-ink">Timeline</h3>
         {events.length === 0 && <p className="text-sm text-ink-500">No events.</p>}
         <ol className="space-y-2">
           {events.map((e) => (
             <li key={e.id} className="text-sm">
-              <p className="font-semibold text-ink">{label(e.action)} <span className="font-normal text-ink-500">· {label(e.actor_kind)}</span></p>
+              <p className="font-semibold text-ink">{eventLabel(e.action)} <span className="font-normal text-ink-500">· {label(e.actor_kind)}</span></p>
               {e.detail && <p className="break-words text-xs text-ink-500">{e.detail}</p>}
               <p className="text-[11px] text-ink-500">{when(e.created_at)}</p>
             </li>

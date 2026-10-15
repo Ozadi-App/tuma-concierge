@@ -271,7 +271,7 @@ export type {
   WorkService, WorkServiceType, WorkStaffMember,
 } from "./work-client.js";
 export type {
-  WorkAdminEvent, WorkAdminJob, WorkAdminJobDetail, WorkAdminMoney, WorkAdminOffer, WorkAdminProvider, WorkAdminProviderRow,
+  WorkAdminEvent, WorkAdminJob, WorkAdminJobDetail, WorkAdminMessage, WorkAdminMoney, WorkAdminPhoto, WorkAdminOffer, WorkAdminProvider, WorkAdminProviderRow,
   WorkAdminService, WorkAdminServiceInput, WorkAdminSettings, WorkProviderAction, WorkProviderKind, WorkProviderStatus, WorkResolveOutcome,
 } from "./work-admin-client.js";
 export { WORK_SETTINGS_EXTRA_DEFAULTS } from "./work-admin-client.js";

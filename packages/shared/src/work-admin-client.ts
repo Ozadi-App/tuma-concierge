@@ -112,11 +112,31 @@ export type WorkAdminOffer = {
   created_at: string;
 };
 
+export type WorkAdminPhoto = {
+  id: string;
+  uploader_kind: "customer" | "provider" | "worker" | "admin" | "system";
+  phase: string;
+  note: string | null;
+  size_bytes: number;
+  created_at: string;
+};
+
+export type WorkAdminMessage = {
+  id: string;
+  sender_kind: "customer" | "provider" | "worker" | "admin" | "system";
+  body: string;
+  created_at: string;
+  sender_name: string | null;
+};
+
 export type WorkAdminJobDetail = {
   job: WorkAdminJob;
   events: WorkAdminEvent[];
   money: WorkAdminMoney[];
   offers: WorkAdminOffer[];
+  /** Empty until the photos/chat migration is applied. */
+  photos?: WorkAdminPhoto[];
+  messages?: WorkAdminMessage[];
 };
 
 /** The `work` settings group (GET /v1/settings, PUT /v1/admin/settings). */
