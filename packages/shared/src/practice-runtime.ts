@@ -830,6 +830,33 @@ function handlePracticeRequest(role: PracticeRole, path: string, method: string,
     return jsonResponse({ orders: history === completed && !query.has("cursor") ? [order] : [], counts: { active: completed ? 0 : 1, history: completed ? 1 : 0 }, nextCursor: null });
   }
 
+  // Pharmacy prescriptions: kept in this browser only, never sent anywhere.
+  if (role === "customer" && path.startsWith("/v1/pharmacy/")) {
+    const rxKey = "peebee_practice_prescriptions_v1";
+    const readRx = (): Array<Record<string, unknown>> => (canUseStorage() ? JSON.parse(window.localStorage.getItem(rxKey) ?? "[]") : []);
+    const writeRx = (rows: Array<Record<string, unknown>>) => { if (canUseStorage()) window.localStorage.setItem(rxKey, JSON.stringify(rows)); };
+    const pharmacies = DEMO_MARKETPLACE_STORES.filter((s) => s.category === "pharmacy").map((s) => ({ id: s.id, name: s.name, address: s.address ?? null, phone: s.phone ?? null }));
+    if (method === "GET" && path === "/v1/pharmacy/pharmacies") return jsonResponse({ pharmacies });
+    if (method === "POST" && path === "/v1/pharmacy/uploads") return jsonResponse({ key: `rx/practice-user/practice-${Date.now()}.jpg` }, 201);
+    if (method === "GET" && path === "/v1/pharmacy/prescriptions") return jsonResponse({ prescriptions: readRx() });
+    if (method === "POST" && path === "/v1/pharmacy/prescriptions") {
+      const pharmacy = pharmacies.find((p) => p.id === body.pharmacyId) ?? pharmacies[0];
+      const prescription = {
+        id: `rx_practice_${Date.now()}`, customerName: "You", customerPhone: null, pharmacyId: pharmacy?.id ?? "", pharmacyName: pharmacy?.name ?? "Practice pharmacy",
+        hasImage: true, imagePath: null, patientNotes: String(body.patientNotes ?? ""), patientAge: typeof body.patientAge === "number" ? body.patientAge : null,
+        patientGender: typeof body.patientGender === "string" ? body.patientGender : null, status: "pending_review", pharmacistNotes: "", dosageInstructions: "",
+        quotedItems: [], quotedTotalUgx: 0, deliveryAddress: String(body.deliveryAddress ?? ""), deliveryFeeUgx: 5_000, createdAt: nowIso(), updatedAt: nowIso(),
+      };
+      writeRx([prescription, ...readRx()]);
+      return jsonResponse({ ok: true, prescription }, 201);
+    }
+    const rxCancel = path.match(/^\/v1\/pharmacy\/prescriptions\/([^/]+)\/cancel$/);
+    if (method === "POST" && rxCancel) {
+      writeRx(readRx().map((rx) => (rx.id === rxCancel[1] ? { ...rx, status: "cancelled", updatedAt: nowIso() } : rx)));
+      return jsonResponse({ ok: true });
+    }
+  }
+
   if (method === "GET" && path === "/v1/chat/threads") return jsonResponse({ threads: [] });
   if (method === "GET" && path === "/v1/restaurants/me/chat") return jsonResponse({ threads: [] });
   if (method === "GET" && path.startsWith("/v1/calls/incoming")) return jsonResponse({ call: null });
