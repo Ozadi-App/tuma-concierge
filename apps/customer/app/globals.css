@@ -1317,7 +1317,6 @@ select:focus {
 .customer-nav-content-clearance { padding-bottom: var(--customer-nav-content-gap, calc(87px + env(safe-area-inset-bottom))); }
 .customer-header { background: rgb(var(--color-black-700)); color: white; border-bottom: 1px solid rgb(255 255 255 / .08); }
 :root[data-theme="dark"] .customer-header { background: #000; }
-.customer-profile-card { background: rgb(255 255 255 / .06); border: 1px solid rgb(255 255 255 / .12); }
 .customer-profile-reveal { grid-template-rows: 0fr; transition: grid-template-rows 280ms ease, opacity 220ms ease; opacity: 0; }
 .customer-profile-reveal.is-expanded { grid-template-rows: 1fr; opacity: 1; }
 .customer-nav-capsule {
@@ -1519,25 +1518,6 @@ select:focus {
   border: 1px solid rgb(0 0 0 / .18);
 }
 :root[data-theme="dark"] .customer-header-toggle:hover { background: rgb(0 0 0 / .08); }
-:root[data-theme="dark"] .customer-profile-card {
-  color: #111;
-  background: rgb(0 0 0 / .06);
-  border-color: rgb(0 0 0 / .14);
-}
-:root[data-theme="dark"] .customer-profile-avatar { color: #111; background: rgb(0 0 0 / .08); }
-:root[data-theme="dark"] .customer-profile-muted { color: rgb(0 0 0 / .62); }
-:root[data-theme="dark"] .customer-profile-chevron { color: #111; }
-:root[data-theme="dark"] .customer-profile-appearance { border: 1px solid rgb(0 0 0 / .14); }
-:root[data-theme="dark"] .customer-profile-segmented {
-  background: rgb(0 0 0 / .06);
-  border: 1px solid rgb(0 0 0 / .12);
-}
-:root[data-theme="dark"] .customer-profile-theme-option { color: rgb(0 0 0 / .7); }
-:root[data-theme="dark"] .customer-profile-theme-option:hover,
-:root[data-theme="dark"] .customer-profile-theme-option.is-selected {
-  color: #111;
-  background: rgb(0 0 0 / .1);
-}
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) .customer-header {
@@ -1547,17 +1527,75 @@ select:focus {
   }
   :root:not([data-theme="light"]) .customer-header-toggle { color: #111; border-color: rgb(0 0 0 / .18); }
   :root:not([data-theme="light"]) .customer-header-toggle:hover { background: rgb(0 0 0 / .08); }
-  :root:not([data-theme="light"]) .customer-profile-card { color: #111; background: rgb(0 0 0 / .06); border-color: rgb(0 0 0 / .14); }
-  :root:not([data-theme="light"]) .customer-profile-avatar { color: #111; background: rgb(0 0 0 / .08); }
-  :root:not([data-theme="light"]) .customer-profile-muted { color: rgb(0 0 0 / .62); }
-  :root:not([data-theme="light"]) .customer-profile-chevron { color: #111; }
-  :root:not([data-theme="light"]) .customer-profile-appearance { border: 1px solid rgb(0 0 0 / .14); }
-  :root:not([data-theme="light"]) .customer-profile-segmented { background: rgb(0 0 0 / .06); border: 1px solid rgb(0 0 0 / .12); }
-  :root:not([data-theme="light"]) .customer-profile-theme-option { color: rgb(0 0 0 / .7); }
-  :root:not([data-theme="light"]) .customer-profile-theme-option:hover,
-  :root:not([data-theme="light"]) .customer-profile-theme-option.is-selected {
-    color: #111;
-    background: rgb(0 0 0 / .1);
-  }
 }
 
+
+/* Header menu: a drop-down sheet under the header bar. Bright in light mode,
+   black in dark mode; gold stays the one accent in both. */
+/* Push-down: the menu opens inside the sticky header, in normal flow, so the
+   whole screen below slides down by the menu's height instead of being covered.
+   The page colour sits behind the sheet so its rounded corners blend into the
+   screen it pushed down. */
+.customer-profile-reveal.customer-menu-reveal { background: rgb(var(--color-cream)); }
+.customer-header.is-menu-open, :root[data-theme="dark"] .customer-header.is-menu-open { border-bottom-color: rgb(var(--color-cream)); }
+/* Keep the screen where the push puts it: no scroll anchoring (which would
+   scroll content back up under the menu) and no scrolling while open. */
+:root.customer-menu-open { overflow-anchor: none; overflow: hidden; }
+:root.customer-menu-open body { overflow-anchor: none; }
+.customer-menu-catcher { pointer-events: none; background: transparent; }
+.customer-menu-catcher.is-active { pointer-events: auto; cursor: pointer; }
+.customer-menu-sheet {
+  max-height: calc(100dvh - 4rem - 12px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: #fff;
+  color: #111;
+  border-radius: 0 0 28px 28px;
+  box-shadow: 0 22px 44px -12px rgb(0 0 0 / .22), 0 2px 0 rgb(var(--color-gold) / .55) inset;
+  transform: translateY(-10px);
+  transition: transform 280ms cubic-bezier(.2,.8,.2,1);
+}
+.customer-profile-reveal.is-expanded .customer-menu-sheet { transform: none; }
+/* No fade: a half-transparent reveal would let the header colour wash over it. */
+.customer-profile-reveal.customer-menu-reveal { opacity: 1; transition: grid-template-rows 320ms cubic-bezier(.2,.8,.2,1); }
+.customer-menu-muted { color: rgb(0 0 0 / .56); }
+.customer-menu-row { transition: background-color 160ms ease; }
+.customer-menu-row:hover { background: rgb(var(--color-gold) / .07); }
+.customer-menu-avatar { color: #111; background: rgb(var(--color-gold) / .14); box-shadow: 0 0 0 2px #fff, 0 0 0 4px rgb(var(--color-gold)); }
+.customer-menu-pill { color: #111; background: rgb(var(--color-gold) / .16); border: 1px solid rgb(var(--color-gold) / .35); }
+.customer-menu-wallet {
+  color: #111;
+  background: linear-gradient(135deg, rgb(var(--color-gold-400) / .78) 0%, rgb(var(--color-gold-400)) 45%, rgb(var(--color-gold)) 100%);
+  box-shadow: 0 10px 24px -14px rgb(var(--color-gold)), inset 0 1px 0 rgb(255 255 255 / .45);
+}
+.customer-menu-wallet-icon { background: rgb(0 0 0 / .1); }
+.customer-menu-tile { color: #111; background: #faf8f2; border: 1px solid rgb(0 0 0 / .05); transition: transform 160ms ease, background-color 160ms ease; }
+.customer-menu-tile:hover { background: rgb(var(--color-gold) / .1); }
+.customer-menu-tile:active { transform: scale(.97); }
+.customer-menu-tile-icon { color: #7a5d06; background: linear-gradient(135deg, rgb(var(--color-gold) / .1), rgb(var(--color-gold) / .26)); }
+.customer-menu-badge { color: #111; background: rgb(var(--color-gold)); box-shadow: 0 0 0 2px #fff; }
+.customer-menu-theme { border: 1px solid rgb(0 0 0 / .06); }
+.customer-menu-switch { background: rgb(0 0 0 / .14); transition: background-color 200ms ease; }
+.customer-menu-switch.is-on { background: rgb(var(--color-gold)); }
+.customer-menu-switch-knob { background: #fff; box-shadow: 0 1px 3px rgb(0 0 0 / .3); transition: transform 200ms ease; }
+.customer-menu-switch.is-on .customer-menu-switch-knob { transform: translateX(20px); }
+.customer-menu-sheet a:focus-visible, .customer-menu-sheet button:focus-visible { outline: 2px solid rgb(var(--color-gold)); outline-offset: 2px; }
+.customer-header-dot { background: rgb(var(--color-gold)); box-shadow: 0 0 0 2px rgb(var(--color-black-700)); }
+
+:root[data-theme="dark"] .customer-menu-sheet { background: #0b0b0b; color: #f5f5f5; box-shadow: 0 22px 44px -12px rgb(0 0 0 / .8), inset 0 -1px 0 rgb(255 255 255 / .06); }
+:root[data-theme="dark"] .customer-menu-muted { color: rgb(255 255 255 / .58); }
+:root[data-theme="dark"] .customer-menu-row:hover { background: rgb(255 255 255 / .05); }
+:root[data-theme="dark"] .customer-menu-avatar { color: rgb(var(--color-gold)); background: rgb(var(--color-gold) / .14); box-shadow: 0 0 0 2px #0b0b0b, 0 0 0 4px rgb(var(--color-gold)); }
+:root[data-theme="dark"] .customer-menu-pill { color: rgb(var(--color-gold)); background: rgb(var(--color-gold) / .12); border-color: rgb(var(--color-gold) / .35); }
+:root[data-theme="dark"] .customer-menu-tile { color: #f5f5f5; background: #161616; border-color: rgb(255 255 255 / .06); }
+:root[data-theme="dark"] .customer-menu-tile:hover { background: #1d1d1d; }
+:root[data-theme="dark"] .customer-menu-tile-icon { color: rgb(var(--color-gold-400)); background: linear-gradient(135deg, rgb(var(--color-gold) / .08), rgb(var(--color-gold) / .22)); }
+:root[data-theme="dark"] .customer-menu-badge { box-shadow: 0 0 0 2px #161616; }
+:root[data-theme="dark"] .customer-menu-theme { border-color: rgb(255 255 255 / .07); }
+:root[data-theme="dark"] .customer-menu-switch { background: rgb(255 255 255 / .18); }
+:root[data-theme="dark"] .customer-menu-switch.is-on { background: rgb(var(--color-gold)); }
+:root[data-theme="dark"] .customer-menu-switch-knob { background: #111; box-shadow: 0 1px 3px rgb(0 0 0 / .5); }
+:root[data-theme="dark"] .customer-header-dot { background: #111; box-shadow: 0 0 0 2px rgb(var(--color-gold)); }
+@media (prefers-reduced-motion: reduce) {
+  .customer-profile-reveal.customer-menu-reveal, .customer-menu-sheet, .customer-menu-switch, .customer-menu-switch-knob, .customer-menu-tile { transition: none; }
+}
