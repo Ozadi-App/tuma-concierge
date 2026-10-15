@@ -1,4 +1,5 @@
 import type { AdminRole } from "./permissions.js";
+import { workMethods } from "./work-client.js";
 import type { PracticeRole } from "./practice.js";
 import type {
   ActivityLogEntry,
@@ -286,6 +287,30 @@ export function friendlyErrorMessage(err: unknown): string {
 }
 
 /** API client for peebee-api (apps/api on Render). */
+export type PharmacyQuoteItem = { name: string; strength?: string; dosage?: string; quantity: number; unitPrice: number };
+
+export type PharmacyPrescription = {
+  id: string;
+  customerName: string;
+  customerPhone: string | null;
+  pharmacyId: string;
+  pharmacyName: string;
+  hasImage: boolean;
+  imagePath: string | null;
+  patientNotes: string;
+  patientAge: number | null;
+  patientGender: string | null;
+  status: "pending_review" | "priced_ready" | "dispensed" | "declined" | "cancelled";
+  pharmacistNotes: string;
+  dosageInstructions: string;
+  quotedItems: PharmacyQuoteItem[];
+  quotedTotalUgx: number;
+  deliveryAddress: string;
+  deliveryFeeUgx: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }: CreateApiClientOptions) {
   const root = baseUrl.replace(/\/$/, "");
   const f = fetchImpl ?? fetch;
@@ -1665,33 +1690,60 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
     },
 
     // Pharmacy & Prescription Endpoints
+    /** The pharmacy the signed-in user works for (403 `not_a_pharmacist` when none). */
+    async pharmacyMe() {
+      return request<{
+        pharmacist: { id: string; name: string; role: string };
+        pharmacy: { id: string; name: string; address: string; phone: string; licenceNumber: string };
+        pharmacies: { id: string; name: string }[];
+      }>("/v1/pharmacy/me");
+    },
+    async getPharmacies() {
+      return request<{ pharmacies: { id: string; name: string; address: string | null; phone: string | null }[] }>("/v1/pharmacy/pharmacies");
+    },
+    /** Uploads a photo of the doctor's slip to private storage; pass the returned key to submitPrescription. */
+    async uploadPrescriptionPhoto(file: Blob) {
+      const form = new FormData();
+      form.append("file", file, "prescription.jpg");
+      const res = await f(`${root}/v1/pharmacy/uploads`, { method: "POST", headers: authHeaders(), body: form });
+      return json<{ key: string }>(res);
+    },
     async submitPrescription(input: {
-      prescriptionImageUrl: string;
+      pharmacyId: string;
+      prescriptionImageKey: string;
       patientNotes?: string;
-      pharmacyId?: string;
       patientAge?: number;
-      patientGender?: string;
+      patientGender?: "female" | "male" | "other";
       deliveryAddress?: string;
     }) {
-      return request<{ ok: boolean; prescription: any }>("/v1/pharmacy/prescriptions", {
+      return request<{ ok: boolean; prescription: PharmacyPrescription }>("/v1/pharmacy/prescriptions", {
         method: "POST",
         body: JSON.stringify(input),
       });
     },
     async getCustomerPrescriptions() {
-      return request<{ prescriptions: any[] }>("/v1/pharmacy/prescriptions");
+      return request<{ prescriptions: PharmacyPrescription[] }>("/v1/pharmacy/prescriptions");
     },
-    async getPharmacistPrescriptions() {
-      return request<{ prescriptions: any[] }>("/v1/pharmacy/pharmacist/prescriptions");
+    async cancelPrescription(id: string) {
+      return request<{ ok: boolean }>(`/v1/pharmacy/prescriptions/${encodeURIComponent(id)}/cancel`, { method: "POST", body: JSON.stringify({}) });
+    },
+    /** The slip photo as a Blob. It needs the sign-in header, so it can't be a plain <img src>. */
+    async prescriptionImageBlob(id: string): Promise<Blob> {
+      const res = await f(`${root}/v1/pharmacy/prescriptions/${encodeURIComponent(id)}/image`, { headers: authHeaders() });
+      if (!res.ok) throw new Error(`API ${res.status}: failed to load the prescription photo`);
+      return res.blob();
+    },
+    async getPharmacistPrescriptions(status?: string) {
+      const q = status ? `?status=${encodeURIComponent(status)}` : "";
+      return request<{ prescriptions: PharmacyPrescription[] }>(`/v1/pharmacy/pharmacist/prescriptions${q}`);
     },
     async updatePrescriptionReview(id: string, input: {
-      status: string;
+      status: "priced_ready" | "declined" | "dispensed";
       pharmacistNotes?: string;
       dosageInstructions?: string;
-      quotedItems?: any[];
-      quotedTotalUgx?: number;
+      quotedItems?: PharmacyQuoteItem[];
     }) {
-      return request<{ ok: boolean; prescription: any }>(`/v1/pharmacy/pharmacist/prescriptions/${id}`, {
+      return request<{ ok: boolean; prescription: PharmacyPrescription }>(`/v1/pharmacy/pharmacist/prescriptions/${encodeURIComponent(id)}`, {
         method: "PATCH",
         body: JSON.stringify(input),
       });
@@ -2464,12 +2516,18 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
       const q = outletId ? `?outletId=${encodeURIComponent(outletId)}` : "";
       return request<{ dispenses: FuelReceipt[] }>(`/v1/gas/dispenses${q}`);
     },
+    /** The signed-in customer's own fuel receipts. */
+    async gasRiderDispenses() {
+      return request<{ dispenses: FuelReceipt[] }>("/v1/gas/rider/dispenses");
+    },
     async gasShiftSummary(outletId?: string) {
       const q = outletId ? `?outletId=${encodeURIComponent(outletId)}` : "";
       return request<{ summary: FuelShiftSummary }>(`/v1/gas/shift/summary${q}`);
     },
+    async cancelRiderFuelCode() {
+      return request<{ ok: true; refunded_ugx: number }>("/v1/gas/rider/cancel-code", { method: "POST", body: JSON.stringify({}) });
+    },
     async generateRiderFuelCode(input: {
-      riderId?: string;
       vehiclePlate?: string;
       amountUgx: number;
       productId?: string;
@@ -2480,11 +2538,10 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
         body: JSON.stringify(input),
       });
     },
-    async getActiveRiderFuelCode(riderId?: string) {
-      const q = riderId ? `?riderId=${encodeURIComponent(riderId)}` : "";
-      return request<{ code: FuelCode | null }>(`/v1/gas/rider/active-code${q}`);
+    async getActiveRiderFuelCode() {
+      return request<{ code: FuelCode | null }>("/v1/gas/rider/active-code");
     },
-    async gasAttendantLogin(code: string, pin?: string, outletId?: string) {
+    async gasAttendantLogin(code: string, pin: string, outletId?: string) {
       return request<{
         ok: true;
         token: string;
@@ -2509,7 +2566,7 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
       });
     },
     // Station Manager Portal Methods
-    async gasManagerLogin(code?: string, pin?: string, outletId?: string) {
+    async gasManagerLogin(code: string | undefined, pin: string, outletId?: string) {
       return request<{
         ok: true;
         token: string;
@@ -2543,7 +2600,7 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
       pin?: string;
       approveImmediately?: boolean;
     }) {
-      return request<{ ok: true; attendant: FuelPumpAttendant }>("/v1/gas/manager/attendants/commission", {
+      return request<{ ok: true; attendant: FuelPumpAttendant; temporary_pin?: string }>("/v1/gas/manager/attendants/commission", {
         method: "POST",
         body: JSON.stringify(data),
       });
@@ -2569,8 +2626,8 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
         body: JSON.stringify({ pumpLane }),
       });
     },
-    async gasManagerResetPin(attendantId: string, pin: string) {
-      return request<{ ok: true }>(`/v1/gas/manager/attendants/${encodeURIComponent(attendantId)}/reset-pin`, {
+    async gasManagerResetPin(attendantId: string, pin?: string) {
+      return request<{ ok: true; temporary_pin?: string }>(`/v1/gas/manager/attendants/${encodeURIComponent(attendantId)}/reset-pin`, {
         method: "POST",
         body: JSON.stringify({ pin }),
       });
@@ -2620,6 +2677,7 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
         body: JSON.stringify(data),
       });
     },
+    ...workMethods(request),
   };
 }
 

@@ -39,6 +39,8 @@ import { walletsRoutes } from "./wallet/wallets.js";
 
 import { gasRoutes } from "./gas/routes.js";
 import { marketplaceRoutes } from "./marketplace/routes.js";
+import { workRoutes } from "./work/routes.js";
+import { pharmacyRoutes } from "./pharmacy/routes.js";
 
 /** Hono app shared by the Node entry (local dev) and the Cloudflare Worker entry. */
 const app = new Hono();
@@ -52,6 +54,7 @@ const devOrigins = [
   "http://localhost:3006", // apps/partner dev server
   "http://localhost:3007", // sales onboarding
   "http://localhost:3008", // apps/gas dev server
+  "http://localhost:3009", // apps/work dev server
 ];
 
 const defaultOrigins = [
@@ -65,6 +68,7 @@ const defaultOrigins = [
   "https://partner.peebee.online",
   "https://sales.peebee.online",
   "https://gas.peebee.online",
+  "https://work.peebee.online",
 ];
 
 /** Anything a developer runs on their own machine can call the API from the
@@ -223,6 +227,8 @@ app.route("/v1/auth", verifyRoutes);
 app.route("/v1/trips", tripRoutes);
 app.route("/v1/gas", gasRoutes);
 app.route("/v1", marketplaceRoutes);
+app.route("/v1/work", workRoutes);
+app.route("/v1/pharmacy", pharmacyRoutes);
 app.route("/v1", orderRoutes);
 app.route("/v1", paymentRoutes);
 app.route("/v1", pushRoutes);

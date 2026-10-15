@@ -7,7 +7,7 @@ export { DEFAULT_TIME_FEES, timeFeePolicy, timeFeeNotice } from "./time-fees.js"
 export type { TimeFeeSettings, TimeFeePolicy, OrderTimeFees } from "./time-fees.js";
 export type { PaymentRail as PaymentRailValue } from "./payment-rail.js";
 export { createApiClient, ApiError, friendlyErrorMessage } from "./api-client.js";
-export type { ApiValidationIssue } from "./api-client.js";
+export type { ApiValidationIssue, PharmacyPrescription, PharmacyQuoteItem } from "./api-client.js";
 export type { CreateApiClientOptions, ApiClient } from "./api-client.js";
 export { CallEngine } from "./call-engine.js";
 export type { CallEngineState, CallEnginePhase, CallEngineOptions } from "./call-engine.js";
@@ -266,3 +266,7 @@ export * from "./food-business.js";
 export * from "./food-orders.js";
 export * from "./colour-scenes.js";
 export * from "./food-feedback.js";
+export type {
+  WorkCustomerAction, WorkJob, WorkJobProvider, WorkJobStatus, WorkMatchingMode, WorkPricingMode, WorkProviderProfile, WorkPublicSettings,
+  WorkService, WorkServiceType, WorkStaffMember,
+} from "./work-client.js";

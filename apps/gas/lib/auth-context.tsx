@@ -47,8 +47,8 @@ type AuthState = {
   isManager: boolean;
   ready: boolean;
   error: string | null;
-  login: (code: string, pin?: string, outletId?: string) => Promise<void>;
-  loginManager: (code?: string, pin?: string, outletId?: string) => Promise<void>;
+  login: (code: string, pin: string, outletId?: string) => Promise<void>;
+  loginManager: (code: string | undefined, pin: string, outletId?: string) => Promise<void>;
   switchToPumpMode: () => void;
   switchToManagerMode: () => void;
   logout: () => void;
@@ -193,7 +193,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const login = useCallback(
-    async (code: string, pin?: string, outletId?: string) => {
+    async (code: string, pin: string, outletId?: string) => {
       setError(null);
       try {
         const res = await api.gasAttendantLogin(code, pin, outletId);
@@ -222,7 +222,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const loginManager = useCallback(
-    async (code?: string, pin?: string, outletId?: string) => {
+    async (code: string | undefined, pin: string, outletId?: string) => {
       setError(null);
       try {
         const res = await api.gasManagerLogin(code, pin, outletId);
