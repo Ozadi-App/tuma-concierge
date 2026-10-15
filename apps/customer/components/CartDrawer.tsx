@@ -1,5 +1,6 @@
 "use client";
 
+import { useRegisterNavBack } from "../lib/nav-primary-action";
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
@@ -35,6 +36,8 @@ export function CartDrawer({
   onOpen,
 }: CartDrawerProps) {
   const router = useRouter();
+  // While the drawer is open the nav's Home becomes Back, which closes it.
+  useRegisterNavBack(isOpen, onClose, 2);
   const {
     items,
     mounted,

@@ -5,7 +5,7 @@ import { Route } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Modal } from "../Modal";
-import { useRegisterNavPrimaryAction } from "../../lib/nav-primary-action";
+import { useRegisterNavPrimaryAction, useRegisterNavBack, goBackOr } from "../../lib/nav-primary-action";
 import { PlaceFlow, type PlaceResult } from "../PlaceFlow";
 import { api, errorMessage } from "../../lib/api";
 import { useTranslate } from "../../lib/i18n";
@@ -60,12 +60,15 @@ export function ParcelModal({ onClose }: { onClose: () => void }) {
     onClick: () => void submit(),
   } : null);
 
+  useRegisterNavBack(!choosing && !!route, () => setChoosing(true));
+
   if (choosing || !route) {
     return (
       <PlaceFlow
         concept="parcel"
         initial={route ?? undefined}
         onClose={() => (route ? setChoosing(false) : onClose())}
+        onBack={() => (route ? setChoosing(false) : goBackOr(router, "/deliver"))}
         onDone={(r) => {
           setRoute(r);
           setChoosing(false);

@@ -11,6 +11,7 @@ import {
   Car,
   CarFront,
   ChefHat,
+  ChevronLeft,
   ChevronRight,
   Loader2,
   Citrus,
@@ -44,7 +45,7 @@ import { useLivePolling } from "../lib/use-live-polling";
 import { BottomDrawer } from "./BottomDrawer";
 import { CartDrawer } from "./CartDrawer";
 import { useCart } from "../lib/cart";
-import { useNavPrimaryAction } from "../lib/nav-primary-action";
+import { useNavBack, useNavPrimaryAction } from "../lib/nav-primary-action";
 
 type MenuGroup = "original" | "ride" | "shopping" | "food" | "deliver" | "services";
 type MenuItem = { id: string; label: string; icon: LucideIcon; href?: string; group?: Exclude<MenuGroup, "original">; disabled?: boolean };
@@ -115,6 +116,8 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
   const t = useTranslate();
   const { totalQuantity: cartCount, total: cartTotal } = useCart();
   const primaryAction = useNavPrimaryAction();
+  // A cart/checkout or a flow step is open: Home becomes a one-step Back.
+  const navBack = useNavBack();
   const [cartOpen, setCartOpen] = useState(false);
 
   // Right-hand capsule mode:
@@ -234,7 +237,20 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
           <div className="pointer-events-auto flex w-full items-center gap-1.5">
             {/* Detached Home Capsule on Left */}
             <div className="customer-nav-capsule flex w-[64px] sm:w-[72px] shrink-0 items-center justify-center rounded-[24px] p-1.5 shadow-[var(--shadow-float-capsule)]">
+              {navBack ? (
               <button
+                key="nav-back"
+                type="button"
+                aria-label="Back"
+                onClick={navBack}
+                className="customer-nav-item customer-nav-icon-swap relative flex h-[58px] w-full flex-col items-center justify-center gap-1 rounded-[18px] px-1 py-1 text-[11px] font-bold transition-all duration-200 active:scale-95"
+              >
+                <ChevronLeft className="h-5 w-5" strokeWidth={2.2} aria-hidden />
+                <span className="leading-none truncate max-w-[54px]">Back</span>
+              </button>
+              ) : (
+              <button
+                key="nav-home"
                 type="button"
                 aria-label="Home and reset menu"
                 aria-current={pathname === "/" ? "page" : undefined}
@@ -243,7 +259,7 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
                   setSelectedItem(null);
                   router.push("/");
                 }}
-                className={`customer-nav-item relative flex h-[58px] w-full flex-col items-center justify-center gap-1 rounded-[18px] px-1 py-1 text-[11px] font-bold transition-all duration-200 active:scale-95 ${
+                className={`customer-nav-item customer-nav-icon-swap relative flex h-[58px] w-full flex-col items-center justify-center gap-1 rounded-[18px] px-1 py-1 text-[11px] font-bold transition-all duration-200 active:scale-95 ${
                   pathname === "/" ? "is-active" : ""
                 }`}
               >
@@ -256,6 +272,7 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
                   />
                 )}
               </button>
+              )}
             </div>
 
             {rightMode === "action" && primaryAction && actionTone === "cart" ? (

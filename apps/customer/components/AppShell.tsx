@@ -1,6 +1,7 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
+import { useEffect, useSyncExternalStore } from "react";
+import { noteInAppNavigation } from "../lib/nav-primary-action";
 import { usePathname } from "next/navigation";
 import { AuthGate } from "./AuthGate";
 import { BottomNav } from "./BottomNav";
@@ -12,6 +13,8 @@ import { isNavigationOverlayOpen, subscribeToNavigationOverlay } from "../lib/lo
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  // Lets the nav's Back use router.back() only when there is an in-app screen to return to.
+  useEffect(() => { noteInAppNavigation(); }, [pathname]);
   const navigationOverlayOpen = useSyncExternalStore(subscribeToNavigationOverlay, isNavigationOverlayOpen, () => false);
   const foodBusinessId=/^\/restaurants\/([^/]+)(?:\/items\/[^/]+)?$/.exec(pathname)?.[1];
   const isFoodDetail=/^\/restaurants\/[^/]+\/items\/[^/]+$/.test(pathname);

@@ -14,7 +14,7 @@ import { api, errorMessage } from "../../../../lib/api";
 import { formatUgx } from "../../../../lib/order-display";
 import { useLivePolling } from "../../../../lib/use-live-polling";
 import { useNetworkStatus } from "../../../../lib/use-network-status";
-import { useRegisterNavPrimaryAction } from "../../../../lib/nav-primary-action";
+import { useRegisterNavPrimaryAction, useRegisterNavBack } from "../../../../lib/nav-primary-action";
 
 type Method = "mobile_money" | "wallet" | "cash";
 type Quote = Awaited<ReturnType<typeof api.getOrderCheckout>>;
@@ -138,6 +138,8 @@ export default function PaymentPage() {
 
   // The final pay step is the bottom nav's gold right capsule (both themes),
   // wired to the same pay() with the same disabled rules.
+  // Pay step: nav Back returns to the order.
+  useRegisterNavBack(true, () => router.push(`/orders/${id}`));
   useRegisterNavPrimaryAction({
     tone: "gold",
     label: busy ? "Please wait…" : pending ? "Waiting for payment" : method === "cash" ? "Continue with cash" : `Pay${amount == null ? "" : ` ${formatUgx(amount)}`}`,

@@ -1383,6 +1383,10 @@ select:focus {
 .customer-nav-swap { animation: customer-nav-swap-in 260ms cubic-bezier(.2,.8,.2,1) both; transform-origin: right center; }
 @keyframes customer-nav-swap-in { from { opacity: 0; transform: translateY(6px) scale(.97); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .customer-nav-swap { animation: none; } }
+/* Home ⇄ Back swap on the detached left capsule. */
+.customer-nav-icon-swap { animation: customer-nav-icon-in 220ms cubic-bezier(.2,.8,.2,1) both; }
+@keyframes customer-nav-icon-in { from { opacity: 0; transform: translateX(4px) scale(.94); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .customer-nav-icon-swap { animation: none; } }
 
 /* Intermediate nav actions (View cart, Confirm route, Next: payment…):
    "transparent gold" — the brand gold token as a translucent horizontal

@@ -9,7 +9,7 @@ import { api } from "../lib/api";
 import { useTranslate, type TranslationKey } from "../lib/i18n";
 import { registerLocationFlow } from "../lib/location-flow-state";
 import { BottomNav } from "./BottomNav";
-import { useRegisterNavPrimaryAction } from "../lib/nav-primary-action";
+import { useRegisterNavPrimaryAction, useRegisterNavBack } from "../lib/nav-primary-action";
 import {
   cachedPosition,
   currentLocationPlace,
@@ -196,11 +196,14 @@ export function PlaceFlow({
   initial,
   onDone,
   onClose,
+  onBack,
 }: {
   concept: PlaceConcept;
   initial?: { pickup?: Place | null; destination?: Place | null; passenger?: RidePassenger | null };
   onDone: (result: PlaceResult) => void;
   onClose: () => void;
+  /** Nav Back out of the picker; defaults to onClose. */
+  onBack?: () => void;
 }) {
   const t = useTranslate();
   const route = concept === "ride" || concept === "parcel";
@@ -373,6 +376,8 @@ export function PlaceFlow({
   // grey in dark) instead of an in-sheet button; it stays disabled until a
   // place is chosen.
   useRegisterNavPrimaryAction({ tone: "step", label: t(CONFIRM_KEY[concept]), disabled: !ready, onClick: confirm }, 1);
+  // Nav Back = one step back out of the picker (the caller decides where).
+  useRegisterNavBack(true, () => (view === "search" ? setView(returnTo) : (onBack ?? onClose)()), 1);
 
   if (!mounted) return null;
 
