@@ -8,6 +8,12 @@ import { useEffect, useRef, useSyncExternalStore } from "react";
  * so the page doesn't need its own floating bar on top of the nav.
  */
 export interface NavPrimaryAction {
+  /** "gold" = final action (Checkout); "cart" = open/review a cart (white in light, grey in dark). */
+  tone?: "gold" | "cart";
+  /** Item count badge for tone "cart". */
+  count?: number;
+  /** Small line under the label for tone "cart", e.g. "2 items". */
+  sublabel?: string;
   label: string;
   /** Secondary text shown on the button, e.g. the order total. */
   detail?: string;
@@ -38,6 +44,9 @@ export function useRegisterNavPrimaryAction(action: Omit<NavPrimaryAction, "onCl
   const handlerRef = useRef<(() => void) | null>(null);
   handlerRef.current = action?.onClick ?? null;
   const label = action?.label;
+  const tone = action?.tone;
+  const count = action?.count;
+  const sublabel = action?.sublabel;
   const detail = action?.detail;
   const disabled = action?.disabled;
   const busy = action?.busy;
@@ -48,6 +57,9 @@ export function useRegisterNavPrimaryAction(action: Omit<NavPrimaryAction, "onCl
       return;
     }
     const entry: NavPrimaryAction = {
+      tone,
+      count,
+      sublabel,
       label,
       detail,
       disabled,
@@ -62,5 +74,5 @@ export function useRegisterNavPrimaryAction(action: Omit<NavPrimaryAction, "onCl
         emit();
       }
     };
-  }, [enabled, label, detail, disabled, busy]);
+  }, [enabled, tone, count, sublabel, label, detail, disabled, busy]);
 }

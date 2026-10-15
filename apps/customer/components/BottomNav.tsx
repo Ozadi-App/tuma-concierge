@@ -123,8 +123,12 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
   //              "View cart" button instead of the links (no floating bars).
   //  - "links":  the normal menu.
   const inShopping = groupForPath(pathname) === "shopping";
+  //  A page-provided action wins (it is only registered while that page is
+  //  mounted): /cart's gold Checkout, or a restaurant's own cart on food routes,
+  //  which never mixes with the shopping cart.
   const rightMode: "action" | "cart" | "links" =
-    primaryAction && pathname === "/cart" ? "action" : cartCount > 0 && inShopping ? "cart" : "links";
+    primaryAction ? "action" : cartCount > 0 && inShopping ? "cart" : "links";
+  const actionTone = primaryAction?.tone ?? "gold";
 
   useEffect(() => {
     const group = groupForPath(pathname);
@@ -251,7 +255,35 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
               </button>
             </div>
 
-            {rightMode === "action" && primaryAction ? (
+            {rightMode === "action" && primaryAction && actionTone === "cart" ? (
+              <button
+                key="nav-action-cart"
+                type="button"
+                onClick={primaryAction.onClick}
+                disabled={primaryAction.disabled}
+                aria-label={[primaryAction.label, primaryAction.sublabel, primaryAction.detail].filter(Boolean).join(", ")}
+                className="customer-nav-swap customer-nav-cart flex h-[70px] min-w-0 flex-1 items-center gap-3 rounded-[24px] pl-3 pr-4 transition active:scale-[0.98] disabled:opacity-60"
+              >
+                <span className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-[16px] bg-gold/15 text-gold">
+                  <ShoppingBag className="h-5 w-5" strokeWidth={2.2} aria-hidden />
+                  {primaryAction.count != null && (
+                    <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-gold px-1 text-[10px] font-black text-ink-gold">
+                      {primaryAction.count}
+                    </span>
+                  )}
+                </span>
+                <span className="min-w-0 flex-1 text-left">
+                  <span className="block truncate text-sm font-bold leading-tight">{primaryAction.label}</span>
+                  {primaryAction.sublabel && (
+                    <span className="customer-nav-cart__muted block truncate text-[11px] font-medium">{primaryAction.sublabel}</span>
+                  )}
+                </span>
+                {primaryAction.detail && (
+                  <span className="shrink-0 text-sm font-bold tabular-nums">{primaryAction.detail}</span>
+                )}
+                <ChevronRight className="customer-nav-cart__muted h-4 w-4 shrink-0" aria-hidden />
+              </button>
+            ) : rightMode === "action" && primaryAction ? (
               <button
                 key="nav-action"
                 type="button"

@@ -16,6 +16,7 @@ import { DishReviews } from "../../../components/DishReviews";
 import { BusinessLogo } from "../../../components/BusinessLogo";
 import { useAuth } from "../../../lib/auth-context";
 import { api, errorMessage } from "../../../lib/api";
+import { useRegisterNavPrimaryAction } from "../../../lib/nav-primary-action";
 import { useTranslate } from "../../../lib/i18n";
 import { formatUgx } from "../../../lib/order-display";
 
@@ -986,6 +987,35 @@ export default function RestaurantPage() {
     }
   }
 
+  // The restaurant's own cart drives the bottom nav's right capsule (it never
+  // mixes with the shopping cart): on the menu, a "View cart" button that
+  // opens checkout (what the old floating bar did); on the checkout step, the
+  // gold "Checkout" button wired to checkout() with the same guards.
+  const onCheckoutStep = checkoutRequested || step === "checkout";
+  const orderingUnavailable = !!restaurant && !!restaurant.is_demo && !restaurant.demo_checkout_enabled;
+  const estimatedFee = selectedBundle ? bundleExtraDeliveryFee : estimatedDeliveryFee;
+  useRegisterNavPrimaryAction(
+    !restaurant || !menu || itemId || cart.length === 0
+      ? null
+      : onCheckoutStep
+        ? {
+            tone: "gold",
+            label: orderingUnavailable ? "Ordering unavailable" : busy ? "Please wait…" : "Checkout",
+            detail: formatUgx(itemsTotal + (estimatedFee ?? 0)),
+            disabled: busy || !delivery || cart.length === 0 || !restaurant.is_open || orderingUnavailable,
+            busy,
+            onClick: () => void checkout(),
+          }
+        : {
+            tone: "cart",
+            label: "View cart",
+            sublabel: `${cartCount} item${cartCount === 1 ? "" : "s"}`,
+            count: cartCount,
+            detail: formatUgx(itemsTotal),
+            onClick: openCheckout,
+          },
+  );
+
   if (error && !restaurant) {
     return <p className="px-4 py-10 text-center text-sm text-red-700">{error}</p>;
   }
@@ -1096,6 +1126,7 @@ export default function RestaurantPage() {
         </div>
 
         {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+        {!delivery && <p className="text-center text-xs text-ink-500">Choose a delivery location to check out.</p>}
 
         <div className="flex gap-2">
           <button
@@ -1103,13 +1134,6 @@ export default function RestaurantPage() {
             className="min-h-12 flex-1 rounded-full border border-[var(--border-faint)] px-4 text-sm font-bold text-ink"
           >
             {t("restaurant_back_to_menu")}
-          </button>
-          <button
-            onClick={checkout}
-            disabled={busy || !delivery || cart.length === 0 || !restaurant.is_open || (restaurant.is_demo && !restaurant.demo_checkout_enabled)}
-            className="min-h-12 flex-[2] rounded-full bg-gold px-4 text-base font-bold text-ink-gold shadow-[0_4px_12px_rgba(201,162,39,0.35)] disabled:opacity-60"
-          >
-            {restaurant.is_demo && !restaurant.demo_checkout_enabled ? "Ordering unavailable" : busy ? "Please wait…" : "Next: payment"}
           </button>
         </div>
       </div>
@@ -1152,20 +1176,6 @@ export default function RestaurantPage() {
           <p className="py-10 text-center text-sm text-ink-500">{t("restaurant_no_menu_yet")}</p>
         )}
 
-      {cart.length > 0 && (
-        <div className="fixed inset-x-0 bottom-20 z-40 px-4 pb-3">
-          <button
-            onClick={openCheckout}
-            className="mx-auto flex min-h-12 w-full max-w-lg items-center justify-between rounded-full bg-gold px-5 text-sm font-bold text-ink-gold shadow-[0_4px_16px_rgba(201,162,39,0.4)]"
-          >
-            <span className="flex items-center gap-2">
-              <ShoppingBag className="h-4.5 w-4.5" strokeWidth={2} aria-hidden />
-              {cartCount} item{cartCount === 1 ? "" : "s"}
-            </span>
-            <span>{formatUgx(itemsTotal)}</span>
-          </button>
-        </div>
-      )}
 
       {cart.length > 0 && step === "menu" && (
         <section className="space-y-2">
