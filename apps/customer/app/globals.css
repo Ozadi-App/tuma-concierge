@@ -1430,7 +1430,7 @@ select:focus {
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) .customer-nav-cart:disabled { background: linear-gradient(135deg, rgb(var(--color-gold) / .05), rgb(var(--color-gold) / .08)), #3a3a3c; color: rgb(255 255 255 / .38); }
 }
-.customer-nav-checkout:disabled { background: rgb(var(--color-gold) / .55); color: rgb(var(--color-ink-gold, 10 10 10) / .55); }
+.customer-nav-checkout:disabled { color: rgb(var(--color-ink-gold, 10 10 10) / .45); }
 
 /* Nav action buttons sit inside the same black capsule as the menu, inset
    like the menu items, so the frame reads as one nav in both themes. */
