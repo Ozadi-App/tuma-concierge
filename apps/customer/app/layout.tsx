@@ -3,6 +3,7 @@ import type { Metadata, Viewport } from "next";
 import Script from "next/script";
 import "./globals.css";
 import "./food-theme.css";
+import "./pharmacy-theme.css";
 import { AppShell } from "../components/AppShell";
 import { CallOverlay } from "../components/CallOverlay";
 import { InstallPrompt } from "../components/InstallPrompt";
