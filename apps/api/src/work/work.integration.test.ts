@@ -337,11 +337,13 @@ test("work: cancelling — refunds, late fee, provider cancel, and the point of 
   assert.equal(await wallet("cust_x"), 500000 - 14000, "customer loses the 20% fee: 70,000 × 20%");
   assert.equal(await wallet("pro_x"), 11900, "14,000 less 15%");
 
-  // The provider cancelling always refunds in full.
+  // With re-matching switched off, a provider cancelling refunds in full.
+  await setWorkSettings({ rematchOnProviderCancel: false });
   const dropped = (await book(customer)).json.job;
   await call(`/provider/jobs/${dropped.id}/accept`, { token: pro.token, body: {} });
   assert.equal((await call(`/provider/jobs/${dropped.id}/cancel`, { token: pro.token, body: {} })).status, 200);
   assert.equal(await wallet("cust_x"), 500000 - 14000);
+  await setWorkSettings({ rematchOnProviderCancel: true });
 
   // Once work starts, cancelling is not on offer; there is a report-a-problem route instead.
   const started = (await book(customer)).json.job;
@@ -531,4 +533,200 @@ test("work: until migration 0098 is applied everything answers 'upgrade pending'
   const gated = await call("/catalog", { token: customer });
   assert.equal(gated.status, 503);
   assert.equal(gated.json.error, "work_upgrade_pending");
+});
+
+// ---------------------------------------------------------------------------
+// Extras: re-matching, photos, chat and live location (migration 0099)
+// ---------------------------------------------------------------------------
+
+import { setR2Binding } from "../storage/r2.js";
+
+function fakeBucket() {
+  const store = new Map<string, { bytes: Uint8Array; type?: string }>();
+  setR2Binding({
+    async put(key: string, value: any, options?: { httpMetadata?: { contentType?: string } }) {
+      store.set(key, { bytes: new Uint8Array(value as Uint8Array), type: options?.httpMetadata?.contentType });
+    },
+    async get(key: string) {
+      const o = store.get(key);
+      return o ? { body: new Response(o.bytes as BodyInit).body as ReadableStream, httpMetadata: { contentType: o.type } } : null;
+    },
+    async delete(key: string) {
+      store.delete(key);
+    },
+  } as any);
+  return store;
+}
+const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3, 4, 5, 6, 7, 8]);
+
+async function multipart(path: string, token: string, bytes: Uint8Array, type = "image/png", fields: Record<string, string> = {}) {
+  const form = new FormData();
+  form.append("file", new File([bytes as BlobPart], "p.png", { type }));
+  for (const [k, v] of Object.entries(fields)) form.append(k, v);
+  const res = await app.request(`/v1/work${path}`, { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: form });
+  return { status: res.status, json: (await res.json().catch(() => ({}))) as Json };
+}
+
+test("work: a provider who cancels sends the job back out, up to the admin's limit, then the customer is refunded", async () => {
+  const { call, mkUser, mkProvider, wallet, book, dbJob } = await setup();
+  const customer = await mkUser("cust_r1", { wallet: 200000 });
+  const a = await mkProvider("pro_ra");
+  const b = await mkProvider("pro_rb");
+  const c = await mkProvider("pro_rc");
+  const jobId = (await book(customer)).json.job.id as string;
+  assert.equal(await wallet("cust_r1"), 130000);
+
+  assert.equal((await call(`/provider/jobs/${jobId}/accept`, { token: a.token, body: {} })).status, 200);
+  const first = await call(`/provider/jobs/${jobId}/cancel`, { token: a.token, body: { reason: "Car trouble" } });
+  assert.equal(first.status, 200);
+  assert.equal(first.json.rematched, true);
+  let row = await dbJob(jobId);
+  assert.equal(row.status, "open");
+  assert.equal(row.provider_id, null);
+  assert.equal(Number(row.held_ugx), 70000, "the money stays held");
+  assert.equal(Number(row.rematch_count), 1);
+  assert.equal(await wallet("cust_r1"), 130000, "no refund while it is being re-offered");
+
+  // The provider who backed out can't take it again; others can.
+  const again = await call(`/provider/jobs/${jobId}/accept`, { token: a.token, body: {} });
+  assert.equal(again.status, 403, JSON.stringify(again.json));
+  assert.equal((await call(`/provider/jobs/${jobId}/accept`, { token: b.token, body: {} })).status, 200);
+
+  assert.equal((await call(`/provider/jobs/${jobId}/cancel`, { token: b.token, body: {} })).json.rematched, true);
+  assert.equal(Number((await dbJob(jobId)).rematch_count), 2);
+  assert.equal((await call(`/provider/jobs/${jobId}/accept`, { token: c.token, body: {} })).status, 200);
+
+  // The limit is 2: a third cancellation refunds and closes the job.
+  const last = await call(`/provider/jobs/${jobId}/cancel`, { token: c.token, body: {} });
+  assert.equal(last.status, 200);
+  assert.equal(last.json.rematched, false);
+  row = await dbJob(jobId);
+  assert.equal(row.status, "cancelled");
+  assert.equal(await wallet("cust_r1"), 200000, "refunded in full");
+});
+
+test("work: a quote job goes back out before a price is accepted, and re-matching can be switched off", async () => {
+  const { call, mkUser, mkProvider, wallet, book, dbJob } = await setup();
+  const customer = await mkUser("cust_r2", { wallet: 100000 });
+  const a = await mkProvider("pro_qa");
+  const b = await mkProvider("pro_qb");
+  const jobId = (await book(customer, { serviceId: WINDOW, quantity: 1 })).json.job.id as string;
+  await call(`/provider/jobs/${jobId}/accept`, { token: a.token, body: {} });
+  await call(`/provider/jobs/${jobId}/quote`, { token: a.token, body: { priceUgx: 40000 } });
+  assert.equal((await dbJob(jobId)).status, "quoted");
+
+  const out = await call(`/provider/jobs/${jobId}/cancel`, { token: a.token, body: {} });
+  assert.equal(out.json.rematched, true);
+  let row = await dbJob(jobId);
+  assert.equal(row.status, "open");
+  assert.equal(Number(row.price_ugx), 0, "the old quote is gone");
+  assert.equal(Number(row.held_ugx), 10000, "the call-out fee stays held");
+
+  // Switched off: the next cancellation refunds as before.
+  await setWorkSettings({ rematchOnProviderCancel: false });
+  await call(`/provider/jobs/${jobId}/accept`, { token: b.token, body: {} });
+  const off = await call(`/provider/jobs/${jobId}/cancel`, { token: b.token, body: {} });
+  assert.equal(off.json.rematched, false);
+  row = await dbJob(jobId);
+  assert.equal(row.status, "cancelled");
+  assert.equal(await wallet("cust_r2"), 100000);
+});
+
+test("work: job photos are private, checked by their bytes, and limited", async () => {
+  const store = fakeBucket();
+  const { call, mkUser, mkProvider, book } = await setup();
+  await setWorkSettings({ maxPhotosPerJob: 2 });
+  const customer = await mkUser("cust_p1", { wallet: 200000 });
+  const stranger = await mkUser("stranger_p");
+  const pro = await mkProvider("pro_p");
+  const jobId = (await book(customer)).json.job.id as string;
+
+  const up = await multipart(`/jobs/${jobId}/photos`, customer, PNG, "image/png", { note: "The stained sofa" });
+  assert.equal(up.status, 201, JSON.stringify(up.json));
+  assert.equal(up.json.photo.phase, "request");
+  assert.equal(store.size, 1);
+
+  // A text file with an image label is refused: the bytes decide.
+  const fake = await multipart(`/jobs/${jobId}/photos`, customer, new TextEncoder().encode("<script>alert(1)</script>"), "image/png");
+  assert.equal(fake.status, 400);
+  assert.equal((await multipart(`/jobs/${jobId}/photos`, customer, PNG, "application/pdf")).status, 400);
+
+  // Only people on the job see it. A stranger gets "not found"; a provider who could take the open job sees the request photo.
+  const id = up.json.photo.id as string;
+  assert.equal((await call(`/jobs/${jobId}/photos`, { token: stranger })).status, 404);
+  const raw = await app.request(`/v1/work/photos/${id}`, { headers: { Authorization: `Bearer ${stranger}` } });
+  assert.equal(raw.status, 404);
+  const owner = await app.request(`/v1/work/photos/${id}`, { headers: { Authorization: `Bearer ${customer}` } });
+  assert.equal(owner.status, 200);
+  assert.equal(owner.headers.get("x-content-type-options"), "nosniff");
+  assert.equal(owner.headers.get("cache-control"), "private, no-store");
+  const seen = await call(`/provider/jobs/${jobId}/photos`, { token: pro.token });
+  assert.equal(seen.json.photos.length, 1);
+
+  // Provider before/after photos once the job is theirs; the limit counts them all.
+  assert.equal((await multipart(`/provider/jobs/${jobId}/photos`, pro.token, PNG, "image/png", { phase: "before" })).status, 404, "not their job yet");
+  await call(`/provider/jobs/${jobId}/accept`, { token: pro.token, body: {} });
+  const before = await multipart(`/provider/jobs/${jobId}/photos`, pro.token, PNG, "image/png", { phase: "before" });
+  assert.equal(before.status, 201, JSON.stringify(before.json));
+  assert.equal(before.json.photo.phase, "before");
+  assert.equal((await multipart(`/jobs/${jobId}/photos`, customer, PNG)).status, 409, "the limit of 2 is reached");
+
+  // Switched off from Admin.
+  await setWorkSettings({ photosEnabled: false });
+  assert.equal((await multipart(`/jobs/${jobId}/photos`, customer, PNG)).status, 503);
+});
+
+test("work: the customer and the provider can message each other once the job has a provider", async () => {
+  const { call, mkUser, mkProvider, book } = await setup();
+  const customer = await mkUser("cust_m1", { wallet: 200000 });
+  const stranger = await mkUser("stranger_m");
+  const pro = await mkProvider("pro_m");
+  const jobId = (await book(customer)).json.job.id as string;
+
+  const early = await call(`/jobs/${jobId}/messages`, { token: customer, body: { body: "Hello?" } });
+  assert.equal(early.status, 409, "nobody to talk to yet");
+
+  await call(`/provider/jobs/${jobId}/accept`, { token: pro.token, body: {} });
+  assert.equal((await call(`/jobs/${jobId}/messages`, { token: customer, body: { body: "Gate code is 4321" } })).status, 201);
+  assert.equal((await call(`/provider/jobs/${jobId}/messages`, { token: pro.token, body: { body: "On my way" } })).status, 201);
+  assert.equal((await call(`/jobs/${jobId}/messages`, { token: customer, body: { body: "   " } })).status, 400);
+
+  const thread = await call(`/jobs/${jobId}/messages`, { token: customer });
+  assert.deepEqual(thread.json.messages.map((m: Json) => [m.from, m.body]), [["customer", "Gate code is 4321"], ["provider", "On my way"]]);
+  assert.equal((await call(`/provider/jobs/${jobId}/messages`, { token: pro.token })).json.messages.length, 2);
+
+  assert.equal((await call(`/jobs/${jobId}/messages`, { token: stranger })).status, 404);
+  assert.equal((await call(`/jobs/${jobId}/messages`, { token: stranger, body: { body: "hi" } })).status, 404);
+  // A provider can't post as the customer, nor the customer as the provider.
+  assert.equal((await call(`/provider/jobs/${jobId}/messages`, { token: customer, body: { body: "x" } })).status, 404);
+
+  await setWorkSettings({ chatEnabled: false });
+  assert.equal((await call(`/jobs/${jobId}/messages`, { token: customer })).status, 503);
+});
+
+test("work: the customer sees the provider's location only while the job is on, and only if admin allows it", async () => {
+  const { call, mkUser, mkProvider, book, client } = await setup();
+  const customer = await mkUser("cust_l1", { wallet: 200000 });
+  const stranger = await mkUser("stranger_l");
+  const pro = await mkProvider("pro_l");
+  const jobId = (await book(customer)).json.job.id as string;
+
+  assert.equal((await call(`/provider/jobs/${jobId}/location`, { token: pro.token, body: { lat: 0.31, lng: 32.58 } })).status, 404, "not their job yet");
+  await call(`/provider/jobs/${jobId}/accept`, { token: pro.token, body: {} });
+
+  const sent = await call(`/provider/jobs/${jobId}/location`, { token: pro.token, body: { lat: 0.3201, lng: 32.5899 } });
+  assert.equal(sent.status, 200);
+  assert.equal(sent.json.stored, true);
+  const quick = await call(`/provider/jobs/${jobId}/location`, { token: pro.token, body: { lat: 0.33, lng: 32.6 } });
+  assert.equal(quick.json.stored, false, "pings closer together than a few seconds are dropped");
+
+  const seen = await call(`/jobs/${jobId}`, { token: customer });
+  assert.deepEqual({ lat: seen.json.job.providerLocation.lat, lng: seen.json.job.providerLocation.lng }, { lat: 0.3201, lng: 32.5899 });
+  assert.equal((await call(`/provider/jobs/${jobId}`, { token: pro.token })).json.job.providerLocation, null, "the provider doesn't need it echoed back");
+  assert.equal((await call(`/provider/jobs/${jobId}/location`, { token: stranger, body: { lat: 1, lng: 1 } })).status, 404);
+  assert.equal((await call(`/provider/jobs/${jobId}/location`, { token: pro.token, body: { lat: 200, lng: 1 } })).status, 400);
+
+  await client.execute({ sql: "UPDATE work_jobs SET provider_located_at = datetime('now', '-10 seconds') WHERE id = ?", args: [jobId] });
+  await setWorkSettings({ trackingEnabled: false });
+  assert.equal((await call(`/provider/jobs/${jobId}/location`, { token: pro.token, body: { lat: 0.4, lng: 32.7 } })).status, 503);
 });
