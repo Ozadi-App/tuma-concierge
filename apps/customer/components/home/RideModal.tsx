@@ -172,7 +172,7 @@ export function RideModal({
   const submitShown = !choosing && !!route && !pickingWho && (!carMenuOpen || !!tierPricing || carSubMode === "cargo" || carSubMode === "luxury" || carSubMode === "ambulance");
   useRegisterNavPrimaryAction(submitShown ? {
     tone: "step",
-    label: busy ? "Please wait…" : mode === "car" && carSubMode === "ambulance" ? "Request ambulance" : "Next: payment",
+    label: busy ? "Please wait…" : mode === "car" && carSubMode === "ambulance" ? "Get ambulance" : "Next: payment",
     detail: navFare != null && Number.isFinite(navFare) && navFare > 0 ? `UGX ${navFare.toLocaleString("en-UG")}` : undefined,
     disabled: submitDisabled,
     busy,
