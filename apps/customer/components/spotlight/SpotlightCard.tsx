@@ -15,6 +15,7 @@ export interface SpotlightItem {
   store_category: "groceries" | "stores";
   type: "live" | "video" | "image" | "carousel";
   media_url: string;
+  poster_url?: string;
   carousel_images?: string[];
   title: string;
   description: string;
@@ -182,7 +183,7 @@ export function SpotlightCard(props: Props) {
       >
         <div className="absolute inset-0">
           {item.type === "live" || item.type === "video" ? (
-            <video src={item.media_url} autoPlay loop muted={isMuted} playsInline className="h-full w-full object-cover" />
+            <video src={item.media_url} poster={item.poster_url} autoPlay loop muted={isMuted} playsInline className="h-full w-full object-cover" />
           ) : (
             <img src={item.type === "carousel" ? carouselList[carouselIdx] : item.media_url} alt={item.title} className="h-full w-full object-cover transition duration-300" draggable={false} />
           )}

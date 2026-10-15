@@ -15,6 +15,7 @@ export interface LiveStreamChannel {
   category: "groceries" | "stores";
   live_channel_title: string | null;
   live_stream_url: string | null;
+  live_stream_poster_url?: string | null;
   live_viewer_count: number;
 }
 
@@ -118,6 +119,7 @@ export function LiveStreamViewer({
           {channel.live_stream_url ? (
             <video
               src={channel.live_stream_url}
+              poster={channel.live_stream_poster_url ?? undefined}
               autoPlay
               loop
               muted
