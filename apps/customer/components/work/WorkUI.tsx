@@ -55,7 +55,7 @@ export function Spinner({ label }: { label: string }) {
   );
 }
 
-export function Notice({ failure, text, tone = "error", children }: { failure?: WorkFailure | null; text?: string; tone?: "error" | "info"; children?: ReactNode }) {
+export function Notice({ failure, text, tone = "error", inlineTopUp = false, children }: { failure?: WorkFailure | null; text?: string; tone?: "error" | "info"; inlineTopUp?: boolean; children?: ReactNode }) {
   const message = text ?? failure?.message;
   if (!message) return null;
   const Icon = tone === "error" ? AlertTriangle : Info;
@@ -64,7 +64,7 @@ export function Notice({ failure, text, tone = "error", children }: { failure?: 
       <Icon className="mt-0.5 h-4 w-4 shrink-0 text-gold" aria-hidden />
       <div className="space-y-2">
         <p>{message}</p>
-        {failure?.topUp ? (
+        {failure?.topUp && !inlineTopUp ? (
           <Link href="/wallet" className="inline-flex min-h-[44px] items-center font-bold text-gold underline">
             Top up your wallet
           </Link>

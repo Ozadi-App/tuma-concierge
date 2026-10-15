@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../lib/api";
 import { cardClass, Notice, primaryBtn, Spinner, UnavailablePanel, WorkPage } from "./WorkUI";
+import { WorkTopUp } from "./WorkTopUp";
 import {
   formatUgx,
   hoursLabel,
@@ -97,6 +98,8 @@ function BookingForm({ type, services, settings }: { type: WorkServiceType; serv
   const [failure, setFailure] = useState<WorkFailure | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
   const keyRef = useRef<{ sig: string; key: string } | null>(null);
+  const [topUp, setTopUp] = useState<{ needed: number; nonce: number } | null>(null);
+  const nonce = useRef(0);
 
   const service = services.find((s) => s.id === serviceId) ?? null;
   const isQuote = service?.pricingMode === "quote";
@@ -147,8 +150,13 @@ function BookingForm({ type, services, settings }: { type: WorkServiceType; serv
   const minWhen = toLocalInput(new Date(Date.now() + (minLead + 1) * 60_000));
   const maxWhen = toLocalInput(new Date(Date.now() + settings.maxAdvanceDays * 86_400_000));
 
-  async function submit(e: React.FormEvent) {
+  function submit(e: React.FormEvent) {
     e.preventDefault();
+    void attempt();
+  }
+
+  // Also used to retry after a top-up: the payload is unchanged, so the idempotency key is too.
+  async function attempt() {
     if (busy || !service) return;
     setFailure(null);
     setLocalError(null);
@@ -184,9 +192,16 @@ function BookingForm({ type, services, settings }: { type: WorkServiceType; serv
     setBusy(true);
     try {
       const res = await api.workBook({ ...payload, idempotencyKey: keyRef.current.key });
+      setTopUp(null);
       router.push(`/services/work/${encodeURIComponent(res.job.id)}`);
     } catch (err) {
-      setFailure(workFailure(err));
+      const f = workFailure(err);
+      setFailure(f);
+      if (f.topUp) {
+        const needed = service.pricingMode === "fixed" ? service.unitPriceUgx * effectiveQuantity : service.calloutFeeUgx;
+        nonce.current += 1;
+        setTopUp(needed > 0 ? { needed, nonce: nonce.current } : null);
+      } else setTopUp(null);
       setBusy(false);
     }
   }
@@ -409,7 +424,8 @@ function BookingForm({ type, services, settings }: { type: WorkServiceType; serv
           <PriceSummary service={service} quantity={effectiveQuantity} settings={settings} />
 
           <Notice text={localError ?? undefined} />
-          <Notice failure={failure} />
+          <Notice failure={failure} inlineTopUp={!!topUp} />
+          {topUp ? <WorkTopUp key={topUp.nonce} neededUgx={topUp.needed} onCredited={() => void attempt()} /> : null}
 
           <button type="submit" disabled={busy} className={primaryBtn}>
             <Wallet className="h-5 w-5" aria-hidden />
@@ -417,7 +433,7 @@ function BookingForm({ type, services, settings }: { type: WorkServiceType; serv
           </button>
           <p className="flex items-start gap-2 text-xs text-ink-500">
             <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-gold" aria-hidden />
-            Payment comes from your Peebee wallet. Peebee holds the money and only pays the provider after you confirm the job is done.
+            {settings.photosEnabled ? "You can add photos of the job right after booking. " : ""}Payment comes from your Peebee wallet. Peebee holds the money and only pays the provider after you confirm the job is done.
           </p>
         </>
       ) : (

@@ -7,10 +7,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../../lib/api";
 import { useLivePolling } from "../../lib/use-live-polling";
 import { cardClass, Notice, primaryBtn, secondaryBtn, Spinner, StatusBadge, UnavailablePanel, WorkPage } from "./WorkUI";
+import { CHAT_STATUSES, WorkChat } from "./WorkChat";
+import { WorkPhotos } from "./WorkPhotos";
+import { isTrackable, WorkTracking } from "./WorkTracking";
+import { WorkTopUp } from "./WorkTopUp";
 import { formatUgx, formatWorkDate, hoursLabel, isActiveStatus, workFailure, type WorkFailure } from "./work-utils";
 
 type Detail = Awaited<ReturnType<typeof api.workJob>>;
 type Panel = "cancel" | "decline" | "problem" | null;
+type TopUpState = { needed: number; key: string; fn: () => Promise<unknown>; success: string; nonce: number };
 
 const fieldClass = "w-full rounded-2xl border border-[var(--border-faint)] px-4 py-3 text-sm text-ink placeholder:text-ink-500";
 
@@ -35,6 +40,9 @@ const TIMELINE_LABEL: Record<string, string> = {
   refunded: "You were refunded",
   resolved: "Peebee ruled on the problem",
   rated: "You rated the job",
+  provider_cancelled: "Your provider couldn't make it",
+  rematched: "We sent the job out to other providers again",
+  photo_added: "A photo was added",
 };
 
 function timelineLabel(action: string): string {
@@ -109,8 +117,12 @@ function JobBody({ detail, settings, onChanged }: { detail: Detail; settings: Wo
   const [busy, setBusy] = useState<string | null>(null);
   const [failure, setFailure] = useState<WorkFailure | null>(null);
   const [done, setDone] = useState<string | null>(null);
+  const [topUp, setTopUp] = useState<TopUpState | null>(null);
+  const nonce = useRef(0);
 
-  async function run(key: string, fn: () => Promise<unknown>, success: string) {
+  // `neededUgx` is what this action takes from the wallet; if the server says that's more than
+  // the balance, we offer a top-up and then repeat the same call (idempotent on the server).
+  async function run(key: string, fn: () => Promise<unknown>, success: string, neededUgx?: number) {
     if (busy) return;
     setBusy(key);
     setFailure(null);
@@ -119,10 +131,18 @@ function JobBody({ detail, settings, onChanged }: { detail: Detail; settings: Wo
       await fn();
       setPanel(null);
       setReason("");
+      setTopUp(null);
       setDone(success);
       await onChanged();
     } catch (err) {
-      setFailure(workFailure(err));
+      const f = workFailure(err);
+      if (f.topUp && neededUgx && neededUgx > 0) {
+        nonce.current += 1;
+        setTopUp({ needed: neededUgx, key, fn, success, nonce: nonce.current });
+      } else {
+        setTopUp(null);
+      }
+      setFailure(f);
       // The job may have moved on (someone else acted, a window closed): show what is true now.
       void onChanged();
     } finally {
@@ -158,7 +178,18 @@ function JobBody({ detail, settings, onChanged }: { detail: Detail; settings: Wo
       </section>
 
       <Notice text={done ?? undefined} tone="info" />
-      <Notice failure={failure} />
+      <Notice failure={failure} inlineTopUp={!!topUp} />
+      {topUp ? <WorkTopUp key={topUp.nonce} neededUgx={topUp.needed} onCredited={() => void run(topUp.key, topUp.fn, topUp.success, topUp.needed)} /> : null}
+
+      {job.status === "open" && (job.rematchCount ?? 0) > 0 ? (
+        <Notice tone="info" text={`Your first provider couldn't make it, we're finding another (attempt ${(job.rematchCount ?? 0) + 1}).`} />
+      ) : null}
+
+      {settings?.photosEnabled && (job.status === "open" || job.status === "assigned") ? (
+        <WorkPhotos jobId={job.id} settings={settings} canAdd prompt />
+      ) : null}
+
+      {isTrackable(job, settings?.trackingEnabled) ? <WorkTracking job={job} /> : null}
 
       {has("choose_provider") ? (
         <section className={`${cardClass} space-y-3`} aria-labelledby="offers-heading">
@@ -185,7 +216,7 @@ function JobBody({ detail, settings, onChanged }: { detail: Detail; settings: Wo
                     </div>
                     {o.message ? <p className="text-xs text-ink-500">&ldquo;{o.message}&rdquo;</p> : null}
                     {extra > 0 ? <p className="text-xs text-ink-500">You&apos;ll pay {formatUgx(extra)} more from your wallet now (the call-out fee already held counts towards it).</p> : null}
-                    <button type="button" disabled={!!busy} onClick={() => run(`offer:${o.id}`, () => api.workSelectOffer(job.id, o.id), "Provider chosen.")} className={primaryBtn}>
+                    <button type="button" disabled={!!busy} onClick={() => run(`offer:${o.id}`, () => api.workSelectOffer(job.id, o.id), "Provider chosen.", extra)} className={primaryBtn}>
                       {busy === `offer:${o.id}` ? "Choosing..." : `Choose ${o.provider.name}`}
                     </button>
                   </li>
@@ -208,7 +239,7 @@ function JobBody({ detail, settings, onChanged }: { detail: Detail; settings: Wo
           </dl>
           {job.quoteExpiresAt ? <p className="text-xs text-ink-500">Quote valid until {formatWorkDate(job.quoteExpiresAt)}.</p> : null}
           {has("accept_quote") ? (
-            <button type="button" disabled={!!busy} onClick={() => run("accept", () => api.workAcceptQuote(job.id), "Quote accepted. Your job is booked.")} className={primaryBtn}>
+            <button type="button" disabled={!!busy} onClick={() => run("accept", () => api.workAcceptQuote(job.id), "Quote accepted. Your job is booked.", quoteExtra)} className={primaryBtn}>
               {busy === "accept" ? "Accepting..." : quoteExtra > 0 ? `Accept and pay ${formatUgx(quoteExtra)}` : "Accept quote"}
             </button>
           ) : null}
@@ -356,6 +387,12 @@ function JobBody({ detail, settings, onChanged }: { detail: Detail; settings: Wo
           <p className="text-xs text-ink-500">The provider inspects, then quotes. If you accept, the call-out fee counts towards the price.</p>
         ) : null}
       </section>
+
+      {settings?.chatEnabled && job.provider && CHAT_STATUSES.includes(job.status) ? <WorkChat jobId={job.id} providerName={job.provider.name} /> : null}
+
+      {settings?.photosEnabled && job.status !== "open" && job.status !== "assigned" ? (
+        <WorkPhotos jobId={job.id} settings={settings} canAdd={!["settled", "cancelled", "expired", "refunded"].includes(job.status)} />
+      ) : null}
 
       {has("cancel") ? (
         <section className={`${cardClass} space-y-3`} aria-label="Cancel">
