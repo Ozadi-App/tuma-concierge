@@ -38,7 +38,8 @@ export const DEMO_MARKETPLACE_STORES = [
     pro_tier: "pro_live",
     is_live: 1,
     live_channel_title: "Fresh Morning Harvest! 🥑 Unpacking avocado crates & dairy offers",
-    live_stream_url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+    live_stream_url: "https://customer.peebee.online/demo-video/market.mp4",
+    live_stream_poster_url: "https://customer.peebee.online/demo-video/market.jpg",
     live_viewer_count: 142,
     status: "active",
   },
@@ -64,7 +65,8 @@ export const DEMO_MARKETPLACE_STORES = [
     pro_tier: "pro_live",
     is_live: 1,
     live_channel_title: "Fitting Room Live! 🧥 Trying on the new Autumn linen collection",
-    live_stream_url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
+    live_stream_url: "https://customer.peebee.online/demo-video/fashion.mp4",
+    live_stream_poster_url: "https://customer.peebee.online/demo-video/fashion.jpg",
     live_viewer_count: 289,
     status: "active",
   },
@@ -90,7 +92,8 @@ export const DEMO_MARKETPLACE_STORES = [
     pro_tier: "pro_live",
     is_live: 1,
     live_channel_title: "Tech Unboxing Live 🎧 Testing Noise Cancelling Wireless Headphones & Powerbanks",
-    live_stream_url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4",
+    live_stream_url: "https://customer.peebee.online/demo-video/earbuds.mp4",
+    live_stream_poster_url: "https://customer.peebee.online/demo-video/earbuds.jpg",
     live_viewer_count: 215,
     status: "active",
   },
@@ -116,7 +119,8 @@ export const DEMO_MARKETPLACE_STORES = [
     pro_tier: "pro_live",
     is_live: 1,
     live_channel_title: "Live Baking 🥖 Shaping Sourdough & Glazing Cinnamon Rolls",
-    live_stream_url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4",
+    live_stream_url: "https://customer.peebee.online/demo-video/bakery.mp4",
+    live_stream_poster_url: "https://customer.peebee.online/demo-video/bakery.jpg",
     live_viewer_count: 98,
     status: "active",
   },
@@ -142,7 +146,8 @@ export const DEMO_MARKETPLACE_STORES = [
     pro_tier: "pro_live",
     is_live: 1,
     live_channel_title: "Live Skincare Routine 🧴 Testing African Black Soap & Niacinamide",
-    live_stream_url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyBlazes.mp4",
+    live_stream_url: "https://customer.peebee.online/demo-video/skincare.mp4",
+    live_stream_poster_url: "https://customer.peebee.online/demo-video/skincare.jpg",
     live_viewer_count: 175,
     status: "active",
   },
@@ -168,7 +173,8 @@ export const DEMO_MARKETPLACE_STORES = [
     pro_tier: "pro_live",
     is_live: 1,
     live_channel_title: "Sneaker Drop Live 👟 Exclusive Unboxing of Retro High-Tops & Sizing Advice",
-    live_stream_url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/SubaruOutbackSeeTheWorld.mp4",
+    live_stream_url: "https://customer.peebee.online/demo-video/sneakers.mp4",
+    live_stream_poster_url: "https://customer.peebee.online/demo-video/sneakers.jpg",
     live_viewer_count: 188,
     status: "active",
   },
@@ -788,7 +794,8 @@ export const DEMO_MARKETPLACE_SPOTLIGHT = [
     store_logo: "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=200&q=80",
     store_category: "groceries",
     type: "live" as const,
-    media_url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+    media_url: "https://customer.peebee.online/demo-video/market.mp4",
+    poster_url: "https://customer.peebee.online/demo-video/market.jpg",
     title: "Fresh Morning Harvest! 🥑 Unpacking avocado crates & dairy offers",
     description: "Watch live as we unpack fresh farm organic avocados and cold milk pouches directly from Mbale orchards.",
     product: {
@@ -810,7 +817,8 @@ export const DEMO_MARKETPLACE_SPOTLIGHT = [
     store_logo: "https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=200&q=80",
     store_category: "stores",
     type: "video" as const,
-    media_url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
+    media_url: "https://customer.peebee.online/demo-video/fashion.mp4",
+    poster_url: "https://customer.peebee.online/demo-video/fashion.jpg",
     title: "Summer Linen Collection ☀️ Styling relaxed fit Cuban shirts for weekend vibes",
     description: "Breathable 100% natural linen shirt with spread collar. Watch our fitting room walkthrough.",
     product: {
@@ -832,7 +840,8 @@ export const DEMO_MARKETPLACE_SPOTLIGHT = [
     store_logo: "https://images.unsplash.com/photo-1509440159596-0249088772ff?auto=format&fit=crop&w=200&q=80",
     store_category: "groceries",
     type: "live" as const,
-    media_url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4",
+    media_url: "https://customer.peebee.online/demo-video/bakery.mp4",
+    poster_url: "https://customer.peebee.online/demo-video/bakery.jpg",
     title: "Live Baking 🥐 Glazing Cinnamon Swirls & Butter Croissants Fresh from Oven",
     description: "Watch the master baker glaze golden pastry layers live. Order now for 20-min express delivery in Kampala.",
     product: {
@@ -882,7 +891,8 @@ export const DEMO_MARKETPLACE_SPOTLIGHT = [
     store_logo: "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&w=200&q=80",
     store_category: "stores",
     type: "video" as const,
-    media_url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
+    media_url: "https://customer.peebee.online/demo-video/earbuds.mp4",
+    poster_url: "https://customer.peebee.online/demo-video/earbuds.jpg",
     title: "Active Noise Cancelling Test 🎧 40hr Battery & Crystal Clear Bass Unboxing",
     description: "Testing Bluetooth 5.3 instant pairing and wireless fast charge. Works with both iOS and Android.",
     product: {
@@ -1400,7 +1410,7 @@ marketplaceRoutes.post("/merchants/me/store/live/start", requireAuth, async (c) 
   const body = await c.req.json().catch(() => ({}));
   const sessionId = newId("live");
   const title = body.title || `${store.name} Live Showcase! ✨`;
-  const streamUrl = body.streamUrl || "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4";
+  const streamUrl = body.streamUrl || "https://customer.peebee.online/demo-video/earbuds.mp4";
   const isRestream = body.isRestream ? 1 : 0;
 
   await db.execute({
@@ -1885,112 +1895,3 @@ marketplaceRoutes.post("/marketplace/checkout", requireAuth, async (c) => {
 
   return c.json({ ok: true, orders: createdOrders, order: createdOrders[0] }, 201);
 });
-
-// ---------------------------------------------------------------------------
-// Pharmacy Prescription Endpoints
-// ---------------------------------------------------------------------------
-
-interface InMemPrescription {
-  id: string;
-  customerId: string;
-  customerName: string;
-  customerPhone: string;
-  pharmacyId?: string;
-  pharmacyName?: string;
-  prescriptionImageUrl: string;
-  patientNotes?: string;
-  patientAge?: number;
-  patientGender?: string;
-  status: string;
-  pharmacistNotes?: string;
-  dosageInstructions?: string;
-  quotedItems: any[];
-  quotedTotalUgx: number;
-  deliveryAddress?: string;
-  deliveryFeeUgx: number;
-  createdAt: string;
-  updatedAt: string;
-}
-
-const MEMORY_PRESCRIPTIONS: InMemPrescription[] = [
-  {
-    id: "rx_demo_01",
-    customerId: "cust_demo_01",
-    customerName: "Prossy Kembabazi",
-    customerPhone: "+256 772 344 556",
-    pharmacyId: "store_demo_vine_pharmacy",
-    pharmacyName: "Vine Pharmacy — Acacia Mall",
-    prescriptionImageUrl: "https://images.unsplash.com/photo-1584017911766-d451b3d0e843?auto=format&fit=crop&w=600&q=80",
-    patientNotes: "Chesty cough x 3 days, low fever, throat irritation. Allergic to Amoxicillin/Penicillin.",
-    patientAge: 32,
-    patientGender: "female",
-    status: "pending_review",
-    quotedItems: [],
-    quotedTotalUgx: 35000,
-    deliveryAddress: "Kisementi, Plot 14 Acacia Avenue",
-    deliveryFeeUgx: 5000,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-];
-
-marketplaceRoutes.post("/pharmacy/prescriptions", async (c) => {
-  const user = c.get("user" as any);
-  const body = await c.req.json().catch(() => ({}));
-
-  const newRx: InMemPrescription = {
-    id: `rx_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-    customerId: user?.id || "anonymous_customer",
-    customerName: user?.name || "Customer",
-    customerPhone: user?.phone || "+256 700 000 000",
-    pharmacyId: body.pharmacyId || "store_demo_vine_pharmacy",
-    pharmacyName: body.pharmacyName || "Vine Pharmacy — Acacia Mall",
-    prescriptionImageUrl: body.prescriptionImageUrl || "",
-    patientNotes: body.patientNotes || "",
-    patientAge: body.patientAge,
-    patientGender: body.patientGender || "female",
-    deliveryAddress: body.deliveryAddress || "Kampala",
-    status: "pending_review",
-    quotedItems: [],
-    quotedTotalUgx: 0,
-    deliveryFeeUgx: 5000,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  };
-
-  MEMORY_PRESCRIPTIONS.unshift(newRx);
-  return c.json({ ok: true, prescription: newRx }, 201);
-});
-
-marketplaceRoutes.get("/pharmacy/prescriptions", async (c) => {
-  const user = c.get("user" as any);
-  const userId = user?.id;
-  const list = userId
-    ? MEMORY_PRESCRIPTIONS.filter((p) => p.customerId === userId)
-    : MEMORY_PRESCRIPTIONS;
-  return c.json({ prescriptions: list });
-});
-
-marketplaceRoutes.get("/pharmacy/pharmacist/prescriptions", async (c) => {
-  return c.json({ prescriptions: MEMORY_PRESCRIPTIONS });
-});
-
-marketplaceRoutes.patch("/pharmacy/pharmacist/prescriptions/:id", async (c) => {
-  const id = c.req.param("id");
-  const body = await c.req.json().catch(() => ({}));
-  const rx = MEMORY_PRESCRIPTIONS.find((p) => p.id === id);
-
-  if (!rx) {
-    return c.json({ ok: false, error: "Prescription not found" }, 404);
-  }
-
-  if (body.status) rx.status = body.status;
-  if (body.pharmacistNotes) rx.pharmacistNotes = body.pharmacistNotes;
-  if (body.dosageInstructions) rx.dosageInstructions = body.dosageInstructions;
-  if (body.quotedItems) rx.quotedItems = body.quotedItems;
-  if (typeof body.quotedTotalUgx === "number") rx.quotedTotalUgx = body.quotedTotalUgx;
-  rx.updatedAt = new Date().toISOString();
-
-  return c.json({ ok: true, prescription: rx });
-});
-
