@@ -63,6 +63,23 @@ export type WorkSettings = {
   chatEnabled: boolean;
   /** Customer can see where the provider is while the job is on. */
   trackingEnabled: boolean;
+  /** Record where providers are during a job and flag cancellations that follow a long stay at the address. */
+  onsiteCheckEnabled: boolean;
+  /** How close to the job address counts as "on site", in metres. */
+  onsiteRadiusM: number;
+  /** Minutes on site before a cancellation is flagged. */
+  onsiteMinMinutes: number;
+  /** What a flag does: "flag" puts it in the review queue; "suspend" also suspends the provider until admin reviews it. */
+  onsiteAction: "flag" | "suspend";
+  /** Also flag a cancellation when the provider held the job that long without ever sharing a location. */
+  onsiteFlagNoLocation: boolean;
+  /** With on-site checks on, a provider can only start a job after sharing their location (a fresh fix from the last few minutes). */
+  onsiteRequireLocation: boolean;
+  /** Suspend a provider automatically once they have this many open or upheld flags inside the window. 0 turns it off. */
+  onsiteSuspendAfterFlags: number;
+  onsiteWindowDays: number;
+  /** Location trails are deleted after this many days. */
+  locationRetentionDays: number;
 };
 
 function list<T extends string>(raw: string | undefined, allowed: readonly T[]): T[] {
@@ -83,6 +100,8 @@ export async function getWorkSettings(): Promise<WorkSettings> {
     "work_late_cancel_fee_percent", "work_auto_confirm_hours", "work_dispute_window_hours", "work_jobs_per_hour",
     "work_rematch_on_provider_cancel", "work_max_rematches", "work_photos_enabled", "work_max_photos_per_job", "work_max_photo_kb",
     "work_chat_enabled", "work_tracking_enabled",
+    "work_onsite_check_enabled", "work_onsite_radius_m", "work_onsite_min_minutes", "work_onsite_action", "work_onsite_flag_no_location", "work_onsite_require_location",
+    "work_onsite_suspend_after_flags", "work_onsite_window_days", "work_location_retention_days",
   ] as const;
   const v = Object.fromEntries(await Promise.all(keys.map(async (k) => [k, await getSetting(k)]))) as Record<(typeof keys)[number], string>;
   const matchingModes = list(v.work_matching_modes, WORK_MATCHING_MODES);
@@ -116,6 +135,15 @@ export async function getWorkSettings(): Promise<WorkSettings> {
     maxPhotoKb: int(v.work_max_photo_kb, 4096, 100, 10240),
     chatEnabled: v.work_chat_enabled !== "0",
     trackingEnabled: v.work_tracking_enabled !== "0",
+    onsiteCheckEnabled: v.work_onsite_check_enabled === "1",
+    onsiteRadiusM: int(v.work_onsite_radius_m, 150, 20, 2000),
+    onsiteMinMinutes: int(v.work_onsite_min_minutes, 20, 1, 24 * 60),
+    onsiteAction: v.work_onsite_action === "suspend" ? "suspend" : "flag",
+    onsiteFlagNoLocation: v.work_onsite_flag_no_location !== "0",
+    onsiteRequireLocation: v.work_onsite_require_location !== "0",
+    onsiteSuspendAfterFlags: int(v.work_onsite_suspend_after_flags, 0, 0, 50),
+    onsiteWindowDays: int(v.work_onsite_window_days, 30, 1, 365),
+    locationRetentionDays: int(v.work_location_retention_days, 30, 1, 365),
   };
 }
 
@@ -149,5 +177,14 @@ export async function setWorkSettings(next: Partial<WorkSettings>): Promise<void
   if (next.maxPhotoKb != null) put("work_max_photo_kb", String(next.maxPhotoKb));
   if (next.chatEnabled != null) put("work_chat_enabled", next.chatEnabled ? "1" : "0");
   if (next.trackingEnabled != null) put("work_tracking_enabled", next.trackingEnabled ? "1" : "0");
+  if (next.onsiteCheckEnabled != null) put("work_onsite_check_enabled", next.onsiteCheckEnabled ? "1" : "0");
+  if (next.onsiteRadiusM != null) put("work_onsite_radius_m", String(next.onsiteRadiusM));
+  if (next.onsiteMinMinutes != null) put("work_onsite_min_minutes", String(next.onsiteMinMinutes));
+  if (next.onsiteAction) put("work_onsite_action", next.onsiteAction);
+  if (next.onsiteFlagNoLocation != null) put("work_onsite_flag_no_location", next.onsiteFlagNoLocation ? "1" : "0");
+  if (next.onsiteRequireLocation != null) put("work_onsite_require_location", next.onsiteRequireLocation ? "1" : "0");
+  if (next.onsiteSuspendAfterFlags != null) put("work_onsite_suspend_after_flags", String(next.onsiteSuspendAfterFlags));
+  if (next.onsiteWindowDays != null) put("work_onsite_window_days", String(next.onsiteWindowDays));
+  if (next.locationRetentionDays != null) put("work_location_retention_days", String(next.locationRetentionDays));
   await Promise.all(writes);
 }

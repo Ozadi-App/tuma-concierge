@@ -110,6 +110,7 @@ export type {
   CarDriverActive,
   CarOwnerRides,
   CarCategory,
+  CarServiceGroup,
   CarConfig,
   CarBookingInput,
   CarPartnerStatus,
@@ -273,5 +274,6 @@ export type {
 export type {
   WorkAdminEvent, WorkAdminJob, WorkAdminJobDetail, WorkAdminMessage, WorkAdminMoney, WorkAdminPhoto, WorkAdminOffer, WorkAdminProvider, WorkAdminProviderRow,
   WorkAdminService, WorkAdminServiceInput, WorkAdminSettings, WorkProviderAction, WorkProviderKind, WorkProviderStatus, WorkResolveOutcome,
+  WorkAdminFlag, WorkFlagDetail, WorkFlagKind, WorkFlagOutcome, WorkFlagStatus,
 } from "./work-admin-client.js";
 export { WORK_SETTINGS_EXTRA_DEFAULTS } from "./work-admin-client.js";

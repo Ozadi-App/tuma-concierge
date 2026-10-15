@@ -5,7 +5,8 @@ import { newId } from "../lib/ids.js";
 import { getPlatformEnvironment } from "../lib/settings.js";
 import { notifyUser } from "../lib/webpush.js";
 import { assignProvider, getJob, jobView, providerCancel } from "./jobs.js";
-import { canWork, inHours, logEvent, notifyCustomer, openJobsFor, providerFor, toDb, transition, type Row } from "./service.js";
+import { hasFreshLocation } from "./onsite.js";
+import { canWork, inHours, logEvent, notifyCustomer, openJobsFor, providerFor, toDb, transition, workOnsiteReady, type Row } from "./service.js";
 import { getWorkSettings } from "./settings.js";
 
 export const providerRoutes = new Hono();
@@ -356,6 +357,11 @@ async function progress(c: any, from: string, to: "in_progress" | "completed") {
   if (!canWork(ctx.provider, settings)) return c.json({ error: "not_approved", message: "Your account isn't approved to take jobs yet." }, 403);
   const job = await myJob(ctx, user.sub, c.req.param("id"));
   if (!job) return c.json({ error: "not_found", message: "Job not found." }, 404);
+  if (to === "in_progress" && settings.onsiteCheckEnabled && settings.onsiteRequireLocation && settings.trackingEnabled && (await workOnsiteReady())) {
+    if (!hasFreshLocation(job)) {
+      return c.json({ error: "location_required", message: "Turn on location sharing on this page and wait a moment, then start the job." }, 409);
+    }
+  }
   const now = toDb();
   const body = (await c.req.json().catch(() => ({}))) as { note?: string };
   const ok = await transition({

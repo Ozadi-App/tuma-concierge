@@ -288,6 +288,7 @@ const updateSchema = z.object({
         platform: z.number().int().min(0).max(100),
       }),
       maxPickupKm: z.number().int().min(1).max(200),
+      emergencyNumber: z.string().trim().regex(/^[0-9+*#]{2,15}$/, "Enter a phone number, digits only.").optional(),
       servicePricing: z.object({
         ratePerKm: z.number().int().min(1).max(1_000_000),
         minimumFare: z.number().int().min(0).max(1_000_000),
@@ -438,6 +439,15 @@ const updateSchema = z.object({
       maxPhotoKb: z.number().int().min(100).max(10240),
       chatEnabled: z.boolean(),
       trackingEnabled: z.boolean(),
+      onsiteCheckEnabled: z.boolean(),
+      onsiteRadiusM: z.number().int().min(20).max(2000),
+      onsiteMinMinutes: z.number().int().min(1).max(1440),
+      onsiteAction: z.enum(["flag", "suspend"]),
+      onsiteFlagNoLocation: z.boolean(),
+      onsiteRequireLocation: z.boolean(),
+      onsiteSuspendAfterFlags: z.number().int().min(0).max(50),
+      onsiteWindowDays: z.number().int().min(1).max(365),
+      locationRetentionDays: z.number().int().min(1).max(365),
     })
     .partial()
     .optional(),

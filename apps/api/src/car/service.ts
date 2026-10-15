@@ -5,7 +5,7 @@ import { hasColumn, hasTable } from "../lib/schema.js";
 import { getCarSettings, getPlatformEnvironment, type CarShares } from "../lib/settings.js";
 import { creditWallet, debitWallet } from "../wallet/service.js";
 import { newId } from "../lib/ids.js";
-import { acceptsTier, type CarServiceTier } from "./tiers.js";
+import { acceptsTier, standardCategoryOnly, type CarServiceTier } from "./tiers.js";
 
 type Row = Record<string, unknown>;
 
@@ -95,6 +95,33 @@ export function quoteFare(category: Row, distanceKm: number | null): number {
   return roundFare(distanceKm != null ? distanceKm * rate : 0, minimum);
 }
 
+/** Most hours a Luxury car can be hired for on one booking. */
+export const MAX_HIRE_HOURS = 24;
+
+/**
+ * A category fare: distance × the category's rate (never below its minimum), plus, for Luxury, the hours of hire at the
+ * category's hourly rate (the car and chauffeur staying with the customer for a wedding, party or red-carpet arrival).
+ */
+export function categoryFare(category: Row, distanceKm: number | null, hireHours?: number | null): number {
+  const hours = category.service_group === "luxury" && hireHours && hireHours > 0 ? Math.min(MAX_HIRE_HOURS, Math.floor(hireHours)) : 0;
+  return quoteFare(category, distanceKm) + hours * (Number(category.rate_per_hour) || 0);
+}
+
+/** How many online, free drivers with an approved vehicle of this category are within `radiusKm` of a point. */
+export async function nearbyCategoryDrivers(categoryId: string, lat: number, lng: number, radiusKm: number): Promise<number> {
+  const environment = await getPlatformEnvironment();
+  const result = await db.execute({
+    sql: `SELECT s.lat, s.lng FROM car_driver_state s
+          JOIN car_partners p ON p.user_id = s.driver_id AND p.driver_status = 'approved'
+          JOIN vehicles v ON v.id = s.vehicle_id AND v.status = 'approved' AND v.category_id = ?
+          JOIN vehicle_assignments a ON a.vehicle_id = v.id AND a.driver_id = s.driver_id AND a.status = 'active'
+          WHERE s.online = 1 AND s.lat IS NOT NULL AND s.lng IS NOT NULL
+            AND s.driver_id NOT IN (SELECT rider_id FROM orders WHERE rider_id IS NOT NULL AND environment = ? AND stage NOT IN ('Settle', 'Cancelled'))`,
+    args: [categoryId, environment],
+  });
+  return result.rows.filter((r) => haversineKm(lat, lng, Number((r as Row).lat), Number((r as Row).lng)) <= radiusKm).length;
+}
+
 /**
  * The nearest eligible driver for an auto-assigned car ride: approved driver,
  * online with an approved vehicle of the booked category, actively assigned
@@ -119,12 +146,13 @@ export async function findCarCandidate(
   const tier = booking.service_tier as CarServiceTier | undefined;
   const size = booking.vehicle_size === "large" ? "large" : "normal";
   const preference = tier && await hasColumn("vehicles", "accepts_convenient");
+  const standardOnly = await standardCategoryOnly("cat");
   const eligible = await db.execute({
     sql: `SELECT u.id, u.name, s.lat, s.lng${tier ? ", v.service_class, v.seat_capacity" : ""}${preference ? ", v.accepts_convenient" : ""} FROM car_driver_state s
           JOIN users u ON u.id = s.driver_id
           JOIN car_partners p ON p.user_id = s.driver_id AND p.driver_status = 'approved'
           JOIN vehicles v ON v.id = s.vehicle_id AND v.status = 'approved' ${tier ? "" : "AND v.category_id = ?"}
-          ${tier ? "JOIN vehicle_categories cat ON cat.id = v.category_id AND cat.kind = 'passenger'" : ""}
+          ${tier ? `JOIN vehicle_categories cat ON cat.id = v.category_id AND cat.kind = 'passenger'${standardOnly}` : ""}
           JOIN vehicle_assignments a ON a.vehicle_id = v.id AND a.driver_id = s.driver_id AND a.status = 'active'
           WHERE s.online = 1
           AND u.id NOT IN (SELECT rider_id FROM orders WHERE rider_id IS NOT NULL AND stage NOT IN ('Settle', 'Cancelled') AND environment = ?)

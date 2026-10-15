@@ -1,6 +1,7 @@
 import { db } from "../db/client.js";
 import type { PlatformEnvironment } from "../lib/settings.js";
 import type { WorkSettings } from "./settings.js";
+import { checkCancellation } from "./onsite.js";
 import {
   applyMoney, applyPendingMoney, chargeCustomer, dropUnpaidHold, fromDb, inMinutes, logEvent, notifyCustomer, notifyProviders, percentOf, publicProvider,
   splitHeld, toDb, transition, workExtrasReady, type ActorKind, type MoneyPlan, type Row,
@@ -138,6 +139,7 @@ export async function cancelJob(job: Row, by: ActorKind, actorId: string | null,
   });
   if (!ok) return fail(409, "cannot_cancel", "This job just changed. Refresh and try again.");
   notifyCustomer(job, "Your booking was cancelled", String(job.service_name));
+  if (by === "customer" || by === "provider") await checkCancellation(job, by, settings);
   return { ok: true };
 }
 
@@ -182,6 +184,7 @@ export async function providerCancel(job: Row, actorId: string | null, settings:
   await logEvent(String(job.id), null, "system", "rematched", { attempt: Number(job.rematch_count ?? 0) + 1 });
 
   const fresh = (await getJob(String(job.id))) as Row;
+  await checkCancellation(job, "provider", settings);
   notifyCustomer(fresh, "Your provider had to cancel", "We're finding you another one.");
   if (fresh.matching_mode === "broadcast" || fresh.matching_mode === "customer_picks") await notifyProviders(fresh, settings);
   return { ok: true, rematched: true };
@@ -232,6 +235,11 @@ export async function jobView(job: Row, viewer: "customer" | "provider" | "admin
     viewer === "provider" && job.provider_id && job.status !== "open"
       ? ((await db.execute({ sql: "SELECT name, phone FROM users WHERE id = ?", args: [job.customer_id] })).rows[0] as Row | undefined)
       : undefined;
+  // When the provider marked themselves as arrived (only meaningful while they are on the job).
+  const arrived = ["booked", "in_progress"].includes(String(job.status))
+    ? ((await db.execute({ sql: "SELECT MIN(created_at) AS at FROM work_events WHERE job_id = ? AND action = 'arrived' AND created_at >= COALESCE(?, '')", args: [job.id, job.assigned_at ?? null] })).rows[0] as Row | undefined)
+    : undefined;
+  const arrivedAt = (arrived?.at as string | null | undefined) ?? null;
   return {
     id: job.id,
     status: job.status,
@@ -268,6 +276,7 @@ export async function jobView(job: Row, viewer: "customer" | "provider" | "admin
     startedAt: job.started_at ?? null,
     completedAt: job.completed_at ?? null,
     settledAt: job.settled_at ?? null,
+    arrivedAt,
     rematchCount: Number(job.rematch_count ?? 0),
     // Where the provider is while the job is on (customer and staff only; the provider already knows).
     providerLocation:

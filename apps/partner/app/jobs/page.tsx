@@ -58,6 +58,9 @@ export default function JobsPage() {
             <p className="text-sm font-bold text-ink">{job.pickupAddress ?? "Pickup"} → {job.destinationAddress ?? "Destination"}</p>
             <strong className="shrink-0 text-sm">{ugx(job.fare)}</strong>
           </div>
+          {job.categoryKind === "ambulance" && <p className="rounded-xl bg-red-50 p-2.5 text-xs font-bold text-red-700 dark:bg-red-950/40 dark:text-red-300">Emergency ambulance request</p>}
+          {job.categoryKind === "luxury" && <p className="text-xs font-bold text-gold">Luxury booking{job.hireHours ? ` · hired for ${job.hireHours} hour${job.hireHours === 1 ? "" : "s"} after the trip` : ""}</p>}
+          {job.tripNote && <p className="text-xs text-ink"><span className="font-bold">{job.categoryKind === "ambulance" ? "Reported: " : "Occasion: "}</span>{job.tripNote}</p>}
           {job.serviceTier && <p className="text-xs font-bold text-gold">{job.serviceTier === "xl" ? "XL" : job.serviceTier === "comfort" ? "Comfort" : "Convenient"} ride</p>}
           {job.scheduledFor && <p className="text-xs font-semibold text-ink">Pickup {new Date(job.scheduledFor).toLocaleString("en-UG", { dateStyle: "medium", timeStyle: "short" })}</p>}
           <p className="text-xs text-ink-500">

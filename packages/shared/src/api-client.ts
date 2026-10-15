@@ -1812,6 +1812,15 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
       const params = new URLSearchParams(Object.entries(route).map(([key, value]) => [key, String(value)]));
       return request<{ distanceKm: number; options: Array<{ size: "normal" | "large"; tier: "convenient" | "comfort"; fare: number; nearby: number }> }>(`/v1/car/service-options?${params}`);
     },
+    /** Fare for a category (Luxury: pass `hireHours` for hire by the hour). */
+    async quoteCarCategory(input: { categoryId: string; hireHours?: number; pickupLat: number; pickupLng: number; destinationLat: number; destinationLng: number }) {
+      return request<{ fare: number; distanceKm: number }>("/v1/car/quote", { method: "POST", body: JSON.stringify(input) });
+    },
+    /** How many cars of one category are online and free near a point. */
+    async getCarCategoryNearby(categoryId: string, lat: number, lng: number) {
+      const params = new URLSearchParams({ categoryId, lat: String(lat), lng: String(lng) });
+      return request<{ nearby: number }>(`/v1/car/category-nearby?${params}`);
+    },
     async bookCar(input: CarBookingInput & { scheduledFor?: string }) {
       return request<{ order: OrderRow }>("/v1/car/bookings", { method: "POST", body: JSON.stringify(input) });
     },

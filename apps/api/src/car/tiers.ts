@@ -1,11 +1,25 @@
 import { roundFare } from "@peebee/shared";
 import { db } from "../db/client.js";
 import { haversineKm } from "../lib/geo.js";
+import { hasColumn } from "../lib/schema.js";
 import { getCarServicePricing, getPlatformEnvironment } from "../lib/settings.js";
 
 export type CarServiceTier = "convenient" | "comfort" | "xl";
 export type CarVehicleSize = "normal" | "large";
 export type TierVehicle = { service_class: unknown; accepts_convenient: unknown; seat_capacity: unknown; lat: unknown; lng: unknown };
+
+/**
+ * Luxury and Ambulance categories carry people too, but they are not ordinary taxis: they must never be matched to, or
+ * counted for, a Convenient / Comfort ride. Empty until migration 0101 adds the column.
+ */
+export async function standardCategoryOnly(alias: string): Promise<string> {
+  return (await hasColumn("vehicle_categories", "service_group")) ? ` AND ${alias}.service_group = 'standard'` : "";
+}
+
+/** A category's kind for the driver side: its service group when it is Luxury or Ambulance, otherwise 'passenger' or 'cargo'. */
+export async function effectiveKindSql(alias: string): Promise<string> {
+  return (await hasColumn("vehicle_categories", "service_group")) ? `CASE WHEN ${alias}.service_group <> 'standard' THEN ${alias}.service_group ELSE ${alias}.kind END` : `${alias}.kind`;
+}
 
 export function acceptsTier(vehicle: TierVehicle, tier: CarServiceTier, xlMinSeats: number, size?: CarVehicleSize): boolean {
   const seats = Number(vehicle.seat_capacity);
@@ -27,12 +41,13 @@ export function tierFare(distanceKm: number, tier: CarServiceTier, pricing: Awai
 /** Online, free drivers with a pickup location in the customer's radius. */
 export async function nearbyTierCounts(lat: number, lng: number, radiusKm: number, xlMinSeats: number): Promise<Record<CarVehicleSize, Record<Exclude<CarServiceTier, "xl">, number>>> {
   const environment = await getPlatformEnvironment();
+  const standardOnly = await standardCategoryOnly("cat");
   const result = await db.execute({
     sql: `SELECT s.lat, s.lng, v.service_class, v.accepts_convenient, v.seat_capacity
           FROM car_driver_state s
           JOIN car_partners p ON p.user_id = s.driver_id AND p.driver_status = 'approved'
           JOIN vehicles v ON v.id = s.vehicle_id AND v.status = 'approved'
-          JOIN vehicle_categories cat ON cat.id = v.category_id AND cat.kind = 'passenger'
+          JOIN vehicle_categories cat ON cat.id = v.category_id AND cat.kind = 'passenger'${standardOnly}
           JOIN vehicle_assignments a ON a.vehicle_id = v.id AND a.driver_id = s.driver_id AND a.status = 'active'
           WHERE s.online = 1 AND s.lat IS NOT NULL AND s.lng IS NOT NULL
             AND s.driver_id NOT IN (SELECT rider_id FROM orders WHERE rider_id IS NOT NULL AND environment = ? AND stage NOT IN ('Settle', 'Cancelled'))`,

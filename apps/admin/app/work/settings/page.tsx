@@ -15,8 +15,8 @@ import { api, errorMessage } from "../../../lib/api";
 type NumKey =
   | "commissionPercent" | "offerWindowMinutes" | "radiusKm" | "maxNotified" | "minLeadMinutes" | "maxAdvanceDays" | "quoteValidHours"
   | "maxQuoteUgx" | "freeCancelMinutes" | "lateCancelFeePercent" | "autoConfirmHours" | "disputeWindowHours" | "jobsPerHour"
-  | "maxRematches" | "maxPhotosPerJob" | "maxPhotoKb";
-type BoolKey = "enabled" | "requireApproval" | "rematchOnProviderCancel" | "photosEnabled" | "chatEnabled" | "trackingEnabled";
+  | "maxRematches" | "maxPhotosPerJob" | "maxPhotoKb" | "onsiteRadiusM" | "onsiteMinMinutes" | "onsiteSuspendAfterFlags" | "onsiteWindowDays" | "locationRetentionDays";
+type BoolKey = "enabled" | "requireApproval" | "rematchOnProviderCancel" | "photosEnabled" | "chatEnabled" | "trackingEnabled" | "onsiteCheckEnabled" | "onsiteFlagNoLocation" | "onsiteRequireLocation";
 
 /** Ranges are exactly those in apps/api/src/settings/routes.ts (`work`). */
 const NUM: Record<NumKey, { label: string; min: number; max: number; hint?: string }> = {
@@ -36,6 +36,11 @@ const NUM: Record<NumKey, { label: string; min: number; max: number; hint?: stri
   maxRematches: { label: "Max re-matches per job", min: 0, max: 10, hint: "Times a job can go back to other providers before refund" },
   maxPhotosPerJob: { label: "Max photos per job", min: 1, max: 30 },
   maxPhotoKb: { label: "Largest photo (KB)", min: 100, max: 10240 },
+  onsiteRadiusM: { label: "On-site distance (metres)", min: 20, max: 2000, hint: "How close to the job address counts as being on site" },
+  onsiteMinMinutes: { label: "Minutes on site before a cancellation is flagged", min: 1, max: 1440 },
+  onsiteSuspendAfterFlags: { label: "Suspend after this many flags", min: 0, max: 50, hint: "0 turns automatic suspension off" },
+  onsiteWindowDays: { label: "…within this many days", min: 1, max: 365 },
+  locationRetentionDays: { label: "Keep location trails (days)", min: 1, max: 365, hint: "Trails behind an unreviewed flag are kept until it is reviewed" },
 };
 
 const SECTIONS: { title: string; keys: NumKey[] }[] = [
@@ -233,6 +238,32 @@ export default function WorkSettingsPage() {
         </div>
         <Toggle label="Chat" hint="Customer and provider can message about a job." checked={form.chatEnabled} disabled={ro} onChange={(v) => setBool("chatEnabled", v)} />
         <Toggle label="Live tracking" hint="Customer sees the provider's location while the job is on." checked={form.trackingEnabled} disabled={ro} onChange={(v) => setBool("trackingEnabled", v)} />
+      </section>
+
+      <section className="home-card space-y-3">
+        <h2 className="text-sm font-bold text-ink">On-site checks</h2>
+        <p className="text-xs text-ink-500">
+          Records where a provider is during a job, and flags a cancellation that comes after a long stay at the customer&apos;s address, so staff can look into possible off-app cash deals.
+          A flag is a reason to look, not proof. Providers are told their location is recorded.
+        </p>
+        <Toggle label="On-site checks" hint="Off by default. Needs migration 0100 and live tracking to be on." checked={form.onsiteCheckEnabled} disabled={ro} onChange={(v) => setBool("onsiteCheckEnabled", v)} />
+        <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2">
+          {numField("onsiteRadiusM")}
+          {numField("onsiteMinMinutes")}
+        </div>
+        <Field label="When a cancellation is flagged" hint="“Flag only” leaves the provider working until staff review it.">
+          <select disabled={ro} value={form.onsiteAction} onChange={(e) => { setSaved(false); setForm({ ...form, onsiteAction: e.target.value as "flag" | "suspend" }); }} className={inputCls}>
+            <option value="flag">Flag only (staff review)</option>
+            <option value="suspend">Flag and suspend the provider until reviewed</option>
+          </select>
+        </Field>
+        <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2">
+          {numField("onsiteSuspendAfterFlags")}
+          {numField("onsiteWindowDays")}
+        </div>
+        <Toggle label="Also flag jobs with no location at all" hint="The provider held the job that long, never shared a location, then it was cancelled." checked={form.onsiteFlagNoLocation} disabled={ro} onChange={(v) => setBool("onsiteFlagNoLocation", v)} />
+        <Toggle label="Providers must share location to start a job" hint="They can only tap Start with a location update from the last few minutes. Location is only collected while a job is booked or in progress." checked={form.onsiteRequireLocation} disabled={ro} onChange={(v) => setBool("onsiteRequireLocation", v)} />
+        {numField("locationRetentionDays")}
       </section>
 
       <ErrorNote message={error} />

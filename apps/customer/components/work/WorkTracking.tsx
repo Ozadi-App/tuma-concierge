@@ -37,7 +37,7 @@ export function WorkTracking({ job }: { job: WorkJob }) {
       <div className="flex items-center gap-2">
         <Navigation className="h-4 w-4 text-gold" aria-hidden />
         <h2 id="track-heading" className="text-sm font-bold">
-          {job.status === "in_progress" ? "Your provider is at the job" : "Your provider is on the way"}
+          {job.status === "in_progress" ? "Your provider is at the job" : job.arrivedAt ? "Your provider has arrived" : "Your provider is on the way"}
         </h2>
       </div>
       <div className="h-56 overflow-hidden rounded-2xl" role="img" aria-label="Map showing your provider's position">

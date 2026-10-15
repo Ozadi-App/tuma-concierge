@@ -12,6 +12,8 @@ import { splitHeld } from "./service.js";
 import { resetWorkSchemaCache } from "./service.js";
 import { sweepWork } from "./scheduled.js";
 import { setWorkSettings } from "./settings.js";
+import { dwellAt, purgeTrails } from "./onsite.js";
+import { getWorkSettings } from "./settings.js";
 
 process.env.JWT_SECRET = "work-test-only-secret";
 
@@ -729,4 +731,252 @@ test("work: the customer sees the provider's location only while the job is on, 
   await client.execute({ sql: "UPDATE work_jobs SET provider_located_at = datetime('now', '-10 seconds') WHERE id = ?", args: [jobId] });
   await setWorkSettings({ trackingEnabled: false });
   assert.equal((await call(`/provider/jobs/${jobId}/location`, { token: pro.token, body: { lat: 0.4, lng: 32.7 } })).status, 503);
+});
+
+// ---------------------------------------------------------------------------
+// On-site checks (migration 0100)
+// ---------------------------------------------------------------------------
+
+test("work: time on site counts only pings inside the radius, close together, and accurate enough", () => {
+  const at = (min: number) => `2026-01-01 10:${String(min).padStart(2, "0")}:00`;
+  const home = { lat: 0.3136, lng: 32.5811 };
+  const near = (min: number, extra: Partial<{ lat: number; accuracyM: number | null }> = {}) => ({ lat: home.lat + 0.0003, lng: home.lng, accuracyM: 10, at: at(min), ...extra });
+  const stay = Array.from({ length: 26 }, (_, i) => near(i)); // one ping a minute for 25 minutes
+  assert.equal(dwellAt(stay, home, 150).onsiteMinutes, 25);
+  assert.equal(dwellAt(stay, home, 150).points, 26);
+  // A hole in the trail (phone locked) is not counted as time on site beyond the cap.
+  const gap = [near(0), near(1), near(31), near(32)];
+  assert.equal(dwellAt(gap, home, 150).onsiteMinutes, 1 + 5 + 1, "the 30-minute hole counts for at most five minutes");
+  // Passing by: inside, then outside, then inside — only consecutive inside pings add up.
+  const passing = [near(0), near(1, { lat: home.lat + 0.01 }), near(2)];
+  assert.equal(dwellAt(passing, home, 150).onsiteMinutes, 0);
+  // A ping less accurate than the radius can't prove anyone was there.
+  assert.equal(dwellAt(stay.map((p) => ({ ...p, accuracyM: 500 })), home, 150).onsiteMinutes, 0);
+  assert.equal(dwellAt([], home, 150).closestM, null);
+  assert.ok((dwellAt(stay, home, 150).closestM ?? 0) > 20 && (dwellAt(stay, home, 150).closestM ?? 0) < 50);
+});
+
+async function onsiteSetup() {
+  const ctx = await setup();
+  await setWorkSettings({ onsiteCheckEnabled: true, onsiteRadiusM: 150, onsiteMinMinutes: 20, onsiteAction: "flag", onsiteFlagNoLocation: true, onsiteSuspendAfterFlags: 0, onsiteWindowDays: 30, locationRetentionDays: 30 });
+  /** Pretend the provider sat at the address for `minutes`, one ping a minute, ending now. */
+  const stayAtAddress = async (jobId: string, providerId: string, minutes: number, spot = { lat: 0.3137, lng: 32.5811 }) => {
+    for (let i = 0; i <= minutes; i++) {
+      await ctx.client.execute({
+        sql: "INSERT INTO work_job_locations (job_id, provider_id, lat, lng, accuracy_m, recorded_at) VALUES (?, ?, ?, ?, 12, datetime('now', ?))",
+        args: [jobId, providerId, spot.lat, spot.lng, `-${minutes - i} minutes`],
+      });
+    }
+  };
+  const flags = async () => (await ctx.client.execute("SELECT * FROM work_flags ORDER BY rowid")).rows as Json[];
+  return { ...ctx, stayAtAddress, flags };
+}
+
+test("work: on-site checks are off by default — nothing is recorded or flagged", async () => {
+  const { call, mkUser, mkProvider, book, client } = await setup();
+  const flags = async () => (await client.execute("SELECT * FROM work_flags")).rows;
+  const customer = await mkUser("cust_o0", { wallet: 200000 });
+  const pro = await mkProvider("pro_o0");
+  const jobId = (await book(customer)).json.job.id as string;
+  await call(`/provider/jobs/${jobId}/accept`, { token: pro.token, body: {} });
+  assert.equal((await call(`/provider/jobs/${jobId}/location`, { token: pro.token, body: { lat: 0.3137, lng: 32.5811 } })).status, 200);
+  assert.equal(Number((await client.execute("SELECT COUNT(*) AS n FROM work_job_locations")).rows[0].n), 0, "no trail is kept while the switch is off");
+  await client.execute({ sql: "UPDATE work_jobs SET assigned_at = datetime('now', '-3 hours') WHERE id = ?", args: [jobId] });
+  assert.equal((await call(`/jobs/${jobId}/cancel`, { token: customer, body: {} })).status, 200);
+  assert.deepEqual(await flags(), []);
+});
+
+test("work: a cancellation after a long stay at the address is flagged and reviewed by admin", async () => {
+  const { call, mkUser, mkProvider, book, client, admin, flags, stayAtAddress } = await onsiteSetup();
+  const customer = await mkUser("cust_o1", { wallet: 200000 });
+  const pro = await mkProvider("pro_o1");
+  const jobId = (await book(customer)).json.job.id as string;
+  await call(`/provider/jobs/${jobId}/accept`, { token: pro.token, body: {} });
+
+  assert.equal((await call(`/provider/jobs/${jobId}/location`, { token: pro.token, body: { lat: 0.3137, lng: 32.5811, accuracy: 15 } })).json.stored, true);
+  assert.equal((await call(`/provider/jobs/${jobId}/location`, { token: pro.token, body: { lat: 0.3137, lng: 32.5811 } })).json.stored, false);
+  assert.equal(Number((await client.execute("SELECT COUNT(*) AS n FROM work_job_locations")).rows[0].n), 1, "one trail point per stored update");
+
+  await client.execute("DELETE FROM work_job_locations");
+  await stayAtAddress(jobId, pro.providerId, 25);
+  assert.equal((await call(`/jobs/${jobId}/cancel`, { token: customer, body: {} })).status, 200, "the cancellation itself still goes through");
+
+  const [flag] = await flags();
+  assert.equal(flag.kind, "cancel_after_onsite");
+  assert.equal(flag.cancelled_by, "customer");
+  assert.equal(flag.status, "open");
+  assert.ok(Number(flag.onsite_minutes) >= 24, `on site ${flag.onsite_minutes} minutes`);
+  assert.equal((await call(`/provider/jobs/open`, { token: pro.token })).status, 200, "action 'flag' leaves the provider working");
+
+  const list = await call("/admin/flags", { token: admin });
+  assert.equal(list.json.ready, true);
+  assert.equal(list.json.openCount, 1);
+  const detail = await call(`/admin/flags/${flag.id}`, { token: admin });
+  assert.equal(detail.status, 200);
+  assert.ok(detail.json.trail.length >= 20 && detail.json.job.address === "Plot 5 Kololo");
+  assert.equal((await call(`/admin/flags/${flag.id}`, { token: pro.token })).status, 403, "providers can't read the queue");
+
+  assert.equal((await call(`/admin/flags/${flag.id}/review`, { token: admin, body: { outcome: "warn", note: "First warning" } })).status, 200);
+  assert.equal((await call(`/admin/flags/${flag.id}/review`, { token: admin, body: { outcome: "dismiss" } })).status, 409, "a flag is reviewed once");
+  assert.equal((await flags())[0].status, "warned");
+});
+
+test("work: suspension — straight away if admin chooses, or after enough flags, and it can be undone", async () => {
+  const { call, mkUser, mkProvider, book, client, admin, flags, stayAtAddress } = await onsiteSetup();
+  await setWorkSettings({ onsiteSuspendAfterFlags: 2, rematchOnProviderCancel: false });
+  const pro = await mkProvider("pro_o2");
+  const cancelledAfterStay = async (customerId: string, who: "customer" | "provider") => {
+    const customer = await mkUser(customerId, { wallet: 200000 });
+    const jobId = (await book(customer)).json.job.id as string;
+    assert.equal((await call(`/provider/jobs/${jobId}/accept`, { token: pro.token, body: {} })).status, 200);
+    await stayAtAddress(jobId, pro.providerId, 22);
+    const res = who === "customer" ? await call(`/jobs/${jobId}/cancel`, { token: customer, body: {} }) : await call(`/provider/jobs/${jobId}/cancel`, { token: pro.token, body: { reason: "can't" } });
+    assert.equal(res.status, 200);
+    return jobId;
+  };
+  const status = async () => String((await client.execute({ sql: "SELECT status FROM work_providers WHERE id = ?", args: [pro.providerId] })).rows[0].status);
+
+  await cancelledAfterStay("cust_o2a", "customer");
+  assert.equal(await status(), "approved", "one flag is under the limit");
+  await cancelledAfterStay("cust_o2b", "provider");
+  assert.equal(await status(), "suspended", "the second flag in the window suspends");
+  const all = await flags();
+  assert.equal(all.length, 2);
+  assert.deepEqual(all.map((f) => f.cancelled_by), ["customer", "provider"]);
+  assert.equal(all[1].status, "suspended");
+  assert.match(String(all[1].review_note), /Suspended automatically/);
+
+  const customer = await mkUser("cust_o2c", { wallet: 100000 });
+  const next = (await book(customer)).json.job.id as string;
+  assert.equal((await call(`/provider/jobs/${next}/accept`, { token: pro.token, body: {} })).status, 403, "a suspended provider can't take jobs");
+  const row = (await call("/admin/providers?status=suspended", { token: admin })).json.providers[0];
+  assert.match(String(row.status_note), /Under review/);
+  assert.equal((await call(`/admin/providers/${pro.providerId}/reinstate`, { token: admin, body: { note: "Cleared" } })).status, 200);
+  assert.equal(await status(), "approved");
+
+  // With the action set to "suspend", a single flagged cancellation suspends straight away.
+  await setWorkSettings({ onsiteSuspendAfterFlags: 0, onsiteAction: "suspend" });
+  await cancelledAfterStay("cust_o2d", "customer");
+  assert.equal(await status(), "suspended");
+  await call(`/admin/providers/${pro.providerId}/reinstate`, { token: admin, body: {} });
+
+  // Admin can suspend from the review screen too, and the first, still-open flag can be dismissed.
+  const first = (await flags())[0];
+  assert.equal(first.status, "open");
+  assert.equal((await call(`/admin/flags/${first.id}/review`, { token: admin, body: { outcome: "suspend", note: "Repeated" } })).status, 200);
+  assert.equal(await status(), "suspended");
+});
+
+test("work: a provider who held a job and never shared a location is flagged; a short wait is not", async () => {
+  const { call, mkUser, mkProvider, book, client, flags } = await onsiteSetup();
+  await setWorkSettings({ rematchOnProviderCancel: false });
+  const pro = await mkProvider("pro_o3");
+  const first = await mkUser("cust_o3a", { wallet: 200000 });
+  const quick = (await book(first)).json.job.id as string;
+  await call(`/provider/jobs/${quick}/accept`, { token: pro.token, body: {} });
+  assert.equal((await call(`/provider/jobs/${quick}/cancel`, { token: pro.token, body: { reason: "sorry" } })).status, 200);
+  assert.deepEqual(await flags(), [], "cancelling soon after accepting is nothing to flag");
+
+  const second = await mkUser("cust_o3b", { wallet: 200000 });
+  const slow = (await book(second)).json.job.id as string;
+  await call(`/provider/jobs/${slow}/accept`, { token: pro.token, body: {} });
+  await client.execute({ sql: "UPDATE work_jobs SET assigned_at = datetime('now', '-45 minutes') WHERE id = ?", args: [slow] });
+  assert.equal((await call(`/provider/jobs/${slow}/cancel`, { token: pro.token, body: { reason: "sorry" } })).status, 200);
+  const [flag] = await flags();
+  assert.equal(flag.kind, "cancel_no_location");
+
+  await setWorkSettings({ onsiteFlagNoLocation: false });
+  const third = await mkUser("cust_o3c", { wallet: 200000 });
+  const other = (await book(third)).json.job.id as string;
+  await call(`/provider/jobs/${other}/accept`, { token: pro.token, body: {} });
+  await client.execute({ sql: "UPDATE work_jobs SET assigned_at = datetime('now', '-45 minutes') WHERE id = ?", args: [other] });
+  await call(`/provider/jobs/${other}/cancel`, { token: pro.token, body: { reason: "sorry" } });
+  assert.equal((await flags()).length, 1, "admin can switch the no-location check off");
+});
+
+test("work: a provider cancelling so the job is re-matched is checked too", async () => {
+  const { call, mkUser, mkProvider, book, flags, stayAtAddress, dbJob } = await onsiteSetup();
+  const customer = await mkUser("cust_o4", { wallet: 200000 });
+  const pro = await mkProvider("pro_o4");
+  const jobId = (await book(customer)).json.job.id as string;
+  await call(`/provider/jobs/${jobId}/accept`, { token: pro.token, body: {} });
+  await stayAtAddress(jobId, pro.providerId, 30);
+  const res = await call(`/provider/jobs/${jobId}/cancel`, { token: pro.token, body: { reason: "cash" } });
+  assert.equal(res.json.rematched, true);
+  assert.equal((await dbJob(jobId)).status, "open");
+  assert.equal((await flags()).length, 1);
+});
+
+test("work: old location trails are deleted, except evidence for a flag nobody has reviewed", async () => {
+  const { client, mkUser, mkProvider, book, call, stayAtAddress } = await onsiteSetup();
+  const customer = await mkUser("cust_o5", { wallet: 200000 });
+  const pro = await mkProvider("pro_o5");
+  const jobId = (await book(customer)).json.job.id as string;
+  await call(`/provider/jobs/${jobId}/accept`, { token: pro.token, body: {} });
+  await stayAtAddress(jobId, pro.providerId, 2);
+  await client.execute("UPDATE work_job_locations SET recorded_at = datetime('now', '-40 days')");
+  await client.execute({
+    sql: `INSERT INTO work_flags (id, job_id, provider_id, customer_id, kind, cancelled_by, radius_m, min_minutes) VALUES ('wfl_keep', ?, ?, 'cust_o5', 'cancel_after_onsite', 'customer', 150, 20)`,
+    args: [jobId, pro.providerId],
+  });
+  assert.equal(await purgeTrails(await getWorkSettings()), 0, "an open flag keeps its evidence");
+  await client.execute("UPDATE work_flags SET status = 'dismissed'");
+  assert.equal(await purgeTrails(await getWorkSettings()), 3);
+  assert.equal(Number((await client.execute("SELECT COUNT(*) AS n FROM work_job_locations")).rows[0].n), 0);
+});
+
+test("work: with on-site checks on, a job can't be started without a fresh location, and arrival is checked against the address", async () => {
+  const { call, mkUser, mkProvider, book, client } = await onsiteSetup();
+  const customer = await mkUser("cust_o6", { wallet: 200000 });
+  const pro = await mkProvider("pro_o6");
+  const jobId = (await book(customer)).json.job.id as string;
+  await call(`/provider/jobs/${jobId}/accept`, { token: pro.token, body: {} });
+
+  // No location yet: can't start, can't mark arrival.
+  const early = await call(`/provider/jobs/${jobId}/start`, { token: pro.token, body: {} });
+  assert.equal(early.status, 409);
+  assert.equal(early.json.error, "location_required");
+  assert.equal((await call(`/provider/jobs/${jobId}/arrived`, { token: pro.token, body: {} })).json.error, "location_required");
+
+  // Far away: arrival is refused and says how far.
+  assert.equal((await call(`/provider/jobs/${jobId}/location`, { token: pro.token, body: { lat: 0.3336, lng: 32.5811 } })).json.stored, true);
+  const far = await call(`/provider/jobs/${jobId}/arrived`, { token: pro.token, body: {} });
+  assert.equal(far.status, 409);
+  assert.equal(far.json.error, "not_there_yet");
+  assert.ok(far.json.distanceM > 2000);
+  assert.equal((await call(`/jobs/${jobId}`, { token: customer })).json.job.arrivedAt, null);
+
+  // At the address: arrival is accepted once, the customer sees it, and the job can start.
+  await client.execute({ sql: "UPDATE work_jobs SET provider_lat = 0.3137, provider_lng = 32.5811, provider_located_at = datetime('now') WHERE id = ?", args: [jobId] });
+  assert.equal((await call(`/provider/jobs/${jobId}/arrived`, { token: pro.token, body: {} })).status, 200);
+  assert.equal((await call(`/provider/jobs/${jobId}/arrived`, { token: pro.token, body: {} })).json.repeated, true, "a second tap changes nothing");
+  assert.ok((await call(`/jobs/${jobId}`, { token: customer })).json.job.arrivedAt);
+  assert.equal((await call(`/provider/jobs/${jobId}/start`, { token: pro.token, body: {} })).status, 200);
+
+  // A stale fix doesn't count; and admin can switch the rule off.
+  const second = await mkUser("cust_o6b", { wallet: 200000 });
+  const next = (await book(second)).json.job.id as string;
+  await call(`/provider/jobs/${next}/accept`, { token: pro.token, body: {} });
+  await client.execute({ sql: "UPDATE work_jobs SET provider_lat = 0.3137, provider_lng = 32.5811, provider_located_at = datetime('now', '-20 minutes') WHERE id = ?", args: [next] });
+  assert.equal((await call(`/provider/jobs/${next}/start`, { token: pro.token, body: {} })).json.error, "location_required");
+  await setWorkSettings({ onsiteRequireLocation: false });
+  assert.equal((await call(`/provider/jobs/${next}/start`, { token: pro.token, body: {} })).status, 200);
+});
+
+test("work: starting a job needs no location while on-site checks are off", async () => {
+  const { call, mkUser, mkProvider, book } = await setup();
+  const customer = await mkUser("cust_o7", { wallet: 200000 });
+  const pro = await mkProvider("pro_o7");
+  const jobId = (await book(customer)).json.job.id as string;
+  await call(`/provider/jobs/${jobId}/accept`, { token: pro.token, body: {} });
+  assert.equal((await call(`/provider/jobs/${jobId}/start`, { token: pro.token, body: {} })).status, 200);
+});
+
+test("work: gaps in the trail while on site are counted for the reviewer", () => {
+  const home = { lat: 0.3136, lng: 32.5811 };
+  const p = (min: number) => ({ lat: home.lat, lng: home.lng, accuracyM: 10, at: `2026-01-01 10:${String(min).padStart(2, "0")}:00` });
+  const d = dwellAt([p(0), p(1), p(20), p(21)], home, 150);
+  assert.equal(d.gaps, 1);
+  assert.equal(d.longestGapMinutes, 19);
+  assert.equal(dwellAt([p(0), p(1), p(2)], home, 150).gaps, 0);
 });

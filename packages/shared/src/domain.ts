@@ -229,6 +229,8 @@ export type CarSettings = {
   shares: { owner: number; driver: number; platform: number };
   /** A driver further than this from the pickup isn't offered the ride. */
   maxPickupKm: number;
+  /** Phone number shown with Ambulance requests (default 999). */
+  emergencyNumber?: string;
   servicePricing?: { ratePerKm: number; minimumFare: number; comfortPremiumPercent: number; xlPremiumPercent: number; xlMinSeats: number };
   /** Owners and drivers may cash their ride earnings out to mobile money. */
   withdrawalsEnabled: boolean;
@@ -2026,9 +2028,15 @@ export type AdminStageDetail = { stage: Stage; members: StageMemberSummary[]; cy
 
 export type CarPartnerStatus = "none" | "pending" | "approved" | "rejected" | "suspended";
 
+/** "luxury" and "ambulance" categories carry passengers but are kept out of the ordinary taxi matching (migration 0101). */
+export type CarServiceGroup = "standard" | "luxury" | "ambulance";
+
 export type AdminCarCategory = {
   id: string;
   kind: "passenger" | "cargo";
+  service_group?: CarServiceGroup;
+  rate_per_hour?: number;
+  description?: string | null;
   name: string;
   seats: number | null;
   cargo_type: string | null;
@@ -2044,6 +2052,10 @@ export type AdminCarCategory = {
 
 export type AdminCarCategoryInput = {
   kind: "passenger" | "cargo";
+  serviceGroup?: CarServiceGroup;
+  /** Luxury hire: UGX per hour on top of the trip. */
+  ratePerHour?: number;
+  description?: string | null;
   name: string;
   seats?: number | null;
   cargoType?: string | null;
@@ -2110,6 +2122,13 @@ export type AdminCarBooking = {
 export type CarCategory = {
   id: string;
   kind: "passenger" | "cargo";
+  /** Present once migration 0101 is applied. */
+  service_group?: CarServiceGroup;
+  /** Luxury hire: UGX per hour, added to the trip fare (0 = not offered by the hour). */
+  rate_per_hour?: number;
+  description?: string | null;
+  /** 1 once Peebee has approved at least one vehicle in this category (Luxury and Ambulance: customers see them only then). */
+  has_vehicles?: number;
   name: string;
   seats: number | null;
   cargo_type: string | null;
@@ -2120,6 +2139,10 @@ export type CarCategory = {
 
 export type CarConfig = {
   onDemandEnabled: boolean;
+  /** Shown with Ambulance requests: a life-threatening emergency should also call this. */
+  emergencyNumber?: string;
+  /** Most hours a Luxury car can be hired for. */
+  maxHireHours?: number;
   serviceTiers?: { ratePerKm: number; minimumFare: number; comfortPremiumPercent: number; xlPremiumPercent: number; xlMinSeats: number } | null;
   /** Photos per vehicle: the most an owner can add, and how many are needed before approval. */
   vehiclePhotos?: { max: number; minRequired: number };
@@ -2153,6 +2176,10 @@ export type CarBookingInput = {
   passenger?: RidePassenger;
   /** Cargo/moving items description (for cargo and truck bookings). */
   cargoDescription?: string;
+  /** Luxury: hours of hire on top of the trip. */
+  hireHours?: number;
+  /** What is happening (Ambulance) or the occasion (Luxury); shown to the driver. */
+  note?: string;
 };
 
 export type CarWallet = {
@@ -2383,6 +2410,11 @@ export type CarMe = {
 
 export type CarDriverJob = {
   id: string;
+  /** "luxury" and "ambulance" for those services, else "passenger" or "cargo". */
+  categoryKind?: string | null;
+  /** The customer's note: what is happening (Ambulance) or the occasion (Luxury). */
+  tripNote?: string | null;
+  hireHours?: number | null;
   serviceTier?: "convenient" | "comfort" | "xl" | null;
   vehicleSize?: "normal" | "large" | null;
   customerName: string;
@@ -2411,6 +2443,9 @@ export type CarDriverActive = {
     destination_lat: number | null;
     destination_lng: number | null;
     customer_name: string;
+    category_kind?: string | null;
+    trip_note?: string | null;
+    hire_hours?: number | null;
     /** Set when the ride was booked for someone else — meet and call this person. */
     passenger_name?: string | null;
     passenger_phone?: string | null;

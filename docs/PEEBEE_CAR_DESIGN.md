@@ -224,3 +224,35 @@ Deliberate differences from the plan above:
 - **Carpool** uses single published trips (with an optional weekly repeat within an admin limit) rather than recurring schedule rules and a nightly materialiser. Meeting points, door pickup fees, no-show and late-cancel fees are not built (undecided values).
 - **Self-drive** holds rent + deposit from the renter's wallet and releases them at the end (deposit back unless the owner claims damage, ruled on by an admin). Inspection photos, late-return fees and a licence verifier are not built; the licence is recorded, not verified. Needs Peebee's percentage set and a legal review before live money.
 - Navigation in the Peebee Car app opens the phone's maps app; there is no in-app map.
+
+## 13. Ambulance and Luxury (migration 0101)
+
+Two more car services, booked like Cargo (by category) from the same ride screen. They are `passenger` categories with a
+`service_group` of `luxury` or `ambulance` (migration 0101 only adds columns and rows; nothing is rebuilt). A category in either
+group is never matched to, or counted for, an ordinary Convenient / Comfort ride, and its drivers never see those rides.
+
+**Luxury** (weddings, parties, red carpet): fare = trip (distance × rate, never below the minimum) + hours of hire × the
+category's hourly rate (`rate_per_hour`; 0 = not offered by the hour; at most 24 hours). It follows the platform's normal matching
+and can be booked now or for later. An optional note ("Wedding procession") reaches the driver. Seeded: Luxury sedan, Luxury SUV,
+Limousine / event car, **on**, with placeholder prices to confirm.
+
+**Ambulance** (emergency): always **now** (no booking for later), always assigned to the nearest free ambulance
+(`first_to_claim`) whatever the platform's matching mode, and allowed even when on-demand taxi booking is switched off. A note
+("Chest pain, conscious") reaches the crew. The customer is told to call the emergency number first if a life is in danger, and
+when no ambulance is free nearby the booking is refused with that number. Seeded: Ambulance and ICU ambulance.
+
+**Where they appear.** Customers: tiles on the Ride home screen (`/ride`, pages `/ride/luxury` and `/ride/ambulance`), and
+Luxury / Ambulance buttons in the car menu. A tile or button shows only once Peebee has **approved at least one vehicle** in that
+group (`has_vehicles` in `/car/config`), so there is never an Ambulance button without an ambulance; an owner can still register
+one because the category itself is active. Providers: the Peebee Car (partner) app's *Add a vehicle* form lists *Luxury* and
+*Ambulance* types (taxi-only fields are hidden, with a note that Peebee checks the vehicle), and requests show on the driver's
+Ride requests and active ride with an emergency banner, the customer's note and the hours of hire.
+
+Admin: Settings → Car → Car types: a "Service" choice (ordinary / luxury / ambulance), an hourly rate and a description for
+Luxury; Settings → Car: the emergency phone number (default 999) and the pickup radius that applies to both. Fares, shares and
+the on/off switch are per category like any other.
+
+Known limits: payment still happens after booking on the usual pay screen, and the crew can only start once it is paid, so an
+ambulance is only as fast as the customer's payment; Peebee does not verify medical equipment or crew qualifications beyond the
+normal vehicle and driver approval (add that to the approval checklist for ambulances); practice mode does not include these
+services.

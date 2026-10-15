@@ -4,8 +4,10 @@ import { logActivity } from "../admin/activity.js";
 import { requirePermission } from "../admin/permissions.js";
 import { db } from "../db/client.js";
 import { newId } from "../lib/ids.js";
+import { notifyUser } from "../lib/webpush.js";
 import { assignProvider, cancelJob, getJob, getProvider, jobView, settleJob } from "./jobs.js";
-import { notifyCustomer, notifyProviders, workExtrasReady, type Row } from "./service.js";
+import { dwellAt, suspendForReview, trailFor } from "./onsite.js";
+import { notifyCustomer, notifyProviders, workExtrasReady, workOnsiteReady, type Row } from "./service.js";
 import { getWorkSettings, WORK_PRICING_MODES, WORK_SERVICE_TYPES } from "./settings.js";
 
 export const adminRoutes = new Hono();
@@ -217,3 +219,84 @@ adminRoutes.post("/admin/jobs/:id/resolve", requirePermission("work.manage"), as
   return c.json({ ok: true });
 });
 
+
+// ---------------------------------------------------------------------------
+// On-site flags: cancellations that followed a long stay at the customer's address (migration 0100)
+// ---------------------------------------------------------------------------
+
+adminRoutes.get("/admin/flags", requirePermission("work.view"), async (c) => {
+  if (!(await workOnsiteReady())) return c.json({ ready: false, flags: [], openCount: 0 });
+  const status = c.req.query("status");
+  const flags = (
+    await db.execute({
+      sql: `SELECT f.*, p.display_name AS provider_name, p.status AS provider_status, j.service_name, j.address,
+              (SELECT COUNT(*) FROM work_flags o WHERE o.provider_id = f.provider_id AND o.status IN ('open', 'warned', 'suspended')) AS provider_flag_count
+            FROM work_flags f JOIN work_providers p ON p.id = f.provider_id JOIN work_jobs j ON j.id = f.job_id
+            ${status ? "WHERE f.status = ?" : ""} ORDER BY (f.status = 'open') DESC, f.created_at DESC LIMIT 200`,
+      args: status ? [status] : [],
+    })
+  ).rows;
+  const openCount = Number(((await db.execute({ sql: "SELECT COUNT(*) AS n FROM work_flags WHERE status = 'open'", args: [] })).rows[0] as Row).n);
+  return c.json({ ready: true, flags, openCount });
+});
+
+adminRoutes.get("/admin/flags/:id", requirePermission("work.view"), async (c) => {
+  if (!(await workOnsiteReady())) return c.json({ error: "upgrade_pending", message: "On-site checks need a database update first." }, 503);
+  const flag = (
+    await db.execute({
+      sql: `SELECT f.*, p.display_name AS provider_name, p.status AS provider_status, p.status_note AS provider_status_note, u.name AS customer_name
+            FROM work_flags f JOIN work_providers p ON p.id = f.provider_id JOIN users u ON u.id = f.customer_id WHERE f.id = ?`,
+      args: [c.req.param("id") as string],
+    })
+  ).rows[0] as Row | undefined;
+  if (!flag) return c.json({ error: "not_found", message: "Flag not found." }, 404);
+  const job = (await getJob(String(flag.job_id))) as Row;
+  const trail = await trailFor(String(flag.job_id), String(flag.provider_id));
+  // A long trail is thinned so the page stays light; the first and last points always stay.
+  const step = Math.max(1, Math.ceil(trail.length / 300));
+  const points = trail.filter((_, i) => i % step === 0 || i === trail.length - 1);
+  const events = (await db.execute({ sql: "SELECT * FROM work_events WHERE job_id = ? ORDER BY created_at, rowid", args: [flag.job_id] })).rows;
+  const others = (await db.execute({
+    sql: "SELECT id, kind, status, onsite_minutes, created_at FROM work_flags WHERE provider_id = ? AND id != ? ORDER BY created_at DESC LIMIT 20",
+    args: [flag.provider_id, flag.id],
+  })).rows;
+  const dwell = job.lat != null && job.lng != null ? dwellAt(trail, { lat: Number(job.lat), lng: Number(job.lng) }, Number(flag.radius_m)) : null;
+  const arrivedAt = (events as Row[]).find((e) => e.action === "arrived" && (!job.assigned_at || String(e.created_at) >= String(job.assigned_at)))?.created_at ?? null;
+  return c.json({
+    flag,
+    dwell: dwell ? { gaps: dwell.gaps, longestGapMinutes: dwell.longestGapMinutes } : null,
+    arrivedAt,
+    job: { id: job.id, serviceName: job.service_name, address: job.address, lat: job.lat, lng: job.lng, status: job.status, assignedAt: job.assigned_at, cancelledAt: job.cancelled_at, cancelledBy: job.cancelled_by, cancelReason: job.cancel_reason },
+    trail: points, trailTotal: trail.length, events, otherFlags: others,
+  });
+});
+
+const reviewSchema = z.object({ outcome: z.enum(["dismiss", "warn", "suspend"]), note: z.string().trim().max(300).default("") });
+
+adminRoutes.post("/admin/flags/:id/review", requirePermission("work.manage"), async (c) => {
+  const user = c.get("user");
+  if (!(await workOnsiteReady())) return c.json({ error: "upgrade_pending", message: "On-site checks need a database update first." }, 503);
+  const parsed = reviewSchema.safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) return c.json({ error: "invalid_body", message: "Choose dismiss, warn or suspend." }, 400);
+  const id = c.req.param("id") as string;
+  const flag = (await db.execute({ sql: "SELECT * FROM work_flags WHERE id = ?", args: [id] })).rows[0] as Row | undefined;
+  if (!flag) return c.json({ error: "not_found", message: "Flag not found." }, 404);
+  const { outcome, note } = parsed.data;
+  if (outcome === "suspend") {
+    const ok = await suspendForReview(String(flag.provider_id), note ? `Under review: ${note}` : "Under review after a flagged cancellation");
+    const status = ((await db.execute({ sql: "SELECT status FROM work_providers WHERE id = ?", args: [flag.provider_id] })).rows[0] as Row | undefined)?.status;
+    if (!ok && status !== "suspended") return c.json({ error: "invalid_transition", message: "That provider can't be suspended from here." }, 409);
+  }
+  const status = outcome === "dismiss" ? "dismissed" : outcome === "warn" ? "warned" : "suspended";
+  const res = await db.execute({
+    sql: "UPDATE work_flags SET status = ?, review_note = ?, reviewed_by = ?, reviewed_at = datetime('now') WHERE id = ? AND status = 'open'",
+    args: [status, note || null, user.sub, id],
+  });
+  if ((res.rowsAffected ?? 0) !== 1) return c.json({ error: "already_reviewed", message: "Someone has already reviewed this flag." }, 409);
+  if (outcome === "warn") {
+    const owner = (await db.execute({ sql: "SELECT user_id FROM work_providers WHERE id = ?", args: [flag.provider_id] })).rows[0] as Row | undefined;
+    if (owner) notifyUser(String(owner.user_id), { title: "A warning from Peebee Work", body: note || "Cancelling jobs after arriving can put your account at risk.", url: "/account", tag: "work-warning" }).catch(() => {});
+  }
+  await logActivity({ actor: user, action: `work.flag.${outcome}`, summary: `Reviewed flag ${id}: ${outcome}`, entityType: "work_flag", entityId: id, after: { note, providerId: flag.provider_id }, ip: ip(c) });
+  return c.json({ ok: true });
+});
