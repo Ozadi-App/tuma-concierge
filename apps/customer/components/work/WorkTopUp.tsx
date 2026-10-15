@@ -78,8 +78,8 @@ export function WorkTopUp({ neededUgx, onCredited }: { neededUgx: number; onCred
     };
   }, [topupId, phase, pollNonce, settle]);
 
-  async function start(e: React.FormEvent) {
-    e.preventDefault();
+  async function start(e?: { preventDefault: () => void }) {
+    e?.preventDefault();
     if (phase === "starting" || !msisdn.trim()) return;
     setPhase("starting");
     setError(null);
@@ -134,14 +134,20 @@ export function WorkTopUp({ neededUgx, onCredited }: { neededUgx: number; onCred
           </button>
         </div>
       ) : (
-        <form onSubmit={start} className="space-y-2">
+        // Not a <form>: this panel sits inside the booking form, and forms can't nest. Enter starts the top-up instead of re-submitting the booking.
+        <div
+          className="space-y-2"
+          onKeyDown={(e) => {
+            if (e.key === "Enter") void start(e);
+          }}
+        >
           {phase === "failed" ? <Notice text="The top-up didn't go through and you haven't been charged. You can try again." /> : null}
           <Notice text={error ?? undefined} />
           <MobileNumberPicker purpose="payment" value={msisdn} onChange={setMsisdn} />
-          <button type="submit" disabled={phase === "starting" || !msisdn.trim()} className={primaryBtn}>
+          <button type="button" onClick={() => void start()} disabled={phase === "starting" || !msisdn.trim()} className={primaryBtn}>
             {phase === "starting" ? "Starting..." : `Top up ${formatUgx(amount)} with mobile money`}
           </button>
-        </form>
+        </div>
       )}
     </section>
   );
