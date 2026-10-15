@@ -204,6 +204,9 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
 
   return (
     <>
+      {/* Glass scrim behind the nav: darkest + most blurred at the screen's
+          bottom edge, fading to fully clear just above the nav buttons. */}
+      <div aria-hidden className="customer-nav-scrim" />
       <nav ref={navRef} aria-label="Primary navigation" className={`customer-nav fixed inset-x-0 bottom-3 z-40 px-3 pointer-events-none pb-[env(safe-area-inset-bottom)] ${overlay ? "customer-nav-overlay" : ""}`}>
         <div className="mx-auto flex max-w-lg flex-col items-center gap-2">
           {/* Active Delivery Floating Capsule Chip */}
@@ -256,16 +259,16 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
             </div>
 
             {rightMode === "action" && primaryAction && actionTone === "cart" ? (
+              <div key="nav-action-cart" className="customer-nav-swap customer-nav-capsule customer-nav-frame flex h-[70px] min-w-0 flex-1 rounded-[24px] p-1.5 shadow-[var(--shadow-float-capsule)]">
               <button
-                key="nav-action-cart"
                 type="button"
                 onClick={primaryAction.onClick}
                 disabled={primaryAction.disabled}
                 aria-label={[primaryAction.label, primaryAction.sublabel, primaryAction.detail].filter(Boolean).join(", ")}
-                className="customer-nav-swap customer-nav-cart flex h-[70px] min-w-0 flex-1 items-center gap-3 rounded-[24px] pl-3 pr-4 transition active:scale-[0.98] disabled:opacity-60"
+                className="customer-nav-cart flex min-w-0 items-center gap-2 pl-2 pr-2.5 transition active:scale-[0.98] disabled:opacity-60 h-full w-full rounded-[18px]"
               >
-                <span className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-[16px] bg-gold/15 text-gold">
-                  <ShoppingBag className="h-5 w-5" strokeWidth={2.2} aria-hidden />
+                <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-[13px] bg-gold/15 text-gold max-[380px]:h-9 max-[380px]:w-9">
+                  <ShoppingBag className="h-[18px] w-[18px]" strokeWidth={2.2} aria-hidden />
                   {primaryAction.count != null && (
                     <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-gold px-1 text-[10px] font-black text-ink-gold">
                       {primaryAction.count}
@@ -273,86 +276,90 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
                   )}
                 </span>
                 <span className="min-w-0 flex-1 text-left">
-                  <span className="block truncate text-sm font-bold leading-tight">{primaryAction.label}</span>
+                  <span className="block truncate whitespace-nowrap text-sm font-bold leading-tight">{primaryAction.label}</span>
                   {primaryAction.sublabel && (
-                    <span className="customer-nav-cart__muted block truncate text-[11px] font-medium">{primaryAction.sublabel}</span>
+                    <span className="customer-nav-cart__muted block truncate whitespace-nowrap text-[11px] font-medium">{primaryAction.sublabel}</span>
                   )}
                 </span>
                 {primaryAction.detail && (
-                  <span className="shrink-0 text-sm font-bold tabular-nums">{primaryAction.detail}</span>
+                  <span className="shrink-0 whitespace-nowrap text-sm font-bold tabular-nums max-[380px]:text-[13px]">{primaryAction.detail}</span>
                 )}
-                <ChevronRight className="customer-nav-cart__muted h-4 w-4 shrink-0" aria-hidden />
+                <ChevronRight className="customer-nav-cart__muted h-4 w-4 shrink-0 -ml-0.5 max-[380px]:hidden" aria-hidden />
               </button>
+              </div>
             ) : rightMode === "action" && primaryAction && actionTone === "step" ? (
+              <div key="nav-action-step" className="customer-nav-swap customer-nav-capsule customer-nav-frame flex h-[70px] min-w-0 flex-1 rounded-[24px] p-1.5 shadow-[var(--shadow-float-capsule)]">
               <button
-                key="nav-action-step"
                 type="button"
                 onClick={primaryAction.onClick}
                 disabled={primaryAction.disabled}
                 aria-busy={primaryAction.busy || undefined}
                 aria-label={[primaryAction.label, primaryAction.sublabel, primaryAction.detail].filter(Boolean).join(", ")}
-                className="customer-nav-swap customer-nav-cart flex h-[70px] min-w-0 flex-1 items-center gap-3 rounded-[24px] px-5 transition active:scale-[0.98] disabled:opacity-60"
+                className="customer-nav-cart flex min-w-0 items-center gap-2 pl-4 pr-3 transition active:scale-[0.98] disabled:opacity-60 h-full w-full rounded-[18px]"
               >
                 {primaryAction.busy && <Loader2 className="h-5 w-5 shrink-0 animate-spin" aria-hidden />}
                 <span className="min-w-0 flex-1 text-left">
-                  <span className="block truncate text-base font-bold leading-tight">{primaryAction.label}</span>
+                  <span className="block truncate whitespace-nowrap text-[15px] font-bold leading-tight max-[380px]:text-sm">{primaryAction.label}</span>
                   {primaryAction.sublabel && (
-                    <span className="customer-nav-cart__muted block truncate text-[11px] font-medium">{primaryAction.sublabel}</span>
+                    <span className="customer-nav-cart__muted block truncate whitespace-nowrap text-[11px] font-medium">{primaryAction.sublabel}</span>
                   )}
                 </span>
                 {primaryAction.detail && (
-                  <span className="shrink-0 text-sm font-bold tabular-nums">{primaryAction.detail}</span>
+                  <span className="shrink-0 whitespace-nowrap text-sm font-bold tabular-nums max-[380px]:text-[13px]">{primaryAction.detail}</span>
                 )}
-                <ChevronRight className="customer-nav-cart__muted h-5 w-5 shrink-0" aria-hidden />
+                <ChevronRight className="customer-nav-cart__muted h-4 w-4 shrink-0" aria-hidden />
               </button>
+              </div>
             ) : rightMode === "action" && primaryAction ? (
+              <div key="nav-action" className="customer-nav-swap customer-nav-capsule customer-nav-frame flex h-[70px] min-w-0 flex-1 rounded-[24px] p-1.5 shadow-[var(--shadow-float-capsule)]">
               <button
-                key="nav-action"
                 type="button"
                 onClick={primaryAction.onClick}
                 disabled={primaryAction.disabled}
                 aria-busy={primaryAction.busy || undefined}
-                className="customer-nav-swap customer-nav-checkout flex h-[70px] min-w-0 flex-1 items-center justify-between gap-3 rounded-[24px] px-5 shadow-[var(--shadow-glow-gold)] transition active:scale-[0.98] disabled:opacity-60"
+                className="customer-nav-checkout flex min-w-0 items-center justify-between gap-2 pl-4 pr-3.5 transition active:scale-[0.98] disabled:opacity-60 h-full w-full rounded-[18px]"
               >
-                <span className="flex min-w-0 items-center gap-2.5">
+                <span className="flex min-w-0 items-center gap-2">
                   {primaryAction.busy ? (
                     <Loader2 className="h-5 w-5 shrink-0 animate-spin" aria-hidden />
                   ) : (
                     <ShoppingBag className="h-5 w-5 shrink-0" strokeWidth={2.2} aria-hidden />
                   )}
                   <span className="min-w-0 text-left">
-                    <span className="block truncate text-base font-bold leading-tight">{primaryAction.label}</span>
-                    {primaryAction.sublabel && <span className="block truncate text-[11px] font-semibold opacity-80">{primaryAction.sublabel}</span>}
+                    <span className="block truncate whitespace-nowrap text-[15px] font-bold leading-tight max-[380px]:text-sm">{primaryAction.label}</span>
+                    {primaryAction.sublabel && <span className="block truncate whitespace-nowrap text-[11px] font-semibold opacity-80">{primaryAction.sublabel}</span>}
                   </span>
                 </span>
                 {primaryAction.detail && (
-                  <span className="shrink-0 text-sm font-bold tabular-nums opacity-90">{primaryAction.detail}</span>
+                  <span className="shrink-0 whitespace-nowrap text-sm font-bold tabular-nums opacity-90">{primaryAction.detail}</span>
                 )}
               </button>
+              </div>
             ) : rightMode === "cart" ? (
+              <div key="nav-cart" className="customer-nav-swap customer-nav-capsule customer-nav-frame flex h-[70px] min-w-0 flex-1 rounded-[24px] p-1.5 shadow-[var(--shadow-float-capsule)]">
               <button
-                key="nav-cart"
                 type="button"
                 onClick={() => setCartOpen(true)}
                 aria-label={`View cart, ${cartCount} item${cartCount === 1 ? "" : "s"}, UGX ${cartTotal.toLocaleString()}`}
                 aria-haspopup="dialog"
-                className="customer-nav-swap customer-nav-cart flex h-[70px] min-w-0 flex-1 items-center gap-3 rounded-[24px] pl-3 pr-4 transition active:scale-[0.98]"
+                className="customer-nav-cart flex min-w-0 items-center gap-2 pl-2 pr-2.5 transition active:scale-[0.98] h-full w-full rounded-[18px]"
               >
-                <span className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-[16px] bg-gold/15 text-gold">
-                  <ShoppingBag className="h-5 w-5" strokeWidth={2.2} aria-hidden />
+                <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-[13px] bg-gold/15 text-gold max-[380px]:h-9 max-[380px]:w-9">
+                  <ShoppingBag className="h-[18px] w-[18px]" strokeWidth={2.2} aria-hidden />
                   <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-gold px-1 text-[10px] font-black text-ink-gold">
                     {cartCount}
                   </span>
                 </span>
                 <span className="min-w-0 flex-1 text-left">
-                  <span className="block text-sm font-bold leading-tight">View cart</span>
-                  <span className="customer-nav-cart__muted block text-[11px] font-medium">
+                  <span className="block truncate whitespace-nowrap text-sm font-bold leading-tight">View cart</span>
+                  <span className="customer-nav-cart__muted block truncate whitespace-nowrap text-[11px] font-medium">
                     {cartCount} item{cartCount === 1 ? "" : "s"}
                   </span>
                 </span>
-                <span className="shrink-0 text-sm font-bold tabular-nums">UGX {cartTotal.toLocaleString()}</span>
-                <ChevronRight className="customer-nav-cart__muted h-4 w-4 shrink-0" aria-hidden />
+                <span className="shrink-0 whitespace-nowrap text-sm font-bold tabular-nums max-[380px]:text-[13px]">UGX {cartTotal.toLocaleString()}</span>
+                <ChevronRight className="customer-nav-cart__muted h-4 w-4 shrink-0 -ml-0.5 max-[380px]:hidden" aria-hidden />
               </button>
+              </div>
             ) : (
             <div key="nav-links" className="customer-nav-swap customer-nav-capsule flex flex-1 min-w-0 items-center justify-around rounded-[24px] p-1.5 shadow-[var(--shadow-float-capsule)]">
               <ul
