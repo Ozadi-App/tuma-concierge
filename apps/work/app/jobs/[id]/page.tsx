@@ -105,6 +105,10 @@ export default function JobPage() {
         </section>
       )}
 
+      {job.status === "booked" && flags?.trackingEnabled && !job.arrivedAt && (
+        <button type="button" disabled={busy} onClick={() => run(() => api.workArrived(job.id))} className="w-full rounded-2xl border border-[var(--border-faint)] py-3 text-sm font-black text-ink transition active:scale-[0.98] disabled:opacity-50">I&apos;ve arrived</button>
+      )}
+      {job.status === "booked" && job.arrivedAt && <p className="text-xs font-black text-green">You marked yourself as arrived. The customer has been told.</p>}
       {job.status === "booked" && <button type="button" disabled={busy} onClick={() => run(() => api.workStartJob(job.id))} className={btn}>Start job</button>}
 
       {job.status === "in_progress" && (

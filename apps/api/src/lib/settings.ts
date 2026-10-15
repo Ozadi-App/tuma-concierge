@@ -409,6 +409,7 @@ const DEFAULTS = {
   work_onsite_min_minutes: "20",
   work_onsite_action: "flag",
   work_onsite_flag_no_location: "1",
+  work_onsite_require_location: "1",
   work_onsite_suspend_after_flags: "0",
   work_onsite_window_days: "30",
   work_location_retention_days: "30",

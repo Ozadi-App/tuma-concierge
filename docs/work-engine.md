@@ -48,6 +48,7 @@ Admin → Settings → `work` group (`PUT /v1/admin/settings` with a `work` obje
 | `onsiteRadiusM`, `onsiteMinMinutes` | 150, 20 | How close counts as "on site", and how many minutes there before a cancellation is flagged |
 | `onsiteAction` | `flag` | `flag`: put it in the review queue. `suspend`: also suspend the provider until staff review it |
 | `onsiteFlagNoLocation` | on | Also flag a cancellation when the provider held the job that long and never shared a location |
+| `onsiteRequireLocation` | on | With on-site checks on, a provider can only tap Start after a location update from the last five minutes |
 | `onsiteSuspendAfterFlags`, `onsiteWindowDays` | 0 (off), 30 | Suspend automatically once a provider has this many open or upheld flags inside the window |
 | `locationRetentionDays` | 30 | Location trails are deleted after this long (those behind an unreviewed flag are kept) |
 
@@ -146,6 +147,13 @@ provider app only reports location while the job page is open and the phone is a
   until reinstated on the Providers page.
 - `onsiteAction = suspend`, or `onsiteSuspendAfterFlags` flags inside `onsiteWindowDays`, suspends automatically. Both are
   off by default; staff review each case first.
+- Location is only collected while a job is booked or in progress (never while merely online), and only by the provider app.
+  A web page can't read GPS once it isn't on screen, so the provider app asks the phone to keep the screen on while sharing
+  (Wake Lock) and warns the provider when updates stop for a minute. Holes in the trail while on site are shown to the reviewer.
+  A native app would be needed to track with the screen off or the app closed; that is not built.
+- "I've arrived" (`POST /provider/jobs/:id/arrived`) is accepted only when the provider's latest location (under five minutes
+  old) is within the on-site distance of the address; the customer is told and staff see it on a flag. Starting a job needs a fresh
+  location when `onsiteRequireLocation` is on.
 - Admin endpoints: `GET /admin/flags`, `GET /admin/flags/:id`, `POST /admin/flags/:id/review` (`work.view` / `work.manage`).
 - The provider app tells providers that their location is recorded during a job. The late-cancel fee (`lateCancelFeePercent`)
   still applies to a customer who cancels after the free window, whatever the flag says.

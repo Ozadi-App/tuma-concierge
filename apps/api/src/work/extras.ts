@@ -4,12 +4,13 @@ import { z } from "zod";
 import { hasPermission, type AdminRole } from "@peebee/shared";
 import type { RequestUser } from "../auth/middleware.js";
 import { db } from "../db/client.js";
+import { haversineKm } from "../lib/geo.js";
 import { newId } from "../lib/ids.js";
 import { consume } from "../lib/ratelimit.js";
 import { notifyUser } from "../lib/webpush.js";
 import { getR2Bucket, uploadResponseHeaders } from "../storage/r2.js";
 import { getJob } from "./jobs.js";
-import { recordTrailPoint } from "./onsite.js";
+import { hasFreshLocation, recordTrailPoint } from "./onsite.js";
 import { canWork, logEvent, openJobsFor, providerFor, toDb, workExtrasReady, workOnsiteReady, type Row } from "./service.js";
 import { getWorkSettings } from "./settings.js";
 
@@ -247,4 +248,33 @@ extrasRoutes.post("/provider/jobs/:id/location", async (c) => {
     await recordTrailPoint(String(side.job.id), String(side.job.provider_id), parsed.data.lat, parsed.data.lng, parsed.data.accuracy ?? null).catch((err) => console.error("Work trail point failed:", err));
   }
   return c.json({ ok: true, stored });
+});
+
+// ---------------------------------------------------------------------------
+// "I've arrived": only accepted when the provider's latest location really is at the address
+// ---------------------------------------------------------------------------
+
+extrasRoutes.post("/provider/jobs/:id/arrived", async (c) => {
+  const user = c.get("user") as RequestUser;
+  const settings = await getWorkSettings();
+  if (!settings.trackingEnabled) return c.json({ error: "tracking_disabled", message: "Location sharing is switched off right now." }, 503);
+  const side = await sideOf(c, c.req.param("id") as string);
+  if (!side || side.kind !== "provider") return c.json(NOT_FOUND, 404);
+  const job = side.job;
+  const doer = job.worker_id ?? (await providerOwner(String(job.provider_id)));
+  if (doer !== user.sub) return c.json({ error: "not_your_job", message: "Only the person doing this job can mark it." }, 403);
+  if (String(job.status) !== "booked") return c.json({ error: "job_not_ready", message: "You can mark arrival once the job is booked and before you start it." }, 409);
+  if (job.lat == null || job.lng == null) return c.json({ error: "no_address_position", message: "This job has no map position for the address, so arrival can't be checked." }, 409);
+  const already = (await db.execute({ sql: "SELECT 1 FROM work_events WHERE job_id = ? AND action = 'arrived' AND created_at >= COALESCE(?, '')", args: [job.id, job.assigned_at ?? null] })).rows.length > 0;
+  if (already) return c.json({ ok: true, repeated: true });
+  if (job.provider_lat == null || job.provider_lng == null || !hasFreshLocation(job)) {
+    return c.json({ error: "location_required", message: "Turn on location sharing on this page and wait a moment, then try again." }, 409);
+  }
+  const metres = Math.round(haversineKm(Number(job.provider_lat), Number(job.provider_lng), Number(job.lat), Number(job.lng)) * 1000);
+  if (metres > settings.onsiteRadiusM) {
+    return c.json({ error: "not_there_yet", message: `You look to be about ${metres.toLocaleString("en-UG")} m from the address. Get closer and try again.`, distanceM: metres }, 409);
+  }
+  await logEvent(String(job.id), user.sub, "provider", "arrived", { distanceM: metres });
+  notifyUser(String(job.customer_id), { title: "Your provider has arrived", body: String(job.service_name), url: `/services/work/${job.id}`, tag: `work-arrived-${job.id}` }).catch(() => {});
+  return c.json({ ok: true });
 });

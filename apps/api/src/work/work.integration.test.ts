@@ -924,3 +924,59 @@ test("work: old location trails are deleted, except evidence for a flag nobody h
   assert.equal(await purgeTrails(await getWorkSettings()), 3);
   assert.equal(Number((await client.execute("SELECT COUNT(*) AS n FROM work_job_locations")).rows[0].n), 0);
 });
+
+test("work: with on-site checks on, a job can't be started without a fresh location, and arrival is checked against the address", async () => {
+  const { call, mkUser, mkProvider, book, client } = await onsiteSetup();
+  const customer = await mkUser("cust_o6", { wallet: 200000 });
+  const pro = await mkProvider("pro_o6");
+  const jobId = (await book(customer)).json.job.id as string;
+  await call(`/provider/jobs/${jobId}/accept`, { token: pro.token, body: {} });
+
+  // No location yet: can't start, can't mark arrival.
+  const early = await call(`/provider/jobs/${jobId}/start`, { token: pro.token, body: {} });
+  assert.equal(early.status, 409);
+  assert.equal(early.json.error, "location_required");
+  assert.equal((await call(`/provider/jobs/${jobId}/arrived`, { token: pro.token, body: {} })).json.error, "location_required");
+
+  // Far away: arrival is refused and says how far.
+  assert.equal((await call(`/provider/jobs/${jobId}/location`, { token: pro.token, body: { lat: 0.3336, lng: 32.5811 } })).json.stored, true);
+  const far = await call(`/provider/jobs/${jobId}/arrived`, { token: pro.token, body: {} });
+  assert.equal(far.status, 409);
+  assert.equal(far.json.error, "not_there_yet");
+  assert.ok(far.json.distanceM > 2000);
+  assert.equal((await call(`/jobs/${jobId}`, { token: customer })).json.job.arrivedAt, null);
+
+  // At the address: arrival is accepted once, the customer sees it, and the job can start.
+  await client.execute({ sql: "UPDATE work_jobs SET provider_lat = 0.3137, provider_lng = 32.5811, provider_located_at = datetime('now') WHERE id = ?", args: [jobId] });
+  assert.equal((await call(`/provider/jobs/${jobId}/arrived`, { token: pro.token, body: {} })).status, 200);
+  assert.equal((await call(`/provider/jobs/${jobId}/arrived`, { token: pro.token, body: {} })).json.repeated, true, "a second tap changes nothing");
+  assert.ok((await call(`/jobs/${jobId}`, { token: customer })).json.job.arrivedAt);
+  assert.equal((await call(`/provider/jobs/${jobId}/start`, { token: pro.token, body: {} })).status, 200);
+
+  // A stale fix doesn't count; and admin can switch the rule off.
+  const second = await mkUser("cust_o6b", { wallet: 200000 });
+  const next = (await book(second)).json.job.id as string;
+  await call(`/provider/jobs/${next}/accept`, { token: pro.token, body: {} });
+  await client.execute({ sql: "UPDATE work_jobs SET provider_lat = 0.3137, provider_lng = 32.5811, provider_located_at = datetime('now', '-20 minutes') WHERE id = ?", args: [next] });
+  assert.equal((await call(`/provider/jobs/${next}/start`, { token: pro.token, body: {} })).json.error, "location_required");
+  await setWorkSettings({ onsiteRequireLocation: false });
+  assert.equal((await call(`/provider/jobs/${next}/start`, { token: pro.token, body: {} })).status, 200);
+});
+
+test("work: starting a job needs no location while on-site checks are off", async () => {
+  const { call, mkUser, mkProvider, book } = await setup();
+  const customer = await mkUser("cust_o7", { wallet: 200000 });
+  const pro = await mkProvider("pro_o7");
+  const jobId = (await book(customer)).json.job.id as string;
+  await call(`/provider/jobs/${jobId}/accept`, { token: pro.token, body: {} });
+  assert.equal((await call(`/provider/jobs/${jobId}/start`, { token: pro.token, body: {} })).status, 200);
+});
+
+test("work: gaps in the trail while on site are counted for the reviewer", () => {
+  const home = { lat: 0.3136, lng: 32.5811 };
+  const p = (min: number) => ({ lat: home.lat, lng: home.lng, accuracyM: 10, at: `2026-01-01 10:${String(min).padStart(2, "0")}:00` });
+  const d = dwellAt([p(0), p(1), p(20), p(21)], home, 150);
+  assert.equal(d.gaps, 1);
+  assert.equal(d.longestGapMinutes, 19);
+  assert.equal(dwellAt([p(0), p(1), p(2)], home, 150).gaps, 0);
+});

@@ -175,6 +175,7 @@ export type WorkAdminSettings = {
   onsiteMinMinutes?: number;
   onsiteAction?: "flag" | "suspend";
   onsiteFlagNoLocation?: boolean;
+  onsiteRequireLocation?: boolean;
   onsiteSuspendAfterFlags?: number;
   onsiteWindowDays?: number;
   locationRetentionDays?: number;
@@ -193,6 +194,7 @@ export const WORK_SETTINGS_EXTRA_DEFAULTS = {
   onsiteMinMinutes: 20,
   onsiteAction: "flag",
   onsiteFlagNoLocation: true,
+  onsiteRequireLocation: true,
   onsiteSuspendAfterFlags: 0,
   onsiteWindowDays: 30,
   locationRetentionDays: 30,
@@ -231,6 +233,10 @@ export type WorkAdminFlag = {
 export type WorkFlagDetail = {
   flag: WorkAdminFlag & { customer_name: string; provider_status_note: string | null };
   job: { id: string; serviceName: string; address: string; lat: number | null; lng: number | null; status: string; assignedAt: string | null; cancelledAt: string | null; cancelledBy: string | null; cancelReason: string | null };
+  /** Holes in the on-site trail (phone locked, page closed) and the longest one; null when the job has no address position. */
+  dwell: { gaps: number; longestGapMinutes: number } | null;
+  /** When the provider tapped "I've arrived" (checked against their location), if they did. */
+  arrivedAt: string | null;
   trail: { lat: number; lng: number; accuracyM: number | null; at: string }[];
   trailTotal: number;
   events: { id: string; action: string; actor_kind: string; detail: string | null; created_at: string }[];

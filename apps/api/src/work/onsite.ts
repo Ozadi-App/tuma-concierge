@@ -16,7 +16,11 @@ import { fromDb, logEvent, workOnsiteReady, type ActorKind, type Row } from "./s
 export const MAX_GAP_SECONDS = 300;
 
 export type TrailPoint = { lat: number; lng: number; accuracyM: number | null; at: string };
-export type Dwell = { points: number; usable: number; onsiteMinutes: number; closestM: number | null; firstOnsiteAt: string | null; lastOnsiteAt: string | null };
+export type Dwell = {
+  points: number; usable: number; onsiteMinutes: number; closestM: number | null; firstOnsiteAt: string | null; lastOnsiteAt: string | null;
+  /** Holes in the trail while on site (pings further apart than the cap), and the longest one. A phone that was locked or a page that was closed leaves these. */
+  gaps: number; longestGapMinutes: number;
+};
 
 const distanceM = (a: { lat: number; lng: number }, b: { lat: number; lng: number }) => haversineKm(a.lat, a.lng, b.lat, b.lng) * 1000;
 
@@ -28,6 +32,8 @@ const distanceM = (a: { lat: number; lng: number }, b: { lat: number; lng: numbe
 export function dwellAt(points: TrailPoint[], target: { lat: number; lng: number }, radiusM: number): Dwell {
   const usable = points.filter((p) => p.accuracyM == null || p.accuracyM <= radiusM).sort((a, b) => a.at.localeCompare(b.at));
   let seconds = 0;
+  let gaps = 0;
+  let longestGap = 0;
   let closest: number | null = null;
   let first: string | null = null;
   let last: string | null = null;
@@ -40,11 +46,21 @@ export function dwellAt(points: TrailPoint[], target: { lat: number; lng: number
     if (inside) {
       first ??= p.at;
       last = p.at;
-      if (prev?.inside) seconds += Math.min(Math.max(0, (at - prev.at) / 1000), MAX_GAP_SECONDS);
+      if (prev?.inside) {
+        const gap = Math.max(0, (at - prev.at) / 1000);
+        seconds += Math.min(gap, MAX_GAP_SECONDS);
+        if (gap > MAX_GAP_SECONDS) gaps += 1;
+        longestGap = Math.max(longestGap, gap);
+      }
     }
     prev = { inside, at };
   }
-  return { points: points.length, usable: usable.length, onsiteMinutes: Math.floor(seconds / 60), closestM: closest == null ? null : Math.round(closest), firstOnsiteAt: first, lastOnsiteAt: last };
+  return { points: points.length, usable: usable.length, onsiteMinutes: Math.floor(seconds / 60), closestM: closest == null ? null : Math.round(closest), firstOnsiteAt: first, lastOnsiteAt: last, gaps, longestGapMinutes: Math.floor(longestGap / 60) };
+}
+
+/** The provider's latest stored location is recent enough to say where they are now. */
+export function hasFreshLocation(job: Row): boolean {
+  return job.provider_located_at != null && Date.now() - fromDb(String(job.provider_located_at)).getTime() <= MAX_GAP_SECONDS * 1000;
 }
 
 export async function recordTrailPoint(jobId: string, providerId: string, lat: number, lng: number, accuracyM: number | null) {

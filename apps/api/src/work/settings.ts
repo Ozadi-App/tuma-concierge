@@ -73,6 +73,8 @@ export type WorkSettings = {
   onsiteAction: "flag" | "suspend";
   /** Also flag a cancellation when the provider held the job that long without ever sharing a location. */
   onsiteFlagNoLocation: boolean;
+  /** With on-site checks on, a provider can only start a job after sharing their location (a fresh fix from the last few minutes). */
+  onsiteRequireLocation: boolean;
   /** Suspend a provider automatically once they have this many open or upheld flags inside the window. 0 turns it off. */
   onsiteSuspendAfterFlags: number;
   onsiteWindowDays: number;
@@ -98,7 +100,7 @@ export async function getWorkSettings(): Promise<WorkSettings> {
     "work_late_cancel_fee_percent", "work_auto_confirm_hours", "work_dispute_window_hours", "work_jobs_per_hour",
     "work_rematch_on_provider_cancel", "work_max_rematches", "work_photos_enabled", "work_max_photos_per_job", "work_max_photo_kb",
     "work_chat_enabled", "work_tracking_enabled",
-    "work_onsite_check_enabled", "work_onsite_radius_m", "work_onsite_min_minutes", "work_onsite_action", "work_onsite_flag_no_location",
+    "work_onsite_check_enabled", "work_onsite_radius_m", "work_onsite_min_minutes", "work_onsite_action", "work_onsite_flag_no_location", "work_onsite_require_location",
     "work_onsite_suspend_after_flags", "work_onsite_window_days", "work_location_retention_days",
   ] as const;
   const v = Object.fromEntries(await Promise.all(keys.map(async (k) => [k, await getSetting(k)]))) as Record<(typeof keys)[number], string>;
@@ -138,6 +140,7 @@ export async function getWorkSettings(): Promise<WorkSettings> {
     onsiteMinMinutes: int(v.work_onsite_min_minutes, 20, 1, 24 * 60),
     onsiteAction: v.work_onsite_action === "suspend" ? "suspend" : "flag",
     onsiteFlagNoLocation: v.work_onsite_flag_no_location !== "0",
+    onsiteRequireLocation: v.work_onsite_require_location !== "0",
     onsiteSuspendAfterFlags: int(v.work_onsite_suspend_after_flags, 0, 0, 50),
     onsiteWindowDays: int(v.work_onsite_window_days, 30, 1, 365),
     locationRetentionDays: int(v.work_location_retention_days, 30, 1, 365),
@@ -179,6 +182,7 @@ export async function setWorkSettings(next: Partial<WorkSettings>): Promise<void
   if (next.onsiteMinMinutes != null) put("work_onsite_min_minutes", String(next.onsiteMinMinutes));
   if (next.onsiteAction) put("work_onsite_action", next.onsiteAction);
   if (next.onsiteFlagNoLocation != null) put("work_onsite_flag_no_location", next.onsiteFlagNoLocation ? "1" : "0");
+  if (next.onsiteRequireLocation != null) put("work_onsite_require_location", next.onsiteRequireLocation ? "1" : "0");
   if (next.onsiteSuspendAfterFlags != null) put("work_onsite_suspend_after_flags", String(next.onsiteSuspendAfterFlags));
   if (next.onsiteWindowDays != null) put("work_onsite_window_days", String(next.onsiteWindowDays));
   if (next.locationRetentionDays != null) put("work_location_retention_days", String(next.locationRetentionDays));

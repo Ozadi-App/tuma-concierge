@@ -87,6 +87,8 @@ export type WorkJob = {
   settledAt: string | null;
   /** How many times this job has gone back out to other providers. */
   rematchCount?: number;
+  /** When the provider marked themselves as arrived at the address (only while the job is booked or in progress). */
+  arrivedAt?: string | null;
   /** Where the provider is while the job is booked or in progress (customer and staff only). */
   providerLocation?: { lat: number; lng: number; updatedAt: string | null } | null;
   /** On the provider's open-jobs feed: their own offer, if any. */
@@ -226,6 +228,10 @@ export function workMethods(request: Request) {
     },
     workAssignWorker(jobId: string, workerId: string) {
       return post<{ job: WorkJob }>(`/v1/work/provider/jobs/${encodeURIComponent(jobId)}/assign-worker`, { workerId });
+    },
+    /** Accepted only when the provider\'s latest location is at the job address; the API explains if not. */
+    workArrived(jobId: string) {
+      return post<{ ok: true; repeated?: boolean }>(`/v1/work/provider/jobs/${encodeURIComponent(jobId)}/arrived`);
     },
     workStartJob(jobId: string) {
       return post<{ job: WorkJob }>(`/v1/work/provider/jobs/${encodeURIComponent(jobId)}/start`);

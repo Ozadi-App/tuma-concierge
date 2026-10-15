@@ -6,7 +6,7 @@ import { db } from "../db/client.js";
 import { newId } from "../lib/ids.js";
 import { notifyUser } from "../lib/webpush.js";
 import { assignProvider, cancelJob, getJob, getProvider, jobView, settleJob } from "./jobs.js";
-import { suspendForReview, trailFor } from "./onsite.js";
+import { dwellAt, suspendForReview, trailFor } from "./onsite.js";
 import { notifyCustomer, notifyProviders, workExtrasReady, workOnsiteReady, type Row } from "./service.js";
 import { getWorkSettings, WORK_PRICING_MODES, WORK_SERVICE_TYPES } from "./settings.js";
 
@@ -260,8 +260,12 @@ adminRoutes.get("/admin/flags/:id", requirePermission("work.view"), async (c) =>
     sql: "SELECT id, kind, status, onsite_minutes, created_at FROM work_flags WHERE provider_id = ? AND id != ? ORDER BY created_at DESC LIMIT 20",
     args: [flag.provider_id, flag.id],
   })).rows;
+  const dwell = job.lat != null && job.lng != null ? dwellAt(trail, { lat: Number(job.lat), lng: Number(job.lng) }, Number(flag.radius_m)) : null;
+  const arrivedAt = (events as Row[]).find((e) => e.action === "arrived" && (!job.assigned_at || String(e.created_at) >= String(job.assigned_at)))?.created_at ?? null;
   return c.json({
     flag,
+    dwell: dwell ? { gaps: dwell.gaps, longestGapMinutes: dwell.longestGapMinutes } : null,
+    arrivedAt,
     job: { id: job.id, serviceName: job.service_name, address: job.address, lat: job.lat, lng: job.lng, status: job.status, assignedAt: job.assigned_at, cancelledAt: job.cancelled_at, cancelledBy: job.cancelled_by, cancelReason: job.cancel_reason },
     trail: points, trailTotal: trail.length, events, otherFlags: others,
   });

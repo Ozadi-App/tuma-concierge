@@ -235,6 +235,11 @@ export async function jobView(job: Row, viewer: "customer" | "provider" | "admin
     viewer === "provider" && job.provider_id && job.status !== "open"
       ? ((await db.execute({ sql: "SELECT name, phone FROM users WHERE id = ?", args: [job.customer_id] })).rows[0] as Row | undefined)
       : undefined;
+  // When the provider marked themselves as arrived (only meaningful while they are on the job).
+  const arrived = ["booked", "in_progress"].includes(String(job.status))
+    ? ((await db.execute({ sql: "SELECT MIN(created_at) AS at FROM work_events WHERE job_id = ? AND action = 'arrived' AND created_at >= COALESCE(?, '')", args: [job.id, job.assigned_at ?? null] })).rows[0] as Row | undefined)
+    : undefined;
+  const arrivedAt = (arrived?.at as string | null | undefined) ?? null;
   return {
     id: job.id,
     status: job.status,
@@ -271,6 +276,7 @@ export async function jobView(job: Row, viewer: "customer" | "provider" | "admin
     startedAt: job.started_at ?? null,
     completedAt: job.completed_at ?? null,
     settledAt: job.settled_at ?? null,
+    arrivedAt,
     rematchCount: Number(job.rematch_count ?? 0),
     // Where the provider is while the job is on (customer and staff only; the provider already knows).
     providerLocation:

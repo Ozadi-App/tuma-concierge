@@ -16,7 +16,7 @@ type NumKey =
   | "commissionPercent" | "offerWindowMinutes" | "radiusKm" | "maxNotified" | "minLeadMinutes" | "maxAdvanceDays" | "quoteValidHours"
   | "maxQuoteUgx" | "freeCancelMinutes" | "lateCancelFeePercent" | "autoConfirmHours" | "disputeWindowHours" | "jobsPerHour"
   | "maxRematches" | "maxPhotosPerJob" | "maxPhotoKb" | "onsiteRadiusM" | "onsiteMinMinutes" | "onsiteSuspendAfterFlags" | "onsiteWindowDays" | "locationRetentionDays";
-type BoolKey = "enabled" | "requireApproval" | "rematchOnProviderCancel" | "photosEnabled" | "chatEnabled" | "trackingEnabled" | "onsiteCheckEnabled" | "onsiteFlagNoLocation";
+type BoolKey = "enabled" | "requireApproval" | "rematchOnProviderCancel" | "photosEnabled" | "chatEnabled" | "trackingEnabled" | "onsiteCheckEnabled" | "onsiteFlagNoLocation" | "onsiteRequireLocation";
 
 /** Ranges are exactly those in apps/api/src/settings/routes.ts (`work`). */
 const NUM: Record<NumKey, { label: string; min: number; max: number; hint?: string }> = {
@@ -262,6 +262,7 @@ export default function WorkSettingsPage() {
           {numField("onsiteWindowDays")}
         </div>
         <Toggle label="Also flag jobs with no location at all" hint="The provider held the job that long, never shared a location, then it was cancelled." checked={form.onsiteFlagNoLocation} disabled={ro} onChange={(v) => setBool("onsiteFlagNoLocation", v)} />
+        <Toggle label="Providers must share location to start a job" hint="They can only tap Start with a location update from the last few minutes. Location is only collected while a job is booked or in progress." checked={form.onsiteRequireLocation} disabled={ro} onChange={(v) => setBool("onsiteRequireLocation", v)} />
         {numField("locationRetentionDays")}
       </section>
 

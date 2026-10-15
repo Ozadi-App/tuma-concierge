@@ -443,6 +443,7 @@ const updateSchema = z.object({
       onsiteMinMinutes: z.number().int().min(1).max(1440),
       onsiteAction: z.enum(["flag", "suspend"]),
       onsiteFlagNoLocation: z.boolean(),
+      onsiteRequireLocation: z.boolean(),
       onsiteSuspendAfterFlags: z.number().int().min(0).max(50),
       onsiteWindowDays: z.number().int().min(1).max(365),
       locationRetentionDays: z.number().int().min(1).max(365),

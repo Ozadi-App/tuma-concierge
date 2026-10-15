@@ -116,6 +116,8 @@ export default function WorkFlagsPage() {
                       {detail.job.cancelReason ? ` (“${detail.job.cancelReason}”)` : ""}
                     </p>
                     {detail.flag.first_onsite_at && <p>On site from {when(detail.flag.first_onsite_at)} to {when(detail.flag.last_onsite_at)}; closest point {detail.flag.closest_m ?? "—"} m; {detail.flag.points} location updates.</p>}
+                    {detail.arrivedAt ? <p>Provider tapped “I&apos;ve arrived” at {when(detail.arrivedAt)} (checked against their location).</p> : <p>Provider never marked arrival.</p>}
+                    {detail.dwell && detail.dwell.gaps > 0 && <p>Location went quiet {detail.dwell.gaps} time{detail.dwell.gaps === 1 ? "" : "s"} while on site (longest {detail.dwell.longestGapMinutes} min) — the phone may have been locked or the page closed.</p>}
                     {detail.flag.kind === "cancel_no_location" && <p>No location updates were received while the provider held this job.</p>}
                     {detail.job.lat != null && detail.job.lng != null && (
                       <p><a className="font-bold text-ink underline" href={mapLink(detail.job.lat, detail.job.lng)} target="_blank" rel="noreferrer">Job address on the map</a></p>
