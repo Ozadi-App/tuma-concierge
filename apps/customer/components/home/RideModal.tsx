@@ -45,11 +45,14 @@ export function RideModal({
   onClose,
   initialMode = "boda",
   initialCargo = false,
+  initialService,
   serviceLocked = false,
 }: {
   onClose: () => void;
   initialMode?: "boda" | "car";
   initialCargo?: boolean;
+  /** Open straight into Luxury or Ambulance (the rides home screen links here). */
+  initialService?: "luxury" | "ambulance";
   serviceLocked?: boolean;
 }) {
   const t = useTranslate();
@@ -71,7 +74,8 @@ export function RideModal({
   const [vehicleSize, setVehicleSize] = useState<"normal" | "large">("normal");
   const [tierOptions, setTierOptions] = useState<Array<{ size: "normal" | "large"; tier: "convenient" | "comfort"; fare: number; nearby: number }>>([]);
   const [categories, setCategories] = useState<CarCategory[]>([]);
-  const [carSubMode, setCarSubMode] = useState<"passenger" | "cargo" | "luxury" | "ambulance">(initialCargo ? "cargo" : "passenger");
+  const [carSubMode, setCarSubMode] = useState<"passenger" | "cargo" | "luxury" | "ambulance">(initialService ?? (initialCargo ? "cargo" : "passenger"));
+  const [configLoaded, setConfigLoaded] = useState(false);
   const [luxuryId, setLuxuryId] = useState("");
   const [ambulanceId, setAmbulanceId] = useState("");
   const [hireHours, setHireHours] = useState(0);
@@ -87,8 +91,8 @@ export function RideModal({
   const [carpoolOn, setCarpoolOn] = useState(false);
   const [rentOn, setRentOn] = useState(false);
   const [pickupAt, setPickupAt] = useState("");
-  const [mode, setMode] = useState<"boda" | "car">(initialCargo ? "car" : initialMode);
-  const [carMenuOpen, setCarMenuOpen] = useState(initialMode === "car" || initialCargo);
+  const [mode, setMode] = useState<"boda" | "car">(initialCargo || initialService ? "car" : initialMode);
+  const [carMenuOpen, setCarMenuOpen] = useState(initialMode === "car" || initialCargo || !!initialService);
   const [busy, setBusy] = useState(false);
   const [showEstimates, setShowEstimates] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -120,8 +124,9 @@ export function RideModal({
         if (cfg.categories) setCategories(cfg.categories);
         if (cfg.emergencyNumber) setEmergencyNumber(cfg.emergencyNumber);
         if (cfg.maxHireHours) setMaxHireHours(cfg.maxHireHours);
+        setConfigLoaded(true);
       })
-      .catch(() => setTierPricing(null));
+      .catch(() => { setTierPricing(null); setConfigLoaded(true); });
   }, []);
 
   const p = route?.pickup;
@@ -147,8 +152,9 @@ export function RideModal({
   // validation and busy state as before.
   const navCargoList = categories.filter((c) => c.kind === "cargo" || c.id.startsWith("peebee-cargo-"));
   const navCargo = (navCargoList.length > 0 ? navCargoList : FALLBACK_CARGO_CATEGORIES).find((c) => c.id === selectedCargoCatId);
-  const luxuryCats = categories.filter((c) => c.service_group === "luxury");
-  const ambulanceCats = categories.filter((c) => c.service_group === "ambulance");
+  // Offered only once Peebee has approved at least one such vehicle, so there is never an Ambulance button without an ambulance.
+  const luxuryCats = categories.filter((c) => c.service_group === "luxury" && Number(c.has_vehicles ?? 0) > 0);
+  const ambulanceCats = categories.filter((c) => c.service_group === "ambulance" && Number(c.has_vehicles ?? 0) > 0);
   const navLuxury = luxuryCats.find((c) => c.id === luxuryId) ?? luxuryCats[0];
   const navAmbulance = ambulanceCats.find((c) => c.id === ambulanceId) ?? ambulanceCats[0];
   const navCarOption = tierOptions.find((o) => o.size === vehicleSize && o.tier === tier);
@@ -394,7 +400,15 @@ export function RideModal({
           </div>
         ))}
 
-        {carMenuOpen && mode === "car" && (carSubMode === "luxury" || carSubMode === "ambulance") ? (
+        {carMenuOpen && mode === "car" && (carSubMode === "luxury" || carSubMode === "ambulance") && configLoaded && (carSubMode === "luxury" ? luxuryCats : ambulanceCats).length === 0 ? (
+          <div className="space-y-2 rounded-2xl border border-[var(--border-faint)] p-4" role="status">
+            <p className="text-sm font-bold text-ink">{carSubMode === "luxury" ? "Luxury cars aren't available yet." : "Ambulance requests aren't available yet."}</p>
+            <p className="text-xs text-ink-500">
+              {carSubMode === "ambulance" ? `If someone's life is in danger, call ${emergencyNumber} now.` : "Please choose a Car, or check back soon."}
+            </p>
+            {carSubMode === "ambulance" && <a href={`tel:${emergencyNumber}`} className="inline-flex min-h-11 items-center rounded-full border border-[var(--border-faint)] px-4 text-sm font-bold text-ink">Call {emergencyNumber}</a>}
+          </div>
+        ) : carMenuOpen && mode === "car" && (carSubMode === "luxury" || carSubMode === "ambulance") ? (
           <SpecialCarServices
             kind={carSubMode}
             categories={carSubMode === "luxury" ? luxuryCats : ambulanceCats}

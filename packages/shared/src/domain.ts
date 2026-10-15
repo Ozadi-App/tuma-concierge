@@ -2127,6 +2127,8 @@ export type CarCategory = {
   /** Luxury hire: UGX per hour, added to the trip fare (0 = not offered by the hour). */
   rate_per_hour?: number;
   description?: string | null;
+  /** 1 once Peebee has approved at least one vehicle in this category (Luxury and Ambulance: customers see them only then). */
+  has_vehicles?: number;
   name: string;
   seats: number | null;
   cargo_type: string | null;

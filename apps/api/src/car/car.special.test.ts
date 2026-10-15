@@ -85,7 +85,7 @@ test("car categories: Luxury and Ambulance are added without touching what was t
   assert.equal(rows.filter((r) => r.service_group === "luxury").length, 3);
   assert.ok(rows.filter((r) => r.service_group === "luxury").every((r) => r.kind === "passenger" && r.active === 1 && Number(r.rate_per_hour) > 0));
   assert.equal(rows.filter((r) => r.service_group === "ambulance").length, 2);
-  assert.ok(rows.filter((r) => r.service_group === "ambulance").every((r) => r.active === 0), "ambulances stay off until Peebee has real ones");
+  assert.ok(rows.filter((r) => r.service_group === "ambulance").every((r) => r.active === 1), "owners can register ambulances");
   await assert.rejects(() => client.execute("UPDATE vehicle_categories SET service_group = 'spaceship' WHERE id = 'peebee-cargo-van'"), "other groups are refused");
 });
 
@@ -95,7 +95,10 @@ test("luxury: priced by the trip plus hours of hire, offered only where a car is
   const luxury = config.categories.filter((c: any) => c.service_group === "luxury");
   assert.equal(luxury.length, 3);
   assert.ok(luxury.every((c: any) => c.rate_per_hour > 0 && c.description));
-  assert.ok(!config.categories.some((c: any) => c.service_group === "ambulance"), "inactive ambulances aren't offered");
+  assert.ok(luxury.every((c: any) => Number(c.has_vehicles) === 0), "no approved luxury car yet");
+  const ambulances = config.categories.filter((c: any) => c.service_group === "ambulance");
+  assert.equal(ambulances.length, 2, "owners can see the ambulance types to register one");
+  assert.ok(ambulances.every((c: any) => Number(c.has_vehicles) === 0), "customers are not shown an ambulance until one is approved");
   assert.equal(config.emergencyNumber, "999");
   assert.equal(config.maxHireHours, 24);
 
@@ -112,6 +115,8 @@ test("luxury: priced by the trip plus hours of hire, offered only where a car is
   assert.equal((await json(noCar)).error, "no_nearby_car");
 
   await driverOnline("lux_owner", "lux_drv", sedan, "UBA 001L");
+  const withCar = (await json(await call("GET", "/car/config", "cust"))).categories.find((c: any) => c.id === sedan);
+  assert.equal(Number(withCar.has_vehicles), 1, "an approved vehicle makes it available to customers");
   const booked = await call("POST", "/car/bookings", "cust", { categoryId: sedan, hireHours: 2, note: "Wedding procession", ...trip });
   assert.equal(booked.status, 201, JSON.stringify(await booked.clone().json()));
   const order = (await json(booked)).order;
@@ -133,13 +138,8 @@ test("luxury: priced by the trip plus hours of hire, offered only where a car is
 test("ambulance: now only, straight to the nearest, and points to the emergency number when none is near", async () => {
   const { client, call, json, driverOnline } = await setup();
   const ambulance = "peebee-ambulance-basic";
-  assert.equal((await call("POST", "/car/quote", "cust", { categoryId: ambulance, ...trip })).status, 400, "an inactive ambulance can't be requested");
-
-  assert.equal((await call("PUT", `/admin/car/categories/${ambulance}`, "admin", { kind: "passenger", serviceGroup: "ambulance", name: "Ambulance", seats: 3, ratePerKm: 4000, minimumFare: 50000, ratePerHour: 0, description: "Patient transport", active: true, sort: 30 })).status, 200);
   await setCarSettings({ ...BASE_SETTINGS, emergencyNumber: "112" });
   assert.equal((await json(await call("GET", "/car/config", "cust"))).emergencyNumber, "112");
-  const listed = (await json(await call("GET", "/car/config", "cust"))).categories.filter((c: any) => c.service_group === "ambulance");
-  assert.equal(listed.length, 1);
 
   const none = await call("POST", "/car/bookings", "cust", { categoryId: ambulance, note: "Chest pain", ...trip });
   assert.equal(none.status, 409);
@@ -150,6 +150,7 @@ test("ambulance: now only, straight to the nearest, and points to the emergency 
   assert.equal((await call("POST", "/car/bookings", "cust", { categoryId: ambulance, scheduledFor: new Date(Date.now() + 5 * 3600_000).toISOString(), ...trip })).status, 400, "no booking for later");
 
   await driverOnline("amb_owner", "amb_drv", ambulance, "UBA 999A");
+  assert.equal(Number((await json(await call("GET", "/car/config", "cust"))).categories.find((c: any) => c.id === ambulance).has_vehicles), 1);
   // Even with on-demand taxi booking switched off, an ambulance can still be requested.
   await setCarSettings({ ...BASE_SETTINGS, onDemandEnabled: false });
   const res = await call("POST", "/car/bookings", "cust", { categoryId: ambulance, note: "Chest pain, conscious", ...trip });
@@ -166,7 +167,6 @@ test("ambulance: now only, straight to the nearest, and points to the emergency 
 test("ambulance and luxury cars never count as ordinary taxis", async () => {
   const { call, json, driverOnline } = await setup();
   await driverOnline("lux_owner", "lux_drv", "peebee-luxury-sedan", "UBA 002L");
-  await call("PUT", "/admin/car/categories/peebee-ambulance-basic", "admin", { kind: "passenger", serviceGroup: "ambulance", name: "Ambulance", seats: 3, ratePerKm: 4000, minimumFare: 50000, ratePerHour: 0, active: true, sort: 30 });
   await driverOnline("amb_owner", "amb_drv", "peebee-ambulance-basic", "UBA 998A");
   const options = await json(await call("GET", `/car/service-options?pickupLat=0.3&pickupLng=32.58&destinationLat=0.35&destinationLng=32.58`, "cust"));
   assert.ok(options.options.length > 0);

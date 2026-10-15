@@ -239,8 +239,14 @@ Limousine / event car, **on**, with placeholder prices to confirm.
 **Ambulance** (emergency): always **now** (no booking for later), always assigned to the nearest free ambulance
 (`first_to_claim`) whatever the platform's matching mode, and allowed even when on-demand taxi booking is switched off. A note
 ("Chest pain, conscious") reaches the crew. The customer is told to call the emergency number first if a life is in danger, and
-when no ambulance is free nearby the booking is refused with that number. Seeded: Ambulance and ICU ambulance, **off** until real
-ambulances are approved.
+when no ambulance is free nearby the booking is refused with that number. Seeded: Ambulance and ICU ambulance.
+
+**Where they appear.** Customers: tiles on the Ride home screen (`/ride`, pages `/ride/luxury` and `/ride/ambulance`), and
+Luxury / Ambulance buttons in the car menu. A tile or button shows only once Peebee has **approved at least one vehicle** in that
+group (`has_vehicles` in `/car/config`), so there is never an Ambulance button without an ambulance; an owner can still register
+one because the category itself is active. Providers: the Peebee Car (partner) app's *Add a vehicle* form lists *Luxury* and
+*Ambulance* types (taxi-only fields are hidden, with a note that Peebee checks the vehicle), and requests show on the driver's
+Ride requests and active ride with an emergency banner, the customer's note and the hours of hire.
 
 Admin: Settings → Car → Car types: a "Service" choice (ordinary / luxury / ambulance), an hourly rate and a description for
 Luxury; Settings → Car: the emergency phone number (default 999) and the pickup radius that applies to both. Fares, shares and

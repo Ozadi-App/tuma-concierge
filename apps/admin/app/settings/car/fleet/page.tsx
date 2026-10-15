@@ -347,7 +347,7 @@ function Categories({ categories, act }: { categories: AdminCarCategory[]; act: 
           <input inputMode="numeric" value={form.hourly} onChange={(e) => set({ hourly: digits(e.target.value) })} placeholder="UGX per hour of hire (0 = not offered by the hour)" className={field} />
         )}
         {form.kind === "passenger" && form.group === "ambulance" && (
-          <p className="text-xs text-ink-500">Ambulances are sent to the nearest free one straight away and can&apos;t be booked for later. Keep this hidden until real ambulances are approved.</p>
+          <p className="text-xs text-ink-500">Ambulances are sent to the nearest free one straight away and can&apos;t be booked for later. Customers only see Ambulance once you have approved at least one ambulance.</p>
         )}
         <div className="grid grid-cols-2 gap-3">
           <input inputMode="numeric" value={form.rate} onChange={(e) => set({ rate: digits(e.target.value) })} placeholder="UGX per km" className={field} />

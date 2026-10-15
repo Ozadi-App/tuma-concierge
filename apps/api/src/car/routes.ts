@@ -39,7 +39,11 @@ carRoutes.get("/car/config", async (c) => {
   c.header("Cache-Control", "private, no-store");
   const settings = await getCarSettings();
   // Luxury and Ambulance groups, hourly rates and descriptions exist once migration 0101 is applied.
-  const categoryExtras = (await hasColumn("vehicle_categories", "service_group")) ? ", service_group, rate_per_hour, description" : "";
+  // `has_vehicles` lets the customer app show Luxury / Ambulance only once Peebee has approved at least one such vehicle,
+  // while owners can still see the category to register one.
+  const categoryExtras = (await hasColumn("vehicle_categories", "service_group"))
+    ? ", service_group, rate_per_hour, description, EXISTS (SELECT 1 FROM vehicles v WHERE v.category_id = vehicle_categories.id AND v.status = 'approved') AS has_vehicles"
+    : "";
   const categories = await db.execute(
     `SELECT id, kind, name, seats, cargo_type, size_label, reference_image_key, rate_per_km, minimum_fare${categoryExtras}
      FROM vehicle_categories WHERE active = 1 ORDER BY sort ASC, name ASC`,
