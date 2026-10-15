@@ -8,7 +8,7 @@ import { api, errorMessage } from "../../../lib/api";
 import { LiveStreamChannel, LiveStreamViewer, PinnedProduct } from "../../../components/LiveStreamViewer";
 import { CategoryChips, MarketProductCard, MarketSearchBar, defaultVariant, productPricing, softCard, ugx } from "../../../components/marketplace/MarketplaceUI";
 import { ProductImage } from "../../../components/ProductImage";
-import { addToCart, useCart } from "../../../lib/cart";
+import { addToCart } from "../../../lib/cart";
 import { CartDrawer, CartDrawerTrigger } from "../../../components/CartDrawer";
 import { useCustomerLocation, formatDistanceKm, haversineKm } from "../../../lib/location";
 
@@ -76,7 +76,6 @@ export default function StoreDetailPage() {
   const [showLiveViewer, setShowLiveViewer] = useState(false);
   const [cartDrawerOpen, setCartDrawerOpen] = useState(false);
 
-  const { totalQuantity, total } = useCart();
   const { lat: userLat, lng: userLng } = useCustomerLocation();
 
   useEffect(() => {
@@ -384,31 +383,6 @@ export default function StoreDetailPage() {
         )}
       </section>
 
-      {/* =========================================================================
-          BOTTOM FLOATING CART CAPSULE -> OPENS CART DRAWER
-      ========================================================================= */}
-      {totalQuantity > 0 && (
-        <div className="fixed inset-x-4 bottom-4 z-40 mx-auto max-w-md animate-in slide-in-from-bottom duration-300">
-          <button
-            type="button"
-            onClick={() => setCartDrawerOpen(true)}
-            className="flex w-full items-center justify-between rounded-full bg-ink px-5 py-3.5 text-cream shadow-2xl transition-transform active:scale-98 hover:bg-ink/90 cursor-pointer"
-          >
-            <div className="flex items-center gap-2.5">
-              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-gold text-xs font-black text-ink-gold">
-                {totalQuantity}
-              </span>
-              <span className="text-xs font-bold">Review Bag</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="font-mono text-sm font-black text-gold">
-                UGX {total.toLocaleString()}
-              </span>
-              <span className="text-xs font-bold text-white/80">View Bag →</span>
-            </div>
-          </button>
-        </div>
-      )}
 
       {/* Slide-in Shopping Cart Drawer */}
       <CartDrawer

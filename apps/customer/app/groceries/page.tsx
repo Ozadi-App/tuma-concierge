@@ -96,7 +96,7 @@ export default function GroceriesPage() {
   const [cartDrawerOpen, setCartDrawerOpen] = useState(false);
   const [cartNotice, setCartNotice] = useState("");
 
-  const { totalQuantity, total } = useCart();
+  const { totalQuantity } = useCart();
   const { lat: userLat, lng: userLng } = useCustomerLocation();
 
   useEffect(() => {
@@ -232,7 +232,6 @@ export default function GroceriesPage() {
     return matchesCat && matchesQuery;
   });
 
-  const cartTotal = total;
   const cartItemCount = totalQuantity;
 
   return (
@@ -429,27 +428,6 @@ export default function GroceriesPage() {
         </div>
       </section>
 
-      {/* Floating Cart Button -> OPENS CART DRAWER */}
-      {cartItemCount > 0 && (
-        <div className="fixed inset-x-4 bottom-20 z-40 mx-auto max-w-md animate-slide-up">
-          <button
-            type="button"
-            onClick={() => setCartDrawerOpen(true)}
-            className="flex w-full items-center justify-between rounded-full bg-ink px-5 py-3.5 text-cream shadow-xl transition active:scale-98 cursor-pointer"
-          >
-            <div className="flex items-center gap-2.5">
-              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-gold text-xs font-black text-ink-gold">
-                {cartItemCount}
-              </span>
-              <span className="text-xs font-bold">Review Groceries Order</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="font-mono text-sm font-black text-gold">{ugx(cartTotal)}</span>
-              <span className="text-xs font-bold text-white/80">View Bag →</span>
-            </div>
-          </button>
-        </div>
-      )}
 
       {/* Slide-in Shopping Cart Drawer */}
       <CartDrawer

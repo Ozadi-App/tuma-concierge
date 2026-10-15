@@ -22,6 +22,7 @@ import { ProductImage } from "../../components/ProductImage";
 import { RoundCheck } from "../../components/marketplace/MarketplaceUI";
 import { api, errorMessage } from "../../lib/api";
 import { getCachedCustomerCoordinates } from "../../lib/location";
+import { useRegisterNavPrimaryAction } from "../../lib/nav-primary-action";
 
 export default function CartPage() {
   const router = useRouter();
@@ -87,6 +88,20 @@ export default function CartPage() {
 
   const allSelected = items.length > 0 && items.every((i) => i.selected);
 
+  // Checkout lives in the bottom nav (gold button replacing its right capsule)
+  // instead of a floating pay bar on top of the nav. Same handler, same states.
+  useRegisterNavPrimaryAction(
+    mounted && items.length > 0
+      ? {
+          label: isSubmitting ? "Creating order…" : "Checkout",
+          detail: `UGX ${total.toLocaleString()}`,
+          disabled: selectedCount === 0 || isSubmitting,
+          busy: isSubmitting,
+          onClick: handleCheckout,
+        }
+      : null,
+  );
+
   if (!mounted) {
     return (
       <div className="flex min-h-[70vh] items-center justify-center p-4">
@@ -96,7 +111,7 @@ export default function CartPage() {
   }
 
   return (
-    <div className="min-h-screen pb-28 text-ink">
+    <div className="min-h-screen pb-6 text-ink">
       <div className="mx-auto max-w-md px-4 pt-3 space-y-5">
         {/* =========================================================================
             SCREEN 3: HEADER (Back button, Cart Title, Clear / Shapes toggle)
@@ -307,39 +322,19 @@ export default function CartPage() {
                 <span className="font-bold text-lg text-ink">UGX {total.toLocaleString()}</span>
               </div>
             </div>
+
+            {checkoutError && (
+              <div role="alert" className="rounded-[18px] bg-red-500/10 border border-red-500/20 p-3 text-xs font-semibold text-red-600 text-center">
+                {checkoutError}
+              </div>
+            )}
+
+            {selectedCount === 0 && (
+              <p className="text-center text-xs text-ink-500">Select at least one item to check out.</p>
+            )}
           </>
         )}
 
-        {/* =========================================================================
-            BOTTOM FIXED ACTION: "Pay Now" / "Proceed to Checkout"
-        ========================================================================= */}
-        {items.length > 0 && (
-          <div
-            style={{ bottom: "var(--customer-nav-content-gap, calc(87px + env(safe-area-inset-bottom)))" }}
-            className="fixed inset-x-0 z-30 px-4 pb-2 pt-3 bg-gradient-to-t from-[rgb(var(--color-cream))] via-[rgb(var(--color-cream)/.94)] to-transparent">
-            <div className="mx-auto max-w-md space-y-2">
-              {checkoutError && (
-                <div className="rounded-[18px] bg-red-500/10 border border-red-500/20 p-2.5 text-xs font-semibold text-red-600 text-center">
-                  {checkoutError}
-                </div>
-              )}
-              <div className="flex items-center gap-4 rounded-[28px] bg-[rgb(var(--surface-card))] border border-[var(--border-faint)] shadow-[var(--shadow-float-capsule)] p-3 pl-5">
-                <div className="min-w-0 flex-1">
-                  <div className="text-xs font-medium text-ink-500">Total</div>
-                  <div className="text-lg font-bold text-ink leading-tight truncate">UGX {total.toLocaleString()}</div>
-                </div>
-                <button
-                  type="button"
-                  disabled={selectedCount === 0 || isSubmitting}
-                  onClick={handleCheckout}
-                  className="h-12 px-8 rounded-full bg-gold text-ink-gold font-semibold text-sm shadow-[var(--shadow-glow-gold)] disabled:opacity-50 disabled:pointer-events-none active:scale-[0.98] transition shrink-0"
-                >
-                  {isSubmitting ? "Creating order…" : "Pay Now"}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );
