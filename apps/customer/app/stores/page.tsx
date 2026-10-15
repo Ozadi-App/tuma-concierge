@@ -446,7 +446,17 @@ export default function StoresPage() {
           channel={activeLiveChannel}
           pinnedProduct={pinnedProduct}
           onClose={() => setActiveLiveChannel(null)}
-          onAddToCart={(p) => handleAddToCart({ id: p.id, title: p.title, price: p.price })}
+          onAddToCart={(p) =>
+            handleAddToCart({
+              id: p.id,
+              title: p.title,
+              price: p.price,
+              compare_at_price: p.compare_at_price,
+              image_url: p.image_url,
+              store_id: activeLiveChannel.id,
+              store_name: activeLiveChannel.name,
+            })
+          }
         />
       )}
     </div>
