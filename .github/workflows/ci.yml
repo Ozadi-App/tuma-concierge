@@ -49,8 +49,8 @@ jobs:
         run: npm test
       - name: Menu editor save and retry tests
         run: pnpm --filter api exec tsx --test ../restaurant/lib/menu-editor.test.ts
-      - name: Customer cart tests (Spotlight buy -> shared cart)
-        run: pnpm --filter api exec tsx --test ../customer/lib/cart.test.ts
+      - name: Customer cart and card pricing tests
+        run: pnpm --filter api exec tsx --test ../customer/lib/cart.test.ts ../customer/lib/product-pricing.test.ts
 
   # Every Next.js app must still build.
   build:

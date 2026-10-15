@@ -6,7 +6,7 @@ import Link from "next/link";
 import { ChevronRight, LayoutGrid } from "lucide-react";
 import { api, errorMessage } from "../../../lib/api";
 import { LiveStreamChannel, LiveStreamViewer, PinnedProduct } from "../../../components/LiveStreamViewer";
-import { CategoryChips, MarketProductCard, MarketSearchBar, softCard, ugx } from "../../../components/marketplace/MarketplaceUI";
+import { CategoryChips, MarketProductCard, MarketSearchBar, defaultVariant, productPricing, softCard, ugx } from "../../../components/marketplace/MarketplaceUI";
 import { ProductImage } from "../../../components/ProductImage";
 import { addToCart, useCart } from "../../../lib/cart";
 import { CartDrawer, CartDrawerTrigger } from "../../../components/CartDrawer";
@@ -155,13 +155,11 @@ export default function StoreDetailPage() {
     ...(categoryNames.length > 1 ? categoryNames : []),
   ];
 
-  const promoProduct =
-    products.find((p) => p.compare_at_price && p.compare_at_price > p.price) ||
-    products[0];
-  const promoDiscount =
-    promoProduct?.compare_at_price && promoProduct.compare_at_price > promoProduct.price
-      ? Math.round(((promoProduct.compare_at_price - promoProduct.price) / promoProduct.compare_at_price) * 100)
-      : 0;
+  // Feature a product with a real discount on the price the card shows.
+  const promoProduct = products.find((p) => productPricing(p).discount > 0) || products[0];
+  const promoPricing = promoProduct ? productPricing(promoProduct) : null;
+  const promoDiscount = promoPricing?.discount ?? 0;
+  const promoDefault = promoProduct ? defaultVariant(promoProduct) : undefined;
 
   // Same default as the product page: first variant when the product has variants.
   function addProduct(p: StoreProduct) {
@@ -308,10 +306,11 @@ export default function StoreDetailPage() {
             </p>
             <h2 className="mt-0.5 truncate text-sm font-bold text-ink">{promoProduct.title}</h2>
             <p className="mt-0.5 whitespace-nowrap text-xs font-semibold tabular-nums text-ink">
-              {ugx(promoProduct.price)}
-              {promoDiscount ? (
+              {promoPricing?.from && <span className="mr-1 text-[11px] font-medium text-ink-500">from</span>}
+              {ugx(promoPricing?.price ?? promoProduct.price)}
+              {promoPricing?.compareAt != null ? (
                 <span className="ml-1.5 text-[10px] font-medium text-ink-500 line-through">
-                  {Number(promoProduct.compare_at_price).toLocaleString()}
+                  {promoPricing.compareAt.toLocaleString()}
                 </span>
               ) : null}
             </p>
@@ -427,8 +426,9 @@ export default function StoreDetailPage() {
               ? {
                   id: promoProduct.id,
                   title: promoProduct.title,
-                  price: promoProduct.price,
-                  compare_at_price: promoProduct.compare_at_price || undefined,
+                  // Pinned price = what Buy adds (the default option).
+                  price: promoDefault?.price ?? promoProduct.price,
+                  compare_at_price: (promoDefault ? promoDefault.compare_at_price : promoProduct.compare_at_price) || undefined,
                   image_url: promoProduct.image_url || undefined,
                   badge: promoProduct.badge || undefined,
                 }
