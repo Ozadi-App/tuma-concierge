@@ -267,7 +267,7 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
                 aria-label={[primaryAction.label, primaryAction.sublabel, primaryAction.detail].filter(Boolean).join(", ")}
                 className="customer-nav-cart flex min-w-0 items-center gap-2 pl-2 pr-2.5 transition active:scale-[0.98] disabled:opacity-60 h-full w-full rounded-[18px]"
               >
-                <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-[13px] bg-gold/15 text-gold">
+                <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-[13px] bg-gold/15 text-gold max-[380px]:h-9 max-[380px]:w-9">
                   <ShoppingBag className="h-[18px] w-[18px]" strokeWidth={2.2} aria-hidden />
                   {primaryAction.count != null && (
                     <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-gold px-1 text-[10px] font-black text-ink-gold">
@@ -282,9 +282,9 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
                   )}
                 </span>
                 {primaryAction.detail && (
-                  <span className="shrink-0 whitespace-nowrap text-sm font-bold tabular-nums">{primaryAction.detail}</span>
+                  <span className="shrink-0 whitespace-nowrap text-sm font-bold tabular-nums max-[380px]:text-[13px]">{primaryAction.detail}</span>
                 )}
-                <ChevronRight className="customer-nav-cart__muted h-4 w-4 shrink-0 -ml-0.5" aria-hidden />
+                <ChevronRight className="customer-nav-cart__muted h-4 w-4 shrink-0 -ml-0.5 max-[380px]:hidden" aria-hidden />
               </button>
               </div>
             ) : rightMode === "action" && primaryAction && actionTone === "step" ? (
@@ -305,7 +305,7 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
                   )}
                 </span>
                 {primaryAction.detail && (
-                  <span className="shrink-0 whitespace-nowrap text-sm font-bold tabular-nums">{primaryAction.detail}</span>
+                  <span className="shrink-0 whitespace-nowrap text-sm font-bold tabular-nums max-[380px]:text-[13px]">{primaryAction.detail}</span>
                 )}
                 <ChevronRight className="customer-nav-cart__muted h-4 w-4 shrink-0" aria-hidden />
               </button>
@@ -344,7 +344,7 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
                 aria-haspopup="dialog"
                 className="customer-nav-cart flex min-w-0 items-center gap-2 pl-2 pr-2.5 transition active:scale-[0.98] h-full w-full rounded-[18px]"
               >
-                <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-[13px] bg-gold/15 text-gold">
+                <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-[13px] bg-gold/15 text-gold max-[380px]:h-9 max-[380px]:w-9">
                   <ShoppingBag className="h-[18px] w-[18px]" strokeWidth={2.2} aria-hidden />
                   <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-gold px-1 text-[10px] font-black text-ink-gold">
                     {cartCount}
@@ -356,8 +356,8 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
                     {cartCount} item{cartCount === 1 ? "" : "s"}
                   </span>
                 </span>
-                <span className="shrink-0 whitespace-nowrap text-sm font-bold tabular-nums">UGX {cartTotal.toLocaleString()}</span>
-                <ChevronRight className="customer-nav-cart__muted h-4 w-4 shrink-0 -ml-0.5" aria-hidden />
+                <span className="shrink-0 whitespace-nowrap text-sm font-bold tabular-nums max-[380px]:text-[13px]">UGX {cartTotal.toLocaleString()}</span>
+                <ChevronRight className="customer-nav-cart__muted h-4 w-4 shrink-0 -ml-0.5 max-[380px]:hidden" aria-hidden />
               </button>
               </div>
             ) : (
