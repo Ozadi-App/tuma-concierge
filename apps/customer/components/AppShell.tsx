@@ -26,7 +26,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // screens take on full viewport view without top BrandHeader or bottom navigation bar.
   const isSingleStore = /^\/store\/[^/]+$/.test(pathname);
   const isSingleProduct = pathname.startsWith("/product/") || /^\/store\/[^/]+\/product\/[^/]+$/.test(pathname);
-  const isImmersiveFullscreen = isSingleStore || isSingleProduct;
+  // Spotlight is an edge-to-edge immersive feed: no header, no bottom nav;
+  // the page overlays its own back affordance.
+  const isSpotlight = pathname === "/spotlight" || pathname.startsWith("/spotlight/");
+  const isImmersiveFullscreen = isSingleStore || isSingleProduct || isSpotlight;
 
   const showHeader = !isAuthPage && !isChatThread && !isFoodDetail && !isImmersiveFullscreen;
   const showNav = !isAuthPage && !isChatThread && !isFoodDetail && !navigationOverlayOpen && !isImmersiveFullscreen;
