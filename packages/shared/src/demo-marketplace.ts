@@ -22,6 +22,8 @@ export interface DemoStore {
   is_live: number;
   live_channel_title: string | null;
   live_stream_url: string | null;
+  /** Poster frame for live_stream_url (demo media only). */
+  live_stream_poster_url?: string | null;
   live_viewer_count: number;
   status: string;
   nda_license_number?: string;
@@ -69,6 +71,8 @@ export interface DemoSpotlightItem {
   store_category: "groceries" | "stores" | "pharmacy";
   type: "live" | "video" | "image" | "carousel";
   media_url: string;
+  /** Poster frame for video/live media_url (demo media only). */
+  poster_url?: string;
   carousel_images?: string[];
   title: string;
   description: string;
@@ -108,7 +112,8 @@ export const DEMO_MARKETPLACE_STORES: DemoStore[] = [
     pro_tier: "pro_live",
     is_live: 1,
     live_channel_title: "Fresh Morning Harvest! 🥑 Unpacking avocado crates & dairy offers",
-    live_stream_url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+    live_stream_url: "/demo-video/market.mp4",
+    live_stream_poster_url: "/demo-video/market.jpg",
     live_viewer_count: 142,
     status: "active",
   },
@@ -134,7 +139,8 @@ export const DEMO_MARKETPLACE_STORES: DemoStore[] = [
     pro_tier: "pro_live",
     is_live: 1,
     live_channel_title: "Live Baking 🥖 Shaping Sourdough & Glazing Cinnamon Rolls",
-    live_stream_url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4",
+    live_stream_url: "/demo-video/bakery.mp4",
+    live_stream_poster_url: "/demo-video/bakery.jpg",
     live_viewer_count: 98,
     status: "active",
   },
@@ -160,7 +166,8 @@ export const DEMO_MARKETPLACE_STORES: DemoStore[] = [
     pro_tier: "pro_live",
     is_live: 1,
     live_channel_title: "Fitting Room Live! 🧥 Trying on the new Autumn linen collection",
-    live_stream_url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
+    live_stream_url: "/demo-video/fashion.mp4",
+    live_stream_poster_url: "/demo-video/fashion.jpg",
     live_viewer_count: 289,
     status: "active",
   },
@@ -186,7 +193,8 @@ export const DEMO_MARKETPLACE_STORES: DemoStore[] = [
     pro_tier: "pro_live",
     is_live: 1,
     live_channel_title: "Tech Unboxing Live 🎧 Testing Noise Cancelling Wireless Headphones & Powerbanks",
-    live_stream_url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4",
+    live_stream_url: "/demo-video/earbuds.mp4",
+    live_stream_poster_url: "/demo-video/earbuds.jpg",
     live_viewer_count: 215,
     status: "active",
   },
@@ -212,7 +220,8 @@ export const DEMO_MARKETPLACE_STORES: DemoStore[] = [
     pro_tier: "pro_live",
     is_live: 1,
     live_channel_title: "Live Skincare Routine 🧴 Testing African Black Soap & Niacinamide",
-    live_stream_url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyBlazes.mp4",
+    live_stream_url: "/demo-video/skincare.mp4",
+    live_stream_poster_url: "/demo-video/skincare.jpg",
     live_viewer_count: 175,
     status: "active",
   },
@@ -238,7 +247,8 @@ export const DEMO_MARKETPLACE_STORES: DemoStore[] = [
     pro_tier: "pro_live",
     is_live: 1,
     live_channel_title: "Sneaker Drop Live 👟 Exclusive Unboxing of Retro High-Tops & Sizing Advice",
-    live_stream_url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/SubaruOutbackSeeTheWorld.mp4",
+    live_stream_url: "/demo-video/sneakers.mp4",
+    live_stream_poster_url: "/demo-video/sneakers.jpg",
     live_viewer_count: 188,
     status: "active",
   },
@@ -798,7 +808,8 @@ export const DEMO_MARKETPLACE_SPOTLIGHT: DemoSpotlightItem[] = [
     store_logo: "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=200&q=80",
     store_category: "groceries",
     type: "live",
-    media_url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+    media_url: "/demo-video/market.mp4",
+    poster_url: "/demo-video/market.jpg",
     title: "Fresh Morning Harvest! 🥑 Unpacking avocado crates & dairy offers",
     description: "Watch live as we unpack fresh farm organic avocados and cold milk pouches directly from Mbale orchards.",
     product: {
@@ -820,7 +831,8 @@ export const DEMO_MARKETPLACE_SPOTLIGHT: DemoSpotlightItem[] = [
     store_logo: "https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=200&q=80",
     store_category: "stores",
     type: "video",
-    media_url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
+    media_url: "/demo-video/fashion.mp4",
+    poster_url: "/demo-video/fashion.jpg",
     title: "Summer Linen Collection ☀️ Styling relaxed fit Cuban shirts for weekend vibes",
     description: "Breathable 100% natural linen shirt with spread collar. Watch our fitting room walkthrough.",
     product: {
@@ -842,7 +854,8 @@ export const DEMO_MARKETPLACE_SPOTLIGHT: DemoSpotlightItem[] = [
     store_logo: "https://images.unsplash.com/photo-1509440159596-0249088772ff?auto=format&fit=crop&w=200&q=80",
     store_category: "groceries",
     type: "live",
-    media_url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4",
+    media_url: "/demo-video/bakery.mp4",
+    poster_url: "/demo-video/bakery.jpg",
     title: "Live Baking 🥐 Glazing Cinnamon Swirls & Butter Croissants Fresh from Oven",
     description: "Watch the master baker glaze golden pastry layers live. Order now for 20-min express delivery in Kampala.",
     product: {
@@ -892,7 +905,8 @@ export const DEMO_MARKETPLACE_SPOTLIGHT: DemoSpotlightItem[] = [
     store_logo: "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&w=200&q=80",
     store_category: "stores",
     type: "video",
-    media_url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
+    media_url: "/demo-video/earbuds.mp4",
+    poster_url: "/demo-video/earbuds.jpg",
     title: "Active Noise Cancelling Test 🎧 40hr Battery & Crystal Clear Bass Unboxing",
     description: "Testing Bluetooth 5.3 instant pairing and wireless fast charge. Works with both iOS and Android.",
     product: {
