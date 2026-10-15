@@ -6,7 +6,7 @@ import { consume } from "../lib/ratelimit.js";
 import { getPlatformEnvironment } from "../lib/settings.js";
 import { assignProvider, cancelJob, customerActions, getJob, getProvider, jobView, settleJob } from "./jobs.js";
 import { notifyUser } from "../lib/webpush.js";
-import { applyMoney, chargeCustomer, commissionFor, dropUnpaidHold, fromDb, inMinutes, logEvent, notifyProviders, publicProvider, toDb, transition, type Row } from "./service.js";
+import { applyMoney, chargeCustomer, commissionFor, dropUnpaidHold, fromDb, inMinutes, logEvent, notifyProviders, publicProvider, toDb, transition, workExtrasReady, type Row } from "./service.js";
 import { getWorkSettings, type WorkMatchingMode } from "./settings.js";
 
 export const customerRoutes = new Hono();
@@ -19,9 +19,10 @@ const money = (n: number) => `UGX ${n.toLocaleString("en-UG")}`;
 
 customerRoutes.get("/catalog", async (c) => {
   const settings = await getWorkSettings();
+  const extras = await workExtrasReady();
   const type = c.req.query("type");
   const types = settings.serviceTypes.filter((t) => !type || t === type);
-  if (types.length === 0) return c.json({ services: [], settings: publicSettings(settings) });
+  if (types.length === 0) return c.json({ services: [], settings: publicSettings(settings, extras) });
   const rows = (
     await db.execute({
       sql: `SELECT * FROM work_services WHERE active = 1 AND type IN (${types.map(() => "?").join(", ")}) ORDER BY sort_order, name`,
@@ -35,11 +36,14 @@ customerRoutes.get("/catalog", async (c) => {
       unitLabel: r.unit_label, unitPriceUgx: Number(r.unit_price_ugx), calloutFeeUgx: Number(r.callout_fee_ugx),
       minQuantity: Number(r.min_quantity), maxQuantity: Number(r.max_quantity),
     }));
-  return c.json({ services, settings: publicSettings(settings) });
+  return c.json({ services, settings: publicSettings(settings, extras) });
 });
 
-function publicSettings(s: Awaited<ReturnType<typeof getWorkSettings>>) {
+function publicSettings(s: Awaited<ReturnType<typeof getWorkSettings>>, extras = false) {
   return {
+    // Photos, chat and tracking only show as available once migration 0099 is in, so apps never offer what would fail.
+    photosEnabled: extras && s.photosEnabled, maxPhotosPerJob: s.maxPhotosPerJob, maxPhotoKb: s.maxPhotoKb,
+    chatEnabled: extras && s.chatEnabled, trackingEnabled: extras && s.trackingEnabled,
     enabled: s.enabled, serviceTypes: s.serviceTypes, pricingModes: s.pricingModes, matchingModes: s.matchingModes, defaultMatching: s.defaultMatching, providerKinds: s.providerKinds,
     quoteValidHours: s.quoteValidHours, freeCancelMinutes: s.freeCancelMinutes, lateCancelFeePercent: s.lateCancelFeePercent,
     autoConfirmHours: s.autoConfirmHours, disputeWindowHours: s.disputeWindowHours, minLeadMinutes: s.minLeadMinutes, maxAdvanceDays: s.maxAdvanceDays,

@@ -50,6 +50,19 @@ export type WorkSettings = {
   disputeWindowHours: number;
   /** Most jobs one customer can book per hour. */
   jobsPerHour: number;
+  /** When a provider cancels after taking a job, offer it to others instead of refunding the customer. */
+  rematchOnProviderCancel: boolean;
+  /** Most times one job can go back to other providers before it is refunded instead. */
+  maxRematches: number;
+  /** Customers and providers can attach photos to a job. */
+  photosEnabled: boolean;
+  maxPhotosPerJob: number;
+  /** Largest single photo, in kilobytes. */
+  maxPhotoKb: number;
+  /** Customer and provider can message each other about a job. */
+  chatEnabled: boolean;
+  /** Customer can see where the provider is while the job is on. */
+  trackingEnabled: boolean;
 };
 
 function list<T extends string>(raw: string | undefined, allowed: readonly T[]): T[] {
@@ -68,6 +81,8 @@ export async function getWorkSettings(): Promise<WorkSettings> {
     "work_commission_percent", "work_require_approval", "work_offer_window_minutes", "work_radius_km", "work_max_notified",
     "work_min_lead_minutes", "work_max_advance_days", "work_quote_valid_hours", "work_max_quote_ugx", "work_free_cancel_minutes",
     "work_late_cancel_fee_percent", "work_auto_confirm_hours", "work_dispute_window_hours", "work_jobs_per_hour",
+    "work_rematch_on_provider_cancel", "work_max_rematches", "work_photos_enabled", "work_max_photos_per_job", "work_max_photo_kb",
+    "work_chat_enabled", "work_tracking_enabled",
   ] as const;
   const v = Object.fromEntries(await Promise.all(keys.map(async (k) => [k, await getSetting(k)]))) as Record<(typeof keys)[number], string>;
   const matchingModes = list(v.work_matching_modes, WORK_MATCHING_MODES);
@@ -94,6 +109,13 @@ export async function getWorkSettings(): Promise<WorkSettings> {
     autoConfirmHours: int(v.work_auto_confirm_hours, 24, 1, 24 * 14),
     disputeWindowHours: int(v.work_dispute_window_hours, 48, 1, 24 * 30),
     jobsPerHour: int(v.work_jobs_per_hour, 6, 1, 100),
+    rematchOnProviderCancel: v.work_rematch_on_provider_cancel !== "0",
+    maxRematches: int(v.work_max_rematches, 2, 0, 10),
+    photosEnabled: v.work_photos_enabled !== "0",
+    maxPhotosPerJob: int(v.work_max_photos_per_job, 8, 1, 30),
+    maxPhotoKb: int(v.work_max_photo_kb, 4096, 100, 10240),
+    chatEnabled: v.work_chat_enabled !== "0",
+    trackingEnabled: v.work_tracking_enabled !== "0",
   };
 }
 
@@ -120,5 +142,12 @@ export async function setWorkSettings(next: Partial<WorkSettings>): Promise<void
   if (next.autoConfirmHours != null) put("work_auto_confirm_hours", String(next.autoConfirmHours));
   if (next.disputeWindowHours != null) put("work_dispute_window_hours", String(next.disputeWindowHours));
   if (next.jobsPerHour != null) put("work_jobs_per_hour", String(next.jobsPerHour));
+  if (next.rematchOnProviderCancel != null) put("work_rematch_on_provider_cancel", next.rematchOnProviderCancel ? "1" : "0");
+  if (next.maxRematches != null) put("work_max_rematches", String(next.maxRematches));
+  if (next.photosEnabled != null) put("work_photos_enabled", next.photosEnabled ? "1" : "0");
+  if (next.maxPhotosPerJob != null) put("work_max_photos_per_job", String(next.maxPhotosPerJob));
+  if (next.maxPhotoKb != null) put("work_max_photo_kb", String(next.maxPhotoKb));
+  if (next.chatEnabled != null) put("work_chat_enabled", next.chatEnabled ? "1" : "0");
+  if (next.trackingEnabled != null) put("work_tracking_enabled", next.trackingEnabled ? "1" : "0");
   await Promise.all(writes);
 }
