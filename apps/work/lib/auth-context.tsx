@@ -14,6 +14,12 @@ interface AuthContextType {
   ready: boolean;
   login: (identifier: string, password: string) => Promise<void>;
   signUp: (input: { name: string; phone?: string; email?: string; password: string }) => Promise<void>;
+  /** Same as signUp — the name the shared login screen uses. */
+  register: (input: { name: string; phone?: string; email?: string; password: string }) => Promise<void>;
+  /** Signs in with an already-issued token (Google sign-in, password reset). */
+  setSession: (token: string, user: AuthUser) => Promise<void>;
+  /** Swaps in a fresh copy of the user (e.g. after their phone or email is verified). */
+  updateUser: (user: AuthUser) => void;
   refreshProvider: () => Promise<void>;
   setProvider: (p: WorkProviderProfile) => void;
   logout: () => void;
@@ -66,8 +72,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const finishSignIn = useCallback(
     async (token: string, next: AuthUser) => {
       localStorage.setItem(TOKEN_KEY, token);
-      setUser(next);
-      await loadProvider();
+      // Provider first, then the user: the shell routes on both, and setting
+      // the user alone would bounce a returning provider through /onboard.
+      try {
+        await loadProvider();
+      } finally {
+        setUser(next);
+      }
     },
     [loadProvider],
   );
@@ -103,14 +114,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setCanWork(false);
   }, []);
 
+  const updateUser = useCallback((next: AuthUser) => setUser(next), []);
+
   const setProvider = useCallback((p: WorkProviderProfile) => setProviderState(p), []);
 
   const value = useMemo<AuthContextType>(
     () => ({
-      user, provider, canWork, isOwner: provider?.role === "owner", ready, login, signUp,
-      refreshProvider: loadProvider, setProvider, logout,
+      user, provider, canWork, isOwner: provider?.role === "owner", ready, login, signUp, register: signUp,
+      setSession: finishSignIn, updateUser, refreshProvider: loadProvider, setProvider, logout,
     }),
-    [user, provider, canWork, ready, login, signUp, loadProvider, setProvider, logout],
+    [user, provider, canWork, ready, login, signUp, finishSignIn, updateUser, loadProvider, setProvider, logout],
   );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
