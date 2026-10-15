@@ -5,7 +5,7 @@ import { requirePermission } from "../admin/permissions.js";
 import { db } from "../db/client.js";
 import { newId } from "../lib/ids.js";
 import { assignProvider, cancelJob, getJob, getProvider, jobView, settleJob } from "./jobs.js";
-import { notifyCustomer, notifyProviders, type Row } from "./service.js";
+import { notifyCustomer, notifyProviders, workExtrasReady, type Row } from "./service.js";
 import { getWorkSettings, WORK_PRICING_MODES, WORK_SERVICE_TYPES } from "./settings.js";
 
 export const adminRoutes = new Hono();
@@ -151,7 +151,13 @@ adminRoutes.get("/admin/jobs/:id", requirePermission("work.view"), async (c) => 
   const events = (await db.execute({ sql: "SELECT * FROM work_events WHERE job_id = ? ORDER BY created_at, rowid", args: [job.id] })).rows;
   const money = (await db.execute({ sql: "SELECT id, user_id, kind, amount_ugx, status, note, created_at, done_at FROM work_money WHERE job_id = ? ORDER BY created_at, rowid", args: [job.id] })).rows;
   const offers = (await db.execute({ sql: "SELECT * FROM work_offers WHERE job_id = ? ORDER BY created_at", args: [job.id] })).rows;
-  return c.json({ job: await jobView(job, "admin"), events, money, offers });
+  // Photos and messages exist once migration 0099 is applied.
+  const extras = await workExtrasReady();
+  const photos = extras ? (await db.execute({ sql: "SELECT id, uploader_kind, phase, note, size_bytes, created_at FROM work_job_photos WHERE job_id = ? ORDER BY created_at", args: [job.id] })).rows : [];
+  const messages = extras
+    ? (await db.execute({ sql: "SELECT m.id, m.sender_kind, m.body, m.created_at, u.name AS sender_name FROM work_messages m JOIN users u ON u.id = m.sender_id WHERE m.job_id = ? ORDER BY m.created_at, m.id", args: [job.id] })).rows
+    : [];
+  return c.json({ job: await jobView(job, "admin"), events, money, offers, photos, messages });
 });
 
 /** Hands an open job to a chosen provider (the admin_assigns way, or to rescue a job nobody took). */
