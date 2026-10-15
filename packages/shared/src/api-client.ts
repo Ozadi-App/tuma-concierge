@@ -2464,12 +2464,18 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
       const q = outletId ? `?outletId=${encodeURIComponent(outletId)}` : "";
       return request<{ dispenses: FuelReceipt[] }>(`/v1/gas/dispenses${q}`);
     },
+    /** The signed-in customer's own fuel receipts. */
+    async gasRiderDispenses() {
+      return request<{ dispenses: FuelReceipt[] }>("/v1/gas/rider/dispenses");
+    },
     async gasShiftSummary(outletId?: string) {
       const q = outletId ? `?outletId=${encodeURIComponent(outletId)}` : "";
       return request<{ summary: FuelShiftSummary }>(`/v1/gas/shift/summary${q}`);
     },
+    async cancelRiderFuelCode() {
+      return request<{ ok: true; refunded_ugx: number }>("/v1/gas/rider/cancel-code", { method: "POST", body: JSON.stringify({}) });
+    },
     async generateRiderFuelCode(input: {
-      riderId?: string;
       vehiclePlate?: string;
       amountUgx: number;
       productId?: string;
@@ -2480,11 +2486,10 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
         body: JSON.stringify(input),
       });
     },
-    async getActiveRiderFuelCode(riderId?: string) {
-      const q = riderId ? `?riderId=${encodeURIComponent(riderId)}` : "";
-      return request<{ code: FuelCode | null }>(`/v1/gas/rider/active-code${q}`);
+    async getActiveRiderFuelCode() {
+      return request<{ code: FuelCode | null }>("/v1/gas/rider/active-code");
     },
-    async gasAttendantLogin(code: string, pin?: string, outletId?: string) {
+    async gasAttendantLogin(code: string, pin: string, outletId?: string) {
       return request<{
         ok: true;
         token: string;
@@ -2509,7 +2514,7 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
       });
     },
     // Station Manager Portal Methods
-    async gasManagerLogin(code?: string, pin?: string, outletId?: string) {
+    async gasManagerLogin(code: string | undefined, pin: string, outletId?: string) {
       return request<{
         ok: true;
         token: string;
@@ -2543,7 +2548,7 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
       pin?: string;
       approveImmediately?: boolean;
     }) {
-      return request<{ ok: true; attendant: FuelPumpAttendant }>("/v1/gas/manager/attendants/commission", {
+      return request<{ ok: true; attendant: FuelPumpAttendant; temporary_pin?: string }>("/v1/gas/manager/attendants/commission", {
         method: "POST",
         body: JSON.stringify(data),
       });
@@ -2569,8 +2574,8 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
         body: JSON.stringify({ pumpLane }),
       });
     },
-    async gasManagerResetPin(attendantId: string, pin: string) {
-      return request<{ ok: true }>(`/v1/gas/manager/attendants/${encodeURIComponent(attendantId)}/reset-pin`, {
+    async gasManagerResetPin(attendantId: string, pin?: string) {
+      return request<{ ok: true; temporary_pin?: string }>(`/v1/gas/manager/attendants/${encodeURIComponent(attendantId)}/reset-pin`, {
         method: "POST",
         body: JSON.stringify({ pin }),
       });
