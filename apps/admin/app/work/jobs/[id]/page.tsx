@@ -15,6 +15,24 @@ const EVENT_LABEL: Record<string, string> = {
 };
 const eventLabel = (a: string) => EVENT_LABEL[a] ?? label(a);
 
+const DETAIL_KEY: Record<string, string> = {
+  serviceId: "Service", quantity: "Quantity", pricingMode: "Pricing", matchingMode: "Matching", providerId: "Provider", priceUgx: "Price",
+  reason: "Reason", note: "Note", refundUgx: "Refund", payoutUgx: "Payout", commissionUgx: "Commission", attempt: "Attempt", phase: "Photo", workerId: "Worker",
+};
+/** Event details are stored as JSON; show them as plain "Label: value" text. */
+function readableDetail(raw: string): string {
+  try {
+    const data = JSON.parse(raw) as Record<string, unknown>;
+    if (!data || typeof data !== "object") return raw;
+    return Object.entries(data)
+      .filter(([k]) => k !== "photoId" && k !== "serviceId" && k !== "providerId" && k !== "workerId")
+      .map(([k, v]) => `${DETAIL_KEY[k] ?? label(k)}: ${/Ugx$/.test(k) && typeof v === "number" ? ugx(v) : label(String(v))}`)
+      .join(" · ");
+  } catch {
+    return raw;
+  }
+}
+
 /** Photos are private, so they load with the sign-in header and show from an object URL. */
 function PhotoThumb({ photo }: { photo: WorkAdminPhoto }) {
   const [url, setUrl] = useState<string | null>(null);
@@ -258,7 +276,7 @@ export default function WorkJobDetailPage() {
           {events.map((e) => (
             <li key={e.id} className="text-sm">
               <p className="font-semibold text-ink">{eventLabel(e.action)} <span className="font-normal text-ink-500">· {label(e.actor_kind)}</span></p>
-              {e.detail && <p className="break-words text-xs text-ink-500">{e.detail}</p>}
+              {e.detail && readableDetail(e.detail) && <p className="break-words text-xs text-ink-500">{readableDetail(e.detail)}</p>}
               <p className="text-[11px] text-ink-500">{when(e.created_at)}</p>
             </li>
           ))}
