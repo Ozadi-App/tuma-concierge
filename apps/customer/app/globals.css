@@ -1412,10 +1412,25 @@ select:focus {
   :root:not([data-theme="light"]) .customer-nav-cart__muted { color: rgb(255 255 255 / .66); }
   :root:not([data-theme="light"]) .customer-nav-tile { background: #f7f5ef; color: #141414; }
 }
-/* Disabled: clearly dimmer than enabled (and no press feedback). */
+/* Disabled: keep the button's own fill (no muddy grey from fading over the
+   black frame) but fade its text/icons and drop the tint, so it reads clearly
+   as "not yet". No press feedback. */
 .customer-nav-cart:disabled,
-.customer-nav-checkout:disabled { opacity: .45; cursor: not-allowed; transform: none; }
-.customer-nav-cart:disabled { filter: saturate(.35); }
+.customer-nav-checkout:disabled { cursor: not-allowed; transform: none; box-shadow: none; }
+.customer-nav-cart:disabled {
+  background: linear-gradient(135deg, rgb(var(--color-gold) / .04), rgb(var(--color-gold) / .07)), #fff;
+  color: rgb(var(--color-ink) / .38);
+}
+.customer-nav-cart:disabled .customer-nav-cart__muted { color: rgb(var(--color-ink) / .3); }
+:root[data-theme="dark"] .customer-nav-cart:disabled {
+  background: linear-gradient(135deg, rgb(var(--color-gold) / .05), rgb(var(--color-gold) / .08)), #3a3a3c;
+  color: rgb(255 255 255 / .38);
+}
+:root[data-theme="dark"] .customer-nav-cart:disabled .customer-nav-cart__muted { color: rgb(255 255 255 / .3); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .customer-nav-cart:disabled { background: linear-gradient(135deg, rgb(var(--color-gold) / .05), rgb(var(--color-gold) / .08)), #3a3a3c; color: rgb(255 255 255 / .38); }
+}
+.customer-nav-checkout:disabled { background: rgb(var(--color-gold) / .55); color: rgb(var(--color-ink-gold, 10 10 10) / .55); }
 
 /* Nav action buttons sit inside the same black capsule as the menu, inset
    like the menu items, so the frame reads as one nav in both themes. */
