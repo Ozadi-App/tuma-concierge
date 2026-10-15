@@ -137,7 +137,7 @@ export function CartDrawer({
   useRegisterNavPrimaryAction(
     isOpen && navPresent && items.length > 0
       ? viewMode === "items"
-        ? { tone: "step", label: "Proceed to checkout", detail: `UGX ${total.toLocaleString()}`, onClick: () => setViewMode("checkout") }
+        ? { tone: "step", label: "Next: delivery", detail: `UGX ${total.toLocaleString()}`, onClick: () => setViewMode("checkout") }
         : {
             tone: "step",
             label: isSubmitting ? "Creating order…" : "Next: payment",
