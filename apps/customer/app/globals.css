@@ -1415,7 +1415,7 @@ select:focus {
    toward the top (mask), so content stays visible while scrolling behind. */
 .customer-nav-scrim {
   --scrim-tint: 0 0 0;
-  --scrim-strength: .32;
+  --scrim-strength: .46;
   position: fixed;
   inset-inline: 0;
   bottom: 0;
