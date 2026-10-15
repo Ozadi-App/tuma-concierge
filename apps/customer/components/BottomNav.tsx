@@ -265,17 +265,16 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
                 onClick={primaryAction.onClick}
                 disabled={primaryAction.disabled}
                 aria-label={[primaryAction.label, primaryAction.sublabel, primaryAction.detail].filter(Boolean).join(", ")}
-                className="customer-nav-cart flex min-w-0 items-center gap-2 pl-2 pr-2.5 transition active:scale-[0.98] disabled:opacity-60 h-full w-full rounded-[18px]"
+                className="customer-nav-cart flex min-w-0 items-center gap-2 pl-2 pr-2.5 transition active:scale-[0.98] h-full w-full rounded-[18px]"
               >
-                <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-[13px] bg-gold/15 text-gold max-[380px]:h-9 max-[380px]:w-9">
-                  <ShoppingBag className="h-[18px] w-[18px]" strokeWidth={2.2} aria-hidden />
-                  {primaryAction.count != null && (
-                    <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-gold px-1 text-[10px] font-black text-ink-gold">
-                      {primaryAction.count}
-                    </span>
+                <span className="customer-nav-tile flex h-10 w-10 shrink-0 items-center justify-center rounded-[13px] max-[380px]:h-9 max-[380px]:w-9">
+                  {primaryAction.count != null ? (
+                    <span className="text-[15px] font-black tabular-nums leading-none">{primaryAction.count}</span>
+                  ) : (
+                    <ShoppingBag className="h-[18px] w-[18px]" strokeWidth={2.2} aria-hidden />
                   )}
                 </span>
-                <span className="min-w-0 flex-1 text-left">
+                <span className="ml-1 min-w-0 flex-1 text-left">
                   <span className="block truncate whitespace-nowrap text-sm font-bold leading-tight">{primaryAction.label}</span>
                   {primaryAction.sublabel && (
                     <span className="customer-nav-cart__muted block truncate whitespace-nowrap text-[11px] font-medium">{primaryAction.sublabel}</span>
@@ -295,7 +294,7 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
                 disabled={primaryAction.disabled}
                 aria-busy={primaryAction.busy || undefined}
                 aria-label={[primaryAction.label, primaryAction.sublabel, primaryAction.detail].filter(Boolean).join(", ")}
-                className="customer-nav-cart flex min-w-0 items-center gap-2 pl-4 pr-3 transition active:scale-[0.98] disabled:opacity-60 h-full w-full rounded-[18px]"
+                className="customer-nav-cart flex min-w-0 items-center gap-2 pl-4 pr-3 transition active:scale-[0.98] h-full w-full rounded-[18px]"
               >
                 {primaryAction.busy && <Loader2 className="h-5 w-5 shrink-0 animate-spin" aria-hidden />}
                 <span className="min-w-0 flex-1 text-left">
@@ -317,7 +316,7 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
                 onClick={primaryAction.onClick}
                 disabled={primaryAction.disabled}
                 aria-busy={primaryAction.busy || undefined}
-                className="customer-nav-checkout flex min-w-0 items-center justify-between gap-2 pl-4 pr-3.5 transition active:scale-[0.98] disabled:opacity-60 h-full w-full rounded-[18px]"
+                className="customer-nav-checkout flex min-w-0 items-center justify-between gap-2 pl-4 pr-3.5 transition active:scale-[0.98] h-full w-full rounded-[18px]"
               >
                 <span className="flex min-w-0 items-center gap-2">
                   {primaryAction.busy ? (
@@ -344,13 +343,10 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
                 aria-haspopup="dialog"
                 className="customer-nav-cart flex min-w-0 items-center gap-2 pl-2 pr-2.5 transition active:scale-[0.98] h-full w-full rounded-[18px]"
               >
-                <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-[13px] bg-gold/15 text-gold max-[380px]:h-9 max-[380px]:w-9">
-                  <ShoppingBag className="h-[18px] w-[18px]" strokeWidth={2.2} aria-hidden />
-                  <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-gold px-1 text-[10px] font-black text-ink-gold">
-                    {cartCount}
-                  </span>
+                <span className="customer-nav-tile flex h-10 w-10 shrink-0 items-center justify-center rounded-[13px] max-[380px]:h-9 max-[380px]:w-9">
+                  <span className="text-[15px] font-black tabular-nums leading-none">{cartCount}</span>
                 </span>
-                <span className="min-w-0 flex-1 text-left">
+                <span className="ml-1 min-w-0 flex-1 text-left">
                   <span className="block truncate whitespace-nowrap text-sm font-bold leading-tight">View cart</span>
                   <span className="customer-nav-cart__muted block truncate whitespace-nowrap text-[11px] font-medium">
                     {cartCount} item{cartCount === 1 ? "" : "s"}

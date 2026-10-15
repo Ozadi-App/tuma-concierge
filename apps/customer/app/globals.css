@@ -1384,32 +1384,43 @@ select:focus {
 @keyframes customer-nav-swap-in { from { opacity: 0; transform: translateY(6px) scale(.97); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .customer-nav-swap { animation: none; } }
 
-/* Nav cart button: white in light mode, neutral grey in dark mode. */
+/* Intermediate nav actions (View cart, Confirm route, Next: payment…): a faint
+   brand-gold tint over cream (light) or grey (dark), from the existing gold token. */
 .customer-nav-cart {
-  background: #fff;
+  background:
+    linear-gradient(135deg, rgb(var(--color-gold) / .10), rgb(var(--color-gold) / .17)),
+    #fff;
   color: rgb(var(--color-ink));
-  border: 1px solid rgb(0 0 0 / .08);
+  border: 1px solid rgb(var(--color-gold) / .22);
   box-shadow: 0 12px 32px rgb(0 0 0 / .18);
 }
 .customer-nav-cart__muted { color: rgb(var(--color-ink-500)); }
+/* Icon tile on tinted buttons: dark tile + white icon/count (light), white tile + dark (dark). */
+.customer-nav-tile { background: #1a1a1a; color: #fff; }
 :root[data-theme="dark"] .customer-nav-cart {
-  background: #3a3a3c;
-  color: #f5f5f5;
-  border-color: rgb(255 255 255 / .12);
+  background:
+    linear-gradient(135deg, rgb(var(--color-gold) / .13), rgb(var(--color-gold) / .19)),
+    #3a3a3c;
+  color: #f7f5ef;
+  border-color: rgb(var(--color-gold) / .22);
   box-shadow: 0 12px 32px rgb(0 0 0 / .45);
 }
-:root[data-theme="dark"] .customer-nav-cart__muted { color: rgb(255 255 255 / .62); }
+:root[data-theme="dark"] .customer-nav-cart__muted { color: rgb(255 255 255 / .66); }
+:root[data-theme="dark"] .customer-nav-tile { background: #f7f5ef; color: #141414; }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .customer-nav-cart { background: #3a3a3c; color: #f5f5f5; border-color: rgb(255 255 255 / .12); }
-  :root:not([data-theme="light"]) .customer-nav-cart__muted { color: rgb(255 255 255 / .62); }
+  :root:not([data-theme="light"]) .customer-nav-cart { background: linear-gradient(135deg, rgb(var(--color-gold) / .13), rgb(var(--color-gold) / .19)), #3a3a3c; color: #f7f5ef; border-color: rgb(var(--color-gold) / .22); }
+  :root:not([data-theme="light"]) .customer-nav-cart__muted { color: rgb(255 255 255 / .66); }
+  :root:not([data-theme="light"]) .customer-nav-tile { background: #f7f5ef; color: #141414; }
 }
+/* Disabled: clearly dimmer than enabled (and no press feedback). */
+.customer-nav-cart:disabled,
+.customer-nav-checkout:disabled { opacity: .45; cursor: not-allowed; transform: none; }
+.customer-nav-cart:disabled { filter: saturate(.35); }
 
 /* Nav action buttons sit inside the same black capsule as the menu, inset
    like the menu items, so the frame reads as one nav in both themes. */
 .customer-nav-frame > .customer-nav-cart,
 .customer-nav-frame > .customer-nav-checkout { box-shadow: none; }
-.customer-nav-frame > .customer-nav-cart { border-color: transparent; }
-:root[data-theme="dark"] .customer-nav-frame > .customer-nav-cart { border-color: rgb(255 255 255 / .06); }
 
 /* Glass scrim behind the bottom nav. The tint and the blur both fade out
    toward the top (mask), so content stays visible while scrolling behind. */
@@ -1437,10 +1448,11 @@ select:focus {
   :root:not([data-theme="light"]) .customer-nav-scrim { --scrim-tint: 0 0 0; --scrim-strength: .6; }
 }
 
-/* /cart Checkout in the nav: brand gold in both themes. */
+/* Final / pay actions in the nav: solid bright brand gold in both themes, dark icon + text. */
 .customer-nav-checkout {
   background: rgb(var(--color-gold));
-  color: rgb(var(--color-ink-gold, 26 26 26));
+  background-image: none;
+  color: rgb(var(--color-ink-gold, 10 10 10));
   border: 1px solid rgb(0 0 0 / .06);
 }
 .customer-nav-checkout:focus-visible,
