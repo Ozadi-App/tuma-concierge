@@ -30,8 +30,9 @@ export function AppShell({ children }: { children: ReactNode }) {
     if (!ready || isUngated) return;
     if (!user && !isPublic) router.replace("/login");
     else if (!user) return;
-    else if (!verified && pathname !== "/verify") router.replace("/verify");
-    else if (verified && pathname === "/verify") router.replace(provider ? "/" : "/onboard");
+    else if (!verified) {
+      if (pathname !== "/verify") router.replace("/verify");
+    } else if (pathname === "/verify") router.replace(provider ? "/" : "/onboard");
     else if (isPublic) router.replace(provider ? "/" : "/onboard");
     else if (!provider && pathname !== "/onboard" && pathname !== "/account") router.replace("/onboard");
     else if (provider && pathname === "/onboard") router.replace("/");
