@@ -3,6 +3,8 @@
 import { Check, Flame, Heart, Radio, Send, ShoppingBag, Users, X } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { useIdleReveal } from "./spotlight/useIdleReveal";
+import "./spotlight/spotlight.css";
 
 export interface LiveStreamChannel {
   id: string;
@@ -13,6 +15,7 @@ export interface LiveStreamChannel {
   category: "groceries" | "stores";
   live_channel_title: string | null;
   live_stream_url: string | null;
+  live_stream_poster_url?: string | null;
   live_viewer_count: number;
 }
 
@@ -61,6 +64,7 @@ export function LiveStreamViewer({
   const [viewerCount, setViewerCount] = useState(channel.live_viewer_count || 142);
   const [showCheckoutDrawer, setShowCheckoutDrawer] = useState(false);
   const [addedNotice, setAddedNotice] = useState(false);
+  const idle = useIdleReveal();
 
   // Subtle viewer count fluctuation
   useEffect(() => {
@@ -105,12 +109,17 @@ export function LiveStreamViewer({
       aria-label={`${channel.name} live stream`}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-0 sm:p-4 backdrop-blur-md"
     >
-      <div className="relative flex h-full w-full max-w-md flex-col overflow-hidden bg-black text-white sm:h-[90vh] sm:rounded-[32px] sm:border sm:border-white/10 sm:shadow-2xl">
+      <div
+        className="sl-root relative flex h-full w-full max-w-md flex-col overflow-hidden bg-black text-white sm:h-[90vh] sm:rounded-[32px] sm:border sm:border-white/10 sm:shadow-2xl"
+        data-active={idle.active}
+        {...idle.bind}
+      >
         {/* Video Player */}
         <div className="absolute inset-0">
           {channel.live_stream_url ? (
             <video
               src={channel.live_stream_url}
+              poster={channel.live_stream_poster_url ?? undefined}
               autoPlay
               loop
               muted
@@ -123,12 +132,13 @@ export function LiveStreamViewer({
             </div>
           )}
           {/* Subtle gradient vignette */}
-          <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-black/60" />
+          <div className="absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-black/45 to-transparent" />
+          <div className="absolute inset-x-0 bottom-0 h-[55%] bg-gradient-to-t from-black/75 via-black/25 to-transparent" />
         </div>
 
         {/* Top Header / Host Bar */}
-        <div className="relative z-20 flex items-center justify-between p-4 pt-12 sm:pt-4">
-          <div className="flex items-center gap-2.5 rounded-full bg-black/45 p-1.5 pr-3.5 backdrop-blur-md border border-white/15">
+        <div className="sl-idle relative z-20 flex items-center justify-between p-4 pt-12 sm:pt-4">
+          <div className="flex items-center gap-2.5 rounded-full bg-black/30 p-1.5 pr-3.5 backdrop-blur-md">
             <div className="relative h-9 w-9 overflow-hidden rounded-full bg-neutral-800">
               {channel.logo_url ? (
                 <img src={channel.logo_url} alt={channel.name} className="h-full w-full object-cover" />
@@ -148,12 +158,13 @@ export function LiveStreamViewer({
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="flex items-center gap-1 rounded-full bg-red-600 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-white shadow-md animate-pulse">
-              <Radio className="h-3 w-3" /> LIVE
+            <span className="flex items-center gap-1.5 rounded-full bg-black/30 px-3 py-1 text-[11px] font-semibold text-white backdrop-blur-md">
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-red-500" aria-hidden /> LIVE
             </span>
             <button
               onClick={onClose}
-              className="flex h-9 w-9 items-center justify-center rounded-full bg-black/50 text-white/90 backdrop-blur-md transition hover:bg-black/75 active:scale-95"
+              aria-label="Close live stream"
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-black/30 text-white/90 backdrop-blur-md transition hover:bg-black/75 active:scale-95"
             >
               <X className="h-5 w-5" />
             </button>
@@ -162,8 +173,8 @@ export function LiveStreamViewer({
 
         {/* Channel Stream Title */}
         {channel.live_channel_title && (
-          <div className="relative z-20 px-4">
-            <span className="inline-block rounded-xl bg-black/40 px-3 py-1.5 text-xs font-semibold text-white/95 backdrop-blur-sm border border-white/10">
+          <div className="sl-idle relative z-20 px-4">
+            <span className="inline-block rounded-full bg-black/30 px-3 py-1.5 text-xs font-medium text-white/95 backdrop-blur-sm">
               {channel.live_channel_title}
             </span>
           </div>
@@ -184,31 +195,29 @@ export function LiveStreamViewer({
           ))}
         </div>
 
-        {/* Live Comments Overlay */}
-        <div className="relative z-20 mt-auto px-4 pb-2">
-          <div className="max-h-40 space-y-1.5 overflow-y-auto no-scrollbar mask-gradient">
-            {messages.map((m) => (
-              <div
-                key={m.id}
-                className={`flex items-start gap-1.5 rounded-xl px-2.5 py-1 text-xs backdrop-blur-sm ${
-                  m.isHost
-                    ? "bg-gold/25 border border-gold/40 text-gold-200"
-                    : "bg-black/40 text-white/90 border border-white/10"
-                }`}
-              >
-                <span className={`font-bold ${m.isHost ? "text-gold" : "text-white/80"}`}>
-                  {m.user}:
-                </span>
-                <span className="leading-snug">{m.text}</span>
-              </div>
-            ))}
+        {/* Live Comments Overlay: fades out towards the vertical middle */}
+        <div className="sl-idle relative z-20 mt-auto px-4 pb-2" aria-live="polite">
+          <div className="sl-live-comments flex h-[calc(50dvh-190px)] min-h-24 flex-col justify-end overflow-hidden">
+            <div className="space-y-2">
+              {messages.slice(-12).map((m) => (
+                <p
+                  key={m.id}
+                  className={`sl-comment-in w-fit max-w-full rounded-2xl px-3 py-1.5 text-[13px] leading-snug backdrop-blur-sm ${
+                    m.isHost ? "bg-gold/20 text-white" : "bg-black/25 text-white"
+                  }`}
+                >
+                  <span className="mr-1.5 font-semibold text-gold">{m.user}</span>
+                  {m.text}
+                </p>
+              ))}
+            </div>
           </div>
         </div>
 
         {/* Pinned Product Card with 1-Tap Checkout */}
         {pinnedProduct && (
-          <div className="relative z-20 px-4 py-2">
-            <div className="flex items-center justify-between gap-3 rounded-2xl bg-neutral-900/90 p-2.5 backdrop-blur-lg border border-gold/40 shadow-xl">
+          <div className="sl-idle relative z-20 px-4 py-2">
+            <div className="flex items-center justify-between gap-3 rounded-[20px] bg-black/35 p-2 backdrop-blur-md">
               <div className="flex items-center gap-2.5 min-w-0">
                 <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-xl bg-neutral-800">
                   {pinnedProduct.image_url ? (
@@ -263,18 +272,19 @@ export function LiveStreamViewer({
         )}
 
         {/* Bottom Input & Reactions Bar */}
-        <div className="relative z-20 flex items-center gap-2 p-4 pt-1 pb-6 sm:pb-4 border-t border-white/10 bg-black/60 backdrop-blur-md">
+        <div className="sl-idle relative z-20 flex items-center gap-2 p-4 pt-1 pb-6 sm:pb-4">
           <input
             type="text"
             value={inputMsg}
             onChange={(e) => setInputMsg(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleSendChat()}
             placeholder="Ask host or comment…"
-            className="flex-1 rounded-full bg-white/10 px-4 py-2.5 text-xs text-white placeholder:text-white/50 border border-white/15 focus:border-gold focus:outline-none"
+            className="flex-1 rounded-full !bg-white/10 px-4 py-2.5 text-xs !text-white placeholder:text-white/50 border !border-white/15 focus:border-gold focus:outline-none"
           />
 
           <button
             onClick={handleSendChat}
+            aria-label="Send comment"
             className="flex h-9 w-9 items-center justify-center rounded-full bg-white/15 text-white transition hover:bg-white/25 active:scale-95"
           >
             <Send className="h-4 w-4" />
@@ -282,6 +292,7 @@ export function LiveStreamViewer({
 
           <button
             onClick={handleTapHeart}
+            aria-label="Send a heart"
             className="flex h-9 w-9 items-center justify-center rounded-full bg-red-600/90 text-white shadow-md transition hover:bg-red-600 active:scale-90"
           >
             <Heart className="h-4.5 w-4.5 fill-current" />
