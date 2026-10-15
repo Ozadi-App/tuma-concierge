@@ -23,6 +23,8 @@ import {
   CategoryChips,
   MarketGreetingHeader,
   MarketProductCard,
+  type MarketVariant,
+  defaultVariant,
   MarketSearchBar,
   PromoBanner,
 } from "../../components/marketplace/MarketplaceUI";
@@ -62,6 +64,7 @@ interface ProductItem {
   badge?: string | null;
   image_url: string | null;
   category_name?: string | null;
+  variants?: MarketVariant[] | null;
 }
 
 const GROCERY_CATEGORIES = [
@@ -188,14 +191,19 @@ export default function GroceriesPage() {
     compare_at_price?: number | null;
     image_url?: string | null;
     category_name?: string | null;
+    variants?: MarketVariant[] | null;
   }) {
+    // Same default as the store grid and product page: the first option.
+    const v = defaultVariant(item);
     addMarketplaceCartItem({
       productId: item.id,
       storeId: item.store_id || "store_grocery_default",
       storeName: item.store_name || "Supermarket Partner",
       title: item.title,
-      price: item.price,
-      compareAtPrice: item.compare_at_price || undefined,
+      variantId: v?.id,
+      variantTitle: v?.title,
+      price: v?.price ?? item.price,
+      compareAtPrice: (v ? v.compare_at_price : item.compare_at_price) || undefined,
       imageUrl: item.image_url || undefined,
       category: item.category_name || "Groceries",
       quantity: 1,

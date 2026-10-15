@@ -12,6 +12,9 @@ import { useState, type ReactNode } from "react";
 import { useAuth } from "../../lib/auth-context";
 import { useLocationLabel } from "../../lib/use-location-label";
 import { ProductImage } from "../ProductImage";
+import { defaultVariant, productPricing, type MarketVariant } from "../../lib/product-pricing";
+
+export { defaultVariant, productPricing, type MarketVariant };
 
 export const ugx = (val: number) => `UGX ${Number(val).toLocaleString()}`;
 
@@ -161,6 +164,7 @@ export type MarketProduct = {
   badge?: string | null;
   image_url?: string | null;
   category_name?: string | null;
+  variants?: MarketVariant[] | null;
 };
 
 /**
@@ -170,8 +174,8 @@ export type MarketProduct = {
  */
 export function MarketProductCard({ product, fallbackCategory, onAdd }: { product: MarketProduct; fallbackCategory?: string; onAdd: () => void }) {
   const [added, setAdded] = useState(false);
-  const onSale = product.compare_at_price != null && product.compare_at_price > product.price;
-  const discount = onSale ? Math.round(((product.compare_at_price! - product.price) / product.compare_at_price!) * 100) : 0;
+  const pricing = productPricing(product);
+  const discount = pricing.discount;
   // One badge at most: a real discount beats a merchandising tag.
   const badge = discount >= 5 ? `-${discount}%` : product.badge || null;
 
@@ -202,10 +206,11 @@ export function MarketProductCard({ product, fallbackCategory, onAdd }: { produc
         <Link href={`/product/${product.id}`} className="min-w-0 flex-1">
           <h3 className="truncate text-sm font-semibold text-ink">{product.title}</h3>
           <p className="mt-0.5 flex min-w-0 items-baseline gap-1.5 whitespace-nowrap">
-            <span className="shrink-0 text-[13px] font-bold tabular-nums text-ink">{ugx(product.price)}</span>
-            {onSale && (
+            {pricing.from && <span className="shrink-0 text-[11px] font-medium text-ink-500">from</span>}
+            <span className="shrink-0 text-[13px] font-bold tabular-nums text-ink">{ugx(pricing.price)}</span>
+            {pricing.compareAt != null && (
               <span className="truncate text-[10px] font-medium tabular-nums text-ink-500 line-through">
-                {Number(product.compare_at_price).toLocaleString()}
+                {pricing.compareAt.toLocaleString()}
               </span>
             )}
           </p>
