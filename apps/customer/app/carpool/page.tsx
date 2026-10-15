@@ -2,9 +2,10 @@
 
 import { Select } from "@peebee/shared/select";
 import type { CarpoolTrip } from "@peebee/shared";
-import { CalendarDays, ChevronLeft, MapPin, Navigation } from "lucide-react";
+import { CalendarDays, ChevronLeft, MapPin } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
+import { useRegisterNavPrimaryAction } from "../../lib/nav-primary-action";
 import { PlaceSearch, type FoundPlace } from "../../components/PlaceSearch";
 import { api, errorMessage } from "../../lib/api";
 import { cachedPosition } from "../../lib/places";
@@ -72,8 +73,8 @@ export default function CarpoolPage() {
     return () => { active = false; };
   }, [findTrips]);
 
-  async function search(e: React.FormEvent) {
-    e.preventDefault();
+  async function search(e?: React.FormEvent) {
+    e?.preventDefault();
     if (!origin) {
       setError("Choose a pickup area to see nearby trips.");
       return;
@@ -95,6 +96,16 @@ export default function CarpoolPage() {
       setBusy(null);
     }
   }
+
+  // The search step is the bottom nav's right capsule (white/grey step button),
+  // not an in-form button. Booking a specific trip stays on its own card.
+  useRegisterNavPrimaryAction({
+    tone: "step",
+    label: busy === "search" ? "Finding trips…" : trips ? "Search again" : "Show nearby trips",
+    disabled: !origin || originNeedsSelection || busy === "search",
+    busy: busy === "search",
+    onClick: () => void search(),
+  });
 
   return (
     <div className="space-y-4 px-4 pb-4 pt-4">
@@ -139,10 +150,6 @@ export default function CarpoolPage() {
           <CalendarDays className="h-4 w-4" /> Departure date <span className="font-normal">(optional)</span>
         </label>
         <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={field} />
-        <button disabled={!origin || originNeedsSelection || busy === "search"} className="flex min-h-12 w-full items-center justify-center gap-2 rounded-full bg-gold px-4 text-base font-bold text-ink-gold disabled:opacity-60">
-          <Navigation className="h-4 w-4" />
-          {busy === "search" ? "Finding trips…" : "Show nearby trips"}
-        </button>
       </form>
 
       {error && <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}

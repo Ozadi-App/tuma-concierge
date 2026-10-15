@@ -1,5 +1,6 @@
 "use client";
 
+import { useRegisterNavPrimaryAction } from "../../../lib/nav-primary-action";
 import type { OrderDetail, OrderRating } from "@peebee/shared";
 import { MapPin, MessageCircle, TriangleAlert, User } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
@@ -224,6 +225,16 @@ export default function OrderDetailPage() {
     setWaitingNoticeOpen(true);
   }, [timeFees?.waitingEndsAt, timeFees?.waitingDue, waitingApproaching, waitingNoticeSeenKey]);
 
+  // While an order still needs paying, its next step is the bottom nav's right
+  // capsule (white in light, grey in dark); the gold Pay is on the pay page.
+  const navAwaitingPayment = !!detail && ["Create", "Match", "Fund"].includes(detail.order.stage);
+  const navPendingPayment = !!detail?.payments.find((p) => p.status === "pending");
+  useRegisterNavPrimaryAction(navAwaitingPayment ? {
+    tone: "step",
+    label: navPendingPayment ? "Check payment" : "Continue to payment",
+    onClick: () => router.push(`/orders/${orderId}/pay`),
+  } : null);
+
   if (!detail) {
     return <div className="p-4 text-sm text-ink-500">{t("order_loading")}</div>;
   }
@@ -444,9 +455,6 @@ export default function OrderDetailPage() {
             )
           )}
 
-          <button type="button" onClick={() => router.push(`/orders/${orderId}/pay`)} className="min-h-12 w-full rounded-full bg-gold px-4 text-base font-bold text-ink-gold">
-            {pendingPayment ? "Check payment" : "Continue to payment"}
-          </button>
         </section>
       )}
 

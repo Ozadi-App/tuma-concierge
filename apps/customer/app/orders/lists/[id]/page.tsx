@@ -1,5 +1,6 @@
 "use client";
 
+import { useRegisterNavPrimaryAction } from "../../../../lib/nav-primary-action";
 import type { ListDetail } from "@peebee/shared";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -35,6 +36,17 @@ export default function ListDetailPage() {
       .catch((err) => setError(errorMessage(err)));
   }, [listId]);
 
+  // Resending an expired list is this page's primary action: the bottom nav's
+  // right capsule (an intermediate step; payment follows on the pay page).
+  const resendOrderId = detail?.resendOrderId ?? null;
+  useRegisterNavPrimaryAction(resendOrderId ? {
+    tone: "step",
+    label: resending ? t("list_resending") : t("list_resend"),
+    disabled: resending,
+    busy: resending,
+    onClick: () => void resend(resendOrderId),
+  } : null);
+
   if (error && !detail) {
     return <p className="p-4 text-sm text-red-700">{error}</p>;
   }
@@ -59,14 +71,6 @@ export default function ListDetailPage() {
         <section className="home-card space-y-3 !border-l-4 !border-l-gold">
           <p className="text-sm text-ink-500">{t("list_expired_hint")}</p>
           {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
-          <button
-            type="button"
-            onClick={() => void resend(detail.resendOrderId as string)}
-            disabled={resending}
-            className="min-h-12 w-full rounded-full bg-gold px-4 text-base font-bold text-ink-gold disabled:opacity-60"
-          >
-            {resending ? t("list_resending") : t("list_resend")}
-          </button>
         </section>
       )}
 

@@ -14,6 +14,7 @@ import { api, errorMessage } from "../../../../lib/api";
 import { formatUgx } from "../../../../lib/order-display";
 import { useLivePolling } from "../../../../lib/use-live-polling";
 import { useNetworkStatus } from "../../../../lib/use-network-status";
+import { useRegisterNavPrimaryAction } from "../../../../lib/nav-primary-action";
 
 type Method = "mobile_money" | "wallet" | "cash";
 type Quote = Awaited<ReturnType<typeof api.getOrderCheckout>>;
@@ -135,6 +136,17 @@ export default function PaymentPage() {
     finally { paying.current = false; setBusy(false); }
   }
 
+  // The final pay step is the bottom nav's gold right capsule (both themes),
+  // wired to the same pay() with the same disabled rules.
+  useRegisterNavPrimaryAction({
+    tone: "gold",
+    label: busy ? "Please wait…" : pending ? "Waiting for payment" : method === "cash" ? "Continue with cash" : `Pay${amount == null ? "" : ` ${formatUgx(amount)}`}`,
+    sublabel: !busy && !pending && method === "mobile_money" && network ? `with ${mobileMoneyNetworkLabel(network)}` : method === "wallet" && !busy && !pending ? "from wallet" : undefined,
+    disabled,
+    busy: busy || pending,
+    onClick: () => void pay(),
+  });
+
   return (
     <div className="mx-auto max-w-lg space-y-5 px-4 pt-5">
       <div className="space-y-1">
@@ -154,7 +166,7 @@ export default function PaymentPage() {
       </fieldset>
       <section className="home-card space-y-4">
         {canAddPickup && <div className="rounded-2xl border border-gold/30 bg-gold/10 p-4"><h2 className="font-bold text-ink">Add another pickup?</h2><p className="mt-1 text-sm text-ink-500">Your rider has not been assigned yet. Add one food or shopping pickup and we’ll calculate the extra route fee. This choice stays open for 30 minutes.</p><div className="mt-3 flex flex-wrap gap-2"><Link href="/restaurants" className="inline-flex min-h-11 items-center rounded-full bg-gold px-5 text-sm font-bold text-ink-gold">Add another restaurant</Link><button type="button" onClick={continueWithOnePickup} disabled={busy} className="min-h-11 rounded-full border border-[var(--border-faint)] px-4 text-sm font-bold text-ink">Keep this order only</button></div></div>}
-        <fieldset disabled={busy || pending} hidden={method !== "mobile_money"}>
+        <fieldset disabled={busy || pending} hidden={method !== "mobile_money"} className="min-w-0">
           <MobileNumberPicker purpose="payment" value={phone} onChange={setPhone} prominent autoSave />
           <p className="mt-3 text-sm text-ink-500">Enter your MTN MoMo or Airtel Money number. We detect the network automatically.</p>
         </fieldset>
@@ -204,9 +216,6 @@ export default function PaymentPage() {
       {!pending && ready && detail?.payments.some((p) => p.type === "collection" && p.status === "failed") && <p role="status" className="text-sm text-ink-500">Your previous payment did not complete. You can try again or choose another payment option.</p>}
       {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
       {!online && <p role="alert" className="text-sm text-ink-500">Connect to the internet to continue.</p>}
-      <button type="button" onClick={() => void pay()} disabled={disabled} className="min-h-14 w-full rounded-full bg-gold px-4 text-base font-bold text-ink-gold disabled:opacity-50">
-        {busy ? "Please wait…" : pending ? "Waiting for payment" : method === "cash" ? "Continue with cash" : `Pay${amount == null ? "" : ` ${formatUgx(amount)}`}${method === "mobile_money" && network ? ` with ${mobileMoneyNetworkLabel(network)}` : ""}`}
-      </button>
     </div>
   );
 }
