@@ -3,9 +3,14 @@
 Sandbox and practice-mode demo videos for Spotlight and live store channels.
 They replace the Google `gtv-videos-bucket` samples, which now return 403.
 
-**Hosting:** the files live in `apps/customer/public/demo-video/` and are served by
+**Hosting:** the files live in `apps/customer/public/demo-video-src/` and are served by
 the `peebee-customer` Cloudflare Worker (static assets), the same way as
 `apps/customer/public/demo-food/`.
+
+Requests to `/demo-video/<name>` are handled by
+`apps/customer/app/demo-video/[file]/route.ts`. That route adds HTTP Range (206) support,
+because Workers Static Assets always return 200 with the full body and iOS/Safari then
+refuses to play the MP4.
 
 - Practice-mode data (`packages/shared/src/demo-marketplace.ts`) uses root-relative paths
   (`/demo-video/<name>.mp4`).
