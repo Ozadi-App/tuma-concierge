@@ -61,6 +61,13 @@ export function ActiveRide({ ride, onChange }: { ride: NonNullable<CarDriverActi
       ) : (
         <p className="text-sm text-ink">{ride.customer_name}</p>
       )}
+      {ride.category_kind === "ambulance" && <p className="rounded-xl bg-red-50 p-2.5 text-xs font-bold text-red-700 dark:bg-red-950/40 dark:text-red-300">Emergency ambulance request. Go straight to the patient.</p>}
+      {ride.trip_note && (
+        <p className="text-sm text-ink">
+          <span className="font-bold">{ride.category_kind === "ambulance" ? "What the customer reported: " : "Occasion: "}</span>{ride.trip_note}
+        </p>
+      )}
+      {ride.hire_hours ? <p className="text-xs font-bold text-gold">Hired for {ride.hire_hours} hour{ride.hire_hours === 1 ? "" : "s"} after the trip. Stay with the customer.</p> : null}
       <p className="text-xs text-ink-500">From: {ride.pickup_address ?? "—"}</p>
       <p className="text-xs text-ink-500">To: {ride.destination_address ?? "—"}</p>
       <p className="text-sm font-bold text-ink">{ugx(ride.estimated_total)}</p>

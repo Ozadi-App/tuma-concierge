@@ -18,6 +18,7 @@ export default function CarSettingsPage() {
   const [driver, setDriver] = useState("30");
   const [platform, setPlatform] = useState("10");
   const [maxKm, setMaxKm] = useState("10");
+  const [emergencyNumber, setEmergencyNumber] = useState("999");
   const [ratePerKm, setRatePerKm] = useState("2000");
   const [minimumFare, setMinimumFare] = useState("8000");
   const [comfortPremium, setComfortPremium] = useState("30");
@@ -68,6 +69,7 @@ export default function CarSettingsPage() {
     setDriver(String(c.shares.driver));
     setPlatform(String(c.shares.platform));
     setMaxKm(String(c.maxPickupKm));
+    setEmergencyNumber(c.emergencyNumber ?? "999");
     setRatePerKm(String(c.servicePricing?.ratePerKm ?? 2000));
     setMinimumFare(String(c.servicePricing?.minimumFare ?? 8000));
     setComfortPremium(String(c.servicePricing?.comfortPremiumPercent ?? 30));
@@ -134,6 +136,7 @@ export default function CarSettingsPage() {
           matchingMode: mode,
           shares: { owner: Number(owner), driver: Number(driver), platform: Number(platform) },
           maxPickupKm: Math.min(200, Math.max(1, Number(maxKm) || 10)),
+          emergencyNumber: /^[0-9+*#]{2,15}$/.test(emergencyNumber.trim()) ? emergencyNumber.trim() : "999",
           servicePricing: { ratePerKm: Number(ratePerKm), minimumFare: Number(minimumFare), comfortPremiumPercent: Number(comfortPremium), xlPremiumPercent: Number(xlPremium), xlMinSeats: Number(xlMinSeats) },
           scheduled: {
             enabled: schedEnabled,
@@ -211,6 +214,11 @@ export default function CarSettingsPage() {
           <div className="space-y-1">
             <label className="text-xs font-semibold text-ink-500" htmlFor="car-km">Furthest a driver can be from the pickup (km)</label>
             <input id="car-km" inputMode="numeric" value={maxKm} onChange={(e) => setMaxKm(digits(e.target.value))} className={input} />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-ink-500" htmlFor="car-emergency">Emergency phone number shown with Ambulance requests</label>
+            <input id="car-emergency" inputMode="tel" value={emergencyNumber} onChange={(e) => setEmergencyNumber(e.target.value.replace(/[^0-9+*#]/g, "").slice(0, 15))} className={input} />
+            <p className="text-xs text-ink-500">Customers are told to call this first if someone&apos;s life is in danger.</p>
           </div>
         </section>
 

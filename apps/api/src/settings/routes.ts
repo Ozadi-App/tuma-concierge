@@ -288,6 +288,7 @@ const updateSchema = z.object({
         platform: z.number().int().min(0).max(100),
       }),
       maxPickupKm: z.number().int().min(1).max(200),
+      emergencyNumber: z.string().trim().regex(/^[0-9+*#]{2,15}$/, "Enter a phone number, digits only.").optional(),
       servicePricing: z.object({
         ratePerKm: z.number().int().min(1).max(1_000_000),
         minimumFare: z.number().int().min(0).max(1_000_000),

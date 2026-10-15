@@ -2,7 +2,7 @@
 
 import { DEFAULT_RIDE_TRACKING_SETTINGS, roundFare } from "@peebee/shared";
 import type { CarCategory, RidePassenger, SavedPassenger } from "@peebee/shared";
-import { ChevronRight, Route, Truck, User, Users } from "lucide-react";
+import { Ambulance, ChevronRight, Crown, Route, Truck, User, Users } from "lucide-react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -13,6 +13,7 @@ import { useTranslate } from "../../lib/i18n";
 import { placeFields } from "../../lib/places";
 import { RouteSummary } from "./RouteSummary";
 import { RideTimeEstimate } from "./RideTimeEstimate";
+import { SpecialCarServices, specialFare } from "./SpecialCarServices";
 import { WhoIsRiding } from "../WhoIsRiding";
 import { saveSelfDriveRoute } from "../../lib/selfdrive-route";
 import { useRegisterNavPrimaryAction } from "../../lib/nav-primary-action";
@@ -70,7 +71,14 @@ export function RideModal({
   const [vehicleSize, setVehicleSize] = useState<"normal" | "large">("normal");
   const [tierOptions, setTierOptions] = useState<Array<{ size: "normal" | "large"; tier: "convenient" | "comfort"; fare: number; nearby: number }>>([]);
   const [categories, setCategories] = useState<CarCategory[]>([]);
-  const [carSubMode, setCarSubMode] = useState<"passenger" | "cargo">(initialCargo ? "cargo" : "passenger");
+  const [carSubMode, setCarSubMode] = useState<"passenger" | "cargo" | "luxury" | "ambulance">(initialCargo ? "cargo" : "passenger");
+  const [luxuryId, setLuxuryId] = useState("");
+  const [ambulanceId, setAmbulanceId] = useState("");
+  const [hireHours, setHireHours] = useState(0);
+  const [tripNote, setTripNote] = useState("");
+  const [specialNearby, setSpecialNearby] = useState<number | null>(null);
+  const [emergencyNumber, setEmergencyNumber] = useState("999");
+  const [maxHireHours, setMaxHireHours] = useState(24);
   const [selectedCargoCatId, setSelectedCargoCatId] = useState<string>("peebee-cargo-van");
   const [cargoDescription, setCargoDescription] = useState<string>("");
   const [schedule, setSchedule] = useState<{ maxAdvanceHours: number | null; minLeadMinutes: number } | null>(null);
@@ -110,6 +118,8 @@ export function RideModal({
         setNowOk(cfg.onDemandEnabled);
         if (!cfg.onDemandEnabled && cfg.scheduled) setWhen("later");
         if (cfg.categories) setCategories(cfg.categories);
+        if (cfg.emergencyNumber) setEmergencyNumber(cfg.emergencyNumber);
+        if (cfg.maxHireHours) setMaxHireHours(cfg.maxHireHours);
       })
       .catch(() => setTierPricing(null));
   }, []);
@@ -137,16 +147,26 @@ export function RideModal({
   // validation and busy state as before.
   const navCargoList = categories.filter((c) => c.kind === "cargo" || c.id.startsWith("peebee-cargo-"));
   const navCargo = (navCargoList.length > 0 ? navCargoList : FALLBACK_CARGO_CATEGORIES).find((c) => c.id === selectedCargoCatId);
+  const luxuryCats = categories.filter((c) => c.service_group === "luxury");
+  const ambulanceCats = categories.filter((c) => c.service_group === "ambulance");
+  const navLuxury = luxuryCats.find((c) => c.id === luxuryId) ?? luxuryCats[0];
+  const navAmbulance = ambulanceCats.find((c) => c.id === ambulanceId) ?? ambulanceCats[0];
   const navCarOption = tierOptions.find((o) => o.size === vehicleSize && o.tier === tier);
-  const navFare = mode === "car" && carSubMode === "cargo"
+  const navFare = mode === "car" && carSubMode === "luxury" ? (navLuxury ? specialFare(navLuxury, distanceKm, hireHours) : null)
+    : mode === "car" && carSubMode === "ambulance" ? (navAmbulance ? specialFare(navAmbulance, distanceKm) : null)
+    : mode === "car" && carSubMode === "cargo"
     ? navCargo ? (distanceKm != null ? roundFare(distanceKm * navCargo.rate_per_km, navCargo.minimum_fare) : navCargo.minimum_fare) : null
     : mode === "car" && tierPricing ? navCarOption?.fare ?? null
     : liveEstimate ?? (estimatedTotal ? Number(estimatedTotal) : null);
-  const submitDisabled = busy || (mode === "car" && carSubMode === "passenger" && (tierOptions.length === 0 || (when === "now" && !navCarOption?.nearby) || (when === "later" && !pickupAt))) || (mode === "car" && carSubMode === "cargo" && when === "later" && !pickupAt);
-  const submitShown = !choosing && !!route && !pickingWho && (!carMenuOpen || !!tierPricing || carSubMode === "cargo");
+  const specialBlocked = mode === "car" && (
+    (carSubMode === "luxury" && (!navLuxury || (when === "later" ? !pickupAt : specialNearby === 0)))
+    || (carSubMode === "ambulance" && (!navAmbulance || specialNearby === 0))
+  );
+  const submitDisabled = busy || specialBlocked || (mode === "car" && carSubMode === "passenger" && (tierOptions.length === 0 || (when === "now" && !navCarOption?.nearby) || (when === "later" && !pickupAt))) || (mode === "car" && carSubMode === "cargo" && when === "later" && !pickupAt);
+  const submitShown = !choosing && !!route && !pickingWho && (!carMenuOpen || !!tierPricing || carSubMode === "cargo" || carSubMode === "luxury" || carSubMode === "ambulance");
   useRegisterNavPrimaryAction(submitShown ? {
     tone: "step",
-    label: busy ? "Please wait…" : "Next: payment",
+    label: busy ? "Please wait…" : mode === "car" && carSubMode === "ambulance" ? "Request ambulance" : "Next: payment",
     detail: navFare != null && Number.isFinite(navFare) && navFare > 0 ? `UGX ${navFare.toLocaleString("en-UG")}` : undefined,
     disabled: submitDisabled,
     busy,
@@ -177,6 +197,29 @@ export function RideModal({
     try {
       if (mode === "car") {
         if (pf.lat == null || pf.lng == null || df.lat == null || df.lng == null) throw new Error("Please pin both places on the map.");
+        if (carSubMode === "luxury" || carSubMode === "ambulance") {
+          const cat = carSubMode === "luxury" ? navLuxury : navAmbulance;
+          if (!cat) throw new Error("That service isn't available right now.");
+          const { order } = await api.bookCar({
+            categoryId: cat.id,
+            ...(carSubMode === "luxury" && hireHours > 0 ? { hireHours } : {}),
+            ...(tripNote.trim() ? { note: tripNote.trim() } : {}),
+            pickupArea: pf.area,
+            pickupAddress: pf.address,
+            pickupLat: pf.lat,
+            pickupLng: pf.lng,
+            destinationArea: df.area,
+            destinationAddress: df.address,
+            destinationLat: df.lat,
+            destinationLng: df.lng,
+            // An ambulance is always sent straight away.
+            ...(carSubMode === "luxury" && when === "later" ? { scheduledFor: new Date(pickupAt).toISOString() } : {}),
+            ...(passenger ? { passenger } : {}),
+          });
+          onClose();
+          router.push(`/orders/${order.id}/pay`);
+          return;
+        }
         if (carSubMode === "cargo") {
           const cargoList = categories.filter((c) => c.kind === "cargo" || c.id.startsWith("peebee-cargo-"));
           const effective = cargoList.length > 0 ? cargoList : FALLBACK_CARGO_CATEGORIES;
@@ -246,6 +289,25 @@ export function RideModal({
 
   const cargoList = categories.filter((c) => c.kind === "cargo" || c.id.startsWith("peebee-cargo-"));
   const effectiveCargo = cargoList.length > 0 ? cargoList : FALLBACK_CARGO_CATEGORIES;
+  const luxurySchedule = schedule ? (
+    <div className="space-y-2">
+      <div role="tablist" className="flex gap-2">
+        {(["now", "later"] as const).filter((w) => w === "later" || nowOk).map((w) => (
+          <button key={w} type="button" role="tab" aria-selected={when === w} onClick={() => setWhen(w)}
+            className={`min-h-9 flex-1 rounded-full px-3 text-xs font-bold ${when === w ? "bg-gold text-ink-gold" : "bg-gold/15 text-ink"}`}>
+            {w === "now" ? "Now" : "Later"}
+          </button>
+        ))}
+      </div>
+      {when === "later" && (
+        <>
+          <input type="datetime-local" value={pickupAt} onChange={(e) => setPickupAt(e.target.value)}
+            className="w-full rounded-xl border border-[var(--border-faint)] px-3 py-2.5 text-[15px] outline-none focus:border-gold" aria-label="Pickup time" />
+          <p className="text-xs text-ink-500">At least {schedule.minLeadMinutes} minutes ahead{schedule.maxAdvanceHours ? `, up to ${schedule.maxAdvanceHours} hours` : ""}.</p>
+        </>
+      )}
+    </div>
+  ) : null;
 
   return (
     <Modal withMap mapRoute={route} title={t("ride_title")} onClose={onClose}>
@@ -314,13 +376,44 @@ export function RideModal({
               >
                 Cargo / Truck
               </button>
+              {luxuryCats.length > 0 && (
+                <button type="button" aria-pressed={mode === "car" && carSubMode === "luxury"} onClick={() => { setMode("car"); setCarSubMode("luxury"); }}
+                  className={`flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-full px-3 text-sm font-bold transition-colors ${mode === "car" && carSubMode === "luxury" ? "bg-gold text-ink-gold" : "bg-gold/15 text-ink"}`}>
+                  <Crown className="h-4 w-4" aria-hidden /> Luxury
+                </button>
+              )}
+              {ambulanceCats.length > 0 && (
+                <button type="button" aria-pressed={mode === "car" && carSubMode === "ambulance"} onClick={() => { setMode("car"); setCarSubMode("ambulance"); }}
+                  className={`flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-full px-3 text-sm font-bold transition-colors ${mode === "car" && carSubMode === "ambulance" ? "bg-gold text-ink-gold" : "bg-gold/15 text-ink"}`}>
+                  <Ambulance className="h-4 w-4" aria-hidden /> Ambulance
+                </button>
+              )}
               {carpoolOn && <button type="button" onClick={() => { onClose(); router.push("/carpool"); }} className="min-h-10 flex-1 rounded-full bg-gold/15 px-3 text-sm font-bold text-ink">Rideshare</button>}
               {rentOn && <button type="button" onClick={() => { saveSelfDriveRoute(route); onClose(); router.push("/rent"); }} className="min-h-10 flex-1 rounded-full bg-gold/15 px-3 text-sm font-bold text-ink">Selfdrive</button>}
             </div>
           </div>
         ))}
 
-        {carMenuOpen && mode === "car" && carSubMode === "cargo" ? (
+        {carMenuOpen && mode === "car" && (carSubMode === "luxury" || carSubMode === "ambulance") ? (
+          <SpecialCarServices
+            kind={carSubMode}
+            categories={carSubMode === "luxury" ? luxuryCats : ambulanceCats}
+            selectedId={carSubMode === "luxury" ? (navLuxury?.id ?? "") : (navAmbulance?.id ?? "")}
+            onSelect={carSubMode === "luxury" ? setLuxuryId : setAmbulanceId}
+            distanceKm={distanceKm}
+            pickup={{ lat: pickupLat ?? undefined, lng: pickupLng ?? undefined }}
+            hireHours={hireHours}
+            onHireHours={setHireHours}
+            maxHireHours={maxHireHours}
+            note={tripNote}
+            onNote={setTripNote}
+            emergencyNumber={emergencyNumber}
+            nearby={specialNearby}
+            onNearby={setSpecialNearby}
+            schedule={luxurySchedule}
+            later={carSubMode === "luxury" && when === "later"}
+          />
+        ) : carMenuOpen && mode === "car" && carSubMode === "cargo" ? (
           <div className="space-y-3">
             {schedule && (
               <div className="space-y-2">

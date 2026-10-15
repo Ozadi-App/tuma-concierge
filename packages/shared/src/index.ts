@@ -110,6 +110,7 @@ export type {
   CarDriverActive,
   CarOwnerRides,
   CarCategory,
+  CarServiceGroup,
   CarConfig,
   CarBookingInput,
   CarPartnerStatus,

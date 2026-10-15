@@ -6,7 +6,7 @@ import { requireAuth, requireRole } from "../auth/middleware.js";
 import { db } from "../db/client.js";
 import { newId } from "../lib/ids.js";
 import { clientIp } from "../lib/ratelimit.js";
-import { hasTable } from "../lib/schema.js";
+import { hasColumn, hasTable } from "../lib/schema.js";
 import { completeRental } from "./selfdrive.js";
 import { getCarSettings } from "../lib/settings.js";
 import { getR2Bucket, uploadResponseHeaders } from "../storage/r2.js";
@@ -24,6 +24,8 @@ const shareField = z.number().int().min(0).max(100).nullable().optional();
 const categorySchema = z
   .object({
     kind: z.enum(["passenger", "cargo"]),
+    /** "luxury" and "ambulance" are passenger categories kept out of the ordinary taxi matching. */
+    serviceGroup: z.enum(["standard", "luxury", "ambulance"]).default("standard"),
     name: z.string().trim().min(1).max(80),
     seats: z.number().int().min(1).max(60).nullable().optional(),
     cargoType: z.string().trim().max(80).nullable().optional(),
@@ -36,7 +38,11 @@ const categorySchema = z
     platformSharePercent: shareField,
     active: z.boolean().default(true),
     sort: z.number().int().min(0).max(10_000).default(0),
+    /** Luxury hire: UGX per hour of hire, added to the trip fare. */
+    ratePerHour: z.number().int().min(0).max(10_000_000).default(0),
+    description: z.string().trim().max(240).nullable().optional(),
   })
+  .refine((c) => c.serviceGroup === "standard" || c.kind === "passenger", { message: "Luxury and Ambulance categories carry passengers." })
   .refine(
     (c) => {
       const given = [c.ownerSharePercent, c.driverSharePercent, c.platformSharePercent].filter((n) => n != null);
@@ -67,15 +73,23 @@ carAdminRoutes.get("/admin/car/categories", requirePermission("car.view"), async
   return c.json({ categories: res.rows });
 });
 
+/** Luxury and ambulance categories, the hourly rate and the description need migration 0101. */
+async function categoryUpgradeNeeded(d: z.infer<typeof categorySchema>): Promise<boolean> {
+  if (await hasColumn("vehicle_categories", "service_group")) return false;
+  return d.serviceGroup !== "standard" || d.ratePerHour > 0 || !!d.description;
+}
+
 carAdminRoutes.post("/admin/car/categories", requirePermission("car.manage"), async (c) => {
   const parsed = categorySchema.safeParse(await c.req.json().catch(() => ({})));
   if (!parsed.success) return c.json({ error: "invalid_body", issues: parsed.error.issues }, 400);
+  if (await categoryUpgradeNeeded(parsed.data)) return c.json({ error: "upgrade_pending", message: "Luxury and Ambulance categories need a database update first." }, 503);
   const id = newId("vcat");
+  const extras = await hasColumn("vehicle_categories", "service_group");
   await db.execute({
     sql: `INSERT INTO vehicle_categories (id, kind, name, seats, cargo_type, size_label, reference_image_key, rate_per_km, minimum_fare,
-            owner_share_percent, driver_share_percent, platform_share_percent, active, sort)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    args: [id, ...categoryArgs(parsed.data)],
+            owner_share_percent, driver_share_percent, platform_share_percent, active, sort${extras ? ", service_group, rate_per_hour, description" : ""})
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?${extras ? ", ?, ?, ?" : ""})`,
+    args: [id, ...categoryArgs(parsed.data), ...(extras ? [parsed.data.serviceGroup, parsed.data.ratePerHour, parsed.data.description ?? null] : [])],
   });
   await logActivity({ actor: c.get("user"), action: "car.category.create", entityType: "vehicle_category", entityId: id, summary: `Added car category ${parsed.data.name}`, after: parsed.data, ip: clientIp(c) });
   return c.json({ id }, 201);
@@ -85,11 +99,13 @@ carAdminRoutes.put("/admin/car/categories/:id", requirePermission("car.manage"),
   const id = c.req.param("id") as string;
   const parsed = categorySchema.safeParse(await c.req.json().catch(() => ({})));
   if (!parsed.success) return c.json({ error: "invalid_body", issues: parsed.error.issues }, 400);
+  if (await categoryUpgradeNeeded(parsed.data)) return c.json({ error: "upgrade_pending", message: "Luxury and Ambulance categories need a database update first." }, 503);
+  const extras = await hasColumn("vehicle_categories", "service_group");
   const res = await db.execute({
     sql: `UPDATE vehicle_categories SET kind = ?, name = ?, seats = ?, cargo_type = ?, size_label = ?, reference_image_key = ?,
             rate_per_km = ?, minimum_fare = ?, owner_share_percent = ?, driver_share_percent = ?, platform_share_percent = ?,
-            active = ?, sort = ?, updated_at = datetime('now') WHERE id = ?`,
-    args: [...categoryArgs(parsed.data), id],
+            active = ?, sort = ?${extras ? ", service_group = ?, rate_per_hour = ?, description = ?" : ""}, updated_at = datetime('now') WHERE id = ?`,
+    args: [...categoryArgs(parsed.data), ...(extras ? [parsed.data.serviceGroup, parsed.data.ratePerHour, parsed.data.description ?? null] : []), id],
   });
   if (res.rowsAffected === 0) return c.json({ error: "not_found" }, 404);
   await logActivity({ actor: c.get("user"), action: "car.category.update", entityType: "vehicle_category", entityId: id, summary: `Updated car category ${parsed.data.name}`, after: parsed.data, ip: clientIp(c) });

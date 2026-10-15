@@ -275,6 +275,8 @@ const DEFAULTS = {
   car_share_platform_percent: "10",
   /** A driver further than this from the pickup isn't offered the ride. */
   car_driver_max_pickup_km: "10",
+  /** Shown beside Ambulance requests: a life-threatening emergency should also call this. */
+  car_emergency_number: "999",
   car_convenient_rate_per_km: "2000",
   car_convenient_minimum_fare: "8000",
   car_comfort_premium_percent: "30",
@@ -425,6 +427,8 @@ export type CarSettings = {
   matchingMode: CarMatchingMode;
   shares: CarShares;
   maxPickupKm: number;
+  /** Phone number shown with Ambulance requests. */
+  emergencyNumber?: string;
   servicePricing?: { ratePerKm: number; minimumFare: number; comfortPremiumPercent: number; xlPremiumPercent: number; xlMinSeats: number };
   withdrawalsEnabled: boolean;
   withdrawalMinAmount: number;
@@ -490,7 +494,7 @@ export async function getCarServicePricing(): Promise<NonNullable<CarSettings["s
 }
 
 export async function getCarSettings(): Promise<CarSettings> {
-  const [enabled, onDemand, mode, owner, driver, platform, maxKm, wdEnabled, wdMin, sEnabled, sMax, sLead, sOpen, sWatch, sNoSig, sSpeed, cpEnabled, cpSeats, cpRepeat, cpCutoff, cpPay, cpRadius, sdEnabled, sdPct, sdDays, sdDeposit, sdApprove, sdGrace, sdInspections, vpMax, vpMin, kycOwner, kycDriverId, kycLicence, dEnabled, dShare, dRent, dMin, dMax, dRentMax] = await Promise.all([
+  const [enabled, onDemand, mode, owner, driver, platform, maxKm, wdEnabled, wdMin, sEnabled, sMax, sLead, sOpen, sWatch, sNoSig, sSpeed, cpEnabled, cpSeats, cpRepeat, cpCutoff, cpPay, cpRadius, sdEnabled, sdPct, sdDays, sdDeposit, sdApprove, sdGrace, sdInspections, vpMax, vpMin, kycOwner, kycDriverId, kycLicence, dEnabled, dShare, dRent, dMin, dMax, dRentMax, emergencyNumber] = await Promise.all([
     getSetting("car_enabled"),
     getSetting("car_ondemand_enabled"),
     getSetting("car_matching_mode"),
@@ -531,6 +535,7 @@ export async function getCarSettings(): Promise<CarSettings> {
     getSetting("car_deal_min_owner_share_percent"),
     getSetting("car_deal_max_owner_share_percent"),
     getSetting("car_deal_max_rent_per_day"),
+    getSetting("car_emergency_number"),
   ]);
   const sdPercent = sdPct === "" ? NaN : Number(sdPct);
   const clamp = (v: string, lo: number, hi: number, fallback: number) => Math.min(hi, Math.max(lo, Math.floor(Number(v)) || fallback));
@@ -546,6 +551,7 @@ export async function getCarSettings(): Promise<CarSettings> {
     matchingMode: mode === "first_to_claim" ? "first_to_claim" : "customer_selects",
     shares,
     maxPickupKm: Math.min(200, Math.max(1, Number(maxKm) || 10)),
+    emergencyNumber: /^[0-9+*#]{2,15}$/.test(String(emergencyNumber ?? "").trim()) ? String(emergencyNumber).trim() : "999",
     servicePricing: await getCarServicePricing(),
     withdrawalsEnabled: wdEnabled === "1",
     withdrawalMinAmount: Math.max(0, Math.floor(Number(wdMin) || 0)),
@@ -603,6 +609,7 @@ export async function setCarSettings(next: CarSettings): Promise<void> {
   await setSetting("car_share_driver_percent", String(next.shares.driver));
   await setSetting("car_share_platform_percent", String(next.shares.platform));
   await setSetting("car_driver_max_pickup_km", String(next.maxPickupKm));
+  if (next.emergencyNumber != null) await setSetting("car_emergency_number", next.emergencyNumber);
   if (next.servicePricing) {
     await setSetting("car_convenient_rate_per_km", String(next.servicePricing.ratePerKm));
     await setSetting("car_convenient_minimum_fare", String(next.servicePricing.minimumFare));

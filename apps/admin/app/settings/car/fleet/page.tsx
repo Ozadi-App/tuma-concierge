@@ -248,7 +248,7 @@ export default function CarFleetPage() {
 }
 
 function Categories({ categories, act }: { categories: AdminCarCategory[]; act: (fn: () => Promise<unknown>) => Promise<void> }) {
-  const empty = { kind: "passenger" as "passenger" | "cargo", name: "", seats: "", cargoType: "", sizeLabel: "", rate: "", min: "", o: "", d: "", p: "", active: true };
+  const empty = { kind: "passenger" as "passenger" | "cargo", group: "standard" as "standard" | "luxury" | "ambulance", hourly: "", description: "", name: "", seats: "", cargoType: "", sizeLabel: "", rate: "", min: "", o: "", d: "", p: "", active: true };
   const [form, setForm] = useState(empty);
   const [editing, setEditing] = useState<string | null>(null);
   const set = (patch: Partial<typeof empty>) => setForm((f) => ({ ...f, ...patch }));
@@ -257,6 +257,9 @@ function Categories({ categories, act }: { categories: AdminCarCategory[]; act: 
     setEditing(c.id);
     setForm({
       kind: c.kind,
+      group: c.service_group ?? "standard",
+      hourly: c.rate_per_hour ? String(c.rate_per_hour) : "",
+      description: c.description ?? "",
       name: c.name,
       seats: c.seats != null ? String(c.seats) : "",
       cargoType: c.cargo_type ?? "",
@@ -277,6 +280,9 @@ function Categories({ categories, act }: { categories: AdminCarCategory[]; act: 
       api.adminSaveCarCategory(
         {
           kind: form.kind,
+          serviceGroup: form.kind === "passenger" ? form.group : "standard",
+          ratePerHour: form.kind === "passenger" && form.group === "luxury" ? Number(form.hourly) || 0 : 0,
+          description: form.description.trim() || null,
           name: form.name.trim(),
           seats: form.kind === "passenger" ? num(form.seats) : null,
           cargoType: form.kind === "cargo" ? form.cargoType.trim() || null : null,
@@ -304,7 +310,7 @@ function Categories({ categories, act }: { categories: AdminCarCategory[]; act: 
           <li key={c.id} className="home-card flex items-center gap-3">
             <button type="button" className="min-w-0 flex-1 text-left" onClick={() => edit(c)}>
               <span className="block text-sm font-semibold text-ink">
-                {c.name} {c.active === 0 && <span className="font-normal text-ink-500">(hidden)</span>}
+                {c.name} {c.service_group === "luxury" && <span className="font-normal text-ink-500">(luxury)</span>}{c.service_group === "ambulance" && <span className="font-normal text-ink-500">(ambulance)</span>} {c.active === 0 && <span className="font-normal text-ink-500">(hidden)</span>}
               </span>
               <span className="block text-xs text-ink-500">
                 {c.kind === "passenger" ? `${c.seats ?? "?"} seats` : c.cargo_type ?? "cargo"} · UGX {c.rate_per_km.toLocaleString("en-UG")}/km · min UGX {c.minimum_fare.toLocaleString("en-UG")}
@@ -320,6 +326,13 @@ function Categories({ categories, act }: { categories: AdminCarCategory[]; act: 
           <option value="passenger">Passenger car (by seats)</option>
           <option value="cargo">Cargo van / truck</option>
         </Select>
+        {form.kind === "passenger" && (
+          <Select value={form.group} onValueChange={(value) => set({ group: value as "standard" | "luxury" | "ambulance" })} className={field} aria-label="Service">
+            <option value="standard">Ordinary taxi (Convenient / Comfort)</option>
+            <option value="luxury">Luxury (weddings, parties, red carpet)</option>
+            <option value="ambulance">Ambulance (emergency)</option>
+          </Select>
+        )}
         <input value={form.name} onChange={(e) => set({ name: e.target.value })} placeholder="Name, e.g. Sedan or 3-ton truck" className={field} required />
         {form.kind === "passenger" ? (
           <input inputMode="numeric" value={form.seats} onChange={(e) => set({ seats: digits(e.target.value) })} placeholder="Seats" className={field} />
@@ -327,6 +340,15 @@ function Categories({ categories, act }: { categories: AdminCarCategory[]; act: 
           <input value={form.cargoType} onChange={(e) => set({ cargoType: e.target.value })} placeholder="Cargo type, e.g. Pickup, Van, Truck" className={field} />
         )}
         <input value={form.sizeLabel} onChange={(e) => set({ sizeLabel: e.target.value })} placeholder="Size note (optional)" className={field} />
+        {form.kind === "passenger" && form.group !== "standard" && (
+          <input value={form.description} onChange={(e) => set({ description: e.target.value.slice(0, 240) })} placeholder="Short description customers see" className={field} />
+        )}
+        {form.kind === "passenger" && form.group === "luxury" && (
+          <input inputMode="numeric" value={form.hourly} onChange={(e) => set({ hourly: digits(e.target.value) })} placeholder="UGX per hour of hire (0 = not offered by the hour)" className={field} />
+        )}
+        {form.kind === "passenger" && form.group === "ambulance" && (
+          <p className="text-xs text-ink-500">Ambulances are sent to the nearest free one straight away and can&apos;t be booked for later. Keep this hidden until real ambulances are approved.</p>
+        )}
         <div className="grid grid-cols-2 gap-3">
           <input inputMode="numeric" value={form.rate} onChange={(e) => set({ rate: digits(e.target.value) })} placeholder="UGX per km" className={field} />
           <input inputMode="numeric" value={form.min} onChange={(e) => set({ min: digits(e.target.value) })} placeholder="Minimum fare" className={field} />
