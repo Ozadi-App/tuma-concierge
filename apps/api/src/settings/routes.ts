@@ -22,6 +22,8 @@ import {
   setCarSettings,
   getGasSettings,
   setGasSettings,
+  getPharmacySettings,
+  setPharmacySettings,
   getMarketplaceSettings,
   setMarketplaceSettings,
   getLugandaAudioSettings,
@@ -141,6 +143,7 @@ async function fullSettings() {
     bidding: await getBiddingSettings(),
     car: await getCarSettings(),
     gas: await getGasSettings(),
+    pharmacy: await getPharmacySettings(),
     marketplace: await getMarketplaceSettings(),
     ...delivery,
     services,
@@ -396,6 +399,14 @@ const updateSchema = z.object({
     })
     .partial()
     .optional(),
+  pharmacy: z
+    .object({
+      enabled: z.boolean(),
+      maxImageMb: z.number().int().min(1).max(20),
+      submissionsPerHour: z.number().int().min(1).max(100),
+    })
+    .partial()
+    .optional(),
   marketplace: z
     .object({
       enabled: z.boolean(),
@@ -541,6 +552,7 @@ settingsRoutes.put(
     if (parsed.data.bidding) await setBiddingSettings(parsed.data.bidding);
     if (parsed.data.car) await setCarSettings(parsed.data.car);
     if (parsed.data.gas) await setGasSettings(parsed.data.gas);
+    if (parsed.data.pharmacy) await setPharmacySettings(parsed.data.pharmacy);
     if (parsed.data.marketplace) await setMarketplaceSettings(parsed.data.marketplace);
 
     if (parsed.data.deliveryRatePerKm != null) {

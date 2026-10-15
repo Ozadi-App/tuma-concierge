@@ -1,155 +1,124 @@
 "use client";
 
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useState,
-  type ReactNode,
-} from "react";
-import {
-  api,
-  PHARMACIST_KEY,
-  PHARMACY_STORE_KEY,
-  TOKEN_KEY,
-  errorMessage,
-} from "./api";
+import { ApiError } from "@peebee/shared";
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
+import { api, PHARMACIST_KEY, PHARMACY_STORE_KEY, TOKEN_KEY } from "./api";
 
 export interface PharmacistUser {
   id: string;
   name: string;
-  phone: string;
-  role: "supervising_pharmacist" | "pharmacist" | "dispenser";
-  aplNumber: string;
+  /** Their role at the pharmacy: owner or manager. */
+  role: string;
 }
 
 export interface PharmacyDetails {
   id: string;
   name: string;
-  slug: string;
   address: string;
   phone: string;
+  /** The premises licence Peebee staff recorded when they approved this pharmacy. */
   ndaLicenseNumber: string;
-  isNdaVerified: boolean;
   isOpen: boolean;
   acceptingPrescriptions: boolean;
-  minOrderAmount: number;
 }
 
 interface AuthContextType {
   pharmacist: PharmacistUser | null;
   pharmacy: PharmacyDetails | null;
   ready: boolean;
-  login: (phone: string, pin: string) => Promise<void>;
+  login: (identifier: string, password: string) => Promise<void>;
   logout: () => void;
   toggleOpen: () => void;
   toggleAcceptingRx: () => void;
 }
 
-const DEFAULT_PHARMACIST: PharmacistUser = {
-  id: "pharm_sarah",
-  name: "Dr. Sarah Namubiru, BPharm, MPS",
-  phone: "+256 772 110 220",
-  role: "supervising_pharmacist",
-  aplNumber: "NDA/APL/2026/0418",
-};
-
-const DEFAULT_PHARMACY: PharmacyDetails = {
-  id: "store_demo_vine_pharmacy",
-  name: "Vine Pharmacy — Acacia Mall",
-  slug: "vine-pharmacy-acacia",
-  address: "Acacia Mall, Ground Floor, Kisementi, Kololo",
-  phone: "+256 772 110 220",
-  ndaLicenseNumber: "NDA/PREM/KLA/2026/0418",
-  isNdaVerified: true,
-  isOpen: true,
-  acceptingPrescriptions: true,
-  minOrderAmount: 5000,
-};
-
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export function AuthProvider({ children }: { children: any }) {
+function clearSession() {
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(PHARMACIST_KEY);
+  localStorage.removeItem(PHARMACY_STORE_KEY);
+}
+
+/** Resolves the signed-in account to its approved pharmacy. Throws if the account isn't linked to one. */
+async function resolveSession() {
+  const me = await api.pharmacyMe();
+  const pharmacist: PharmacistUser = { id: me.pharmacist.id, name: me.pharmacist.name, role: me.pharmacist.role };
+  const pharmacy: PharmacyDetails = {
+    id: me.pharmacy.id,
+    name: me.pharmacy.name,
+    address: me.pharmacy.address,
+    phone: me.pharmacy.phone,
+    ndaLicenseNumber: me.pharmacy.licenceNumber,
+    isOpen: true,
+    acceptingPrescriptions: true,
+  };
+  return { pharmacist, pharmacy };
+}
+
+export function AuthProvider({ children }: { children: ReactNode }) {
   const [pharmacist, setPharmacist] = useState<PharmacistUser | null>(null);
   const [pharmacy, setPharmacy] = useState<PharmacyDetails | null>(null);
   const [ready, setReady] = useState(false);
 
+  // On load, trust only the server: a stored token is checked, never a stored profile.
   useEffect(() => {
-    try {
-      const storedPharmacist = localStorage.getItem(PHARMACIST_KEY);
-      const storedPharmacy = localStorage.getItem(PHARMACY_STORE_KEY);
-
-      if (storedPharmacist && storedPharmacy) {
-        setPharmacist(JSON.parse(storedPharmacist));
-        setPharmacy(JSON.parse(storedPharmacy));
-      } else {
-        // Default demo session for immediate readiness
-        setPharmacist(DEFAULT_PHARMACIST);
-        setPharmacy(DEFAULT_PHARMACY);
+    let cancelled = false;
+    (async () => {
+      try {
+        if (!localStorage.getItem(TOKEN_KEY)) return;
+        const session = await resolveSession();
+        if (cancelled) return;
+        setPharmacist(session.pharmacist);
+        setPharmacy(session.pharmacy);
+      } catch (err) {
+        // Signed out or not a pharmacy account: back to the sign-in screen.
+        if (err instanceof ApiError && (err.status === 401 || err.status === 403)) clearSession();
+      } finally {
+        if (!cancelled) setReady(true);
       }
-    } catch {
-      setPharmacist(DEFAULT_PHARMACIST);
-      setPharmacy(DEFAULT_PHARMACY);
-    } finally {
-      setReady(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const login = useCallback(async (identifier: string, password: string) => {
+    const result = await api.login({ identifier: identifier.trim(), password });
+    localStorage.setItem(TOKEN_KEY, result.token);
+    try {
+      const session = await resolveSession();
+      setPharmacist(session.pharmacist);
+      setPharmacy(session.pharmacy);
+    } catch (err) {
+      clearSession();
+      if (err instanceof ApiError && err.status === 403) {
+        throw new Error("This account isn't linked to an approved pharmacy. Ask Peebee support to link yours.");
+      }
+      throw err;
     }
   }, []);
 
-  const login = useCallback(async (phone: string, pin: string) => {
-    // Demo login implementation
-    setPharmacist(DEFAULT_PHARMACIST);
-    setPharmacy(DEFAULT_PHARMACY);
-    localStorage.setItem(PHARMACIST_KEY, JSON.stringify(DEFAULT_PHARMACIST));
-    localStorage.setItem(PHARMACY_STORE_KEY, JSON.stringify(DEFAULT_PHARMACY));
-    localStorage.setItem(TOKEN_KEY, "demo_pharmacy_token");
-  }, []);
-
   const logout = useCallback(() => {
+    void api.logout().catch(() => undefined);
+    clearSession();
     setPharmacist(null);
     setPharmacy(null);
-    localStorage.removeItem(PHARMACIST_KEY);
-    localStorage.removeItem(PHARMACY_STORE_KEY);
-    localStorage.removeItem(TOKEN_KEY);
   }, []);
 
-  const toggleOpen = useCallback(() => {
-    setPharmacy((prev) => {
-      if (!prev) return null;
-      const updated = { ...prev, isOpen: !prev.isOpen };
-      localStorage.setItem(PHARMACY_STORE_KEY, JSON.stringify(updated));
-      return updated;
-    });
-  }, []);
-
-  const toggleAcceptingRx = useCallback(() => {
-    setPharmacy((prev) => {
-      if (!prev) return null;
-      const updated = { ...prev, acceptingPrescriptions: !prev.acceptingPrescriptions };
-      localStorage.setItem(PHARMACY_STORE_KEY, JSON.stringify(updated));
-      return updated;
-    });
-  }, []);
+  // Display-only for now: these are not yet sent to the server or applied to customers.
+  const toggleOpen = useCallback(() => setPharmacy((prev) => (prev ? { ...prev, isOpen: !prev.isOpen } : prev)), []);
+  const toggleAcceptingRx = useCallback(() => setPharmacy((prev) => (prev ? { ...prev, acceptingPrescriptions: !prev.acceptingPrescriptions } : prev)), []);
 
   return (
-    <AuthContext.Provider
-      value={{
-        pharmacist,
-        pharmacy,
-        ready,
-        login,
-        logout,
-        toggleOpen,
-        toggleAcceptingRx,
-      }}
-    >
+    <AuthContext.Provider value={{ pharmacist, pharmacy, ready, login, logout, toggleOpen, toggleAcceptingRx }}>
       {children}
     </AuthContext.Provider>
   );
 }
 
 export function useAuth() {
-  const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error("useAuth must be used within an AuthProvider");
-  return ctx;
+  const value = useContext(AuthContext);
+  if (!value) throw new Error("useAuth must be used within AuthProvider");
+  return value;
 }

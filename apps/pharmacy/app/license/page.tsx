@@ -84,7 +84,7 @@ export default function PharmacyLicensePage() {
               </span>
               <h2 className="text-sm font-black text-ink">Premises License Certified</h2>
               <p className="text-xs text-ink-500 font-mono font-bold">
-                {pharmacy?.ndaLicenseNumber || "NDA/PREM/KLA/2026/0418"}
+                {pharmacy?.ndaLicenseNumber}
               </p>
             </div>
           </div>
@@ -121,11 +121,11 @@ export default function PharmacyLicensePage() {
         <div className="rounded-2xl bg-[rgb(var(--surface-muted))] p-3 space-y-1.5 text-xs">
           <div className="flex justify-between">
             <span className="text-ink-500">Annual Practicing Licence (APL):</span>
-            <strong className="text-ink font-mono">{pharmacist?.aplNumber}</strong>
+            <strong className="text-ink font-mono">Not on file</strong>
           </div>
           <div className="flex justify-between">
             <span className="text-ink-500">PSU Membership Number:</span>
-            <strong className="text-ink font-mono">PSU/REG/1492</strong>
+            <strong className="text-ink font-mono">Not on file</strong>
           </div>
           <div className="flex justify-between">
             <span className="text-ink-500">Validity:</span>
