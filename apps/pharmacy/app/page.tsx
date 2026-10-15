@@ -20,46 +20,21 @@ import {
   UserCheck,
 } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import type { PharmacyPrescription } from "@peebee/shared";
+import { useEffect, useState } from "react";
 import { useAuth } from "../lib/auth-context";
+import { api } from "../lib/api";
 
 const ugx = (val: number) => `UGX ${val.toLocaleString()}`;
 
-const INITIAL_PRESCRIPTIONS = [
-  {
-    id: "rx_demo_01",
-    patientName: "Prossy Kembabazi",
-    patientAge: 32,
-    patientGender: "Female",
-    timeAgo: "6 mins ago",
-    doctorName: "Dr. Mukasa (Norvik Hospital)",
-    slipUrl: "https://images.unsplash.com/photo-1584017911766-d451b3d0e843?auto=format&fit=crop&w=400&q=80",
-    symptoms: "Persistent chesty cough, low fever x 3 days. Penicillin allergy noted.",
-    status: "pending_review",
-  },
-  {
-    id: "rx_demo_02",
-    patientName: "Ronald Mugisha",
-    patientAge: 45,
-    patientGender: "Male",
-    timeAgo: "14 mins ago",
-    doctorName: "Dr. Nalule (Case Clinic)",
-    slipUrl: "https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?auto=format&fit=crop&w=400&q=80",
-    symptoms: "Monthly refill for hypertension and gastric acid management.",
-    status: "pending_review",
-  },
-  {
-    id: "rx_demo_03",
-    patientName: "Baby Ethan (Mother: Joy)",
-    patientAge: 2,
-    patientGender: "Child",
-    timeAgo: "22 mins ago",
-    doctorName: "Dr. Bbosa (Children's Clinic Kololo)",
-    slipUrl: "https://images.unsplash.com/photo-1585435557343-3b092031a831?auto=format&fit=crop&w=400&q=80",
-    symptoms: "Teething pain, mild colic, infant paracetamol drops requested.",
-    status: "pending_review",
-  },
-];
+const timeAgo = (iso: string) => {
+  const then = new Date(iso.includes("T") ? iso : `${iso.replace(" ", "T")}Z`).getTime();
+  const mins = Math.max(0, Math.round((Date.now() - then) / 60000));
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins} min ago`;
+  if (mins < 1440) return `${Math.round(mins / 60)} h ago`;
+  return `${Math.round(mins / 1440)} d ago`;
+};
 
 const RECENT_DISPENSED_ORDERS = [
   {
@@ -90,7 +65,16 @@ const RECENT_DISPENSED_ORDERS = [
 
 export default function PharmacyDashboardPage() {
   const { pharmacy, pharmacist } = useAuth();
-  const [prescriptions] = useState(INITIAL_PRESCRIPTIONS);
+  const [prescriptions, setPrescriptions] = useState<PharmacyPrescription[]>([]);
+  const [rxLoaded, setRxLoaded] = useState(false);
+
+  useEffect(() => {
+    api
+      .getPharmacistPrescriptions("pending_review")
+      .then((res) => setPrescriptions(res.prescriptions))
+      .catch(() => setPrescriptions([]))
+      .finally(() => setRxLoaded(true));
+  }, []);
 
   return (
     <div className="space-y-5">
@@ -103,11 +87,11 @@ export default function PharmacyDashboardPage() {
           <div>
             <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-gold">
               <ShieldCheck className="h-3 w-3" />
-              <span>Supervising Pharmacist</span>
+              <span>{pharmacist?.role === "owner" ? "Pharmacy Owner" : "Pharmacy Manager"}</span>
             </div>
             <h2 className="text-sm font-black text-ink">{pharmacist?.name}</h2>
             <p className="text-[11px] text-ink-500 font-medium">
-              Licence: {pharmacist?.aplNumber} · Valid 2026
+              Premises licence: {pharmacy?.ndaLicenseNumber}
             </p>
           </div>
         </div>
@@ -150,7 +134,7 @@ export default function PharmacyDashboardPage() {
           </div>
           <div className="mt-3">
             <p className="text-xl font-black text-ink">{ugx(485000)}</p>
-            <p className="text-xs font-bold text-ink-500">Today's Sales</p>
+            <p className="text-xs font-bold text-ink-500">Today's Sales (sample figure)</p>
           </div>
           <span className="mt-2 block text-[10px] font-bold text-ink-500">
             14 dispensed orders
@@ -213,6 +197,11 @@ export default function PharmacyDashboardPage() {
         </div>
 
         <div className="space-y-2.5">
+          {rxLoaded && prescriptions.length === 0 && (
+            <p className="rounded-3xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-4 text-center text-xs text-ink-500">
+              No prescriptions are waiting.
+            </p>
+          )}
           {prescriptions.map((rx) => (
             <article
               key={rx.id}
@@ -220,19 +209,14 @@ export default function PharmacyDashboardPage() {
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-3">
-                  <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-2xl border border-[var(--border-faint)] bg-black/5">
-                    <img
-                      src={rx.slipUrl}
-                      alt="Prescription slip"
-                      className="h-full w-full object-cover"
-                    />
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-[var(--border-faint)] bg-black/5 text-gold">
+                    <FileText className="h-5 w-5" />
                   </div>
                   <div>
-                    <h3 className="text-xs font-black text-ink">{rx.patientName}</h3>
+                    <h3 className="text-xs font-black text-ink">{rx.customerName}</h3>
                     <p className="text-[11px] text-ink-500 font-medium">
-                      {rx.patientAge} yrs · {rx.patientGender} · {rx.timeAgo}
+                      {[rx.patientAge != null ? `${rx.patientAge} yrs` : null, rx.patientGender, timeAgo(rx.createdAt)].filter(Boolean).join(" · ")}
                     </p>
-                    <p className="text-[10px] font-bold text-gold">{rx.doctorName}</p>
                   </div>
                 </div>
 
@@ -243,7 +227,7 @@ export default function PharmacyDashboardPage() {
 
               <div className="rounded-2xl bg-[rgb(var(--surface-muted))] p-2.5 text-xs text-ink-500 leading-relaxed">
                 <span className="font-bold text-ink">Patient Note: </span>
-                {rx.symptoms}
+                {rx.patientNotes || "None"}
               </div>
 
               <div className="flex items-center justify-between pt-1">
@@ -267,7 +251,7 @@ export default function PharmacyDashboardPage() {
       <section className="space-y-3 pt-2">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-black text-ink">Recent Dispensed Orders</h2>
-          <span className="text-xs text-ink-500">Live courier tracking</span>
+          <span className="text-xs text-ink-500">Sample data · not connected yet</span>
         </div>
 
         <div className="space-y-2">

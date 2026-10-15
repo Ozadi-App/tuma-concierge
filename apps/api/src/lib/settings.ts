@@ -353,7 +353,15 @@ const DEFAULTS = {
   service_gas_enabled: "1",
   gas_rider_daily_limit_ugx: "60000",
   gas_voucher_expiry_minutes: "60",
+  gas_session_hours: "12",
+  gas_pin_max_attempts: "5",
+  gas_withdrawal_min_ugx: "5000",
+  gas_voucher_lookups_per_5min: "20",
   gas_platform_discount_percent: "0",
+  /** Pharmacy prescriptions (customer uploads a doctor's slip; the pharmacy quotes it) */
+  pharmacy_enabled: "1",
+  pharmacy_max_image_mb: "6",
+  pharmacy_submissions_per_hour: "10",
   /** Peebee Marketplace: Groceries & Stores, Live Commerce, Pro Paywalls, Social Ads */
   marketplace_enabled: "1",
   marketplace_live_enabled: "1",
@@ -1302,20 +1310,36 @@ export type GasSettings = {
   dailyLimitUgx: number;
   voucherExpiryMinutes: number;
   platformDiscountPercent: number;
+  /** How long an attendant/manager sign-in lasts. */
+  sessionHours: number;
+  /** Wrong PIN guesses before an account is locked out (progressively longer lockouts). */
+  pinMaxAttempts: number;
+  /** Smallest amount a station can withdraw. */
+  withdrawalMinUgx: number;
+  /** Voucher code lookups an attendant may make per 5 minutes before being slowed down. */
+  voucherLookupsPer5Min: number;
 };
 
 export async function getGasSettings(): Promise<GasSettings> {
-  const [enabledStr, limitStr, expiryStr, discountStr] = await Promise.all([
+  const [enabledStr, limitStr, expiryStr, discountStr, sessionStr, pinStr, minWdStr, lookupStr] = await Promise.all([
     getSetting("service_gas_enabled"),
     getSetting("gas_rider_daily_limit_ugx"),
     getSetting("gas_voucher_expiry_minutes"),
     getSetting("gas_platform_discount_percent"),
+    getSetting("gas_session_hours"),
+    getSetting("gas_pin_max_attempts"),
+    getSetting("gas_withdrawal_min_ugx"),
+    getSetting("gas_voucher_lookups_per_5min"),
   ]);
   return {
     enabled: enabledStr !== "0",
     dailyLimitUgx: Math.max(0, Number(limitStr) || 60000),
     voucherExpiryMinutes: Math.max(5, Number(expiryStr) || 60),
     platformDiscountPercent: Math.max(0, Math.min(100, Number(discountStr) || 0)),
+    sessionHours: Math.max(1, Math.min(168, Number(sessionStr) || 12)),
+    pinMaxAttempts: Math.max(3, Math.min(20, Number(pinStr) || 5)),
+    withdrawalMinUgx: Math.max(1000, Number(minWdStr) || 5000),
+    voucherLookupsPer5Min: Math.max(5, Math.min(200, Number(lookupStr) || 20)),
   };
 }
 
@@ -1325,6 +1349,39 @@ export async function setGasSettings(next: Partial<GasSettings>): Promise<void> 
   if (next.dailyLimitUgx != null) writes.push(setSetting("gas_rider_daily_limit_ugx", String(Math.max(0, Math.round(next.dailyLimitUgx)))));
   if (next.voucherExpiryMinutes != null) writes.push(setSetting("gas_voucher_expiry_minutes", String(Math.max(5, Math.round(next.voucherExpiryMinutes)))));
   if (next.platformDiscountPercent != null) writes.push(setSetting("gas_platform_discount_percent", String(Math.max(0, Math.min(100, next.platformDiscountPercent)))));
+  if (next.sessionHours != null) writes.push(setSetting("gas_session_hours", String(Math.max(1, Math.min(168, Math.round(next.sessionHours))))));
+  if (next.pinMaxAttempts != null) writes.push(setSetting("gas_pin_max_attempts", String(Math.max(3, Math.min(20, Math.round(next.pinMaxAttempts))))));
+  if (next.withdrawalMinUgx != null) writes.push(setSetting("gas_withdrawal_min_ugx", String(Math.max(1000, Math.round(next.withdrawalMinUgx)))));
+  if (next.voucherLookupsPer5Min != null) writes.push(setSetting("gas_voucher_lookups_per_5min", String(Math.max(5, Math.min(200, Math.round(next.voucherLookupsPer5Min))))));
+  await Promise.all(writes);
+}
+
+export type PharmacySettings = {
+  enabled: boolean;
+  /** Largest prescription photo accepted. */
+  maxImageMb: number;
+  /** Prescriptions one customer may submit per hour. */
+  submissionsPerHour: number;
+};
+
+export async function getPharmacySettings(): Promise<PharmacySettings> {
+  const [enabled, mb, perHour] = await Promise.all([
+    getSetting("pharmacy_enabled"),
+    getSetting("pharmacy_max_image_mb"),
+    getSetting("pharmacy_submissions_per_hour"),
+  ]);
+  return {
+    enabled: enabled !== "0",
+    maxImageMb: Math.max(1, Math.min(20, Number(mb) || 6)),
+    submissionsPerHour: Math.max(1, Math.min(100, Number(perHour) || 10)),
+  };
+}
+
+export async function setPharmacySettings(next: Partial<PharmacySettings>): Promise<void> {
+  const writes: Promise<void>[] = [];
+  if (next.enabled != null) writes.push(setSetting("pharmacy_enabled", next.enabled ? "1" : "0"));
+  if (next.maxImageMb != null) writes.push(setSetting("pharmacy_max_image_mb", String(Math.max(1, Math.min(20, Math.round(next.maxImageMb))))));
+  if (next.submissionsPerHour != null) writes.push(setSetting("pharmacy_submissions_per_hour", String(Math.max(1, Math.min(100, Math.round(next.submissionsPerHour))))));
   await Promise.all(writes);
 }
 

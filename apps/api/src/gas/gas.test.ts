@@ -4,9 +4,14 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createClient, type Client, type InArgs } from "@libsql/client/node";
 import app from "../app.js";
+import { signToken } from "../auth/jwt.js";
 import { setD1Binding, type D1Database } from "../db/client.js";
 import { splitSqlStatements } from "../db/split-sql.js";
 import { resetSchemaCache } from "../lib/schema.js";
+import { setSetting } from "../lib/settings.js";
+import { hashPin } from "./auth.js";
+
+process.env.JWT_SECRET = "gas-test-only-secret";
 
 function bindDatabase(client: Client) {
   const prepare = (sql: string) => ({
@@ -30,7 +35,9 @@ function bindDatabase(client: Client) {
   } as unknown as D1Database);
 }
 
-test("gas routes: full lifecycle with in-memory database", async () => {
+type Json = Record<string, any>;
+
+async function setup() {
   resetSchemaCache();
   const client = createClient({ url: "file::memory:" });
   const migrations = join(process.cwd(), "src/db/migrations");
@@ -41,257 +48,270 @@ test("gas routes: full lifecycle with in-memory database", async () => {
   }
   bindDatabase(client);
 
-  // 1. Status & stations
-  const statusRes = await app.request("/v1/gas/status");
-  assert.equal(statusRes.status, 200);
-  const statusData = (await statusRes.json()) as any;
-  assert.equal(statusData.ok, true);
-  assert.equal(statusData.settings.enabled, true);
+  const call = async (path: string, opts: { method?: string; token?: string; body?: unknown } = {}) => {
+    const res = await app.request(`/v1/gas${path}`, {
+      method: opts.method ?? (opts.body !== undefined ? "POST" : "GET"),
+      headers: { "Content-Type": "application/json", ...(opts.token ? { Authorization: `Bearer ${opts.token}` } : {}) },
+      body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
+    });
+    return { status: res.status, json: (await res.json().catch(() => ({}))) as Json };
+  };
 
-  const stationsRes = await app.request("/v1/gas/stations");
-  assert.equal(stationsRes.status, 200);
-  const stationsData = (await stationsRes.json()) as any;
-  assert.ok(Array.isArray(stationsData.outlets));
-  assert.ok(stationsData.outlets.length > 0);
-  assert.ok(stationsData.outlets.some((o: any) => o.code === "GAS-TOT-01"));
+  const mkUser = async (id: string, role: "customer" | "rider" | "admin", wallet = 0) => {
+    await client.execute({
+      sql: `INSERT INTO users (id, phone, name, role, password_hash, wallet_balance, admin_role) VALUES (?, ?, ?, ?, 'x', ?, ?)`,
+      args: [id, `+2567${Math.floor(10000000 + Math.random() * 89999999)}`, `User ${id}`, role, wallet, role === "admin" ? "super_admin" : null],
+    });
+    return signToken({ sub: id, role });
+  };
+  const wallet = async (id: string) => Number((await client.execute({ sql: "SELECT wallet_balance AS b FROM users WHERE id = ?", args: [id] })).rows[0].b);
 
-  // 2. Products & Price update
-  const prodRes = await app.request("/v1/gas/products");
-  assert.equal(prodRes.status, 200);
-  const prodData = (await prodRes.json()) as any;
-  assert.ok(prodData.products.some((p: any) => p.id === "prod_petrol"));
-
-  const updateRes = await app.request("/v1/gas/outlets/fout_total_lugogo/prices", {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      prices: [
-        { product_id: "prod_petrol", price_per_unit: 5600 },
-        { product_id: "prod_diesel", price_per_unit: 5300 },
-      ],
-    }),
+  const devPin = await hashPin("2468");
+  await client.execute({ sql: "UPDATE fuel_station_managers SET pin = ? WHERE id = 'fmgr_tot_01'", args: [devPin] });
+  await client.execute({ sql: "UPDATE fuel_pump_attendants SET pin = ? WHERE id = 'fatt_lugogo_1'", args: [devPin] });
+  const pin = await hashPin("7391");
+  // A second outlet with its own manager and attendant, for cross-station checks.
+  await call("/stations"); // runs schema provisioning
+  await client.execute({
+    sql: `INSERT OR REPLACE INTO fuel_station_managers (id, outlet_id, manager_code, full_name, phone, pin, role, status)
+          VALUES ('fmgr_shl_02', 'fout_shell_bugolobi', 'MGR-SHL-02', 'Grace Akello', '+256701999002', ?, 'station_manager', 'active')`,
+    args: [pin],
   });
-  assert.equal(updateRes.status, 200);
-
-  const getPricesRes = await app.request("/v1/gas/outlets/fout_total_lugogo/prices");
-  assert.equal(getPricesRes.status, 200);
-  const pricesData = (await getPricesRes.json()) as any;
-  const petrol = pricesData.prices.find((p: any) => p.product_id === "prod_petrol");
-  assert.equal(petrol.price_per_unit, 5600);
-
-  // Seed a rider user for foreign key constraint in DB
-  await client.execute(`
-    INSERT INTO users (id, phone, name, role, password_hash)
-    VALUES ('rider_test_123', '+256701999888', 'Mukasa Brian', 'rider', 'dummy_hash')
-  `);
-
-  // 3. Rider generates fuel code
-  const genRes = await app.request("/v1/gas/rider/generate-code", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      riderId: "rider_test_123",
-      vehiclePlate: "UFE 889P",
-      amountUgx: 25000,
-      productId: "prod_petrol",
-    }),
+  await client.execute({
+    sql: `INSERT OR REPLACE INTO fuel_pump_attendants (id, outlet_id, attendant_code, full_name, phone, pump_lane, status, pin)
+          VALUES ('fatt_shl_1', 'fout_shell_bugolobi', 'ATT-2001', 'Nakato Sarah', '+256701111002', 'Pump 1', 'on_duty', ?)`,
+    args: [pin],
   });
-  assert.equal(genRes.status, 200);
-  const genData = (await genRes.json()) as any;
-  assert.ok(genData.code);
-  assert.ok(genData.code.code.startsWith("PBGAS-"));
-  assert.equal(genData.code.authorized_amount_ugx, 25000);
-  const fullCode = genData.code.code;
-  const shortCode = genData.code.short_code;
 
-  // 4. Attendant verifies using short code
-  const verifyRes = await app.request("/v1/gas/verify-code", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      code: shortCode,
-      outletId: "fout_total_lugogo",
-    }),
-  });
-  assert.equal(verifyRes.status, 200);
-  const verifyData = (await verifyRes.json()) as any;
-  assert.equal(verifyData.valid, true);
-  assert.equal(verifyData.code.vehicle_plate, "UFE 889P");
-  assert.equal(verifyData.code.authorized_amount_ugx, 25000);
+  const loginManager = async (code = "MGR-TOT-01", p = "2468") => (await call("/manager/login", { body: { code, pin: p } })).json.token as string;
+  const loginAttendant = async (code = "ATT-1001", p = "2468") => (await call("/attendants/login", { body: { code, pin: p } })).json.token as string;
 
-  // 5. Attendant dispenses fuel
-  const dispenseRes = await app.request("/v1/gas/dispense", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      code: fullCode,
-      outletId: "fout_total_lugogo",
-      productId: "prod_petrol",
-      totalUgx: 20000,
-      pumpNumber: 2,
-      attendantName: "Dennis Kato",
-    }),
-  });
-  assert.equal(dispenseRes.status, 200);
-  const dispenseData = (await dispenseRes.json()) as any;
-  assert.equal(dispenseData.ok, true);
-  assert.ok(dispenseData.receipt.receipt_ref.startsWith("RCP-GAS-"));
-  assert.equal(dispenseData.receipt.total_ugx, 20000);
-  assert.ok(dispenseData.receipt.litres_dispensed > 0);
+  return { client, call, mkUser, wallet, loginManager, loginAttendant };
+}
 
-  // 6. Verifying again returns already_used
-  const reVerifyRes = await app.request("/v1/gas/verify-code", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      code: fullCode,
-      outletId: "fout_total_lugogo",
-    }),
-  });
-  assert.equal(reVerifyRes.status, 400);
-  const reVerifyData = (await reVerifyRes.json()) as any;
-  assert.equal(reVerifyData.error, "already_used");
+test("gas: voucher lifecycle charges the wallet, refunds the unused part and pays the station", async () => {
+  const { call, mkUser, wallet, loginManager, loginAttendant } = await setup();
+  const rider = await mkUser("rider_a", "rider", 100000);
 
-  // 7. Check shift summary
-  const shiftRes = await app.request("/v1/gas/shift/summary?outletId=fout_total_lugogo");
-  assert.equal(shiftRes.status, 200);
-  const shiftData = (await shiftRes.json()) as any;
-  assert.ok(shiftData.summary.total_dispenses >= 1);
-  assert.ok(shiftData.summary.total_ugx >= 20000);
+  const gen = await call("/rider/generate-code", { token: rider, body: { vehiclePlate: "UFE 889P", amountUgx: 25000, productId: "prod_petrol" } });
+  assert.equal(gen.status, 200);
+  assert.match(gen.json.code.code, /^PBGAS-\d{6}$/);
+  assert.equal(await wallet("rider_a"), 75000, "amount is held when the voucher is made");
 
-  // 8. Station Manager Login
-  const mgrLoginRes = await app.request("/v1/gas/manager/login", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      code: "MGR-TOT-01",
-      pin: "1234",
-      outletId: "fout_total_lugogo",
-    }),
-  });
-  assert.equal(mgrLoginRes.status, 200);
-  const mgrLoginData = (await mgrLoginRes.json()) as any;
-  assert.equal(mgrLoginData.ok, true);
-  assert.equal(mgrLoginData.manager.manager_code, "MGR-TOT-01");
-  assert.equal(mgrLoginData.manager.full_name, "Patrick Semakula");
-  assert.ok(mgrLoginData.token.startsWith("gmgr_"));
+  const attendant = await loginAttendant();
+  const verify = await call("/verify-code", { token: attendant, body: { code: gen.json.code.short_code } });
+  assert.equal(verify.status, 200);
+  assert.equal(verify.json.code.authorized_amount_ugx, 25000);
 
-  // 9. Station Manager Commissions a New Attendant with Pending Status
-  const commRes = await app.request("/v1/gas/manager/attendants/commission", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      outletId: "fout_total_lugogo",
-      fullName: "Nalubega Joan",
-      phone: "+256701555666",
-      attendantCode: "ATT-1099",
-      pumpLane: "Pump 3",
-      pin: "4321",
-      approveImmediately: false,
-    }),
-  });
-  assert.equal(commRes.status, 200);
-  const commData = (await commRes.json()) as any;
-  assert.equal(commData.ok, true);
-  assert.equal(commData.attendant.commission_status, "pending");
-  const newAttId = commData.attendant.id;
+  const dispense = await call("/dispense", { token: attendant, body: { code: gen.json.code.code, productId: "prod_petrol", totalUgx: 20000, pumpNumber: 2 } });
+  assert.equal(dispense.status, 200);
+  assert.equal(dispense.json.receipt.total_ugx, 20000);
+  assert.equal(dispense.json.receipt.attendant_id, "fatt_lugogo_1");
+  assert.equal(await wallet("rider_a"), 80000, "the UGX 5,000 that was not pumped is refunded");
 
-  // 10. Pending attendant tries to login -> rejected with 403 pending_approval
-  const blockedLoginRes = await app.request("/v1/gas/attendants/login", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      code: "ATT-1099",
-      pin: "4321",
-    }),
-  });
-  assert.equal(blockedLoginRes.status, 403);
-  const blockedData = (await blockedLoginRes.json()) as any;
-  assert.equal(blockedData.error, "pending_approval");
+  const again = await call("/dispense", { token: attendant, body: { code: gen.json.code.code, productId: "prod_petrol", totalUgx: 5000 } });
+  assert.equal(again.status, 409, "a redeemed voucher cannot be redeemed again");
+  assert.equal(await wallet("rider_a"), 80000);
+  assert.equal((await call("/verify-code", { token: attendant, body: { code: gen.json.code.code } })).json.error, "already_used");
 
-  // 11. Manager approves the attendant
-  const approveRes = await app.request(`/v1/gas/manager/attendants/${newAttId}/approve`, {
-    method: "POST",
-  });
-  assert.equal(approveRes.status, 200);
-  const approveData = (await approveRes.json()) as any;
-  assert.equal(approveData.attendant.commission_status, "approved");
+  const manager = await loginManager();
+  const sales = await call("/manager/sales-summary?period=today", { token: manager });
+  assert.equal(sales.json.summary.totalRevenueUgx, 20000);
+  assert.equal(sales.json.summary.availableBalanceUgx, 20000);
 
-  // 12. Approved attendant can now login
-  const allowedLoginRes = await app.request("/v1/gas/attendants/login", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      code: "ATT-1099",
-      pin: "4321",
-    }),
-  });
-  assert.equal(allowedLoginRes.status, 200);
-  const allowedData = (await allowedLoginRes.json()) as any;
-  assert.equal(allowedData.ok, true);
-  assert.equal(allowedData.attendant.code, "ATT-1099");
+  await call("/manager/payout-accounts", { token: manager, body: { type: "momo", accountRef: "+256782334455", accountName: "Lugogo Payout", networkOrBank: "MTN", isPrimary: true } });
+  const details = { phone: "+256782334455", network: "MTN", accountName: "Lugogo Payout" };
 
-  // 13. Manager checks attendants list
-  const listAttRes = await app.request("/v1/gas/manager/attendants?outletId=fout_total_lugogo");
-  assert.equal(listAttRes.status, 200);
-  const listAttData = (await listAttRes.json()) as any;
-  assert.ok(listAttData.attendants.some((a: any) => a.attendant_code === "ATT-1099"));
+  const wd = await call("/manager/withdrawals", { token: manager, body: { amountUgx: 12000, destinationType: "momo", destinationDetails: details } });
+  assert.equal(wd.status, 200);
+  assert.equal(wd.json.withdrawal.status, "pending", "a request is not a payout");
 
-  // 14. Station Sales Summary & Reports
-  const salesRes = await app.request("/v1/gas/manager/sales-summary?outletId=fout_total_lugogo&period=today");
-  assert.equal(salesRes.status, 200);
-  const salesData = (await salesRes.json()) as any;
-  assert.ok(salesData.summary.totalRevenueUgx >= 20000);
-  assert.ok(salesData.summary.availableBalanceUgx >= 20000);
-  assert.ok(salesData.summary.productBreakdown.length > 0);
+  const tooMuch = await call("/manager/withdrawals", { token: manager, body: { amountUgx: 9000, destinationType: "momo", destinationDetails: details } });
+  assert.equal(tooMuch.status, 409, "pending requests count against the balance");
 
-  // 15. Station Manager adds payout account
-  const addPayRes = await app.request("/v1/gas/manager/payout-accounts", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      outletId: "fout_total_lugogo",
-      type: "momo",
-      accountRef: "+256782334455",
-      accountName: "Lugogo Bypass Payout Manager",
-      networkOrBank: "MTN MoMo",
-      isPrimary: true,
-    }),
-  });
-  assert.equal(addPayRes.status, 200);
-  const addPayData = (await addPayRes.json()) as any;
-  assert.equal(addPayData.ok, true);
-  assert.equal(addPayData.account.account_name, "Lugogo Bypass Payout Manager");
+  const stranger = await call("/manager/withdrawals", { token: manager, body: { amountUgx: 5000, destinationType: "momo", destinationDetails: { phone: "+256700000000" } } });
+  assert.equal(stranger.json.error, "unregistered_destination");
 
-  // 16. Station Manager requests fund withdrawal
-  const wdRes = await app.request("/v1/gas/manager/withdrawals", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      outletId: "fout_total_lugogo",
-      amountUgx: 10000,
-      destinationType: "momo",
-      destinationDetails: {
-        phone: "+256782334455",
-        network: "MTN",
-        accountName: "Lugogo Bypass Payout Manager",
-      },
-    }),
-  });
-  assert.equal(wdRes.status, 200);
-  const wdData = (await wdRes.json()) as any;
-  assert.equal(wdData.ok, true);
-  assert.equal(wdData.withdrawal.amount_ugx, 10000);
-  assert.ok(wdData.withdrawal.reference.startsWith("WD-GAS-"));
+  const afterSales = await call("/manager/sales-summary?period=today", { token: manager });
+  assert.equal(afterSales.json.summary.availableBalanceUgx, 8000);
 
-  // 17. Verify withdrawal list & reduced available balance
-  const listWdRes = await app.request("/v1/gas/manager/withdrawals?outletId=fout_total_lugogo");
-  assert.equal(listWdRes.status, 200);
-  const listWdData = (await listWdRes.json()) as any;
-  assert.ok(listWdData.withdrawals.some((w: any) => w.reference === wdData.withdrawal.reference));
+  // An admin pays it out, once.
+  const admin = await mkUser("admin_a", "admin");
+  const settled = await call(`/admin/withdrawals/${wd.json.withdrawal.id}/complete`, { token: admin, body: { providerRef: "MTN-123" } });
+  assert.equal(settled.status, 200);
+  assert.equal((await call(`/admin/withdrawals/${wd.json.withdrawal.id}/complete`, { token: admin, body: {} })).status, 409);
+});
 
-  const updatedSalesRes = await app.request("/v1/gas/manager/sales-summary?outletId=fout_total_lugogo&period=today");
-  const updatedSalesData = (await updatedSalesRes.json()) as any;
-  assert.equal(updatedSalesData.summary.withdrawnTotalUgx, 10000);
-  assert.equal(updatedSalesData.summary.availableBalanceUgx, salesData.summary.availableBalanceUgx - 10000);
+test("gas: nothing sensitive works without a real signed-in session", async () => {
+  const { call, mkUser, loginManager } = await setup();
+  const rider = await mkUser("rider_b", "rider", 50000);
+  const forgedAttendant = "gatt_fatt_lugogo_1_1700000000000";
+  const forgedManager = "gmgr_fmgr_tot_01_1700000000000";
+
+  const protectedCalls: Array<[string, string, unknown?]> = [
+    ["PUT", "/outlets/fout_total_lugogo/prices", { prices: [{ product_id: "prod_petrol", price_per_unit: 1 }] }],
+    ["POST", "/verify-code", { code: "123456" }],
+    ["POST", "/dispense", { code: "123456", totalUgx: 5000 }],
+    ["GET", "/dispenses"],
+    ["GET", "/shift/summary"],
+    ["GET", "/me"],
+    ["POST", "/attendants/toggle-duty", { onDuty: false }],
+    ["GET", "/manager/me"],
+    ["GET", "/manager/attendants"],
+    ["POST", "/manager/attendants/commission", { fullName: "Eve Intruder", phone: "+256700000001" }],
+    ["GET", "/manager/sales-summary"],
+    ["GET", "/manager/transactions"],
+    ["GET", "/manager/payout-accounts"],
+    ["POST", "/manager/payout-accounts", { type: "momo", accountRef: "+256700000009", accountName: "Eve", networkOrBank: "MTN" }],
+    ["GET", "/manager/withdrawals"],
+    ["POST", "/manager/withdrawals", { amountUgx: 50000, destinationType: "momo", destinationDetails: { phone: "+256700000009" } }],
+    ["POST", "/rider/generate-code", { vehiclePlate: "UFE 1", amountUgx: 5000 }],
+    ["GET", "/rider/active-code"],
+    ["GET", "/rider/dispenses"],
+    ["POST", "/rider/cancel-code", {}],
+    ["GET", "/admin/withdrawals"],
+  ];
+  for (const [method, path, body] of protectedCalls) {
+    for (const token of [undefined, forgedAttendant, forgedManager]) {
+      const res = await call(path, { method, token, body });
+      assert.equal(res.status, 401, `${method} ${path} with ${token ?? "no token"} should be 401, got ${res.status}`);
+    }
+  }
+
+  // A rider's own session is not a station session, and a manager session is not an admin one.
+  assert.equal((await call("/dispenses", { token: rider })).status, 401);
+  assert.equal((await call("/manager/me", { token: rider })).status, 401);
+  assert.equal((await call("/admin/withdrawals", { token: rider })).status, 403);
+  assert.equal((await call("/admin/withdrawals", { token: await loginManager() })).status, 401);
+});
+
+test("gas: stations are isolated from each other", async () => {
+  const { call, mkUser, loginManager, loginAttendant } = await setup();
+  const rider = await mkUser("rider_c", "rider", 100000);
+  const totalManager = await loginManager();
+  const shellAttendant = await loginAttendant("ATT-2001", "7391");
+
+  // Prices at another station.
+  const price = await call("/outlets/fout_shell_bugolobi/prices", { method: "PUT", token: totalManager, body: { prices: [{ product_id: "prod_petrol", price_per_unit: 1 }] } });
+  assert.equal(price.status, 403);
+
+  // A voucher bound to one station is refused at another.
+  const gen = await call("/rider/generate-code", { token: rider, body: { vehiclePlate: "UFE 123A", amountUgx: 10000, productId: "prod_petrol", outletId: "fout_total_lugogo" } });
+  assert.equal(gen.status, 200);
+  const wrong = await call("/dispense", { token: shellAttendant, body: { code: gen.json.code.code, productId: "prod_petrol", totalUgx: 5000 } });
+  assert.equal(wrong.status, 403);
+  assert.equal(wrong.json.error, "wrong_outlet");
+
+  // A manager can't touch another station's attendant.
+  const shellAtt = await call("/manager/attendants/fatt_shl_1/suspend", { token: totalManager, body: {} });
+  assert.equal(shellAtt.status, 404);
+  const list = await call("/manager/attendants", { token: totalManager });
+  assert.ok(!list.json.attendants.some((a: Json) => a.id === "fatt_shl_1"));
+  assert.ok(!JSON.stringify(list.json).includes("$2"), "PIN hashes are never returned");
+});
+
+test("gas: PINs — wrong, default, missing and guessed", async () => {
+  const { client, call } = await setup();
+
+  assert.equal((await call("/manager/login", { body: { code: "MGR-TOT-01", pin: "9999" } })).status, 401);
+  assert.equal((await call("/manager/login", { body: { code: "NOPE-00", pin: "2468" } })).status, 401, "unknown code looks the same as a wrong PIN");
+  assert.equal((await call("/manager/login", { body: { code: "MGR-TOT-01" } })).status, 400, "a PIN is always required");
+
+  // Accounts from the old code (default PIN, or unhashed) can never sign in.
+  await client.execute("UPDATE fuel_station_managers SET pin = '1234' WHERE id = 'fmgr_tot_01'");
+  assert.equal((await call("/manager/login", { body: { code: "MGR-TOT-01", pin: "1234" } })).status, 401);
+  await client.execute("UPDATE fuel_station_managers SET pin = '' WHERE id = 'fmgr_tot_01'");
+  assert.equal((await call("/manager/login", { body: { code: "MGR-TOT-01", pin: "2468" } })).status, 401);
+
+  // Unknown attendant codes are not created on the fly.
+  assert.equal((await call("/attendants/login", { body: { code: "ATT-9999", pin: "7391" } })).status, 401);
+  const rows = await client.execute("SELECT COUNT(*) AS n FROM fuel_pump_attendants WHERE attendant_code = 'ATT-9999'");
+  assert.equal(Number(rows.rows[0].n), 0);
+
+  // Repeated wrong guesses lock the account, even for the right PIN.
+  let last = 0;
+  for (let i = 0; i < 8; i += 1) last = (await call("/attendants/login", { body: { code: "ATT-2001", pin: "0001" } })).status;
+  assert.equal(last, 429);
+  assert.equal((await call("/attendants/login", { body: { code: "ATT-2001", pin: "7391" } })).status, 429);
+});
+
+test("gas: simultaneous redemptions and withdrawals cannot double-spend", async () => {
+  const { call, mkUser, wallet, loginManager, loginAttendant } = await setup();
+  const rider = await mkUser("rider_d", "rider", 100000);
+  const attendant = await loginAttendant();
+
+  const gen = await call("/rider/generate-code", { token: rider, body: { vehiclePlate: "UFE 777Z", amountUgx: 30000, productId: "prod_petrol" } });
+  const results = await Promise.all(
+    [1, 2, 3, 4].map(() => call("/dispense", { token: attendant, body: { code: gen.json.code.code, productId: "prod_petrol", totalUgx: 30000 } })),
+  );
+  assert.equal(results.filter((r) => r.status === 200).length, 1, "exactly one redemption wins");
+  assert.equal(await wallet("rider_d"), 70000);
+
+  const manager = await loginManager();
+  await call("/manager/payout-accounts", { token: manager, body: { type: "momo", accountRef: "+256782334455", accountName: "Payout", networkOrBank: "MTN" } });
+  const details = { phone: "+256782334455" };
+  const withdrawals = await Promise.all(
+    [1, 2, 3].map(() => call("/manager/withdrawals", { token: manager, body: { amountUgx: 20000, destinationType: "momo", destinationDetails: details } })),
+  );
+  assert.equal(withdrawals.filter((r) => r.status === 200).length, 1, "UGX 30,000 can fund only one UGX 20,000 request");
+});
+
+test("gas: vouchers — wallet, replacement, cancel, expiry and limits", async () => {
+  const { client, call, mkUser, wallet } = await setup();
+  const poor = await mkUser("rider_e", "rider", 1000);
+  const none = await call("/rider/generate-code", { token: poor, body: { vehiclePlate: "UFE 1A", amountUgx: 20000 } });
+  assert.equal(none.status, 402);
+  const noVoucher = await client.execute("SELECT COUNT(*) AS n FROM fuel_codes WHERE rider_id = 'rider_e'");
+  assert.equal(Number(noVoucher.rows[0].n), 0, "no voucher without payment");
+
+  const rider = await mkUser("rider_f", "rider", 100000);
+  assert.equal((await call("/rider/generate-code", { token: rider, body: { amountUgx: 20000 } })).json.error, "plate_required");
+
+  const first = await call("/rider/generate-code", { token: rider, body: { vehiclePlate: "UFE 2B", amountUgx: 20000 } });
+  assert.equal(first.status, 200);
+  const second = await call("/rider/generate-code", { token: rider, body: { vehiclePlate: "UFE 2B", amountUgx: 10000 } });
+  assert.equal(second.status, 200);
+  assert.equal(await wallet("rider_f"), 90000, "the first hold is released when it is replaced");
+  const active = await call("/rider/active-code", { token: rider });
+  assert.equal(active.json.code.code, second.json.code.code);
+
+  const cancelled = await call("/rider/cancel-code", { token: rider, body: {} });
+  assert.equal(cancelled.json.refunded_ugx, 10000);
+  assert.equal(await wallet("rider_f"), 100000);
+  assert.equal((await call("/rider/active-code", { token: rider })).json.code, null);
+
+  // Expiry returns the hold.
+  const expiring = await call("/rider/generate-code", { token: rider, body: { vehiclePlate: "UFE 2B", amountUgx: 15000 } });
+  assert.equal(await wallet("rider_f"), 85000);
+  await client.execute({ sql: "UPDATE fuel_codes SET expires_at = ? WHERE code = ?", args: [new Date(Date.now() - 1000).toISOString(), expiring.json.code.code] });
+  assert.equal((await call("/rider/active-code", { token: rider })).json.code, null);
+  assert.equal(await wallet("rider_f"), 100000);
+
+  // The admin's daily limit applies.
+  await setSetting("gas_rider_daily_limit_ugx", "30000");
+  const limited = await call("/rider/generate-code", { token: rider, body: { vehiclePlate: "UFE 2B", amountUgx: 40000 } });
+  assert.equal(limited.json.error, "daily_limit_exceeded");
+
+  // The admin's switch turns fuel payments off.
+  await setSetting("service_gas_enabled", "0");
+  assert.equal((await call("/rider/generate-code", { token: rider, body: { vehiclePlate: "UFE 2B", amountUgx: 5000 } })).status, 503);
+});
+
+test("gas: dispense uses the pump price and the voucher's own limits", async () => {
+  const { call, mkUser, loginAttendant } = await setup();
+  const rider = await mkUser("rider_g", "rider", 100000);
+  const attendant = await loginAttendant();
+
+  const gen = await call("/rider/generate-code", { token: rider, body: { vehiclePlate: "UFE 3C", amountUgx: 10000, productId: "prod_petrol" } });
+  const code = gen.json.code.code;
+
+  assert.equal((await call("/dispense", { token: attendant, body: { code, productId: "prod_diesel", totalUgx: 5000 } })).json.error, "product_mismatch");
+  assert.equal((await call("/dispense", { token: attendant, body: { code, productId: "prod_petrol", totalUgx: 10001 } })).json.error, "limit_exceeded");
+  assert.equal((await call("/dispense", { token: attendant, body: { code, productId: "prod_petrol", litres: 1, totalUgx: 10 } })).json.error, "bad_request", "amount must match litres × pump price");
+  assert.equal((await call("/verify-code", { token: attendant, body: { code: "12" } })).status, 400, "no partial code matching");
+
+  const ok = await call("/dispense", { token: attendant, body: { code, productId: "prod_petrol", litres: 1 } });
+  assert.equal(ok.status, 200);
+  assert.equal(ok.json.receipt.price_per_litre, 5450, "price comes from the outlet's list");
+  assert.equal(ok.json.receipt.total_ugx, 5450);
 });

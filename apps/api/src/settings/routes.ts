@@ -23,6 +23,8 @@ import {
   setCarSettings,
   getGasSettings,
   setGasSettings,
+  getPharmacySettings,
+  setPharmacySettings,
   getMarketplaceSettings,
   setMarketplaceSettings,
   getLugandaAudioSettings,
@@ -143,6 +145,7 @@ async function fullSettings() {
     car: await getCarSettings(),
     gas: await getGasSettings(),
     work: await getWorkSettings(),
+    pharmacy: await getPharmacySettings(),
     marketplace: await getMarketplaceSettings(),
     ...delivery,
     services,
@@ -391,6 +394,18 @@ const updateSchema = z.object({
       dailyLimitUgx: z.number().int().min(0).max(10_000_000),
       voucherExpiryMinutes: z.number().int().min(5).max(1440),
       platformDiscountPercent: z.number().min(0).max(100),
+      sessionHours: z.number().int().min(1).max(168),
+      pinMaxAttempts: z.number().int().min(3).max(20),
+      withdrawalMinUgx: z.number().int().min(1000).max(100_000_000),
+      voucherLookupsPer5Min: z.number().int().min(5).max(200),
+    })
+    .partial()
+    .optional(),
+  pharmacy: z
+    .object({
+      enabled: z.boolean(),
+      maxImageMb: z.number().int().min(1).max(20),
+      submissionsPerHour: z.number().int().min(1).max(100),
     })
     .partial()
     .optional(),
@@ -572,6 +587,7 @@ settingsRoutes.put(
     if (parsed.data.car) await setCarSettings(parsed.data.car);
     if (parsed.data.gas) await setGasSettings(parsed.data.gas);
     if (parsed.data.work) await setWorkSettings(parsed.data.work);
+    if (parsed.data.pharmacy) await setPharmacySettings(parsed.data.pharmacy);
     if (parsed.data.marketplace) await setMarketplaceSettings(parsed.data.marketplace);
 
     if (parsed.data.deliveryRatePerKm != null) {
