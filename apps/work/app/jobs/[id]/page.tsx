@@ -2,7 +2,7 @@
 
 import type { WorkJob, WorkPublicSettings, WorkStaffMember } from "@peebee/shared";
 import { Phone } from "lucide-react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { StatusBadge } from "../../../components/StatusBadge";
 import { api, errorMessage } from "../../../lib/api";
@@ -13,6 +13,7 @@ import { estimatedEarnings, ugx, whenLabel } from "../../../lib/format";
 
 export default function JobPage() {
   const { id } = useParams<{ id: string }>();
+  const router = useRouter();
   const [job, setJob] = useState<WorkJob | null>(null);
   const [role, setRole] = useState<"owner" | "staff">("owner");
   const [staff, setStaff] = useState<WorkStaffMember[]>([]);
@@ -127,7 +128,20 @@ export default function JobPage() {
         <button
           type="button"
           disabled={busy}
-          onClick={() => { if (confirm("Cancel this job? It may be offered to another provider, or the customer refunded.")) run(() => api.workProviderCancel(job.id)); }}
+          onClick={async () => {
+            if (!confirm("Cancel this job? It may be offered to another provider, or the customer refunded.")) return;
+            setBusy(true);
+            setError(null);
+            try {
+              await api.workProviderCancel(job.id);
+              // The job is no longer yours, so there is nothing left to show here.
+              router.push("/jobs");
+            } catch (err) {
+              setError(errorMessage(err));
+              setBusy(false);
+              await load();
+            }
+          }}
           className="w-full rounded-2xl border border-red-500/40 py-3 text-sm font-black text-red-600 transition active:scale-[0.98] disabled:opacity-50"
         >
           Cancel job
