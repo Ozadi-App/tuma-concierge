@@ -431,6 +431,13 @@ const updateSchema = z.object({
       autoConfirmHours: z.number().int().min(1).max(336),
       disputeWindowHours: z.number().int().min(1).max(720),
       jobsPerHour: z.number().int().min(1).max(100),
+      rematchOnProviderCancel: z.boolean(),
+      maxRematches: z.number().int().min(0).max(10),
+      photosEnabled: z.boolean(),
+      maxPhotosPerJob: z.number().int().min(1).max(30),
+      maxPhotoKb: z.number().int().min(100).max(10240),
+      chatEnabled: z.boolean(),
+      trackingEnabled: z.boolean(),
     })
     .partial()
     .optional(),

@@ -4,6 +4,7 @@ import { ADMIN_ROLE_LABELS, hasPermission } from "@peebee/shared";
 import {
   ArrowUpRight,
   Banknote,
+  Briefcase,
   Bell,
   Car,
   ChevronLeft,
@@ -171,6 +172,13 @@ export function SettingsListContent({ onItemClick }: { onItemClick?: () => void 
       label: "Peebee Car",
       value: "Fleet & drivers",
       show: hasPermission(role, "car.view"),
+    },
+    {
+      href: "/work",
+      icon: Briefcase,
+      label: "Peebee Work",
+      value: "Jobs & providers",
+      show: hasPermission(role, "work.view"),
     },
     {
       href: "/settings/delivery",
