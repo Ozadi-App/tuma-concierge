@@ -106,11 +106,11 @@ type DishCardProps = {
   onAdd: () => void;
 };
 
-function DishMeta({ item, insight }: { item: MenuItem; insight?: FoodItemInsight }) {
+function DishMeta({ item, insight, showPrep = true }: { item: MenuItem; insight?: FoodItemInsight; showPrep?: boolean }) {
   const rating = insight?.averageRating != null ? insight.averageRating.toFixed(1) : null;
   return (
     <span className="fc-meta">
-      {item.prep_time_minutes ? <span className="fc-meta__item"><Clock size={13} aria-hidden="true" />{item.prep_time_minutes} min</span> : null}
+      {showPrep && item.prep_time_minutes ? <span className="fc-meta__item"><Clock size={13} aria-hidden="true" />{item.prep_time_minutes} min</span> : null}
       {rating ? (
         <span className="fc-meta__item fc-meta__extra" aria-label={`Rated ${rating} out of 5`}><Star size={13} aria-hidden="true" />{rating}</span>
       ) : insight?.orderCount ? (
@@ -155,13 +155,13 @@ function DishAddButton({ item, quantity, restaurantOpen, onOpen, onAdd }: Omit<D
   );
 }
 
-function DishName({ item, badge }: { item: MenuItem; badge: string | null }) {
-  return (
-    <h3 className="fc-name" title={item.name}>
-      {item.name}
-      {badge && <span className="fc-badge"><BadgeCheck size={12} strokeWidth={2.4} aria-hidden="true" />{badge}</span>}
-    </h3>
-  );
+function DishName({ item }: { item: MenuItem }) {
+  return <h3 className="fc-name" title={item.name}>{item.name}</h3>;
+}
+
+/** Small gold badge pill overlaid on a dish photo corner. */
+function DishBadge({ label, corner }: { label: string; corner: "left" | "right" }) {
+  return <span className={`fc-badge fc-overlay fc-overlay--${corner}`}><BadgeCheck size={12} strokeWidth={2.4} aria-hidden="true" />{label}</span>;
 }
 
 /** Featured dish: the photo fills the card and its lower part is frosted
@@ -179,12 +179,16 @@ function FeaturedDishCard(props: DishCardProps) {
         <span className="fc-feature__blur" />
         <span className="fc-feature__tint" />
       </span>
+      {item.prep_time_minutes ? <span className="fc-glass-pill fc-overlay fc-overlay--left"><Clock size={13} aria-hidden="true" />{item.prep_time_minutes} min</span> : null}
+      <DishBadge label={badge} corner="right" />
       <span className="fc-feature__body">
-        <DishName item={item} badge={badge} />
+        <DishName item={item} />
         {item.description && <span className="fc-desc">{item.description}</span>}
-        <DishPrice item={item} />
         <span className="fc-row">
-          <DishMeta item={item} insight={insight} />
+          <span className="fc-feature__left">
+            <DishPrice item={item} />
+            <DishMeta item={item} insight={insight} showPrep={false} />
+          </span>
           <DishAddButton {...props} />
         </span>
       </span>
@@ -200,11 +204,12 @@ function GeneralDishCard(props: DishCardProps) {
   return (
     <article className="fc-card fc-card--general">
       <button type="button" className="fc-hit" onClick={onOpen} aria-label={`View ${item.name}`} />
-      <span className={`fc-general__media ${photoUrl ? "" : "is-empty"}`} aria-hidden="true">
+      <span className={`fc-general__media ${photoUrl ? "" : "is-empty"}`}>
         {photoUrl ? <img src={photoUrl} alt="" loading="lazy" decoding="async" /> : <UtensilsCrossed size={34} />}
+        {item.badge && <DishBadge label={DISH_BADGE_LABEL[item.badge]} corner="left" />}
       </span>
       <span className="fc-general__body">
-        <DishName item={item} badge={item.badge ? DISH_BADGE_LABEL[item.badge] : null} />
+        <DishName item={item} />
         {item.description && <span className="fc-desc">{item.description}</span>}
         <DishPrice item={item} />
         <span className="fc-row">
