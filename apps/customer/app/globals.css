@@ -1532,7 +1532,18 @@ select:focus {
 
 /* Header menu: a drop-down sheet under the header bar. Bright in light mode,
    black in dark mode; gold stays the one accent in both. */
-.customer-profile-reveal.customer-menu-reveal { position: absolute; inset-inline: 0; top: 100%; }
+/* Push-down: the menu opens inside the sticky header, in normal flow, so the
+   whole screen below slides down by the menu's height instead of being covered.
+   The page colour sits behind the sheet so its rounded corners blend into the
+   screen it pushed down. */
+.customer-profile-reveal.customer-menu-reveal { background: rgb(var(--color-cream)); }
+.customer-header.is-menu-open, :root[data-theme="dark"] .customer-header.is-menu-open { border-bottom-color: rgb(var(--color-cream)); }
+/* Keep the screen where the push puts it: no scroll anchoring (which would
+   scroll content back up under the menu) and no scrolling while open. */
+:root.customer-menu-open { overflow-anchor: none; overflow: hidden; }
+:root.customer-menu-open body { overflow-anchor: none; }
+.customer-menu-catcher { pointer-events: none; background: transparent; }
+.customer-menu-catcher.is-active { pointer-events: auto; cursor: pointer; }
 .customer-menu-sheet {
   max-height: calc(100dvh - 4rem - 12px);
   overflow-y: auto;
@@ -1545,6 +1556,8 @@ select:focus {
   transition: transform 280ms cubic-bezier(.2,.8,.2,1);
 }
 .customer-profile-reveal.is-expanded .customer-menu-sheet { transform: none; }
+/* No fade: a half-transparent reveal would let the header colour wash over it. */
+.customer-profile-reveal.customer-menu-reveal { opacity: 1; transition: grid-template-rows 320ms cubic-bezier(.2,.8,.2,1); }
 .customer-menu-muted { color: rgb(0 0 0 / .56); }
 .customer-menu-row { transition: background-color 160ms ease; }
 .customer-menu-row:hover { background: rgb(var(--color-gold) / .07); }
@@ -1568,8 +1581,6 @@ select:focus {
 .customer-menu-switch.is-on .customer-menu-switch-knob { transform: translateX(20px); }
 .customer-menu-sheet a:focus-visible, .customer-menu-sheet button:focus-visible { outline: 2px solid rgb(var(--color-gold)); outline-offset: 2px; }
 .customer-header-dot { background: rgb(var(--color-gold)); box-shadow: 0 0 0 2px rgb(var(--color-black-700)); }
-.customer-menu-scrim { pointer-events: none; opacity: 0; background: rgb(255 255 255 / .42); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); transition: opacity 240ms ease; }
-.customer-menu-scrim.is-visible { pointer-events: auto; opacity: 1; }
 
 :root[data-theme="dark"] .customer-menu-sheet { background: #0b0b0b; color: #f5f5f5; box-shadow: 0 22px 44px -12px rgb(0 0 0 / .8), inset 0 -1px 0 rgb(255 255 255 / .06); }
 :root[data-theme="dark"] .customer-menu-muted { color: rgb(255 255 255 / .58); }
@@ -1585,7 +1596,6 @@ select:focus {
 :root[data-theme="dark"] .customer-menu-switch.is-on { background: rgb(var(--color-gold)); }
 :root[data-theme="dark"] .customer-menu-switch-knob { background: #111; box-shadow: 0 1px 3px rgb(0 0 0 / .5); }
 :root[data-theme="dark"] .customer-header-dot { background: #111; box-shadow: 0 0 0 2px rgb(var(--color-gold)); }
-:root[data-theme="dark"] .customer-menu-scrim { background: rgb(0 0 0 / .58); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
 @media (prefers-reduced-motion: reduce) {
-  .customer-menu-sheet, .customer-menu-scrim, .customer-menu-switch, .customer-menu-switch-knob, .customer-menu-tile { transition: none; }
+  .customer-profile-reveal.customer-menu-reveal, .customer-menu-sheet, .customer-menu-switch, .customer-menu-switch-knob, .customer-menu-tile { transition: none; }
 }

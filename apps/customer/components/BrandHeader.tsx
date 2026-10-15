@@ -53,6 +53,7 @@ export function BrandHeader() {
   const [expanded,setExpanded]=useState(false);
   const toggleRef=useRef<HTMLButtonElement>(null);
   const menuRef=useRef<HTMLDivElement>(null);
+  const releaseTimer=useRef<number|undefined>(undefined);
   const [photo,setPhoto]=useState<string|null>(null);
   const [counts,setCounts]=useState<MenuCounts>(EMPTY_COUNTS);
   const [environment,setEnvironment]=useState<PlatformEnvironment|null>(null);
@@ -61,6 +62,7 @@ export function BrandHeader() {
   const isDark=activeTheme==="dark";
   const close=()=>setExpanded(false);
   useEffect(()=>setExpanded(false),[pathname]);
+  useEffect(()=>()=>{window.clearTimeout(releaseTimer.current);document.documentElement.classList.remove("customer-menu-open");},[]);
   useEffect(()=>{
     const syncPractice=()=>setPracticeActive(isPracticeMode());
     syncPractice();
@@ -77,11 +79,23 @@ export function BrandHeader() {
     const focusTimer=window.setTimeout(()=>menuRef.current?.querySelector<HTMLElement>("a,button")?.focus({preventScroll:true}),60);
     const onKey=(event:KeyboardEvent)=>{if(event.key==="Escape"){setExpanded(false);toggleRef.current?.focus();}};
     window.addEventListener("keydown",onKey);
-    return()=>{cancelled=true;window.clearTimeout(focusTimer);window.removeEventListener("keydown",onKey);};
+    // The screen is pushed down, not covered: keep it visible but out of
+    // reach (no taps, no keyboard focus) until the menu closes again.
+    const root=document.documentElement;
+    const screen=document.querySelector("main");
+    window.clearTimeout(releaseTimer.current);
+    root.classList.add("customer-menu-open");
+    screen?.setAttribute("inert","");
+    return()=>{
+      cancelled=true;window.clearTimeout(focusTimer);window.removeEventListener("keydown",onKey);screen?.removeAttribute("inert");
+      // Hold scroll anchoring off until the screen has slid back up, or the
+      // browser "compensates" for the collapse and jumps the page to the top.
+      releaseTimer.current=window.setTimeout(()=>root.classList.remove("customer-menu-open"),420);
+    };
   },[expanded]);
   const walletText=counts.wallet==null?"Balance, top up and history":`UGX ${counts.wallet.toLocaleString("en-UG")}`;
   return <>
-    <header className="customer-header sticky top-0 z-40">
+    <header className={`customer-header sticky top-0 z-40 ${expanded?"is-menu-open":""}`}>
       <div className="mx-auto flex h-16 max-w-lg items-center justify-between gap-3 px-4">
         <Link href="/" aria-label={`Go to home${modeLabel ? `, ${practiceActive ? "practice" : "demo"} mode` : ""}`} className="flex shrink-0 items-start gap-1"><BrandLogo variant={isDark ? "dark" : "light"}/>{modeLabel&&<sup aria-hidden="true" className="pt-1 text-[10px] font-bold leading-none text-gold">{modeLabel}</sup>}</Link>
         <button ref={toggleRef} type="button" aria-label={expanded?"Close menu":"Open menu"} aria-expanded={expanded} aria-controls="header-menu" onClick={()=>setExpanded(value=>!value)} className="customer-header-toggle relative flex h-11 w-11 items-center justify-center rounded-full">
@@ -125,6 +139,7 @@ export function BrandHeader() {
         </div>
       </div>
     </header>
-    <div aria-hidden className={`customer-menu-scrim fixed inset-0 z-30 ${expanded?"is-visible":""}`} onClick={close}/>
+    {/* The pushed-down screen below the menu: one tap anywhere on it closes the menu. */}
+    <div aria-hidden className={`customer-menu-catcher fixed inset-0 z-30 ${expanded?"is-active":""}`} onClick={close}/>
   </>;
 }
