@@ -702,6 +702,8 @@ select:focus {
 .menu-item-cart-layer.is-open { pointer-events: auto; }
 /* Marketplace bag: ~90% of the screen, leaving a slim slice of the page visible. */
 .menu-item-cart-layer.marketplace-cart-layer { --item-cart-width: min(90vw, 560px); }
+/* Park it fully off-screen when closed so its shadow does not bleed onto the page edge. */
+.menu-item-cart-layer.marketplace-cart-layer:not(.is-open) .menu-item-cart-drawer { transform: translateX(calc(100% + 72px)); }
 .menu-item-cart-layer__backdrop {
   position: absolute;
   inset: 0;
