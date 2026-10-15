@@ -95,7 +95,7 @@ const ugx = (amount: number) => `UGX ${Math.round(amount).toLocaleString()}`;
 
 export default function PharmacyPage() {
   const { lat: userLat, lng: userLng, label: locationLabel } = useCustomerLocation();
-  const { totalQuantity: cartItemCount, total: cartTotal } = useCart();
+  const { totalQuantity: cartItemCount } = useCart();
 
   const [stores, setStores] = useState<MarketplaceStore[]>([]);
   const [products, setProducts] = useState<ProductItem[]>([]);
@@ -549,27 +549,6 @@ export default function PharmacyPage() {
         </div>
       </section>
 
-      {/* Floating Cart Button -> Opens Cart Drawer */}
-      {cartItemCount > 0 && (
-        <div className="fixed inset-x-4 bottom-20 z-40 mx-auto max-w-md animate-slide-up">
-          <button
-            type="button"
-            onClick={() => setCartDrawerOpen(true)}
-            className="flex w-full items-center justify-between rounded-full bg-ink px-5 py-3.5 text-cream shadow-xl transition active:scale-98 cursor-pointer"
-          >
-            <div className="flex items-center gap-2.5">
-              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-gold text-xs font-black text-ink-gold">
-                {cartItemCount}
-              </span>
-              <span className="text-xs font-bold">Review Medicine Order</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="font-mono text-sm font-black text-gold">{ugx(cartTotal)}</span>
-              <span className="text-xs font-bold text-white/80">View Bag →</span>
-            </div>
-          </button>
-        </div>
-      )}
 
       {/* Cart Drawer */}
       <CartDrawer

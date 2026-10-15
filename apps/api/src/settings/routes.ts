@@ -392,6 +392,10 @@ const updateSchema = z.object({
       dailyLimitUgx: z.number().int().min(0).max(10_000_000),
       voucherExpiryMinutes: z.number().int().min(5).max(1440),
       platformDiscountPercent: z.number().min(0).max(100),
+      sessionHours: z.number().int().min(1).max(168),
+      pinMaxAttempts: z.number().int().min(3).max(20),
+      withdrawalMinUgx: z.number().int().min(1000).max(100_000_000),
+      voucherLookupsPer5Min: z.number().int().min(5).max(200),
     })
     .partial()
     .optional(),
