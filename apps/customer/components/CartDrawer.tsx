@@ -1,6 +1,6 @@
 "use client";
 
-import { useRegisterNavBack } from "../lib/nav-primary-action";
+import { useRegisterNavBack, useRegisterNavPrimaryAction } from "../lib/nav-primary-action";
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
@@ -36,8 +36,6 @@ export function CartDrawer({
   onOpen,
 }: CartDrawerProps) {
   const router = useRouter();
-  // While the drawer is open the nav's Home becomes Back, which closes it.
-  useRegisterNavBack(isOpen, onClose, 2);
   const {
     items,
     mounted,
@@ -129,6 +127,34 @@ export function CartDrawer({
       setIsSubmitting(false);
     }
   };
+
+  // Screens without the bottom nav (single store, product) keep the bag's own buttons.
+  const [navPresent, setNavPresent] = useState(false);
+  // While open, the drawer drives the bottom nav (which floats above it):
+  // Home → Back (checkout view → items, items → close), and the right capsule
+  // is this drawer's next step instead of an in-sheet button.
+  useRegisterNavBack(isOpen && navPresent, () => (viewMode === "checkout" ? setViewMode("items") : onClose()), 2);
+  useRegisterNavPrimaryAction(
+    isOpen && navPresent && items.length > 0
+      ? viewMode === "items"
+        ? { tone: "step", label: "Proceed to checkout", detail: `UGX ${total.toLocaleString()}`, onClick: () => setViewMode("checkout") }
+        : {
+            tone: "step",
+            label: isSubmitting ? "Creating order…" : "Next: payment",
+            detail: `UGX ${total.toLocaleString()}`,
+            disabled: isSubmitting || selectedItems.length === 0,
+            busy: isSubmitting,
+            onClick: () => void handleCheckoutSubmit(),
+          }
+      : null,
+    2,
+  );
+  useEffect(() => {
+    if (!isOpen) return;
+    setNavPresent(!!document.querySelector("nav.customer-nav"));
+    document.documentElement.classList.add("peebee-cart-drawer-open");
+    return () => document.documentElement.classList.remove("peebee-cart-drawer-open");
+  }, [isOpen]);
 
   if (!portalReady || typeof document === "undefined") return null;
 
@@ -398,7 +424,8 @@ export function CartDrawer({
                   </span>
                 </div>
 
-                <div className="pt-1 flex items-center gap-2">
+                <div className={`pt-1 flex items-center gap-2 ${navPresent ? "justify-end" : ""}`}>
+                  {!navPresent && (
                   <button
                     type="button"
                     onClick={() => setViewMode("checkout")}
@@ -407,6 +434,7 @@ export function CartDrawer({
                     <span>Proceed to Checkout</span>
                     <ChevronRight className="h-4 w-4 stroke-[2.5]" />
                   </button>
+                  )}
 
                   <Link
                     href="/cart"
@@ -420,6 +448,7 @@ export function CartDrawer({
               </>
             ) : (
               <>
+                {!navPresent && (
                 <button
                   type="button"
                   disabled={isSubmitting || selectedItems.length === 0}
@@ -431,6 +460,7 @@ export function CartDrawer({
                     UGX {total.toLocaleString()}
                   </span>
                 </button>
+                )}
 
                 <button
                   type="button"

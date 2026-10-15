@@ -700,6 +700,12 @@ select:focus {
   pointer-events: none;
 }
 .menu-item-cart-layer.is-open { pointer-events: auto; }
+/* While the marketplace bag is open the bottom nav floats above it (its Back
+   closes the bag, its right capsule is the bag's next step), so the bag's
+   footer leaves room for the nav. */
+:root.peebee-cart-drawer-open .customer-nav { z-index: 110; }
+:root.peebee-cart-drawer-open .customer-nav-scrim { z-index: 105; }
+:root.peebee-cart-drawer-open .marketplace-cart-layer .menu-item-cart-drawer__footer { padding-bottom: var(--customer-nav-content-gap, calc(env(safe-area-inset-bottom) + 16px)); }
 /* Marketplace bag: ~90% of the screen, leaving a slim slice of the page visible. */
 .menu-item-cart-layer.marketplace-cart-layer { --item-cart-width: min(90vw, 560px); }
 /* Park it fully off-screen when closed so its shadow does not bleed onto the page edge. */
