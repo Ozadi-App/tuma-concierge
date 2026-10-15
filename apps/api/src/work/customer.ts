@@ -40,7 +40,7 @@ customerRoutes.get("/catalog", async (c) => {
 
 function publicSettings(s: Awaited<ReturnType<typeof getWorkSettings>>) {
   return {
-    enabled: s.enabled, serviceTypes: s.serviceTypes, pricingModes: s.pricingModes, matchingModes: s.matchingModes, defaultMatching: s.defaultMatching,
+    enabled: s.enabled, serviceTypes: s.serviceTypes, pricingModes: s.pricingModes, matchingModes: s.matchingModes, defaultMatching: s.defaultMatching, providerKinds: s.providerKinds,
     quoteValidHours: s.quoteValidHours, freeCancelMinutes: s.freeCancelMinutes, lateCancelFeePercent: s.lateCancelFeePercent,
     autoConfirmHours: s.autoConfirmHours, disputeWindowHours: s.disputeWindowHours, minLeadMinutes: s.minLeadMinutes, maxAdvanceDays: s.maxAdvanceDays,
   };

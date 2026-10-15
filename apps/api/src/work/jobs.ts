@@ -181,9 +181,15 @@ export async function jobView(job: Row, viewer: "customer" | "provider" | "admin
   const worker = job.worker_id
     ? ((await db.execute({ sql: "SELECT name FROM users WHERE id = ?", args: [job.worker_id] })).rows[0] as Row | undefined)
     : undefined;
+  // A provider learns who the customer is only once the job is theirs.
+  const customer =
+    viewer === "provider" && job.provider_id && job.status !== "open"
+      ? ((await db.execute({ sql: "SELECT name, phone FROM users WHERE id = ?", args: [job.customer_id] })).rows[0] as Row | undefined)
+      : undefined;
   return {
     id: job.id,
     status: job.status,
+    customer: customer ? { name: customer.name, phone: customer.phone ?? null } : null,
     service: { id: job.service_id, type: job.service_type, name: job.service_name },
     pricingMode: job.pricing_mode,
     matchingMode: job.matching_mode,
@@ -198,6 +204,7 @@ export async function jobView(job: Row, viewer: "customer" | "provider" | "admin
     calloutFeeUgx: Number(job.callout_fee_ugx),
     priceUgx: Number(job.price_ugx),
     heldUgx: Number(job.held_ugx),
+    commissionPercent: Number(job.commission_percent),
     commissionUgx: Number(job.commission_ugx),
     expiresAt: job.expires_at ?? null,
     quoteExpiresAt: job.quote_expires_at ?? null,

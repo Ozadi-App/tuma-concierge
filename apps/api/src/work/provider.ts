@@ -240,6 +240,21 @@ async function myJob(ctx: { provider: Row; role: "owner" | "staff" }, userId: st
   return job;
 }
 
+/** One job: yours (or assigned to you, for staff), or an open job you could take. */
+providerRoutes.get("/provider/jobs/:id", async (c) => {
+  const ctx = await providerFor(c.get("user").sub);
+  if (!ctx) return c.json(NOT_PROVIDER, 404);
+  const settings = await getWorkSettings();
+  const id = c.req.param("id") as string;
+  let job = await myJob(ctx, c.get("user").sub, id);
+  if (!job && ctx.role === "owner" && canWork(ctx.provider, settings)) {
+    job = (await openJobsFor(ctx.provider, settings)).find((j) => j.id === id) ?? null;
+  }
+  if (!job) return c.json({ error: "not_found", message: "Job not found." }, 404);
+  const myOffer = (await db.execute({ sql: "SELECT price_ugx, eta_minutes, message, status FROM work_offers WHERE job_id = ? AND provider_id = ?", args: [job.id, ctx.provider.id] })).rows[0] ?? null;
+  return c.json({ job: { ...(await jobView(job, "provider")), myOffer }, role: ctx.role });
+});
+
 providerRoutes.post("/provider/jobs/:id/accept", async (c) => {
   const w = await working(c);
   if ("error" in w) return c.json(w.error, w.status);

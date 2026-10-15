@@ -54,6 +54,7 @@ const devOrigins = [
   "http://localhost:3006", // apps/partner dev server
   "http://localhost:3007", // sales onboarding
   "http://localhost:3008", // apps/gas dev server
+  "http://localhost:3009", // apps/work dev server
 ];
 
 const defaultOrigins = [
@@ -67,6 +68,7 @@ const defaultOrigins = [
   "https://partner.peebee.online",
   "https://sales.peebee.online",
   "https://gas.peebee.online",
+  "https://work.peebee.online",
 ];
 
 /** Anything a developer runs on their own machine can call the API from the
