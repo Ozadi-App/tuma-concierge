@@ -1001,7 +1001,7 @@ export default function RestaurantPage() {
         ? {
             tone: "gold",
             label: orderingUnavailable ? "Ordering unavailable" : busy ? "Please wait…" : "Checkout",
-            detail: formatUgx(itemsTotal + (estimatedFee ?? 0)),
+            detail: formatUgx(itemsTotal + (estimatedFee != null && Number.isFinite(estimatedFee) ? estimatedFee : 0)),
             disabled: busy || !delivery || cart.length === 0 || !restaurant.is_open || orderingUnavailable,
             busy,
             onClick: () => void checkout(),
