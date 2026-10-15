@@ -9,12 +9,24 @@ import {
   Store,
 } from "lucide-react";
 import Link from "next/link";
-import { type ReactNode } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, type ReactNode } from "react";
 import { useAuth } from "../lib/auth-context";
 import { PharmacyNav } from "./PharmacyNav";
 
 export function AppShell({ children }: { children: any }) {
   const { pharmacy, pharmacist, toggleOpen, ready } = useAuth();
+  const pathname = usePathname();
+  const router = useRouter();
+  const isPublicPage = pathname === "/login" || pathname === "/activate";
+
+  // Nobody sees the console without a verified pharmacy session.
+  useEffect(() => {
+    if (ready && !pharmacist && !isPublicPage) router.replace("/login");
+  }, [ready, pharmacist, isPublicPage, router]);
+
+  if (isPublicPage) return <main className="mx-auto max-w-lg px-4 pt-4">{children}</main>;
+  if (!ready || !pharmacist) return null;
 
   return (
     <div className="min-h-screen bg-[rgb(var(--color-cream))] text-ink pb-24">
@@ -24,10 +36,10 @@ export function AppShell({ children }: { children: any }) {
           <div className="min-w-0 space-y-0.5">
             <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-gold">
               <ShieldCheck className="h-3.5 w-3.5 text-gold" />
-              <span>{pharmacy?.ndaLicenseNumber || "NDA PREMISES LICENSED"}</span>
+              <span>{pharmacy?.ndaLicenseNumber}</span>
             </div>
             <h1 className="truncate text-sm font-black text-ink">
-              {pharmacy?.name || "Vine Pharmacy — Acacia Mall"}
+              {pharmacy?.name}
             </h1>
           </div>
 

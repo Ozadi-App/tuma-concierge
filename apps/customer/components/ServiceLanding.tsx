@@ -1,4 +1,4 @@
-import { ArrowRight, Archive, Bike, BookOpen, Briefcase, Car, CarFront, Clock3, Flame, ListChecks, Package, Pill, ShoppingBasket, Store, Truck, UsersRound, WashingMachine, Wrench } from "lucide-react";
+import { ArrowRight, Archive, Bike, BookOpen, Briefcase, Car, CarFront, ClipboardList, Clock3, Flame, ListChecks, Package, Pill, ShoppingBasket, Sparkles, Store, Truck, UsersRound, WashingMachine, Wrench } from "lucide-react";
 import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
 
@@ -54,10 +54,12 @@ const landingContent: Record<LandingGroup, { eyebrow: string; title: string; des
   services: {
     eyebrow: "Help for everyday tasks",
     title: "Services",
-    description: "Connect with verified local specialists for laundry, home repairs, gig jobs, and tutoring.",
+    description: "Book cleaning, home repairs and laundry from local providers, or find gig jobs and tutoring.",
     items: [
+      { title: "Clean", description: "Homes, offices, cars and more, cleaned for you.", icon: Sparkles, href: "/services/clean" },
       { title: "Laundry", description: "Doorstep wash & fold, dry cleaning, ironing.", icon: WashingMachine, href: "/services/laundry" },
       { title: "Fix", description: "Home repairs, plumbing, electrical & handyman help.", icon: Wrench, href: "/services/fix" },
+      { title: "My jobs", description: "Track your bookings, quotes and offers.", icon: ClipboardList, href: "/services/work" },
       { title: "Jobs", description: "Post everyday gigs or hire skilled local pros.", icon: Briefcase, href: "/service" },
       { title: "Learn", description: "Tutors, driving instructors, skills & personalized lessons.", icon: BookOpen, href: "/services/learn" },
     ],

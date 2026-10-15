@@ -13,7 +13,6 @@ import {
   Plus,
   ShoppingBag,
   Sparkles,
-  Store,
   Trash2,
   Truck,
   Wallet,
@@ -132,7 +131,7 @@ export function CartDrawer({
 
   return createPortal(
     <div
-      className={`menu-item-cart-layer${isOpen ? " is-open" : ""}`}
+      className={`menu-item-cart-layer marketplace-cart-layer${isOpen ? " is-open" : ""}`}
       aria-hidden={!isOpen}
     >
       {/* Backdrop */}
@@ -251,10 +250,10 @@ export function CartDrawer({
                 {items.map((line) => (
                   <li
                     key={line.id}
-                    className="flex items-center gap-3 rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] p-3 shadow-xs transition hover:border-gold/30"
+                    className="flex gap-3 rounded-[20px] border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] p-2.5"
                   >
                     {/* Thumbnail */}
-                    <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-neutral-100 dark:bg-neutral-800 border border-surface-border/50">
+                    <div className="relative h-[72px] w-[72px] shrink-0 overflow-hidden rounded-[14px] bg-[rgb(var(--surface-card))]">
                       <ProductImage
                         src={line.imageUrl}
                         alt={line.title}
@@ -264,16 +263,21 @@ export function CartDrawer({
                       />
                     </div>
 
-                    {/* Meta Info */}
-                    <div className="min-w-0 flex-1 space-y-1">
-                      <div className="flex items-start justify-between gap-1">
-                        <h4 className="text-xs font-bold text-ink truncate leading-tight">
-                          {line.title}
-                        </h4>
+                    <div className="flex min-w-0 flex-1 flex-col justify-between py-0.5">
+                      {/* Name + remove */}
+                      <div className="flex items-start gap-2">
+                        <div className="min-w-0 flex-1">
+                          <h4 className="truncate text-sm font-semibold leading-tight text-ink">{line.title}</h4>
+                          {(line.variantTitle || line.storeName) && (
+                            <p className="mt-0.5 truncate text-[11px] text-ink-500">
+                              {[line.variantTitle, line.storeName].filter(Boolean).join(" · ")}
+                            </p>
+                          )}
+                        </div>
                         <button
                           type="button"
                           onClick={() => removeItem(line.id)}
-                          className="shrink-0 p-1 text-ink-500 hover:text-red-500 transition active:scale-90"
+                          className="-mr-1 -mt-1 shrink-0 rounded-full p-1.5 text-ink-500 transition hover:text-red-500 active:scale-90"
                           aria-label={`Remove ${line.title}`}
                           title="Remove item"
                         >
@@ -281,44 +285,29 @@ export function CartDrawer({
                         </button>
                       </div>
 
-                      {line.variantTitle && (
-                        <p className="text-[11px] font-medium text-ink-500 truncate">
-                          Option: {line.variantTitle}
-                        </p>
-                      )}
-
-                      {line.storeName && (
-                        <p className="text-[10px] font-semibold text-gold truncate flex items-center gap-1">
-                          <Store className="h-3 w-3 shrink-0" />
-                          <span>{line.storeName}</span>
-                        </p>
-                      )}
-
-                      {/* Stepper & Price Row */}
-                      <div className="flex items-center justify-between pt-1">
-                        <div className="flex items-center gap-1.5 rounded-full bg-[rgb(var(--surface-card))] border border-[var(--border-faint)] px-2 py-0.5">
+                      {/* Stepper + line price (one line, never wraps) */}
+                      <div className="mt-2 flex items-center justify-between gap-2">
+                        <div className="flex shrink-0 items-center gap-1 rounded-full border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-0.5">
                           <button
                             type="button"
                             onClick={() => updateQuantity(line.id, -1)}
-                            className="flex h-5 w-5 items-center justify-center text-ink-500 hover:text-ink active:scale-90 transition"
+                            className="flex h-6 w-6 items-center justify-center rounded-full text-ink-500 transition hover:text-ink active:scale-90"
                             aria-label="Decrease quantity"
                           >
                             <Minus className="h-3 w-3" />
                           </button>
-                          <span className="w-5 text-center text-xs font-bold text-ink">
-                            {line.quantity}
-                          </span>
+                          <span className="w-5 text-center text-xs font-bold tabular-nums text-ink">{line.quantity}</span>
                           <button
                             type="button"
                             onClick={() => updateQuantity(line.id, 1)}
-                            className="flex h-5 w-5 items-center justify-center text-ink-500 hover:text-ink active:scale-90 transition"
+                            className="flex h-6 w-6 items-center justify-center rounded-full text-ink-500 transition hover:text-ink active:scale-90"
                             aria-label="Increase quantity"
                           >
                             <Plus className="h-3 w-3" />
                           </button>
                         </div>
 
-                        <span className="font-mono text-xs font-black text-ink">
+                        <span className="min-w-0 truncate whitespace-nowrap text-sm font-bold tabular-nums text-ink">
                           UGX {(line.price * line.quantity).toLocaleString()}
                         </span>
                       </div>
