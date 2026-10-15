@@ -204,6 +204,9 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
 
   return (
     <>
+      {/* Glass scrim behind the nav: darkest + most blurred at the screen's
+          bottom edge, fading to fully clear just above the nav buttons. */}
+      <div aria-hidden className="customer-nav-scrim" />
       <nav ref={navRef} aria-label="Primary navigation" className={`customer-nav fixed inset-x-0 bottom-3 z-40 px-3 pointer-events-none pb-[env(safe-area-inset-bottom)] ${overlay ? "customer-nav-overlay" : ""}`}>
         <div className="mx-auto flex max-w-lg flex-col items-center gap-2">
           {/* Active Delivery Floating Capsule Chip */}
@@ -256,13 +259,13 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
             </div>
 
             {rightMode === "action" && primaryAction && actionTone === "cart" ? (
+              <div key="nav-action-cart" className="customer-nav-swap customer-nav-capsule customer-nav-frame flex h-[70px] min-w-0 flex-1 rounded-[24px] p-1.5 shadow-[var(--shadow-float-capsule)]">
               <button
-                key="nav-action-cart"
                 type="button"
                 onClick={primaryAction.onClick}
                 disabled={primaryAction.disabled}
                 aria-label={[primaryAction.label, primaryAction.sublabel, primaryAction.detail].filter(Boolean).join(", ")}
-                className="customer-nav-swap customer-nav-cart flex h-[70px] min-w-0 flex-1 items-center gap-3 rounded-[24px] pl-3 pr-4 transition active:scale-[0.98] disabled:opacity-60"
+                className="customer-nav-cart flex min-w-0 items-center gap-3 pl-3 pr-4 transition active:scale-[0.98] disabled:opacity-60 h-full w-full rounded-[18px]"
               >
                 <span className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-[16px] bg-gold/15 text-gold">
                   <ShoppingBag className="h-5 w-5" strokeWidth={2.2} aria-hidden />
@@ -283,15 +286,16 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
                 )}
                 <ChevronRight className="customer-nav-cart__muted h-4 w-4 shrink-0" aria-hidden />
               </button>
+              </div>
             ) : rightMode === "action" && primaryAction && actionTone === "step" ? (
+              <div key="nav-action-step" className="customer-nav-swap customer-nav-capsule customer-nav-frame flex h-[70px] min-w-0 flex-1 rounded-[24px] p-1.5 shadow-[var(--shadow-float-capsule)]">
               <button
-                key="nav-action-step"
                 type="button"
                 onClick={primaryAction.onClick}
                 disabled={primaryAction.disabled}
                 aria-busy={primaryAction.busy || undefined}
                 aria-label={[primaryAction.label, primaryAction.sublabel, primaryAction.detail].filter(Boolean).join(", ")}
-                className="customer-nav-swap customer-nav-cart flex h-[70px] min-w-0 flex-1 items-center gap-3 rounded-[24px] px-5 transition active:scale-[0.98] disabled:opacity-60"
+                className="customer-nav-cart flex min-w-0 items-center gap-3 px-5 transition active:scale-[0.98] disabled:opacity-60 h-full w-full rounded-[18px]"
               >
                 {primaryAction.busy && <Loader2 className="h-5 w-5 shrink-0 animate-spin" aria-hidden />}
                 <span className="min-w-0 flex-1 text-left">
@@ -305,14 +309,15 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
                 )}
                 <ChevronRight className="customer-nav-cart__muted h-5 w-5 shrink-0" aria-hidden />
               </button>
+              </div>
             ) : rightMode === "action" && primaryAction ? (
+              <div key="nav-action" className="customer-nav-swap customer-nav-capsule customer-nav-frame flex h-[70px] min-w-0 flex-1 rounded-[24px] p-1.5 shadow-[var(--shadow-float-capsule)]">
               <button
-                key="nav-action"
                 type="button"
                 onClick={primaryAction.onClick}
                 disabled={primaryAction.disabled}
                 aria-busy={primaryAction.busy || undefined}
-                className="customer-nav-swap customer-nav-checkout flex h-[70px] min-w-0 flex-1 items-center justify-between gap-3 rounded-[24px] px-5 shadow-[var(--shadow-glow-gold)] transition active:scale-[0.98] disabled:opacity-60"
+                className="customer-nav-checkout flex min-w-0 items-center justify-between gap-3 px-5 transition active:scale-[0.98] disabled:opacity-60 h-full w-full rounded-[18px]"
               >
                 <span className="flex min-w-0 items-center gap-2.5">
                   {primaryAction.busy ? (
@@ -329,14 +334,15 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
                   <span className="shrink-0 text-sm font-bold tabular-nums opacity-90">{primaryAction.detail}</span>
                 )}
               </button>
+              </div>
             ) : rightMode === "cart" ? (
+              <div key="nav-cart" className="customer-nav-swap customer-nav-capsule customer-nav-frame flex h-[70px] min-w-0 flex-1 rounded-[24px] p-1.5 shadow-[var(--shadow-float-capsule)]">
               <button
-                key="nav-cart"
                 type="button"
                 onClick={() => setCartOpen(true)}
                 aria-label={`View cart, ${cartCount} item${cartCount === 1 ? "" : "s"}, UGX ${cartTotal.toLocaleString()}`}
                 aria-haspopup="dialog"
-                className="customer-nav-swap customer-nav-cart flex h-[70px] min-w-0 flex-1 items-center gap-3 rounded-[24px] pl-3 pr-4 transition active:scale-[0.98]"
+                className="customer-nav-cart flex min-w-0 items-center gap-3 pl-3 pr-4 transition active:scale-[0.98] h-full w-full rounded-[18px]"
               >
                 <span className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-[16px] bg-gold/15 text-gold">
                   <ShoppingBag className="h-5 w-5" strokeWidth={2.2} aria-hidden />
@@ -353,6 +359,7 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
                 <span className="shrink-0 text-sm font-bold tabular-nums">UGX {cartTotal.toLocaleString()}</span>
                 <ChevronRight className="customer-nav-cart__muted h-4 w-4 shrink-0" aria-hidden />
               </button>
+              </div>
             ) : (
             <div key="nav-links" className="customer-nav-swap customer-nav-capsule flex flex-1 min-w-0 items-center justify-around rounded-[24px] p-1.5 shadow-[var(--shadow-float-capsule)]">
               <ul

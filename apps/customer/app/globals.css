@@ -1404,6 +1404,38 @@ select:focus {
   :root:not([data-theme="light"]) .customer-nav-cart__muted { color: rgb(255 255 255 / .62); }
 }
 
+/* Nav action buttons sit inside the same black capsule as the menu, inset
+   like the menu items, so the frame reads as one nav in both themes. */
+.customer-nav-frame > .customer-nav-cart,
+.customer-nav-frame > .customer-nav-checkout { box-shadow: none; }
+.customer-nav-frame > .customer-nav-cart { border-color: transparent; }
+:root[data-theme="dark"] .customer-nav-frame > .customer-nav-cart { border-color: rgb(255 255 255 / .06); }
+
+/* Glass scrim behind the bottom nav. The tint and the blur both fade out
+   toward the top (mask), so content stays visible while scrolling behind. */
+.customer-nav-scrim {
+  --scrim-tint: 0 0 0;
+  --scrim-strength: .32;
+  position: fixed;
+  inset-inline: 0;
+  bottom: 0;
+  z-index: 39;
+  height: calc(var(--customer-nav-content-gap, calc(87px + env(safe-area-inset-bottom))) + 28px);
+  pointer-events: none;
+  background: linear-gradient(to top,
+    rgb(var(--scrim-tint) / var(--scrim-strength)) 0%,
+    rgb(var(--scrim-tint) / calc(var(--scrim-strength) * .55)) 40%,
+    rgb(var(--scrim-tint) / 0) 100%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-mask-image: linear-gradient(to top, #000 0%, #000 30%, rgb(0 0 0 / .5) 65%, transparent 100%);
+  mask-image: linear-gradient(to top, #000 0%, #000 30%, rgb(0 0 0 / .5) 65%, transparent 100%);
+}
+:root[data-theme="dark"] .customer-nav-scrim { --scrim-strength: .6; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .customer-nav-scrim { --scrim-strength: .6; }
+}
+
 /* /cart Checkout in the nav: brand gold in both themes. */
 .customer-nav-checkout {
   background: rgb(var(--color-gold));
