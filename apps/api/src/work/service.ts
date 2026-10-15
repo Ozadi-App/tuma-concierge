@@ -24,9 +24,11 @@ export const inHours = (h: number) => inMinutes(h * 60);
 
 let readyCache: { at: number; ok: boolean } | null = null;
 let extrasCache: { at: number; ok: boolean } | null = null;
+let onsiteCache: { at: number; ok: boolean } | null = null;
 export function resetWorkSchemaCache() {
   readyCache = null;
   extrasCache = null;
+  onsiteCache = null;
 }
 export async function workReady(): Promise<boolean> {
   if (readyCache && Date.now() - readyCache.at < 30_000) return readyCache.ok;
@@ -53,6 +55,22 @@ export async function workExtrasReady(): Promise<boolean> {
     ok = false;
   }
   extrasCache = { at: Date.now(), ok };
+  return ok;
+}
+
+/** Migration 0100 (location trail and on-site review queue). Until it is applied nothing is recorded or flagged. */
+export async function workOnsiteReady(): Promise<boolean> {
+  if (onsiteCache && (onsiteCache.ok || Date.now() - onsiteCache.at < 30_000)) return onsiteCache.ok;
+  let ok = false;
+  try {
+    const n = Number(
+      ((await db.execute({ sql: "SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table' AND name IN ('work_job_locations', 'work_flags')", args: [] })).rows[0] as Row).n,
+    );
+    ok = n === 2;
+  } catch {
+    ok = false;
+  }
+  onsiteCache = { at: Date.now(), ok };
   return ok;
 }
 

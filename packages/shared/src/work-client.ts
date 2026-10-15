@@ -252,8 +252,9 @@ export function workMethods(request: Request) {
     workProviderSendMessage(jobId: string, body: string) {
       return post<{ message: WorkMessage }>(`/v1/work/provider/jobs/${encodeURIComponent(jobId)}/messages`, { body });
     },
-    workShareLocation(jobId: string, lat: number, lng: number) {
-      return post<{ ok: true; stored: boolean }>(`/v1/work/provider/jobs/${encodeURIComponent(jobId)}/location`, { lat, lng });
+    /** `accuracy` is the device's own estimate of its error in metres; low-quality fixes are ignored by the on-site checks. */
+    workShareLocation(jobId: string, lat: number, lng: number, accuracy?: number) {
+      return post<{ ok: true; stored: boolean }>(`/v1/work/provider/jobs/${encodeURIComponent(jobId)}/location`, { lat, lng, ...(accuracy != null && Number.isFinite(accuracy) ? { accuracy } : {}) });
     },
     workEarnings() {
       return request<{ paidUgx: number; paidJobs: number; upcomingUgx: number; upcomingJobs: number; jobsCompleted: number }>("/v1/work/provider/earnings");

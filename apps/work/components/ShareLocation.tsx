@@ -19,7 +19,7 @@ export function ShareLocation({ jobId, active }: { jobId: string; active: boolea
         const now = Date.now();
         if (now - lastSent.current < 8000) return;
         lastSent.current = now;
-        api.workShareLocation(jobId, pos.coords.latitude, pos.coords.longitude).catch(() => {});
+        api.workShareLocation(jobId, pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy).catch(() => {});
       },
       (err) => setState(err.code === err.PERMISSION_DENIED ? "denied" : "unavailable"),
       { enableHighAccuracy: true, maximumAge: 10000, timeout: 20000 },
@@ -33,7 +33,7 @@ export function ShareLocation({ jobId, active }: { jobId: string; active: boolea
       <div className="flex min-w-0 items-center gap-2">
         <MapPin className={`h-5 w-5 shrink-0 ${state === "sharing" ? "text-green" : "text-ink-500"}`} aria-hidden />
         <p className="text-xs font-medium text-ink-500">
-          {state === "sharing" ? "The customer can see where you are." : state === "denied" ? "Location is blocked. Allow it in your browser settings so the customer can follow you." : state === "unavailable" ? "Your location isn't available right now." : "Location sharing is off."}
+          {state === "sharing" ? "The customer can see where you are. Your location is recorded during the job, and cancelling after a long stay at the address can be reviewed by Peebee." : state === "denied" ? "Location is blocked. Allow it in your browser settings so the customer can follow you." : state === "unavailable" ? "Your location isn't available right now." : "Location sharing is off."}
         </p>
       </div>
       <button type="button" onClick={() => setOn((v) => !v)} className="shrink-0 rounded-full border border-[var(--border-faint)] px-3 py-1.5 text-xs font-black text-ink">{on ? "Stop" : "Share"}</button>

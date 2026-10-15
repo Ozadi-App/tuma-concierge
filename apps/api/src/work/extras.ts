@@ -9,7 +9,8 @@ import { consume } from "../lib/ratelimit.js";
 import { notifyUser } from "../lib/webpush.js";
 import { getR2Bucket, uploadResponseHeaders } from "../storage/r2.js";
 import { getJob } from "./jobs.js";
-import { canWork, logEvent, openJobsFor, providerFor, toDb, workExtrasReady, type Row } from "./service.js";
+import { recordTrailPoint } from "./onsite.js";
+import { canWork, logEvent, openJobsFor, providerFor, toDb, workExtrasReady, workOnsiteReady, type Row } from "./service.js";
 import { getWorkSettings } from "./settings.js";
 
 /**
@@ -219,7 +220,7 @@ extrasRoutes.post("/provider/jobs/:id/messages", (c) => sendMessage(c, c.req.par
 // Live location: the provider side reports where they are, the customer sees it on the job
 // ---------------------------------------------------------------------------
 
-const locationSchema = z.object({ lat: z.number().min(-90).max(90), lng: z.number().min(-180).max(180) });
+const locationSchema = z.object({ lat: z.number().min(-90).max(90), lng: z.number().min(-180).max(180), accuracy: z.number().min(0).max(100_000).optional() });
 
 extrasRoutes.post("/provider/jobs/:id/location", async (c) => {
   const user = c.get("user") as RequestUser;
@@ -240,5 +241,10 @@ extrasRoutes.post("/provider/jobs/:id/location", async (c) => {
           WHERE id = ? AND status IN ('booked', 'in_progress') AND (provider_located_at IS NULL OR provider_located_at <= datetime('now', '-4 seconds'))`,
     args: [parsed.data.lat, parsed.data.lng, side.job.id],
   });
-  return c.json({ ok: true, stored: (res.rowsAffected ?? 0) === 1 });
+  const stored = (res.rowsAffected ?? 0) === 1;
+  // With on-site checks on, every stored update is also kept as a trail point for the review of a later cancellation.
+  if (stored && settings.onsiteCheckEnabled && side.job.provider_id && (await workOnsiteReady())) {
+    await recordTrailPoint(String(side.job.id), String(side.job.provider_id), parsed.data.lat, parsed.data.lng, parsed.data.accuracy ?? null).catch((err) => console.error("Work trail point failed:", err));
+  }
+  return c.json({ ok: true, stored });
 });

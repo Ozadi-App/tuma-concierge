@@ -1,6 +1,7 @@
 import { db } from "../db/client.js";
 import { settleJob } from "./jobs.js";
 import { applyPendingMoney, transition, workReady, type Row } from "./service.js";
+import { purgeTrails } from "./onsite.js";
 import { getWorkSettings } from "./settings.js";
 
 /**
@@ -15,7 +16,7 @@ import { getWorkSettings } from "./settings.js";
 export async function sweepWork(): Promise<{ expired: number; lapsedQuotes: number; autoConfirmed: number; cleared: number; moneyApplied: number }> {
   const result = { expired: 0, lapsedQuotes: 0, autoConfirmed: 0, cleared: 0, moneyApplied: 0 };
   if (!(await workReady())) return result;
-  await getWorkSettings();
+  const settings = await getWorkSettings();
 
   const open = (await db.execute({ sql: "SELECT * FROM work_jobs WHERE status = 'open' AND expires_at IS NOT NULL AND expires_at <= datetime('now') LIMIT 100", args: [] })).rows as Row[];
   for (const job of open) {
@@ -49,6 +50,8 @@ export async function sweepWork(): Promise<{ expired: number; lapsedQuotes: numb
     args: [],
   });
   result.cleared = cleared.rowsAffected ?? 0;
+
+  await purgeTrails(settings).catch((err) => console.error("Work trail purge failed:", err));
 
   result.moneyApplied = await applyPendingMoney();
   return result;

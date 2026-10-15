@@ -169,6 +169,15 @@ export type WorkAdminSettings = {
   maxPhotoKb?: number;
   chatEnabled?: boolean;
   trackingEnabled?: boolean;
+  /** On-site checks (migration 0100). Optional until the API returns them. */
+  onsiteCheckEnabled?: boolean;
+  onsiteRadiusM?: number;
+  onsiteMinMinutes?: number;
+  onsiteAction?: "flag" | "suspend";
+  onsiteFlagNoLocation?: boolean;
+  onsiteSuspendAfterFlags?: number;
+  onsiteWindowDays?: number;
+  locationRetentionDays?: number;
 };
 
 export const WORK_SETTINGS_EXTRA_DEFAULTS = {
@@ -179,7 +188,54 @@ export const WORK_SETTINGS_EXTRA_DEFAULTS = {
   maxPhotoKb: 4096,
   chatEnabled: true,
   trackingEnabled: true,
+  onsiteCheckEnabled: false,
+  onsiteRadiusM: 150,
+  onsiteMinMinutes: 20,
+  onsiteAction: "flag",
+  onsiteFlagNoLocation: true,
+  onsiteSuspendAfterFlags: 0,
+  onsiteWindowDays: 30,
+  locationRetentionDays: 30,
 } as const;
+
+export type WorkFlagKind = "cancel_after_onsite" | "cancel_no_location";
+export type WorkFlagStatus = "open" | "dismissed" | "warned" | "suspended";
+export type WorkFlagOutcome = "dismiss" | "warn" | "suspend";
+
+/** A `work_flags` row joined with the provider and job it is about. */
+export type WorkAdminFlag = {
+  id: string;
+  job_id: string;
+  provider_id: string;
+  customer_id: string;
+  kind: WorkFlagKind;
+  cancelled_by: string;
+  onsite_minutes: number;
+  closest_m: number | null;
+  points: number;
+  first_onsite_at: string | null;
+  last_onsite_at: string | null;
+  radius_m: number;
+  min_minutes: number;
+  status: WorkFlagStatus;
+  review_note: string | null;
+  reviewed_at: string | null;
+  created_at: string;
+  provider_name: string;
+  provider_status: WorkProviderStatus;
+  service_name: string;
+  address: string;
+  provider_flag_count: number;
+};
+
+export type WorkFlagDetail = {
+  flag: WorkAdminFlag & { customer_name: string; provider_status_note: string | null };
+  job: { id: string; serviceName: string; address: string; lat: number | null; lng: number | null; status: string; assignedAt: string | null; cancelledAt: string | null; cancelledBy: string | null; cancelReason: string | null };
+  trail: { lat: number; lng: number; accuracyM: number | null; at: string }[];
+  trailTotal: number;
+  events: { id: string; action: string; actor_kind: string; detail: string | null; created_at: string }[];
+  otherFlags: { id: string; kind: WorkFlagKind; status: WorkFlagStatus; onsite_minutes: number; created_at: string }[];
+};
 
 type Request = <T>(path: string, init?: RequestInit) => Promise<T>;
 
@@ -227,6 +283,18 @@ export function workAdminMethods(request: Request) {
     /** `refundPercent` (1-99) is required for `split`; `note` is required (3-500 characters). */
     workAdminResolve(jobId: string, input: { outcome: WorkResolveOutcome; refundPercent?: number; note: string }) {
       return post<{ ok: true }>(`/v1/work/admin/jobs/${enc(jobId)}/resolve`, input);
+    },
+
+    // ---- On-site flags (cancellations after a long stay at the customer's address) ----
+    /** `ready` is false until migration 0100 is applied. */
+    workAdminFlags(status?: WorkFlagStatus) {
+      return request<{ ready: boolean; flags: WorkAdminFlag[]; openCount: number }>(`/v1/work/admin/flags${status ? `?status=${status}` : ""}`);
+    },
+    workAdminFlag(flagId: string) {
+      return request<WorkFlagDetail>(`/v1/work/admin/flags/${enc(flagId)}`);
+    },
+    workAdminReviewFlag(flagId: string, outcome: WorkFlagOutcome, note?: string) {
+      return post<{ ok: true }>(`/v1/work/admin/flags/${enc(flagId)}/review`, { outcome, note });
     },
 
     // ---- Work settings (the `work` group of the general settings endpoints) ----

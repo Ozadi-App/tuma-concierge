@@ -44,6 +44,12 @@ Admin → Settings → `work` group (`PUT /v1/admin/settings` with a `work` obje
 | `photosEnabled`, `maxPhotosPerJob`, `maxPhotoKb` | on, 8, 4096 | Photos on a job, how many, and the largest one |
 | `chatEnabled` | on | Customer and provider can message each other about a job |
 | `trackingEnabled` | on | The customer sees the provider's location while the job is booked or in progress |
+| `onsiteCheckEnabled` | **off** | On-site checks (migration 0100): keep a location trail during jobs and flag cancellations that follow a long stay at the address |
+| `onsiteRadiusM`, `onsiteMinMinutes` | 150, 20 | How close counts as "on site", and how many minutes there before a cancellation is flagged |
+| `onsiteAction` | `flag` | `flag`: put it in the review queue. `suspend`: also suspend the provider until staff review it |
+| `onsiteFlagNoLocation` | on | Also flag a cancellation when the provider held the job that long and never shared a location |
+| `onsiteSuspendAfterFlags`, `onsiteWindowDays` | 0 (off), 30 | Suspend automatically once a provider has this many open or upheld flags inside the window |
+| `locationRetentionDays` | 30 | Location trails are deleted after this long (those behind an unreviewed flag are kept) |
 
 The catalogue (`work_services`) is also admin-edited: price, unit, call-out fee, quantity limits, pricing mode,
 commission override, active flag.
@@ -123,13 +129,36 @@ Until `0099` is applied these endpoints answer `503 work_upgrade_pending`, a pro
 before, and the public settings report photos, chat and tracking as unavailable. The new Fix and Laundry catalogues are in
 the same migration; turn those types on in Admin (`serviceTypes`) when you want them live.
 
+## On-site checks (migration 0100)
+
+Meant to discourage cancelling a job so the work can be paid for in cash off the app. It is evidence for a person to
+review, not proof: GPS can be wrong, switched off or faked, a provider can have a good reason to be at an address, and the
+provider app only reports location while the job page is open and the phone is awake.
+
+- While a job is booked or in progress and the switch is on, every stored location update is also kept as a trail point
+  (`work_job_locations`, with the device's accuracy). Updates less accurate than the on-site distance are ignored when measuring.
+- When a customer or provider cancels (including a provider cancel that re-matches the job), the trail for that provider is
+  measured: time spent within the on-site distance, counting only gaps between pings of five minutes or less. At or above the
+  minutes admin set, a `cancel_after_onsite` flag is raised. A provider who held the job that long and shared nothing gets
+  `cancel_no_location` (switchable). Jobs without an address position are skipped.
+- Flags (`work_flags`) appear under Admin → Work → Flags with the stay, the cancellation, the trail and earlier flags.
+  Staff **dismiss**, **warn** (the provider is notified) or **suspend**. A suspended provider goes offline and can't take jobs
+  until reinstated on the Providers page.
+- `onsiteAction = suspend`, or `onsiteSuspendAfterFlags` flags inside `onsiteWindowDays`, suspends automatically. Both are
+  off by default; staff review each case first.
+- Admin endpoints: `GET /admin/flags`, `GET /admin/flags/:id`, `POST /admin/flags/:id/review` (`work.view` / `work.manage`).
+- The provider app tells providers that their location is recorded during a job. The late-cancel fee (`lateCancelFeePercent`)
+  still applies to a customer who cancels after the free window, whatever the flag says.
+- Until `0100` is applied, or while the switch is off, nothing is recorded or flagged and the admin Flags page says an update is needed.
+
 ## Applying it
 
 1. Apply `apps/api/src/db/migrations/0098_work_engine.sql` by hand (all new tables, plus a starting Clean
    catalogue of 17 editable services across houses, offices, pets, cars and household items).
 2. Apply `0099_work_extras.sql` for re-matching, photos, chat, tracking and the Fix/Laundry catalogues (optional; everything above keeps working without it).
-3. Deploy. The Worker's cron heartbeat already runs `sweepWork`.
-4. In Admin, review the catalogue prices and the `work` settings, then approve providers as they register.
+3. Apply `0100_work_onsite_checks.sql` for the location trail and the on-site review queue (optional; off until switched on in Admin).
+4. Deploy. The Worker's cron heartbeat already runs `sweepWork` (it also deletes old location trails).
+5. In Admin, review the catalogue prices and the `work` settings, then approve providers as they register.
 
 ## Adding a service type (Fix, Laundry)
 
@@ -145,4 +174,5 @@ for both, and the customer app's Fix and Laundry screens now book through this e
   call-out fee may apply). There is no automatic re-matching yet.
 - A quote the customer already accepted is refunded (not re-offered) if the provider then cancels.
 - Chat is text only; no voice notes or attachments. Photos can't be deleted once added (kept as an audit trail).
-- Live location is a point in time, not a route history.
+- Live location shown to the customer is a point in time; the route history kept for on-site checks is for staff only.
+- A flagged provider cannot reply to a flag in the app yet; staff contact them directly.

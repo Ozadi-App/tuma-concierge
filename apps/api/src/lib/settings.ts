@@ -403,6 +403,15 @@ const DEFAULTS = {
   work_max_photo_kb: "4096",
   work_chat_enabled: "1",
   work_tracking_enabled: "1",
+  // On-site checks: flag cancellations that follow a long stay at the customer's address (off until admin turns it on).
+  work_onsite_check_enabled: "0",
+  work_onsite_radius_m: "150",
+  work_onsite_min_minutes: "20",
+  work_onsite_action: "flag",
+  work_onsite_flag_no_location: "1",
+  work_onsite_suspend_after_flags: "0",
+  work_onsite_window_days: "30",
+  work_location_retention_days: "30",
 } as const;
 
 export type SettingKey = keyof typeof DEFAULTS;

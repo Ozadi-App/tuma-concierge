@@ -438,6 +438,14 @@ const updateSchema = z.object({
       maxPhotoKb: z.number().int().min(100).max(10240),
       chatEnabled: z.boolean(),
       trackingEnabled: z.boolean(),
+      onsiteCheckEnabled: z.boolean(),
+      onsiteRadiusM: z.number().int().min(20).max(2000),
+      onsiteMinMinutes: z.number().int().min(1).max(1440),
+      onsiteAction: z.enum(["flag", "suspend"]),
+      onsiteFlagNoLocation: z.boolean(),
+      onsiteSuspendAfterFlags: z.number().int().min(0).max(50),
+      onsiteWindowDays: z.number().int().min(1).max(365),
+      locationRetentionDays: z.number().int().min(1).max(365),
     })
     .partial()
     .optional(),

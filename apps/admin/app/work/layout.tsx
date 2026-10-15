@@ -8,6 +8,7 @@ import { useAuth } from "../../lib/auth-context";
 const TABS = [
   { href: "/work", label: "Jobs" },
   { href: "/work/providers", label: "Providers" },
+  { href: "/work/flags", label: "Flags" },
   { href: "/work/catalogue", label: "Catalogue" },
   { href: "/work/settings", label: "Settings" },
 ];
