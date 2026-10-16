@@ -270,6 +270,8 @@ function MenuOrderList({
   cart,
   itemsTotal,
   cartCount,
+  thisName,
+  otherGroup,
   isOpen,
   onClose,
   onRemoveLine,
@@ -278,6 +280,9 @@ function MenuOrderList({
   cart: CartLine[];
   itemsTotal: number;
   cartCount: number;
+  /** With another restaurant combined into the same delivery, its items are listed too, under its name. */
+  thisName?: string;
+  otherGroup?: { name: string; lines: CartLine[] } | null;
   isOpen: boolean;
   onClose: () => void;
   onRemoveLine: (key: string) => void;
@@ -304,6 +309,22 @@ function MenuOrderList({
 
   if (!portalReady || typeof document === "undefined") return null;
 
+  const renderLine = (line: CartLine, removable: boolean) => (
+    <li className="menu-item-order-list__line" key={line.key}>
+      <MenuItemThumb itemId={line.menuItemId} photoKey={line.photoKey} revision={line.photoRevision} />
+      <span className="menu-item-order-list__copy">
+        <span className="menu-item-order-list__name" title={line.name}>{line.name}</span>
+        <span className="menu-item-order-list__meta">{line.quantity} × {formatUgx(line.unitPrice)} {t("order_each")}{line.choiceNames?.length ? ` · ${line.choiceNames.join(", ")}` : ""}</span>
+        <span className="menu-item-order-list__subtotal">{t("restaurant_subtotal")} · {formatUgx(line.unitPrice * line.quantity)}</span>
+      </span>
+      {removable && (
+        <button type="button" className="menu-item-order-list__remove" aria-label={`${t("restaurant_remove")} ${line.name}`} onClick={() => onRemoveLine(line.key)}>
+          <Trash2 size={17} strokeWidth={1.9} aria-hidden="true" />
+        </button>
+      )}
+    </li>
+  );
+
   return createPortal(
     <div className={`menu-item-cart-layer${isOpen ? " is-open" : ""}`} aria-hidden={!isOpen}>
       <button type="button" className="menu-item-cart-layer__backdrop" aria-label="Close cart" tabIndex={isOpen ? 0 : -1} onClick={onClose} />
@@ -325,22 +346,22 @@ function MenuOrderList({
           </button>
         </div>
         <div className="menu-item-cart-drawer__body">
-          {cart.length > 0 ? (
-            <ul className="menu-item-order-list__lines">
-              {cart.map((line) => (
-                <li className="menu-item-order-list__line" key={line.key}>
-                  <MenuItemThumb itemId={line.menuItemId} photoKey={line.photoKey} revision={line.photoRevision} />
-                  <span className="menu-item-order-list__copy">
-                    <span className="menu-item-order-list__name" title={line.name}>{line.name}</span>
-                    <span className="menu-item-order-list__meta">{line.quantity} × {formatUgx(line.unitPrice)} {t("order_each")}{line.choiceNames?.length ? ` · ${line.choiceNames.join(", ")}` : ""}</span>
-                    <span className="menu-item-order-list__subtotal">{t("restaurant_subtotal")} · {formatUgx(line.unitPrice * line.quantity)}</span>
-                  </span>
-                  <button type="button" className="menu-item-order-list__remove" aria-label={`${t("restaurant_remove")} ${line.name}`} onClick={() => onRemoveLine(line.key)}>
-                    <Trash2 size={17} strokeWidth={1.9} aria-hidden="true" />
-                  </button>
-                </li>
-              ))}
-            </ul>
+          {cart.length > 0 || otherGroup?.lines.length ? (
+            <>
+              {otherGroup?.lines.length ? <p className="restaurant-cart-group__name">{otherGroup.name}</p> : null}
+              {otherGroup?.lines.length ? (
+                <ul className="menu-item-order-list__lines">
+                  {otherGroup.lines.map((line) => renderLine(line, false))}
+                </ul>
+              ) : null}
+              {otherGroup?.lines.length && cart.length > 0 ? <hr className="restaurant-cart-group__divider" /> : null}
+              {otherGroup?.lines.length && cart.length > 0 && thisName ? <p className="restaurant-cart-group__name">{thisName}</p> : null}
+              {cart.length > 0 && (
+                <ul className="menu-item-order-list__lines">
+                  {cart.map((line) => renderLine(line, true))}
+                </ul>
+              )}
+            </>
           ) : (
             <p className="px-1 py-3 text-sm text-ink-500">{t("restaurant_order_list_empty")}</p>
           )}
@@ -727,6 +748,8 @@ function ItemDetailPage({
   cart,
   itemsTotal,
   cartCount,
+  thisName,
+  otherGroup,
   restaurantId,
   onBack,
   isDemo = false,
@@ -741,6 +764,8 @@ function ItemDetailPage({
   cart: CartLine[];
   itemsTotal: number;
   cartCount: number;
+  thisName?: string;
+  otherGroup?: { name: string; lines: CartLine[] } | null;
   restaurantId: string;
   onBack: () => void;
   isDemo?: boolean;
@@ -790,6 +815,8 @@ function ItemDetailPage({
         cart={cart}
         itemsTotal={itemsTotal}
         cartCount={cartCount}
+        thisName={thisName}
+        otherGroup={otherGroup}
         isOpen={cartOpen}
         onClose={closeCart}
         onRemoveLine={onRemoveLine}
@@ -1045,21 +1072,22 @@ export default function RestaurantPage() {
   // checkout shows is final. Checkout stays off until it arrives.
   const placeForFee = placeFields(delivery);
   const feeKey = delivery ? `${id}|${combineOther?.id ?? ""}|${placeForFee.lat ?? ""},${placeForFee.lng ?? ""}` : null;
-  const [feeQuote, setFeeQuote] = useState<{ key: string; fee: number } | null>(null);
+  const [feeQuote, setFeeQuote] = useState<{ key: string; fee: number; legs: { betweenPickups: number; lastMile: number } | null } | null>(null);
   const [feeQuoteError, setFeeQuoteError] = useState<string | null>(null);
   const [feeRetry, setFeeRetry] = useState(0);
   useEffect(() => {
-    if (!feeKey || !(checkoutRequested || step === "checkout")) return;
+    if (!feeKey || !(checkoutRequested || step === "checkout") || cart.length === 0) return;
     if (combineOtherId && !combineOther) return;
     let live = true;
     setFeeQuoteError(null);
     api.getRestaurantDeliveryQuote(id, { lat: placeForFee.lat, lng: placeForFee.lng, alsoFrom: combineOther?.id ?? null })
-      .then((r) => { if (live) setFeeQuote({ key: feeKey, fee: r.deliveryFee }); })
+      .then((r) => { if (live) setFeeQuote({ key: feeKey, fee: r.deliveryFee, legs: r.legs ?? null }); })
       .catch((err) => { if (live) setFeeQuoteError(errorMessage(err)); });
     return () => { live = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [feeKey, combineOtherId, combineOther?.id, checkoutRequested, step, feeRetry]);
+  }, [feeKey, combineOtherId, combineOther?.id, checkoutRequested, step, feeRetry, cart.length]);
   const confirmedFee = feeQuote && feeQuote.key === feeKey ? feeQuote.fee : null;
+  const confirmedLegs = feeQuote && feeQuote.key === feeKey ? feeQuote.legs : null;
 
   const selectedBundle = bundleCandidates.find((candidate) => candidate.id === selectedBundleOrderId) ?? null;
   const bundleExtraDeliveryFee = useMemo(() => {
@@ -1213,8 +1241,10 @@ export default function RestaurantPage() {
           items={categoryItems}
           categoryName={category?.name ?? t("restaurant_menu_items")}
           cart={cart}
-          itemsTotal={itemsTotal}
-          cartCount={cartCount}
+          itemsTotal={checkoutItemsTotal}
+          cartCount={orderItemCount}
+          thisName={restaurant.name}
+          otherGroup={combineOther ? { name: combineOther.name, lines: combineOther.lines } : null}
           restaurantId={id}
           onBack={() => router.push(`/restaurants/${id}`)}
           isDemo={restaurant.is_demo}
@@ -1231,10 +1261,26 @@ export default function RestaurantPage() {
     return (
       <div className="space-y-6 px-4">
         <div className="flex items-center gap-3"><button aria-label="Back to menu" onClick={backToMenu} className="flex h-11 w-11 items-center justify-center rounded-full glass-panel"><ChevronLeft size={22}/></button><h1 className="text-2xl font-bold text-ink">Delivery and payment</h1></div>
-        <div className="food-menu-card flex items-center justify-between gap-3 px-4 py-3">
-          <span className="font-semibold">{orderItemCount} item{orderItemCount === 1 ? "" : "s"} in your order</span>
-          <span className="font-bold">{formatUgx(checkoutItemsTotal)}</span>
-        </div>
+        {orderItemCount === 0 ? (
+          <div className="food-menu-card px-4 py-5 text-center text-sm text-ink-500">Your cart is empty. Add items from the menu to check out.</div>
+        ) : (
+          <section className="food-menu-card px-4 py-4" aria-label="Your order">
+            {[...(combineOther ? [{ name: combineOther.name, lines: combineOther.lines }] : []), { name: restaurant.name, lines: cart }].filter((group) => group.lines.length > 0).map((group, index) => (
+              <div key={group.name + index}>
+                {index > 0 && <hr className="restaurant-cart-group__divider" />}
+                {combineOther && <p className="restaurant-cart-group__name">{group.name}</p>}
+                <ul className="space-y-1.5">
+                  {group.lines.map((l) => (
+                    <li key={l.key} className="flex justify-between gap-3 text-sm text-ink">
+                      <span className="min-w-0">{l.quantity}× {l.name}{l.choiceNames?.length ? <span className="text-ink-500"> · {l.choiceNames.join(", ")}</span> : null}</span>
+                      <span className="shrink-0">{formatUgx(l.unitPrice * l.quantity)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </section>
+        )}
         {!delivery && !choosing && <button onClick={() => setChoosing(true)} className="food-menu-card w-full text-left font-semibold">Choose delivery location →</button>}
 
         {delivery && (
@@ -1274,20 +1320,26 @@ export default function RestaurantPage() {
 
 
 
-        <div className="food-menu-card space-y-3 px-4 py-5">
+        {orderItemCount > 0 && <div className="food-menu-card space-y-3 px-4 py-5">
           <div className="flex items-center justify-between text-sm text-ink-500">
             <span>{t("restaurant_items_total")}</span>
             <span>{formatUgx(checkoutItemsTotal)}</span>
           </div>
           <div className="flex items-center justify-between text-sm text-ink-500">
-            <span>{combineOther ? "Delivery (one rider, 2 pickups)" : t("restaurant_delivery_fee")}</span>
+            <span>{t("restaurant_delivery_fee")}</span>
             <span>{selectedBundle ? (bundleExtraDeliveryFee != null ? `+${formatUgx(bundleExtraDeliveryFee)}` : "—") : confirmedFee != null ? formatUgx(confirmedFee) : feeQuoteError ? "Couldn't confirm" : !delivery ? "Choose location" : "Calculating…"}</span>
           </div>
+          {combineOther && confirmedLegs && (
+            <div className="space-y-1 border-l border-[var(--border-faint)] pl-3 text-xs text-ink-500">
+              <div className="flex justify-between gap-3"><span>{combineOther.name} to {restaurant.name}</span><span>{formatUgx(confirmedLegs.betweenPickups)}</span></div>
+              <div className="flex justify-between gap-3"><span>Last-mile delivery</span><span>{formatUgx(confirmedLegs.lastMile)}</span></div>
+            </div>
+          )}
           <div className="flex items-center justify-between border-t border-[var(--border-faint)] pt-1.5 text-sm font-bold text-ink">
             <span>Total</span>
             <span>{estimatedFee != null ? formatUgx(checkoutItemsTotal + estimatedFee) : "—"}</span>
           </div>
-        </div>
+        </div>}
 
         {feeQuoteError && delivery && <button type="button" onClick={() => setFeeRetry((n) => n + 1)} className="min-h-11 w-full rounded-full border border-[var(--border-faint)] px-4 text-sm font-bold text-ink">Couldn&apos;t confirm the delivery fee. Try again</button>}
         {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
