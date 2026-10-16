@@ -71,10 +71,15 @@ export default function TripPage() {
       <section className="home-card space-y-2.5">
         {[
           { key: "pickup", area: trip.pickupArea, address: trip.pickupAddress },
+          ...(trip.stops ?? []).map((stop) => ({
+            key: `stop-${stop.position}`,
+            area: `Stop ${stop.position}${stop.area ? ` · ${stop.area}` : ""}`,
+            address: stop.status === "done" ? "Done" : stop.status === "arrived" ? "Driver is here" : stop.address,
+          })),
           { key: "destination", area: trip.destinationArea, address: trip.destinationAddress },
         ].map((r) => (
           <p key={r.key} className="flex items-start gap-2 text-[15px] text-ink">
-            <MapPin className={`mt-0.5 h-4 w-4 shrink-0 ${r.key === "pickup" ? "text-ink" : "text-gold"}`} aria-hidden />
+            <MapPin className={`mt-0.5 h-4 w-4 shrink-0 ${r.key === "pickup" ? "text-ink" : r.key.startsWith("stop") ? "text-ink-500" : "text-gold"}`} aria-hidden />
             <span className="min-w-0">
               {[r.area, r.address].filter(Boolean).join(" · ") || "—"}
             </span>

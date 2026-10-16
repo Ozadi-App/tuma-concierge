@@ -36,7 +36,7 @@ const PlaceMap = dynamic(() => import("./maps/PlaceMap"), {
 });
 
 /** Same flow everywhere; only the wording changes with what's being ordered. */
-export type PlaceConcept = "ride" | "parcel" | "shopping" | "food";
+export type PlaceConcept = "ride" | "parcel" | "shopping" | "food" | "stop";
 /** `passenger` is set when a ride is booked for someone else (null = the booker rides). */
 export type PlaceResult = { pickup: Place | null; destination: Place; passenger?: RidePassenger | null };
 type Field = "pickup" | "destination";
@@ -47,6 +47,7 @@ const CONFIRM_KEY: Record<PlaceConcept, TranslationKey> = {
   parcel: "place_confirm_parcel",
   shopping: "place_confirm_delivery",
   food: "place_confirm_delivery",
+  stop: "place_confirm_stop",
 };
 
 function savedIcon(label: string) {
@@ -285,7 +286,7 @@ export function PlaceFlow({
   const setField = (f: Field, p: Place | null) => (f === "pickup" ? setPickup(p) : setDestination(p));
   const placeOf = (f: Field) => (f === "pickup" ? pickup : destination);
   const titleFor = (f: Field) =>
-    f === "pickup" ? t("place_pickup") : concept === "ride" ? t("place_destination") : t("place_delivery");
+    f === "pickup" ? t("place_pickup") : concept === "ride" ? t("place_destination") : concept === "stop" ? t("place_stop") : t("place_delivery");
   const ready = route ? !!pickup && !!destination : !!destination;
 
   function openSearch(f: Field) {

@@ -7,6 +7,7 @@ import { MapContainer, Marker, TileLayer, useMap } from "react-leaflet";
 import { OSM_TILES, loadMapTiles, type Tiles } from "../../lib/map-tiles";
 import { jawgTileUrl, useJawgStyle } from "../../lib/mapStyle";
 import { destinationIcon, meIcon, pickupIcon } from "../maps/map-icons";
+import { MultiStopRoute, type MapStop } from "../maps/MultiStopRoute";
 import { SelectedRoadRoute, type SelectedRouteLocations } from "../maps/SelectedRoadRoute";
 
 const KAMPALA: [number, number] = [0.3476, 32.5825];
@@ -22,7 +23,7 @@ function FlyTo({ target, nonce }: { target: [number, number] | null; nonce: numb
 
 /** Read-only street map behind the home screen: shows where the customer
  * is, follows the admin's maps provider, no pickers or pins. */
-export default function HomeMap({ pickup, destination, bottomInset = 0 }: SelectedRouteLocations & { bottomInset?: number }) {
+export default function HomeMap({ pickup, destination, stops, bottomInset = 0 }: SelectedRouteLocations & { stops?: MapStop[]; bottomInset?: number }) {
   const [tiles, setTiles] = useState<Tiles>(OSM_TILES);
   const [ready, setReady] = useState(false);
   const [position, setPosition] = useState<[number, number] | null>(null);
@@ -73,7 +74,16 @@ export default function HomeMap({ pickup, destination, bottomInset = 0 }: Select
       >
         <TileLayer key={tileUrl} url={tileUrl} attribution={tiles.attribution} />
         <FlyTo target={hasSelection && nonce === 0 ? null : position} nonce={nonce} />
-        <SelectedRoadRoute pickup={pickup} destination={destination} bottomInset={bottomInset} />
+        {stops?.length && pickupPoint && destinationPoint ? (
+          <MultiStopRoute
+            pickup={{ lat: pickupPoint[0], lng: pickupPoint[1] }}
+            destination={{ lat: destinationPoint[0], lng: destinationPoint[1] }}
+            stops={stops}
+            bottomInset={bottomInset}
+          />
+        ) : (
+          <SelectedRoadRoute pickup={pickup} destination={destination} bottomInset={bottomInset} />
+        )}
         {position && <Marker position={position} icon={meIcon} interactive={false} />}
         {pickupPoint && <Marker position={pickupPoint} icon={pickupIcon} interactive={false} />}
         {destinationPoint && <Marker position={destinationPoint} icon={destinationIcon} interactive={false} />}

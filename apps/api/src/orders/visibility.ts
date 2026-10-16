@@ -60,6 +60,16 @@ export function toOpenJob(
     applied: boolean;
     /** Set when riders may bid on this job: the app price and the allowed range. */
     bidding?: { appPrice: number | null; min: number | null; max: number | null } | null;
+    /** Name your fare: the customer's own price, the app's quote, the counter band and this rider's open counter. */
+    fareOffer?: {
+      amount: number;
+      quote: number;
+      min: number;
+      max: number;
+      expiresAt: string | null;
+      expired: boolean;
+      myCounter: { id: string; amount: number; expiresAt: string | null } | null;
+    } | null;
   },
 ): Row {
   const fullName = (order.customer_name as string | null)?.trim();
@@ -101,6 +111,8 @@ export function toOpenJob(
     // 0039_ride_orders.sql) — surfaced here so the rider app can
     // categorize it as "Ride" rather than plain "Parcel".
     is_ride: order.is_ride ?? 0,
+    // Multi-stop rides (0104): how many stops between pickup and destination.
+    stop_count: Number(order.stop_count ?? 0),
     ...extras,
   };
 }

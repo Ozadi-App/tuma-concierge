@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useSyncExternalStore } from "react";
+import { useEffect, useRef, useSyncExternalStore, type ComponentType } from "react";
 
 /**
  * A page or flow can hand the bottom nav one primary action (e.g. /cart →
@@ -28,6 +28,8 @@ export interface NavPrimaryAction {
   detail?: string;
   disabled?: boolean;
   busy?: boolean;
+  /** Leading icon for tone "gold" (defaults to the shopping bag), e.g. a bike for "Book Boda". */
+  icon?: ComponentType<{ className?: string; strokeWidth?: number; "aria-hidden"?: boolean }>;
   onClick: () => void;
 }
 
@@ -78,6 +80,7 @@ export function useRegisterNavPrimaryAction(action: NavPrimaryAction | null, pri
   const detail = action?.detail;
   const disabled = action?.disabled;
   const busy = action?.busy;
+  const icon = action?.icon;
   const enabled = action !== null;
 
   // Remove this component's slot when it unmounts.
@@ -103,10 +106,10 @@ export function useRegisterNavPrimaryAction(action: NavPrimaryAction | null, pri
     slots.set(id, {
       seq,
       priority,
-      action: { tone, count, sublabel, label, detail, disabled, busy, onClick: () => handlerRef.current?.() },
+      action: { tone, count, sublabel, label, detail, disabled, busy, icon, onClick: () => handlerRef.current?.() },
     });
     recompute();
-  }, [enabled, tone, count, sublabel, label, detail, disabled, busy, priority]);
+  }, [enabled, tone, count, sublabel, label, detail, disabled, busy, icon, priority]);
 }
 
 /* ------------------------------------------------------------------ */

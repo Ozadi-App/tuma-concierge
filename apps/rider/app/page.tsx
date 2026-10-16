@@ -10,6 +10,7 @@ import { Bike, Bus, ChevronRight, Fuel, MapPin, Package, ShoppingCart, TriangleA
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { FareOfferPanel } from "../components/FareOfferPanel";
 import { JobPreviewModal } from "../components/JobPreviewModal";
 import { StageSavingsCard } from "../components/StageSavingsCard";
 import { api, errorMessage } from "../lib/api";
@@ -347,6 +348,11 @@ export default function JobsHomePage() {
                 <span className="min-w-0 flex-1">
                   <span className="block text-base font-semibold leading-snug text-ink">{jobTitle(job)}</span>
                   <span className="mt-0.5 block text-sm text-ink-500">{JOB_CATEGORY_LABELS[jobCategory(job)]}</span>
+                  {(job.stop_count ?? 0) > 0 && (
+                    <span className="mr-1 mt-1 inline-flex rounded-full bg-gold/15 px-2.5 py-1 text-xs font-bold text-ink">
+                      {job.stop_count === 1 ? t("stops_one") : t("stops_count", { count: job.stop_count ?? 0 })}
+                    </span>
+                  )}
                   {(job.bundle_order_count ?? 1) > 1 && <span className="mt-1 inline-flex rounded-full bg-gold/15 px-2.5 py-1 text-xs font-bold text-ink">Combined trip · {job.bundle_pickups ?? `${job.bundle_order_count} pickups`}</span>}
                 </span>
                 <span className="max-w-[30%] text-right text-xs leading-5 text-ink-500">
@@ -368,6 +374,9 @@ export default function JobsHomePage() {
                   <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-gold" strokeWidth={2.25} aria-hidden />
                   <p className="text-xs text-ink-500">{t("home_out_of_range")}</p>
                 </div>
+              )}
+              {job.fareOffer && !job.applied && (
+                <FareOfferPanel job={job as AvailableJob & { fareOffer: NonNullable<AvailableJob["fareOffer"]> }} online={online} onChanged={load} />
               )}
               {job.bidding && job.matching_mode !== "first_to_claim" && !job.applied && (
                 <div className="space-y-1">
@@ -401,7 +410,13 @@ export default function JobsHomePage() {
                     disabled={claimingId === job.id || !online}
                     className="min-h-12 flex-1 rounded-xl bg-gold px-3 py-2 text-sm font-semibold text-ink-gold disabled:opacity-60"
                   >
-                    {claimingId === job.id ? t("home_claiming") : !online ? t("home_offline_btn") : t("home_claim_job")}
+                    {claimingId === job.id
+                      ? t("home_claiming")
+                      : !online
+                        ? t("home_offline_btn")
+                        : job.fareOffer
+                          ? t("offer_accept", { price: formatUgx(job.fareOffer.amount) })
+                          : t("home_claim_job")}
                   </button>
                 ) : (
                   <button
@@ -417,7 +432,9 @@ export default function JobsHomePage() {
                         ? t("home_applied")
                         : !online
                           ? t("home_offline_btn")
-                          : t("home_apply")}
+                          : job.fareOffer
+                            ? t("offer_accept", { price: formatUgx(job.fareOffer.amount) })
+                            : t("home_apply")}
                   </button>
                 )}
               </div>

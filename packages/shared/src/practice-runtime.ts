@@ -45,6 +45,90 @@ const PRACTICE_CAR_RIDERS = [
   { id: "practice-car-driver-07", name: "Isaac Mugisha", make: "Nissan", model: "Serena", size: "large", tier: "convenient", plate: "PRACTICE 07" },
   { id: "practice-car-driver-08", name: "Ruth Atim", make: "Toyota", model: "Noah", size: "large", tier: "comfort", plate: "PRACTICE 08" },
 ] as const;
+/** Cargo categories RideModal falls back to (rate per km, minimum fare). */
+const PRACTICE_CARGO_RATES: Record<string, readonly [number, number]> = {
+  "peebee-cargo-van": [2_500, 15_000],
+  "peebee-cargo-pickup": [3_500, 25_000],
+  "peebee-cargo-truck-3t": [5_000, 45_000],
+  "peebee-cargo-truck-7t": [8_000, 80_000],
+};
+/** Practice Boda pricing for multi-stop + Name your fare (mirrors the API's defaults). */
+const PRACTICE_RIDE = { ratePerKm: 1_000, minimumFare: 3_000, stopFee: 1_000, maxStops: 3, minPercent: 70, maxPercent: 150, offerTtlMs: 10 * 60_000, counterTtlMs: 120_000, maxRaises: 5 };
+const PRACTICE_RIDE_JOB_ID = "practice-ride-offer";
+const PRACTICE_RIDE_JOB_STOPS: PracticeStop[] = [
+  { area: "Garden City", address: "Yusuf Lule Road", lat: 0.3209, lng: 32.5917 },
+  { area: "Bugolobi Market", address: "Bandali Rise", lat: 0.3176, lng: 32.6133 },
+];
+
+function practiceRideQuote(pickup: { lat: number; lng: number }, destination: { lat: number; lng: number }, stops: Array<{ lat: number; lng: number }>) {
+  const points = [pickup, ...stops, destination];
+  let km = 0;
+  for (let i = 1; i < points.length; i++) km += haversineKm(points[i - 1].lat, points[i - 1].lng, points[i].lat, points[i].lng);
+  const base = roundFare(km * PRACTICE_RIDE.ratePerKm, PRACTICE_RIDE.minimumFare);
+  const stopFees = stops.length * roundFare(PRACTICE_RIDE.stopFee);
+  const quote = base + stopFees;
+  const min = Math.min(quote, roundFare((quote * PRACTICE_RIDE.minPercent) / 100));
+  const max = Math.max(quote, roundFare((quote * PRACTICE_RIDE.maxPercent) / 100));
+  return { quote, base, stopFees, km, min, max };
+}
+
+function practiceOfferSummary(state: PracticeState) {
+  if (state.fareOffer == null || state.fareQuote == null) return null;
+  const min = Math.min(state.fareQuote, roundFare((state.fareQuote * PRACTICE_RIDE.minPercent) / 100));
+  const max = Math.max(state.fareQuote, roundFare((state.fareQuote * PRACTICE_RIDE.maxPercent) / 100));
+  const raises = state.fareRaises ?? 0;
+  return {
+    amount: state.fareOffer, quote: state.fareQuote, min, max,
+    expiresAt: state.offerExpiresAt ? new Date(state.offerExpiresAt).toISOString() : null,
+    expired: state.offerExpiresAt != null && state.offerExpiresAt <= Date.now(),
+    raises, raisesLeft: Math.max(0, PRACTICE_RIDE.maxRaises - raises),
+  };
+}
+
+function practiceCounters(state: PracticeState) {
+  return (state.counters ?? [])
+    .filter((c) => c.status === "pending" && c.expiresAt > Date.now())
+    .sort((a, b) => a.amount - b.amount)
+    .map((c) => ({ id: c.id, amount: c.amount, offer: state.fareOffer ?? 0, rider_id: `practice-${c.riderName.toLowerCase()}`, rider_name: c.riderName, rider_rating: c.rating, rider_verified: 1, expires_at: new Date(c.expiresAt).toISOString(), created_at: new Date(c.expiresAt - PRACTICE_RIDE.counterTtlMs).toISOString() }));
+}
+
+/** Practice stops progress on their own once the passenger is aboard: each stop is reached, then left. */
+function practiceStops(state: PracticeState) {
+  const stops = state.stops ?? [];
+  const elapsed = state.autoAdvanceAt != null ? Date.now() - state.autoAdvanceAt : -1;
+  const aboard = ["PickedUp", "Handover", "Settle"].includes(state.stage);
+  return stops.map((stop, i) => {
+    const arriveAt = 22_000 + i * 14_000;
+    const status: "pending" | "arrived" | "done" = !aboard ? "pending" : state.stage !== "PickedUp" || elapsed >= arriveAt + 7_000 ? "done" : elapsed >= arriveAt ? "arrived" : "pending";
+    return { position: i + 1, area: stop.area, address: stop.address, lat: stop.lat, lng: stop.lng, status, arrivedAt: status === "pending" ? null : nowIso(), departedAt: status === "done" ? nowIso() : null };
+  });
+}
+
+function practiceRideJobOrder(job: PracticeRideJob) {
+  return {
+    id: PRACTICE_RIDE_JOB_ID, list_id: "practice-ride-list", customer_id: "practice-customer", customer_name: "Grace N.",
+    rider_id: job.claimed ? "practice-rider" : null, rider_name: job.claimed ? "Daniel" : null,
+    matching_mode: "first_to_claim", stage: job.stage, type: "parcel", payment_rail: "escrow", funds_model: "merchant_allocations_v1", currency: "UGX",
+    estimated_total: job.total, final_total: job.stage === "Create" ? null : job.total, delivery_fee: job.total,
+    pickup_area: "Kololo", pickup_address: "Acacia Avenue", pickup_lat: 0.3337, pickup_lng: 32.5934,
+    destination_area: "Ntinda", destination_address: "Ntinda Shopping Centre", destination_lat: 0.3536, destination_lng: 32.6162,
+    distance_km: 6.1, matched_out_of_range: 0, voice_note_key: null, pin_code: "1357", eta_minutes: job.stage === "Deliver" ? 6 : null,
+    restaurant_id: null, is_ride: 1, rider_lat: null, rider_lng: null, rider_location_updated_at: null,
+    fare_offer: 6_000, fare_offer_quote: 7_500, fare_offer_raises: 0, stop_count: job.stops.length,
+    created_at: nowIso(-3 * 60_000), updated_at: nowIso(),
+  };
+}
+
+function freshRideJob(): PracticeRideJob {
+  return { claimed: false, stage: "Create", total: 6_000, counter: null, stageAt: Date.now(), stops: PRACTICE_RIDE_JOB_STOPS.map((s) => ({ ...s, status: "pending" as const })) };
+}
+
+const PRACTICE_RECENT_PLACES = [
+  { area: "Kisementi", address: "Acacia Mall, Kisementi, Kampala", lat: 0.3373, lng: 32.5907 },
+  { area: "Lugogo", address: "Garden City, Yusuf Lule Road, Kampala", lat: 0.3201, lng: 32.5924 },
+  { area: "Entebbe", address: "Entebbe International Airport, Entebbe", lat: 0.0424, lng: 32.4435 },
+];
+const PRACTICE_PASSENGERS_KEY = "peebee_practice_passengers_v1";
 const PRACTICE_RIDESHARE_TRIPS = [
   { route: "entebbe-kampala", from: ["Entebbe City", 0.0612, 32.4637] as const, to: ["Kampala", 0.3136, 32.5811] as const, driver: PRACTICE_CAR_RIDERS[0], price: 15_000 },
   { route: "kampala-entebbe", from: ["Kampala", 0.3136, 32.5811] as const, to: ["Entebbe City", 0.0612, 32.4637] as const, driver: PRACTICE_CAR_RIDERS[1], price: 15_000 },
@@ -152,6 +236,28 @@ type PracticeState = {
   settlementStatus: "none" | "successful";
   settlementAmount: number;
   restaurantOpen: boolean;
+  /** Multi-stop + Name your fare (customer side). Optional so older snapshots still load. */
+  stops?: PracticeStop[];
+  fareOffer?: number | null;
+  fareQuote?: number | null;
+  fareRaises?: number;
+  offerAt?: number | null;
+  offerExpiresAt?: number | null;
+  counters?: PracticeCounter[];
+  countersSeeded?: number;
+  /** Rider side: a practice boda ride with a customer offer and two stops. */
+  rideJob?: PracticeRideJob;
+};
+
+type PracticeStop = { area: string | null; address: string | null; lat: number; lng: number };
+type PracticeCounter = { id: string; amount: number; riderName: string; rating: number; expiresAt: number; status: "pending" | "approved" | "rejected" };
+type PracticeRideJob = {
+  claimed: boolean;
+  stage: string;
+  total: number;
+  counter: { amount: number; at: number; expiresAt: number } | null;
+  stageAt: number;
+  stops: Array<PracticeStop & { status: "pending" | "arrived" | "done" }>;
 };
 
 const DEFAULT_ITEMS: PracticeItem[] = [
@@ -329,6 +435,11 @@ function orderFor(state: PracticeState) {
     rider_lat: null,
     rider_lng: null,
     rider_location_updated_at: null,
+    fare_offer: state.fareOffer ?? null,
+    fare_offer_quote: state.fareQuote ?? null,
+    fare_offer_expires_at: state.offerExpiresAt ? new Date(state.offerExpiresAt).toISOString() : null,
+    fare_offer_raises: state.fareRaises ?? 0,
+    stop_count: (state.stops ?? []).length,
     created_at: nowIso(-12 * 60_000),
     updated_at: nowIso(),
   };
@@ -353,6 +464,10 @@ function itemsFor(state: PracticeState) {
 const STAGES = ["Create", "Match", "Fund", "Shop", "Deliver", "Arrived", "Handover", "Settle"];
 
 function orderDetail(state: PracticeState) {
+  return { ...orderDetailBase(state), ...((state.stops ?? []).length ? { rideStops: practiceStops(state) } : {}), ...(state.fareOffer != null ? { fareOffer: practiceOfferSummary(state) } : {}) };
+}
+
+function orderDetailBase(state: PracticeState) {
   const stageIndex = Math.max(0, STAGES.indexOf(state.stage));
   const events = STAGES.slice(0, stageIndex + 1).map((stage, index) => ({
     id: `practice-event-${stage.toLowerCase()}`,
@@ -542,7 +657,7 @@ function handlePracticeRequest(role: PracticeRole, path: string, method: string,
     if (path === "/v1/car/rentals/listings") return jsonResponse({ days: 1, vehicles: PRACTICE_RENTAL_CARS });
     if (path === "/v1/car/rentals/mine") return jsonResponse({ rentals: canUseStorage() ? JSON.parse(window.localStorage.getItem(PRACTICE_RENTALS_KEY) ?? "[]") : [] });
     if (path === "/v1/car/rentals/renter-profile") return jsonResponse({ status: "approved", isSimulated: true, ninMasked: "••••••••••0000", residentialAddress: "Practice address · Entebbe", residenceMethod: "bill", hasNationalId: true, hasRentReceipt: false, hasLandlordLetter: false, hasResidenceBill: true, tenancyStart: null, tenancyEnd: null, reviewNotes: null });
-    if (path === "/v1/car/config") return jsonResponse({ onDemandEnabled: true, matchingMode: "first_to_claim", emergencyNumber: "999", maxHireHours: 24, scheduled: null, carpool: { maxSeatsPerBooking: 3, maxRepeatWeeks: 0 }, selfDrive: null, serviceTiers: { ratePerKm: 2_000, minimumFare: 8_000, comfortPremiumPercent: 30, xlPremiumPercent: 50, xlMinSeats: 6 }, vehiclePhotos: false, kyc: null, deals: null, categories: [
+    if (path === "/v1/car/config") return jsonResponse({ onDemandEnabled: true, matchingMode: "first_to_claim", emergencyNumber: "999", maxHireHours: 24, scheduled: { maxAdvanceHours: 72, minLeadMinutes: 30 }, carpool: { maxSeatsPerBooking: 3, maxRepeatWeeks: 0 }, selfDrive: null, serviceTiers: { ratePerKm: 2_000, minimumFare: 8_000, comfortPremiumPercent: 30, xlPremiumPercent: 50, xlMinSeats: 6 }, vehiclePhotos: false, kyc: null, deals: null, categories: [
       { id: PRACTICE_CAR_CATEGORY_ID, kind: "passenger", name: "Normal · Saloon", seats: 4, cargo_type: null, size_label: null, reference_image_key: null, rate_per_km: 2_000, minimum_fare: 8_000 },
       { id: "practice-car-large", kind: "passenger", name: "Large · Minivan", seats: 7, cargo_type: null, size_label: null, reference_image_key: null, rate_per_km: 3_000, minimum_fare: 12_000 },
       ...PRACTICE_SPECIAL_CATEGORIES.map(({ rider: _rider, ...category }) => ({ ...category, cargo_type: null, size_label: null, reference_image_key: null })),
@@ -671,8 +786,157 @@ function handlePracticeRequest(role: PracticeRole, path: string, method: string,
     return jsonResponse({ ok: true, status: "completed" });
   }
 
+  // ---- Name your fare + multi-stop (practice stand-ins) -----------------
+  // Customer: riders "answer" an open offer on a timer — counters after a few
+  // seconds, and an offer at or above the app fare is simply accepted.
+  if (role === "customer" && state.fareOffer != null && state.stage === "Create" && !state.riderClaimed && state.offerAt != null) {
+    const elapsed = Date.now() - state.offerAt;
+    if (state.fareQuote != null && state.fareOffer >= state.fareQuote && elapsed >= 6_000) {
+      save({ riderClaimed: true, stage: "Match", counters: [] });
+    } else {
+      const summary = practiceOfferSummary(state)!;
+      const seeded = state.countersSeeded ?? 0;
+      const plan = [
+        { at: 4_000, riderName: "Musa", rating: 4.8, bump: 1_000 },
+        { at: 9_000, riderName: "Sarah", rating: 4.9, bump: 1_500 },
+      ];
+      const due = plan.filter((p, i) => i >= seeded && elapsed >= p.at && !summary.expired);
+      if (due.length) {
+        const counters = [...(state.counters ?? [])];
+        for (const p of due) {
+          const amount = Math.min(summary.max, roundFare(state.fareOffer + p.bump));
+          if (amount > state.fareOffer) counters.push({ id: `practice-counter-${p.riderName.toLowerCase()}-${state.fareRaises ?? 0}`, amount, riderName: p.riderName, rating: p.rating, expiresAt: Date.now() + PRACTICE_RIDE.counterTtlMs, status: "pending" });
+        }
+        save({ counters, countersSeeded: seeded + due.length });
+      }
+    }
+  }
+  // Rider: the practice ride job's customer "accepts" a counter and "pays" on a timer.
+  if (role === "rider") {
+    const job = state.rideJob ?? freshRideJob();
+    let next = job;
+    if (!job.claimed && job.counter && Date.now() - job.counter.at >= 6_000) next = { ...job, claimed: true, stage: "Match", total: job.counter.amount, counter: null, stageAt: Date.now() };
+    else if (job.claimed && job.stage === "Match" && Date.now() - job.stageAt >= 5_000) next = { ...job, stage: "Shop", stageAt: Date.now() };
+    else if (job.stage === "PickedUp" && job.stops.every((st) => st.status === "done") && job.stops.length > 0 && Date.now() - job.stageAt >= 10_000) next = { ...job, stage: "Handover", stageAt: Date.now() };
+    if (next !== job || !state.rideJob) save({ rideJob: next });
+  }
+
+  if (role === "customer" && method === "GET" && path === "/v1/rides/quote") {
+    const num = (k: string) => Number(query.get(k));
+    const stopsRaw = (query.get("stops") ?? "").trim();
+    const stops = stopsRaw ? stopsRaw.split(";").map((pair) => { const [lat, lng] = pair.split(",").map(Number); return { lat, lng }; }) : [];
+    if (stops.length > PRACTICE_RIDE.maxStops) return jsonResponse({ error: "invalid_stops", message: `A ride can have at most ${PRACTICE_RIDE.maxStops} stops.` }, 400);
+    const q = practiceRideQuote({ lat: num("pickupLat"), lng: num("pickupLng") }, { lat: num("destinationLat"), lng: num("destinationLng") }, stops);
+    return jsonResponse({ quote: q.quote, base: q.base, stopFees: q.stopFees, stopFee: PRACTICE_RIDE.stopFee, stops: stops.length, distanceKm: Math.round(q.km * 10) / 10, maxStops: PRACTICE_RIDE.maxStops, offers: { min: q.min, max: q.max, ttlMinutes: PRACTICE_RIDE.offerTtlMs / 60_000, maxRaises: PRACTICE_RIDE.maxRaises } });
+  }
+  if (role === "customer" && method === "POST" && path === "/v1/orders" && body.isRide === true && (Array.isArray(body.stops) || body.fareOffer != null) && body.pickupLat != null && body.destinationLat != null) {
+    const stops = (Array.isArray(body.stops) ? body.stops as Array<Record<string, unknown>> : []).slice(0, PRACTICE_RIDE.maxStops).map((st) => ({ area: typeof st.area === "string" ? st.area : null, address: typeof st.address === "string" ? st.address : null, lat: Number(st.lat), lng: Number(st.lng) }));
+    const pickup = { lat: Number(body.pickupLat), lng: Number(body.pickupLng) };
+    const destination = { lat: Number(body.destinationLat), lng: Number(body.destinationLng) };
+    const q = practiceRideQuote(pickup, destination, stops);
+    let total = q.quote;
+    let offer: number | null = null;
+    if (body.fareOffer != null) {
+      offer = roundFare(Number(body.fareOffer));
+      if (offer < q.min || offer > q.max) return jsonResponse({ error: "offer_out_of_range", message: `Your offer must be between UGX ${q.min.toLocaleString("en-UG")} and UGX ${q.max.toLocaleString("en-UG")}.` }, 400);
+      total = offer;
+    }
+    save({
+      hasOrder: true, riderClaimed: false, stage: "Create", orderType: "parcel", isRide: true, paymentRail: "escrow", total, deliveryFee: total,
+      destinationArea: String(body.destinationArea ?? "Destination"), destinationAddress: String(body.destinationAddress ?? ""),
+      pickupAddress: typeof body.pickupAddress === "string" ? body.pickupAddress : null, pickupLat: pickup.lat, pickupLng: pickup.lng, destinationLat: destination.lat, destinationLng: destination.lng,
+      merchantPaymentStatus: "none", autoAdvanceAt: null, stops,
+      fareOffer: offer, fareQuote: offer != null ? q.quote : null, fareRaises: 0, offerAt: offer != null ? Date.now() : null,
+      offerExpiresAt: offer != null ? Date.now() + PRACTICE_RIDE.offerTtlMs : null, counters: [], countersSeeded: 0,
+    });
+    return jsonResponse({ order: orderFor(state) }, 201);
+  }
+  if (role === "customer" && method === "POST" && path === `/v1/orders/${PRACTICE_ORDER_ID}/fare-offer`) {
+    const summary = practiceOfferSummary(state);
+    if (!summary || state.stage !== "Create" || state.riderClaimed) return jsonResponse({ error: "invalid_stage", message: "A rider has already taken this ride." }, 409);
+    const amount = body.standard === true ? summary.quote : roundFare(Number(body.amount ?? 0));
+    if (amount <= summary.amount) return jsonResponse({ error: "offer_not_higher", message: "You can only raise your offer while riders are deciding." }, 400);
+    if (amount > summary.max) return jsonResponse({ error: "offer_out_of_range", message: `Your offer must be at most UGX ${summary.max.toLocaleString("en-UG")}.` }, 400);
+    if (summary.raisesLeft <= 0) return jsonResponse({ error: "too_many_raises", message: "You've raised this offer as many times as allowed." }, 409);
+    save({
+      fareOffer: amount, total: amount, deliveryFee: amount, fareRaises: summary.raises + 1, offerAt: Date.now(), offerExpiresAt: Date.now() + PRACTICE_RIDE.offerTtlMs, countersSeeded: 0,
+      counters: (state.counters ?? []).map((c) => (c.status === "pending" && c.amount <= amount ? { ...c, status: "rejected" as const } : c)),
+    });
+    return jsonResponse({ order: orderFor(state), fareOffer: practiceOfferSummary(state), fareCounters: practiceCounters(state) });
+  }
+  if (role === "customer" && method === "GET" && path === `/v1/orders/${PRACTICE_ORDER_ID}/fare-counters`) {
+    return jsonResponse({ fareOffer: practiceOfferSummary(state), counters: state.stage === "Create" && !state.riderClaimed ? practiceCounters(state) : [] });
+  }
+  const practiceCounterDecision = path.match(new RegExp(`^/v1/orders/${PRACTICE_ORDER_ID}/fee-proposals/(practice-counter-[^/]+)/decision$`));
+  if (role === "customer" && method === "POST" && practiceCounterDecision) {
+    const counter = (state.counters ?? []).find((c) => c.id === practiceCounterDecision[1] && c.status === "pending");
+    if (!counter) return jsonResponse({ error: "not_found" }, 404);
+    if (counter.expiresAt <= Date.now()) return jsonResponse({ error: "counter_expired", message: "That counter has expired. Pick another or raise your offer." }, 410);
+    if (body.approve === true) {
+      save({ riderClaimed: true, stage: "Match", total: counter.amount, deliveryFee: counter.amount, fareOffer: counter.amount, counters: (state.counters ?? []).map((c) => ({ ...c, status: c.id === counter.id ? "approved" as const : "rejected" as const })) });
+    } else {
+      save({ counters: (state.counters ?? []).map((c) => (c.id === counter.id ? { ...c, status: "rejected" as const } : c)) });
+    }
+    return jsonResponse({ order: orderFor(state), fareCounters: practiceCounters(state) });
+  }
+  if (role === "customer" && method === "POST" && path === `/v1/orders/${PRACTICE_ORDER_ID}/customer-cancel`) {
+    save({ stage: "Cancelled", hasOrder: false, fareOffer: null, fareQuote: null, counters: [], stops: [] });
+    return jsonResponse({ order: orderFor(state) });
+  }
+  if (method === "GET" && path === `/v1/orders/${PRACTICE_ORDER_ID}/stops`) return jsonResponse({ stops: practiceStops(state) });
+  // The customer-side /match poll must not hand an open offer to a rider who never accepted it.
+  if (role === "customer" && method === "POST" && path === `/v1/orders/${PRACTICE_ORDER_ID}/match` && state.fareOffer != null && !state.riderClaimed) {
+    return jsonResponse({ order: orderFor(state) });
+  }
+
+  // Rider: the practice ride job (customer offer + two stops).
+  if (role === "rider" && path.startsWith(`/v1/orders/${PRACTICE_RIDE_JOB_ID}`) || role === "rider" && path === `/v1/riders/jobs/${PRACTICE_RIDE_JOB_ID}/preview`) {
+    const job = state.rideJob ?? freshRideJob();
+    const put = (patch: Partial<PracticeRideJob>) => { save({ rideJob: { ...job, ...patch } }); return state.rideJob!; };
+    const sub = path.slice(`/v1/orders/${PRACTICE_RIDE_JOB_ID}`.length);
+    const stopsOut = (j: PracticeRideJob) => j.stops.map((st, i) => ({ position: i + 1, area: st.area, address: st.address, lat: st.lat, lng: st.lng, status: st.status, arrivedAt: null, departedAt: null }));
+    const detail = (j: PracticeRideJob) => ({ order: practiceRideJobOrder(j), items: [], events: [], substitutions: [], payments: [], rating: null, feeProposals: [], bundleStops: [], rideStops: stopsOut(j), fareOffer: null });
+    if (path.endsWith("/preview")) return jsonResponse({ items: [] });
+    if (method === "GET" && sub === "") return jsonResponse(detail(job));
+    if (method === "GET" && sub === "/stops") return jsonResponse({ stops: stopsOut(job) });
+    if (method === "POST" && sub === "/fare-counters") {
+      if (job.claimed) return jsonResponse({ error: "already_claimed", message: "This job has already been taken" }, 409);
+      const amount = roundFare(Number(body.amount ?? 0));
+      if (amount <= 6_000 || amount > 11_000) return jsonResponse({ error: "counter_out_of_range", message: "Your counter must be more than UGX 6,000 and at most UGX 11,000." }, 400);
+      const j = put({ counter: { amount, at: Date.now(), expiresAt: Date.now() + PRACTICE_RIDE.counterTtlMs } });
+      return jsonResponse({ counter: { id: "practice-rider-counter", amount, expiresAt: new Date(j.counter!.expiresAt).toISOString() } }, 201);
+    }
+    if (method === "POST" && (sub === "/claim" || sub === "/apply")) return jsonResponse({ order: practiceRideJobOrder(put({ claimed: true, stage: "Match", counter: null, stageAt: Date.now() })) });
+    if (method === "POST" && sub === "/deliver") return jsonResponse({ order: practiceRideJobOrder(put({ stage: "Deliver", stageAt: Date.now() })) });
+    if (method === "POST" && sub === "/arrived") return jsonResponse({ order: practiceRideJobOrder(put({ stage: "Arrived", stageAt: Date.now() })) });
+    if (method === "POST" && sub === "/picked-up") return jsonResponse({ order: practiceRideJobOrder(put({ stage: "PickedUp", stageAt: Date.now() })) });
+    const stopAction = sub.match(/^\/stops\/(\d+)\/(arrived|continue)$/);
+    if (method === "POST" && stopAction) {
+      if (job.stage !== "PickedUp") return jsonResponse({ error: "invalid_stage", message: "Stops start once the passenger is picked up." }, 409);
+      const index = Number(stopAction[1]) - 1;
+      const nextIndex = job.stops.findIndex((st) => st.status !== "done");
+      if (index !== nextIndex) return jsonResponse({ error: "out_of_order", message: nextIndex >= 0 ? `Next is stop ${nextIndex + 1}.` : "All stops are done." }, 409);
+      const want = stopAction[2] === "arrived" ? "pending" : "arrived";
+      if (job.stops[index].status !== want) return jsonResponse({ error: "out_of_order", message: want === "arrived" ? "Mark the stop as arrived first." : "Already here." }, 409);
+      const stops = job.stops.map((st, i) => (i === index ? { ...st, status: stopAction[2] === "arrived" ? "arrived" as const : "done" as const } : st));
+      const j = put({ stops, stageAt: Date.now() });
+      return jsonResponse({ stops: stopsOut(j), order: practiceRideJobOrder(j) });
+    }
+    if (method === "POST" && sub === "/settle") return jsonResponse({ order: practiceRideJobOrder(put({ stage: "Settle", stageAt: Date.now() })) });
+    if (method === "POST" && sub === "/cancel") return jsonResponse({ order: practiceRideJobOrder(put(freshRideJob())) });
+    if (method === "POST" && sub === "/location") return jsonResponse({ ok: true });
+    if (method === "GET" && sub === "/chat") return jsonResponse({ messages: [] });
+    return practiceError();
+  }
+
   if (method === "GET" && path === "/v1/orders/active") {
-    return jsonResponse({ activeOrder: state.hasOrder && state.stage !== "Settle" ? orderFor(state) : null, pendingFeeProposal: null });
+    const activeOrder = state.hasOrder && !["Settle", "Cancelled"].includes(state.stage) ? orderFor(state) : null;
+    return jsonResponse({
+      activeOrder,
+      pendingFeeProposal: null,
+      ...(activeOrder && (state.stops ?? []).length ? { rideStops: practiceStops(state) } : {}),
+      ...(activeOrder && state.fareOffer != null ? { fareOffer: practiceOfferSummary(state), fareCounters: state.stage === "Create" && !state.riderClaimed ? practiceCounters(state) : [] } : {}),
+    });
   }
   if (method === "GET" && path.startsWith("/v1/lists/recent")) {
     const driver = state.isRide ? practiceCar(state.demoCarRiderId) : null;
@@ -728,6 +992,11 @@ function handlePracticeRequest(role: PracticeRole, path: string, method: string,
     return jsonResponse({ ok: true, orders: [order], order }, 201);
   }
   if (role === "customer" && method === "POST" && path === "/v1/car/quote") {
+    const cargo = PRACTICE_CARGO_RATES[String(body.categoryId)];
+    if (cargo) {
+      const km = practiceDistanceKm(Number(body.pickupLat), Number(body.pickupLng), Number(body.destinationLat), Number(body.destinationLng));
+      return jsonResponse({ fare: roundFare(km * cargo[0], cargo[1]), distanceKm: Math.round(km * 10) / 10 });
+    }
     const category = practiceSpecialCategory(body.categoryId);
     if (!category) return practiceError("Choose one of the demo car types to continue.");
     const km = practiceDistanceKm(Number(body.pickupLat), Number(body.pickupLng), Number(body.destinationLat), Number(body.destinationLng));
@@ -805,10 +1074,23 @@ function handlePracticeRequest(role: PracticeRole, path: string, method: string,
 
   if (method === "GET" && path === "/v1/riders/me") return jsonResponse({ rider: sampleRider(true) });
   if (method === "POST" && path === "/v1/riders/status") return jsonResponse({ rider: sampleRider(body.online !== false) });
-  if (method === "GET" && path === "/v1/riders/me/orders") return jsonResponse({ orders: state.riderClaimed ? [orderFor(state)] : [] });
+  if (method === "GET" && path === "/v1/riders/me/orders") {
+    const rideJob = role === "rider" && state.rideJob?.claimed && state.rideJob.stage !== "Settle" ? [practiceRideJobOrder(state.rideJob)] : [];
+    return jsonResponse({ orders: [...(state.riderClaimed ? [orderFor(state)] : []), ...rideJob] });
+  }
   if (method === "GET" && path === "/v1/riders/jobs/available") {
     const order = orderFor(state);
-    return jsonResponse({ jobs: state.riderClaimed ? [] : [{ ...order, customer_name: "Amina", restaurant_name: null, distanceKm: 1.8, outOfServiceRange: false, applied: false }] });
+    const job = state.rideJob;
+    const rideOffer = role === "rider" && job && !job.claimed
+      ? [{
+          ...practiceRideJobOrder(job), customer_name: "Grace", restaurant_name: null, distanceKm: 0.9, outOfServiceRange: false, applied: false, bidding: null,
+          fareOffer: {
+            amount: 6_000, quote: 7_500, min: 5_000, max: 11_000, expiresAt: new Date(Date.now() + 8 * 60_000).toISOString(), expired: false,
+            myCounter: job.counter ? { id: "practice-rider-counter", amount: job.counter.amount, expiresAt: new Date(job.counter.expiresAt).toISOString() } : null,
+          },
+        }]
+      : [];
+    return jsonResponse({ jobs: [...rideOffer, ...(state.riderClaimed ? [] : [{ ...order, customer_name: "Amina", restaurant_name: null, distanceKm: 1.8, outOfServiceRange: false, applied: false }])] });
   }
   if (method === "GET" && path === `/v1/riders/jobs/${PRACTICE_ORDER_ID}/preview`) return jsonResponse({ items: itemsFor(state) });
   if (method === "GET" && path === "/v1/riders/me/subscription") return jsonResponse({ subscription: { required: false, mode: "recurring", amount: 0, cadence: "weekly", status: "active", current: true, paidThrough: null } });
@@ -820,7 +1102,29 @@ function handlePracticeRequest(role: PracticeRole, path: string, method: string,
   if (method === "GET" && /^\/v1\/wallets\/[^/]+\/ledger$/.test(path)) return jsonResponse({ ledger: [] });
   if (method === "GET" && /^\/v1\/wallets\/[^/]+\/report$/.test(path)) return jsonResponse({ period: "month", totalIn: 12_000, totalOut: 0, net: 12_000, byType: [] });
   if (method === "GET" && path.startsWith("/v1/mobile-numbers")) return jsonResponse({ numbers: [{ id: "practice-number", owner_id: "practice-user", purpose: path.includes("withdrawal") ? "withdrawal" : "payment", phone: "0700000000", label: "Practice number", is_primary: 1, created_at: nowIso(-86_400_000), updated_at: nowIso() }] });
-  if (method === "GET" && path === "/v1/locations") return jsonResponse({ locations: [{ id: "practice-location", user_id: "practice-user", label: "Practice home", area: "Entebbe City", address: "Kitoro Road", lat: 0.0612, lng: 32.4637, created_at: nowIso(-86_400_000) }] });
+  if (method === "GET" && path === "/v1/locations") return jsonResponse({ locations: [
+    { id: "practice-location", user_id: "practice-user", label: "Practice home", area: "Entebbe City", address: "Kitoro Road", lat: 0.0612, lng: 32.4637, created_at: nowIso(-86_400_000) },
+    { id: "practice-work", user_id: "practice-user", label: "Work", area: "Nakasero", address: "Nakasero Road, Kampala", lat: 0.3242, lng: 32.5806, created_at: nowIso(-172_800_000) },
+  ] });
+  // Recent ride destinations and saved passengers for the Ride home — browser-local only.
+  if (role === "customer" && method === "GET" && path === "/v1/orders/recent-places") return jsonResponse({ places: PRACTICE_RECENT_PLACES.map((p, i) => ({ ...p, last_at: nowIso(-(i + 1) * 86_400_000) })) });
+  if (role === "customer" && path === "/v1/passengers") {
+    const list = (): Array<Record<string, unknown>> => (canUseStorage() ? JSON.parse(window.localStorage.getItem(PRACTICE_PASSENGERS_KEY) ?? "null") : null) ?? [{ id: "practice-passenger", user_id: "practice-user", name: "Mum", phone: "0772000111", created_at: nowIso(-86_400_000) }];
+    if (method === "GET") return jsonResponse({ enabled: true, passengers: list() });
+    if (method === "POST") {
+      const passenger = { id: `practice-passenger-${Date.now()}`, user_id: "practice-user", name: String(body.name ?? "Passenger"), phone: String(body.phone ?? ""), created_at: nowIso() };
+      if (canUseStorage()) window.localStorage.setItem(PRACTICE_PASSENGERS_KEY, JSON.stringify([passenger, ...list()]));
+      return jsonResponse({ passenger }, 201);
+    }
+  }
+  const practicePassenger = path.match(/^\/v1\/passengers\/([^/]+)$/);
+  if (role === "customer" && method === "DELETE" && practicePassenger) {
+    if (canUseStorage()) {
+      const rows = JSON.parse(window.localStorage.getItem(PRACTICE_PASSENGERS_KEY) ?? "[]") as Array<{ id: string }>;
+      window.localStorage.setItem(PRACTICE_PASSENGERS_KEY, JSON.stringify(rows.filter((r) => r.id !== practicePassenger[1])));
+    }
+    return jsonResponse({ ok: true });
+  }
 
   if (method === "POST" && path === "/v1/merchant-payments") {
     save({ merchantPaymentStatus: "awaiting_confirmation" });

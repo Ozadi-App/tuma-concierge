@@ -1,11 +1,11 @@
 "use client";
 
 import { DEFAULT_RIDE_TRACKING_SETTINGS, roundFare } from "@peebee/shared";
-import type { CarCategory, RidePassenger, SavedPassenger } from "@peebee/shared";
+import type { CarCategory, RidePassenger, RideStopInput, SavedPassenger } from "@peebee/shared";
 import { Ambulance, ChevronRight, Crown, Route, Truck, User, Users } from "lucide-react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Modal } from "../Modal";
 import { PlaceFlow, type PlaceResult } from "../PlaceFlow";
 import { api, errorMessage } from "../../lib/api";
@@ -47,6 +47,15 @@ export function RideModal({
   initialCargo = false,
   initialService,
   serviceLocked = false,
+  initialRoute,
+  initialPassenger = null,
+  initialTier = "convenient",
+  initialSize = "normal",
+  initialPickupAt,
+  initialCargoCategoryId,
+  initialSpecialId,
+  autoBook = false,
+  initialStops,
 }: {
   onClose: () => void;
   initialMode?: "boda" | "car";
@@ -54,15 +63,31 @@ export function RideModal({
   /** Open straight into Luxury or Ambulance (the rides home screen links here). */
   initialService?: "luxury" | "ambulance";
   serviceLocked?: boolean;
+  /** Handed over from the Ride home: start on the confirm sheet with this route instead of the place picker. */
+  initialRoute?: PlaceResult;
+  initialPassenger?: RidePassenger | null;
+  initialTier?: "convenient" | "comfort";
+  initialSize?: "normal" | "large";
+  /** Local `YYYY-MM-DDTHH:mm` pickup time (books "later" when set). */
+  initialPickupAt?: string;
+  initialCargoCategoryId?: string;
+  /** Preselected Luxury/Ambulance category. */
+  initialSpecialId?: string;
+  /** The home already showed the fare and the customer tapped "Book": submit as
+   * soon as this sheet has what it needs (fare, nearby cars). If anything blocks
+   * it (no car nearby, an error) the confirm sheet simply stays open. */
+  autoBook?: boolean;
+  /** Boda only: stops between pickup and destination chosen on the Ride home (the server prices the full route). */
+  initialStops?: RideStopInput[];
 }) {
   const t = useTranslate();
   const router = useRouter();
   // The first thing a rider books is where: pickup and destination come
   // from the shared place flow, then this screen just confirms the fare.
-  const [route, setRoute] = useState<PlaceResult | null>(null);
-  const [choosing, setChoosing] = useState(true);
+  const [route, setRoute] = useState<PlaceResult | null>(initialRoute ?? null);
+  const [choosing, setChoosing] = useState(!initialRoute);
   // Booking for someone else: offered only when the admin has it on.
-  const [passenger, setPassenger] = useState<RidePassenger | null>(null);
+  const [passenger, setPassenger] = useState<RidePassenger | null>(initialRoute?.passenger ?? initialPassenger);
   const [passengers, setPassengers] = useState<SavedPassenger[]>([]);
   const [forOtherOn, setForOtherOn] = useState(false);
   const [pickingWho, setPickingWho] = useState(false);
@@ -70,27 +95,27 @@ export function RideModal({
   const [pricing, setPricing] = useState<{ ratePerKm: number; minimum: number } | null>(null);
   // Peebee Car is offered only when its service tiers are ready.
   const [tierPricing, setTierPricing] = useState<{ ratePerKm: number; minimumFare: number; comfortPremiumPercent: number; xlPremiumPercent: number; xlMinSeats: number } | null>(null);
-  const [tier, setTier] = useState<"convenient" | "comfort">("convenient");
-  const [vehicleSize, setVehicleSize] = useState<"normal" | "large">("normal");
+  const [tier, setTier] = useState<"convenient" | "comfort">(initialTier);
+  const [vehicleSize, setVehicleSize] = useState<"normal" | "large">(initialSize);
   const [tierOptions, setTierOptions] = useState<Array<{ size: "normal" | "large"; tier: "convenient" | "comfort"; fare: number; nearby: number }>>([]);
   const [categories, setCategories] = useState<CarCategory[]>([]);
   const [carSubMode, setCarSubMode] = useState<"passenger" | "cargo" | "luxury" | "ambulance">(initialService ?? (initialCargo ? "cargo" : "passenger"));
   const [configLoaded, setConfigLoaded] = useState(false);
-  const [luxuryId, setLuxuryId] = useState("");
-  const [ambulanceId, setAmbulanceId] = useState("");
+  const [luxuryId, setLuxuryId] = useState(initialService === "luxury" ? initialSpecialId ?? "" : "");
+  const [ambulanceId, setAmbulanceId] = useState(initialService === "ambulance" ? initialSpecialId ?? "" : "");
   const [hireHours, setHireHours] = useState(0);
   const [tripNote, setTripNote] = useState("");
   const [specialNearby, setSpecialNearby] = useState<number | null>(null);
   const [emergencyNumber, setEmergencyNumber] = useState("999");
   const [maxHireHours, setMaxHireHours] = useState(24);
-  const [selectedCargoCatId, setSelectedCargoCatId] = useState<string>("peebee-cargo-van");
+  const [selectedCargoCatId, setSelectedCargoCatId] = useState<string>(initialCargoCategoryId ?? "peebee-cargo-van");
   const [cargoDescription, setCargoDescription] = useState<string>("");
   const [schedule, setSchedule] = useState<{ maxAdvanceHours: number | null; minLeadMinutes: number } | null>(null);
-  const [when, setWhen] = useState<"now" | "later">("now");
+  const [when, setWhen] = useState<"now" | "later">(initialPickupAt ? "later" : "now");
   const [nowOk, setNowOk] = useState(true);
   const [carpoolOn, setCarpoolOn] = useState(false);
   const [rentOn, setRentOn] = useState(false);
-  const [pickupAt, setPickupAt] = useState("");
+  const [pickupAt, setPickupAt] = useState(initialPickupAt ?? "");
   const [mode, setMode] = useState<"boda" | "car">(initialCargo || initialService ? "car" : initialMode);
   const [carMenuOpen, setCarMenuOpen] = useState(initialMode === "car" || initialCargo || !!initialService);
   const [busy, setBusy] = useState(false);
@@ -179,8 +204,20 @@ export function RideModal({
     onClick: () => void submit(),
   } : null);
 
-  // On the fare/confirm sheet, nav Back returns to the route picker.
-  useRegisterNavBack(!choosing && !!route && !pickingWho, () => setChoosing(true));
+  // On the fare/confirm sheet, nav Back returns to the route picker — or,
+  // when the Ride home handed this route over, back to the home's fare board.
+  useRegisterNavBack(!choosing && !!route && !pickingWho, () => (initialRoute ? onClose() : setChoosing(true)));
+
+  // "Book" on the Ride home: submit once the fare and availability are known.
+  const autoBooked = useRef(false);
+  const autoBookReady = autoBook && !autoBooked.current && configLoaded && submitShown && !submitDisabled
+    && (mode === "boda" ? pricing != null : carSubMode === "passenger" ? tierOptions.length > 0 : true);
+  useEffect(() => {
+    if (!autoBookReady) return;
+    autoBooked.current = true;
+    void submit();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoBookReady]);
 
   if (choosing || !route) {
     return (
@@ -288,6 +325,7 @@ export function RideModal({
         paymentRail: "escrow",
         estimatedTotal: liveEstimate ?? (estimatedTotal ? roundFare(Number(estimatedTotal), pricing?.minimum) : undefined),
         ...(passenger ? { passenger } : {}),
+        ...(initialStops?.length ? { stops: initialStops } : {}),
       });
       onClose();
       router.push(`/orders/${order.id}/pay`);

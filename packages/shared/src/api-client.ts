@@ -4,6 +4,11 @@ import { workMethods } from "./work-client.js";
 import { workAdminMethods } from "./work-admin-client.js";
 import type { PracticeRole } from "./practice.js";
 import type {
+  FareCounter,
+  FareOffer,
+  RideQuote,
+  RideStop,
+  RideStopInput,
   ActivityLogEntry,
   AdminMerchantSettlementAccount,
   AdminMerchant,
@@ -483,11 +488,62 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
       estimatedTotal?: number;
       /** A ride booked for someone else. */
       passenger?: RidePassenger;
+      /** Boda rides: ordered stops between pickup and destination. */
+      stops?: RideStopInput[];
+      /** Boda rides: Name your fare — the customer's own price, within the quote's band. */
+      fareOffer?: number;
     }) {
       return request<{ order: OrderRow }>("/v1/orders", { method: "POST", body: JSON.stringify(input) });
     },
     async getActiveOrder() {
-      return request<{ activeOrder: OrderRow | null; pendingFeeProposal: FeeProposal | null }>("/v1/orders/active");
+      return request<{
+        activeOrder: OrderRow | null;
+        pendingFeeProposal: FeeProposal | null;
+        rideStops?: RideStop[];
+        fareOffer?: FareOffer | null;
+        fareCounters?: FareCounter[];
+      }>("/v1/orders/active");
+    },
+    /** The app's boda quote through any stops, with the Name-your-fare band. */
+    async getRideQuote(input: { pickupLat: number; pickupLng: number; destinationLat: number; destinationLng: number; stops?: Array<{ lat: number; lng: number }> }) {
+      const params = new URLSearchParams({
+        pickupLat: String(input.pickupLat),
+        pickupLng: String(input.pickupLng),
+        destinationLat: String(input.destinationLat),
+        destinationLng: String(input.destinationLng),
+      });
+      if (input.stops?.length) params.set("stops", input.stops.map((s) => `${s.lat},${s.lng}`).join(";"));
+      return request<RideQuote>(`/v1/rides/quote?${params}`);
+    },
+    /** Customer raises their offer (amount) or switches to the app's standard fare. */
+    async raiseFareOffer(orderId: string, input: { amount: number } | { standard: true }, idempotencyKey?: string) {
+      return request<{ order: OrderRow; fareOffer: FareOffer | null; fareCounters: FareCounter[] }>(`/v1/orders/${orderId}/fare-offer`, {
+        method: "POST",
+        body: JSON.stringify(input),
+        headers: idempotencyKey ? { "Idempotency-Key": idempotencyKey } : undefined,
+      });
+    },
+    async getFareCounters(orderId: string) {
+      return request<{ fareOffer: FareOffer | null; counters: FareCounter[] }>(`/v1/orders/${orderId}/fare-counters`);
+    },
+    /** Rider counters a customer's offer. Accepting the offer itself is the normal claim/apply. */
+    async counterFareOffer(orderId: string, amount: number, idempotencyKey?: string) {
+      return request<{ counter: { id: string; amount: number; expiresAt: string } }>(`/v1/orders/${orderId}/fare-counters`, {
+        method: "POST",
+        body: JSON.stringify({ amount }),
+        headers: idempotencyKey ? { "Idempotency-Key": idempotencyKey } : undefined,
+      });
+    },
+    async getRideStops(orderId: string) {
+      return request<{ stops: RideStop[] }>(`/v1/orders/${orderId}/stops`);
+    },
+    /** Rider: arrived at stop N (only the next pending stop, only while the passenger is aboard). */
+    async arrivedAtStop(orderId: string, position: number) {
+      return request<{ stops: RideStop[]; order: OrderRow }>(`/v1/orders/${orderId}/stops/${position}/arrived`, { method: "POST" });
+    },
+    /** Rider: leaving stop N for the next stop / the destination. */
+    async continueFromStop(orderId: string, position: number) {
+      return request<{ stops: RideStop[]; order: OrderRow }>(`/v1/orders/${orderId}/stops/${position}/continue`, { method: "POST" });
     },
 
     // Restaurant browsing + food checkout — see apps/api/src/restaurants/customer.ts.

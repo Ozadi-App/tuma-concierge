@@ -1,5 +1,6 @@
 "use client";
 
+import { RideStopsList } from "../../../components/ride/RideStopsList";
 import { useRegisterNavPrimaryAction } from "../../../lib/nav-primary-action";
 import type { OrderDetail, OrderRating, OrderRelay } from "@peebee/shared";
 import { MapPin, MessageCircle, TriangleAlert, User } from "lucide-react";
@@ -380,6 +381,7 @@ export default function OrderDetailPage() {
             {order.pickup_address ? ` · ${order.pickup_address}` : ""}
           </p>
         )}
+        {!!order.is_ride && (detail.rideStops?.length ?? 0) > 0 && <RideStopsList stops={detail.rideStops!} className="pl-0.5" />}
         {order.destination_area && (
           <p className="flex items-center gap-1.5 text-sm text-ink-500">
             <MapPin className="h-3.5 w-3.5 text-ink-500" strokeWidth={2} aria-hidden />

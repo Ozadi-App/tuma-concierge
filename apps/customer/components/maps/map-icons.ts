@@ -26,3 +26,13 @@ export const destinationIcon = L.divIcon({
   iconSize: [38, 38],
   iconAnchor: [19, 36],
 });
+
+/** A numbered stop on a multi-stop ride: a small black disc with a gold number. */
+export function stopIcon(n: number, done = false) {
+  return L.divIcon({
+    html: `<span style="display:flex;width:26px;height:26px;align-items:center;justify-content:center;border-radius:9999px;background:${done ? "#2FA86A" : "#0A0A0A"};color:${done ? "#fff" : "#E8C55A"};font:700 13px/1 system-ui,sans-serif;border:2px solid #FDFBF7;box-shadow:0 2px 6px rgba(0,0,0,.35)">${done ? "✓" : n}</span>`,
+    className: "peebee-marker",
+    iconSize: [26, 26],
+    iconAnchor: [13, 13],
+  });
+}

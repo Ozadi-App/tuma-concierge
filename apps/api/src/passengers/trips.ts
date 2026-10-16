@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { SharedTrip } from "@peebee/shared";
 import { db } from "../db/client.js";
 import { hasColumn } from "../lib/schema.js";
+import { loadStops } from "../orders/ride-extras.js";
 
 /**
  * The passenger's trip page, for a ride someone booked for them. Public: the
@@ -16,7 +17,7 @@ tripRoutes.get("/:token", async (c) => {
   const token = c.req.param("token");
   if (token.length < 24 || !(await hasColumn("orders", "share_token"))) return c.json({ error: "not_found" }, 404);
   const res = await db.execute({
-    sql: `SELECT o.stage, o.passenger_name, o.pickup_area, o.pickup_address, o.pickup_lat, o.pickup_lng,
+    sql: `SELECT o.id, ${(await hasColumn("orders", "stop_count")) ? "o.stop_count" : "0 AS stop_count"}, o.stage, o.passenger_name, o.pickup_area, o.pickup_address, o.pickup_lat, o.pickup_lng,
                  o.destination_area, o.destination_address, o.rider_lat, o.rider_lng, o.rider_location_updated_at,
                  o.eta_minutes, r.name AS rider_name
           FROM orders o LEFT JOIN users r ON r.id = o.rider_id
@@ -42,6 +43,10 @@ tripRoutes.get("/:token", async (c) => {
     riderLat: fresh ? ((row.rider_lat as number | null) ?? null) : null,
     riderLng: fresh ? ((row.rider_lng as number | null) ?? null) : null,
     etaMinutes: (row.eta_minutes as number | null) ?? null,
+    // Multi-stop rides: where the trip stops on the way, and how far along it is.
+    stops: Number(row.stop_count ?? 0) > 0
+      ? (await loadStops(String(row.id))).map((stop) => ({ position: stop.position, area: stop.area, address: stop.address, status: stop.status }))
+      : [],
   };
   c.header("Cache-Control", "no-store");
   return c.json({ trip });
