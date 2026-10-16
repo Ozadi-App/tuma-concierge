@@ -12,6 +12,29 @@ const PRACTICE_PAYMENT_ID = "mpay_practice";
 const PRACTICE_MERCHANT_ID = "merchant-practice";
 const PRACTICE_OUTLET_ID = "outlet-practice";
 const PRACTICE_CAR_CATEGORY_ID = "practice-car-comfort";
+/** Luxury and Ambulance services in practice mode, mirroring the live seeded car types. */
+const PRACTICE_SPECIAL_CATEGORIES: readonly {id: string; kind: string; service_group: "luxury" | "ambulance"; name: string; seats: number; rate_per_km: number; minimum_fare: number; rate_per_hour: number; description: string; has_vehicles: number; rider: string}[] = [
+  { id: "practice-luxury-sedan", kind: "passenger", service_group: "luxury", name: "Luxury Sedan", seats: 4, rate_per_km: 5_000, minimum_fare: 60_000, rate_per_hour: 40_000, description: "Executive sedan with a professional chauffeur - weddings, airport pickups and VIP events.", has_vehicles: 1, rider: "practice-car-driver-lux-1" },
+  { id: "practice-luxury-suv", kind: "passenger", service_group: "luxury", name: "Luxury SUV", seats: 6, rate_per_km: 7_000, minimum_fare: 90_000, rate_per_hour: 60_000, description: "Premium SUV for bridal parties and celebrity transport.", has_vehicles: 1, rider: "practice-car-driver-lux-2" },
+  { id: "practice-luxury-limo", kind: "passenger", service_group: "luxury", name: "Stretch Limousine", seats: 8, rate_per_km: 12_000, minimum_fare: 200_000, rate_per_hour: 120_000, description: "Red-carpet arrivals, proms and parties.", has_vehicles: 1, rider: "practice-car-driver-lux-2" },
+  { id: "practice-ambulance-basic", kind: "passenger", service_group: "ambulance", name: "Basic Ambulance", seats: 2, rate_per_km: 4_000, minimum_fare: 50_000, rate_per_hour: 0, description: "Patient transport with a trained crew.", has_vehicles: 1, rider: "practice-car-driver-amb-1" },
+  { id: "practice-ambulance-icu", kind: "passenger", service_group: "ambulance", name: "ICU Ambulance", seats: 2, rate_per_km: 8_000, minimum_fare: 120_000, rate_per_hour: 0, description: "Fully equipped intensive-care ambulance.", has_vehicles: 1, rider: "practice-car-driver-amb-1" },
+];
+type PracticeSpecialCategory = (typeof PRACTICE_SPECIAL_CATEGORIES)[number];
+function practiceSpecialCategory(id: unknown): PracticeSpecialCategory | null { return PRACTICE_SPECIAL_CATEGORIES.find((category) => category.id === id) ?? null; }
+function practiceDistanceKm(lat1: number, lng1: number, lat2: number, lng2: number) {
+  if (![lat1, lng1, lat2, lng2].every(Number.isFinite)) return 0;
+  return 6371 * 2 * Math.asin(Math.sqrt(Math.sin(((lat2 - lat1) * Math.PI) / 360) ** 2 + Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(((lng2 - lng1) * Math.PI) / 360) ** 2));
+}
+function practiceSpecialFare(category: PracticeSpecialCategory, distanceKm: number, hireHours: unknown) {
+  const hours = category.service_group === "luxury" ? Math.min(24, Math.max(0, Math.floor(Number(hireHours) || 0))) : 0;
+  return roundFare(distanceKm * category.rate_per_km, category.minimum_fare) + hours * category.rate_per_hour;
+}
+const PRACTICE_SPECIAL_RIDERS = [
+  { id: "practice-car-driver-lux-1", name: "James Kiggundu", make: "Mercedes-Benz", model: "S-Class", size: "normal", tier: "comfort", plate: "PRACTICE LUX 1" },
+  { id: "practice-car-driver-lux-2", name: "Brenda Nalwoga", make: "Range Rover", model: "Vogue", size: "large", tier: "comfort", plate: "PRACTICE LUX 2" },
+  { id: "practice-car-driver-amb-1", name: "Dr. Moses Opio", make: "Toyota", model: "HiAce Ambulance", size: "large", tier: "comfort", plate: "PRACTICE AMB 1" },
+] as const;
 const PRACTICE_CAR_RIDERS = [
   { id: "practice-car-driver-01", name: "Daniel Kato", make: "Toyota", model: "Corolla", size: "normal", tier: "convenient", plate: "PRACTICE 01" },
   { id: "practice-car-driver-02", name: "Sarah Namusoke", make: "Honda", model: "Civic", size: "normal", tier: "comfort", plate: "PRACTICE 02" },
@@ -312,8 +335,8 @@ function orderFor(state: PracticeState) {
 }
 
 function practiceCar(riderId: string | null) {
-  const rider = PRACTICE_CAR_RIDERS.find((entry) => entry.id === riderId) ?? PRACTICE_CAR_RIDERS[0];
-  return { name: rider.size === "large" ? "Large · 5–7 seats" : "Normal · 3–4 seats", make: rider.make, model: rider.model, plate: rider.plate, owner: "Peebee Practice Fleet", driver: rider.name };
+  const rider = [...PRACTICE_CAR_RIDERS, ...PRACTICE_SPECIAL_RIDERS].find((entry) => entry.id === riderId) ?? PRACTICE_CAR_RIDERS[0];
+  return { name: riderId?.startsWith("practice-car-driver-lux-") ? "Luxury" : riderId?.startsWith("practice-car-driver-amb-") ? "Ambulance" : rider.size === "large" ? "Large · 5–7 seats" : "Normal · 3–4 seats", make: rider.make, model: rider.model, plate: rider.plate, owner: "Peebee Practice Fleet", driver: rider.name };
 }
 
 function itemsFor(state: PracticeState) {
@@ -519,10 +542,12 @@ function handlePracticeRequest(role: PracticeRole, path: string, method: string,
     if (path === "/v1/car/rentals/listings") return jsonResponse({ days: 1, vehicles: PRACTICE_RENTAL_CARS });
     if (path === "/v1/car/rentals/mine") return jsonResponse({ rentals: canUseStorage() ? JSON.parse(window.localStorage.getItem(PRACTICE_RENTALS_KEY) ?? "[]") : [] });
     if (path === "/v1/car/rentals/renter-profile") return jsonResponse({ status: "approved", isSimulated: true, ninMasked: "••••••••••0000", residentialAddress: "Practice address · Entebbe", residenceMethod: "bill", hasNationalId: true, hasRentReceipt: false, hasLandlordLetter: false, hasResidenceBill: true, tenancyStart: null, tenancyEnd: null, reviewNotes: null });
-    if (path === "/v1/car/config") return jsonResponse({ onDemandEnabled: true, matchingMode: "first_to_claim", scheduled: null, carpool: { maxSeatsPerBooking: 3, maxRepeatWeeks: 0 }, selfDrive: null, serviceTiers: { ratePerKm: 2_000, minimumFare: 8_000, comfortPremiumPercent: 30, xlPremiumPercent: 50, xlMinSeats: 6 }, vehiclePhotos: false, kyc: null, deals: null, categories: [
+    if (path === "/v1/car/config") return jsonResponse({ onDemandEnabled: true, matchingMode: "first_to_claim", emergencyNumber: "999", maxHireHours: 24, scheduled: null, carpool: { maxSeatsPerBooking: 3, maxRepeatWeeks: 0 }, selfDrive: null, serviceTiers: { ratePerKm: 2_000, minimumFare: 8_000, comfortPremiumPercent: 30, xlPremiumPercent: 50, xlMinSeats: 6 }, vehiclePhotos: false, kyc: null, deals: null, categories: [
       { id: PRACTICE_CAR_CATEGORY_ID, kind: "passenger", name: "Normal · Saloon", seats: 4, cargo_type: null, size_label: null, reference_image_key: null, rate_per_km: 2_000, minimum_fare: 8_000 },
       { id: "practice-car-large", kind: "passenger", name: "Large · Minivan", seats: 7, cargo_type: null, size_label: null, reference_image_key: null, rate_per_km: 3_000, minimum_fare: 12_000 },
+      ...PRACTICE_SPECIAL_CATEGORIES.map(({ rider: _rider, ...category }) => ({ ...category, cargo_type: null, size_label: null, reference_image_key: null })),
     ] });
+    if (path === "/v1/car/category-nearby") return jsonResponse({ nearby: practiceSpecialCategory(query.get("categoryId")) ? 1 : 2 });
     if (path === "/v1/car/carpool/trips") return jsonResponse({ trips: practiceRideshareTrips(query), maxSeatsPerBooking: 3 });
     if (path === "/v1/car/service-options") {
       const lat1 = Number(query.get("pickupLat")), lng1 = Number(query.get("pickupLng")), lat2 = Number(query.get("destinationLat")), lng2 = Number(query.get("destinationLng"));
@@ -701,6 +726,19 @@ function handlePracticeRequest(role: PracticeRole, path: string, method: string,
       store_category: demoStore?.category ?? "stores",
     };
     return jsonResponse({ ok: true, orders: [order], order }, 201);
+  }
+  if (role === "customer" && method === "POST" && path === "/v1/car/quote") {
+    const category = practiceSpecialCategory(body.categoryId);
+    if (!category) return practiceError("Choose one of the demo car types to continue.");
+    const km = practiceDistanceKm(Number(body.pickupLat), Number(body.pickupLng), Number(body.destinationLat), Number(body.destinationLng));
+    return jsonResponse({ fare: practiceSpecialFare(category, km, body.hireHours), distanceKm: Math.round(km * 10) / 10 });
+  }
+  if (role === "customer" && method === "POST" && path === "/v1/car/bookings" && practiceSpecialCategory(body.categoryId)) {
+    const category = practiceSpecialCategory(body.categoryId)!;
+    const km = practiceDistanceKm(Number(body.pickupLat), Number(body.pickupLng), Number(body.destinationLat), Number(body.destinationLng));
+    const fare = practiceSpecialFare(category, km, body.hireHours);
+    save({ hasOrder: true, riderClaimed: true, stage: "Match", orderType: "parcel", isRide: true, carCategoryId: category.id, carVehicleSize: "normal", carServiceTier: "comfort", demoCarRiderId: category.rider, paymentRail: "escrow", total: fare, deliveryFee: fare, destinationArea: String(body.destinationArea ?? "Entebbe City"), destinationAddress: String(body.destinationAddress ?? "Kitoro Road"), autoAdvanceAt: null });
+    return jsonResponse({ order: orderFor(state) }, 201);
   }
   if (role === "customer" && method === "POST" && path === "/v1/car/bookings") {
     const vehicleSize = body.vehicleSize === "large" ? "large" : "normal";
