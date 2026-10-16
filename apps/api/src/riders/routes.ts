@@ -289,14 +289,20 @@ riderRoutes.get("/riders/me", requireAuth, requireRole("rider"), async (c) => {
   return c.json({ rider: res.rows[0] ?? null });
 });
 
+/** The restaurants of a combined delivery in pickup order, e.g. "Kitchen A → Kitchen B" (NULL for a single order). */
+const BUNDLE_PICKUPS_SQL = `(SELECT GROUP_CONCAT(name, ' → ') FROM (
+  SELECT COALESCE(br.name, 'Pickup') AS name FROM orders b LEFT JOIN restaurants br ON br.id = b.restaurant_id
+  WHERE b.delivery_bundle_id = o.delivery_bundle_id ORDER BY CASE WHEN b.id = b.delivery_bundle_id THEN 0 ELSE 1 END, b.created_at, b.id))`;
+
 /** Rider's own assigned orders (any stage before Settle). */
 riderRoutes.get("/riders/me/orders", requireAuth, requireRole("rider"), async (c) => {
   const user = c.get("user");
   const bundleFilter = await hasColumn("orders", "delivery_bundle_id")
     ? "AND (o.delivery_bundle_id IS NULL OR o.id=o.delivery_bundle_id)"
     : "";
+  const ownPickups = await hasColumn("orders", "delivery_bundle_id") ? `, ${BUNDLE_PICKUPS_SQL} AS bundle_pickups` : "";
   const res = await db.execute({
-    sql: `SELECT o.*, u.name as customer_name FROM orders o
+    sql: `SELECT o.*, u.name as customer_name${ownPickups} FROM orders o
           LEFT JOIN users u ON u.id = o.customer_id
           WHERE o.rider_id = ? AND o.environment = ? ${bundleFilter} ORDER BY o.updated_at DESC`,
     args: [user.sub, await getPlatformEnvironment()],
@@ -343,8 +349,9 @@ riderRoutes.get("/riders/jobs/available", requireAuth, requireRole("rider"), asy
     ? "AND (COALESCE(o.delivery_bundle_hold,0)=0 OR o.created_at<=datetime('now','-30 minutes'))"
     : "";
   const bundleCount = await hasColumn("orders", "delivery_bundle_id")
-    ? "CASE WHEN o.delivery_bundle_id IS NULL THEN 1 ELSE (SELECT COUNT(*) FROM orders bundled WHERE bundled.delivery_bundle_id=o.delivery_bundle_id) END AS bundle_order_count"
-    : "1 AS bundle_order_count";
+    ? `CASE WHEN o.delivery_bundle_id IS NULL THEN 1 ELSE (SELECT COUNT(*) FROM orders bundled WHERE bundled.delivery_bundle_id=o.delivery_bundle_id) END AS bundle_order_count,
+       ${BUNDLE_PICKUPS_SQL} AS bundle_pickups`
+    : "1 AS bundle_order_count, NULL AS bundle_pickups";
 
   // Peebee Car rides are for car drivers only — never in the boda feed.
   const carFilter = (await hasTable("car_bookings")) ? "AND NOT EXISTS (SELECT 1 FROM car_bookings cb WHERE cb.order_id = o.id)" : "";

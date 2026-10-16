@@ -45,6 +45,14 @@ export default function PaymentPage() {
     polling.current = true;
     try {
       let current = await api.getOrder(id);
+      // A combined delivery is paid once, from its first pickup.
+      const bundleLead = current.order.delivery_bundle_id && current.order.delivery_bundle_id !== id
+        ? current.bundleStops?.find((stop) => stop.id === current.order.delivery_bundle_id)
+        : undefined;
+      if (bundleLead && ["Create", "Match", "Fund"].includes(bundleLead.stage) && ["Create", "Match"].includes(current.order.stage)) {
+        router.replace(`/orders/${current.order.delivery_bundle_id}/pay`);
+        return;
+      }
       let bundleWindowOpen = false;
       if (!current.order.delivery_bundle_id && current.order.stage === "Create") {
         try {
@@ -100,7 +108,9 @@ export default function PaymentPage() {
   const amount = quote ? (method === "mobile_money" ? quote.mobileMoney : quote[method]) : null;
   const network = detectMobileMoneyNetwork(phone);
   const pending = detail?.payments.some((p) => p.type === "collection" && ["pending", "unknown"].includes(p.status)) ?? false;
-  const ready = detail?.order.stage === "Match" && !!detail.order.rider_id && !pending;
+  const combinedStops = detail?.bundleStops ?? [];
+  const ready = detail?.order.stage === "Match" && !!detail.order.rider_id && !pending
+    && (combinedStops.length < 2 || combinedStops.every((stop) => stop.stage === "Match"));
   const insufficient = method === "wallet" && selectedWallet?.balance != null && amount != null && selectedWallet.balance < amount;
   const disabled = busy || !online || !ready || amount == null ||
     (method === "mobile_money" && !network) ||
@@ -119,7 +129,8 @@ export default function PaymentPage() {
       });
       if (result.redirectUrl) { window.location.href = result.redirectUrl; return; }
       if (result.funded || result.payment?.status === "successful") {
-        const nextUnpaidPickup = detail?.bundleStops?.find((stop) => stop.id !== id && stop.stage === "Match");
+        // A combined delivery is paid once (quote.bundle); only an older part-paid one still chains to the next pickup.
+        const nextUnpaidPickup = quote?.bundle ? undefined : detail?.bundleStops?.find((stop) => stop.id !== id && stop.stage === "Match");
         router.replace(nextUnpaidPickup ? `/orders/${nextUnpaidPickup.id}/pay` : `/orders/${id}`);
       }
       else await load();
@@ -158,7 +169,7 @@ export default function PaymentPage() {
         ))}
       </fieldset>
       <section className="home-card space-y-4">
-        {(detail?.bundleStops?.length ?? 0) > 1 && <p className="rounded-2xl border border-gold/30 bg-gold/10 px-4 py-3 text-sm text-ink">Combined delivery: one rider collects from {detail!.bundleStops!.map((stop) => stop.restaurant_name ?? "your pickup").join(" and ")}. Each pickup is paid in turn (pickup {Math.max(1, detail!.bundleStops!.findIndex((stop) => stop.id === id) + 1)} of {detail!.bundleStops!.length}).</p>}
+
         <fieldset disabled={busy || pending} hidden={method !== "mobile_money"} className="min-w-0">
           <MobileNumberPicker purpose="payment" value={phone} onChange={setPhone} prominent autoSave />
           <p className="mt-3 text-sm text-ink-500">Enter your MTN MoMo or Airtel Money number. We detect the network automatically.</p>

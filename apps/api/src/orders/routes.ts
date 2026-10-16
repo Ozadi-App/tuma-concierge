@@ -46,6 +46,7 @@ import {
 import { getR2Bucket, uploadResponseHeaders } from "../storage/r2.js";
 import { appBaseUrl } from "../verify/service.js";
 import { payFromWallet } from "../wallet/service.js";
+import { bundleCheckoutQuote, fundBundle, notifyRiderOfCombinedDelivery, unfundedBundleGroup } from "./bundle-funding.js";
 import { isSubscriptionCurrent } from "../riders/subscription.js";
 import {
   activateMerchantAllocationsForFundedOrder,
@@ -833,6 +834,7 @@ async function assignRider(
         await logEvent(bundleOrderId, "Match", `Combined delivery assigned to rider ${riderName}`, riderId);
         if (order.payment_rail === "float") await logEvent(bundleOrderId, "Fund", "Cash rail — rider fronting funds, no payment needed upfront", riderId);
       }
+      await notifyRiderOfCombinedDelivery(id);
     }
   }
 
@@ -1534,6 +1536,9 @@ orderRoutes.get("/orders/:id/checkout", async (c) => {
   const order = await getOrder(c.req.param("id"));
   if (!order) return c.json({ error: "not_found" }, 404);
   if (order.customer_id !== c.get("user").sub) return c.json({ error: "forbidden" }, 403);
+  // A combined delivery is paid once, from its first pickup: the quote is the total for every pickup.
+  const bundleGroup = await unfundedBundleGroup(order);
+  if (bundleGroup && String(bundleGroup.lead.id) === String(order.id)) return c.json(await bundleCheckoutQuote(bundleGroup));
   const baseAmount = Number(order.final_total ?? order.estimated_total ?? 0);
   const settings = await getMonetizationSettings();
   const input = { baseAmount, deliveryFee: Number(order.delivery_fee ?? 0), orderType: order.type as "parcel" | "shopping" };
@@ -1569,6 +1574,21 @@ orderRoutes.post("/orders/:id/fund", async (c) => {
   const parsed = fundSchema.safeParse(order.payment_rail === "float" && !body?.paymentMethod ? { ...body, paymentMethod: "cash" } : body);
   if (!parsed.success) return c.json({ error: "invalid_body", issues: parsed.error.issues }, 400);
   if (!order.rider_id) return c.json({ error: "invalid_stage", message: "Please select a rider before confirming payment." }, 409);
+
+  // Combined delivery (two pickups, one rider): one payment from the first pickup covers every pickup.
+  const bundleGroup = await unfundedBundleGroup(order);
+  if (bundleGroup) {
+    if (String(bundleGroup.lead.id) !== id) {
+      return c.json({ error: "bundled_stop", message: "This pickup is paid together with the first one. Pay for the combined delivery from there.", payWithOrderId: String(bundleGroup.lead.id) }, 409);
+    }
+    return fundBundle({
+      c,
+      user,
+      group: bundleGroup,
+      body: parsed.data,
+      deps: { getOrder, touchOrder, logEvent, paymentReturnUrl },
+    });
+  }
 
   if (parsed.data.paymentMethod === "cash") {
     // Float rail: the customer hands the rider the full cash amount —

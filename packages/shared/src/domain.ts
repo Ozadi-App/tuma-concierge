@@ -107,6 +107,8 @@ export type OrderRow = {
   /** Shared by orders that the customer chose to combine into one rider trip. */
   delivery_bundle_id?: string | null;
   bundle_order_count?: number;
+  /** The restaurants of a combined delivery in pickup order ("A → B"); null for a single order. */
+  bundle_pickups?: string | null;
   delivery_bundle_hold?: number;
   /** A passenger ride rather than a goods parcel — type stays 'parcel' (see
    * apps/api/src/db/migrations/0039_ride_orders.sql). Pickup = where the
@@ -164,6 +166,7 @@ export type AvailableJob = Pick<
   | "restaurant_id"
   | "is_ride"
   | "bundle_order_count"
+  | "bundle_pickups"
 > & {
   /**
    * Deliberately narrower than a full OrderRow. This feed goes to every

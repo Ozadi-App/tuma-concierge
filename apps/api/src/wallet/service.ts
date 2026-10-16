@@ -129,29 +129,33 @@ export async function debitWallet(
     walletId?: string;
   },
 ): Promise<number | null> {
-  const column = balanceColumn(info.environment);
-  let balance: number;
-  if (info.walletId) {
+  const balance = await applyDebit(userId, amount, info.environment, info.walletId);
+  if (balance === null) return null;
+  await recordLedgerEntry({ userId, amount: -amount, balanceAfter: balance, ...info });
+  return balance;
+}
+
+/** The atomic balance check-and-subtract shared by every debit; returns the balance afterward, or null if it did not cover `amount`. */
+async function applyDebit(userId: string, amount: number, environment: PlatformEnvironment, walletId?: string): Promise<number | null> {
+  const column = balanceColumn(environment);
+  if (walletId) {
     const walletColumn = column === "wallet_balance_sandbox" ? "balance_sandbox" : "balance";
     const res = await db.execute({
       sql: `UPDATE wallets SET ${walletColumn} = ${walletColumn} - ?, updated_at = datetime('now')
             WHERE id = ? AND owner_id = ? AND ${walletColumn} >= ?`,
-      args: [amount, info.walletId, userId, amount],
+      args: [amount, walletId, userId, amount],
     });
     if ((res.rowsAffected ?? 0) === 0) return null;
-    const balanceRes = await db.execute({ sql: `SELECT ${walletColumn} as balance FROM wallets WHERE id = ?`, args: [info.walletId] });
-    balance = Number((balanceRes.rows[0] as Row)?.balance ?? 0);
-  } else {
-    const res = await db.execute({
-      sql: `UPDATE users SET ${column} = ${column} - ?, updated_at = datetime('now') WHERE id = ? AND ${column} >= ?`,
-      args: [amount, userId, amount],
-    });
-    if ((res.rowsAffected ?? 0) === 0) return null;
-    const balanceRes = await db.execute({ sql: `SELECT ${column} as balance FROM users WHERE id = ?`, args: [userId] });
-    balance = Number((balanceRes.rows[0] as Row)?.balance ?? 0);
+    const balanceRes = await db.execute({ sql: `SELECT ${walletColumn} as balance FROM wallets WHERE id = ?`, args: [walletId] });
+    return Number((balanceRes.rows[0] as Row)?.balance ?? 0);
   }
-  await recordLedgerEntry({ userId, amount: -amount, balanceAfter: balance, ...info });
-  return balance;
+  const res = await db.execute({
+    sql: `UPDATE users SET ${column} = ${column} - ?, updated_at = datetime('now') WHERE id = ? AND ${column} >= ?`,
+    args: [amount, userId, amount],
+  });
+  if ((res.rowsAffected ?? 0) === 0) return null;
+  const balanceRes = await db.execute({ sql: `SELECT ${column} as balance FROM users WHERE id = ?`, args: [userId] });
+  return Number((balanceRes.rows[0] as Row)?.balance ?? 0);
 }
 
 /**
@@ -198,6 +202,51 @@ export async function payFromWallet(input: {
     args: [paymentId, input.orderId, input.amount],
   });
   return paymentId;
+}
+
+/**
+ * One wallet payment that covers several orders (a combined delivery with two
+ * pickups). The wallet is debited once for the total, then each order gets its
+ * own ledger line and its own successful collection row, so every later
+ * per-order step (settlement, merchant holds, refunds, cancellation) sees
+ * exactly what that order was paid. Returns the payment ids in `parts` order,
+ * or null if the balance did not cover the total (nothing is changed then).
+ */
+export async function payBundleFromWallet(input: {
+  userId: string;
+  parts: Array<{ orderId: string; amount: number }>;
+  environment: PlatformEnvironment;
+  note?: string;
+  actorId?: string;
+  walletId?: string;
+}): Promise<string[] | null> {
+  const total = input.parts.reduce((sum, part) => sum + part.amount, 0);
+  const balanceAfter = await applyDebit(input.userId, total, input.environment, input.walletId);
+  if (balanceAfter === null) return null;
+  let running = balanceAfter + total;
+  const paymentIds: string[] = [];
+  for (const part of input.parts) {
+    running -= part.amount;
+    await recordLedgerEntry({
+      userId: input.userId,
+      type: "order_payment",
+      amount: -part.amount,
+      balanceAfter: running,
+      environment: input.environment,
+      orderId: part.orderId,
+      note: input.note,
+      actorId: input.actorId,
+      walletId: input.walletId,
+    });
+    const paymentId = newId("pay");
+    await db.execute({
+      sql: `INSERT INTO payments (id, order_id, type, provider, provider_ref, amount, currency, status)
+            VALUES (?, ?, 'collection', 'wallet', NULL, ?, 'UGX', 'successful')`,
+      args: [paymentId, part.orderId, part.amount],
+    });
+    paymentIds.push(paymentId);
+  }
+  return paymentIds;
 }
 
 /**
