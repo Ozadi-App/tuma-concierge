@@ -293,7 +293,8 @@ export default function JobDetailPage() {
 
       {(detail.bundleStops?.length ?? 0) > 1 && (
         <section className="rounded-2xl border border-gold/25 bg-gold/10 p-4" aria-label="Combined delivery pickups">
-          <h2 className="font-bold text-ink">One delivery · {detail.bundleStops!.length} pickups</h2>
+          <h2 className="font-bold text-ink">Combined delivery · collect from {detail.bundleStops!.length} restaurants</h2>
+          <p className="mt-1 text-sm text-ink-500">Pick up every order below before delivering. They are paid and delivered together.</p>
           <ol className="mt-3 space-y-2">
             {detail.bundleStops!.map((stop, index) => (
               <li key={stop.id} className="flex items-center justify-between gap-3 text-sm">

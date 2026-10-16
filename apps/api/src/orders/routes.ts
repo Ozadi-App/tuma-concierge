@@ -46,7 +46,7 @@ import {
 import { getR2Bucket, uploadResponseHeaders } from "../storage/r2.js";
 import { appBaseUrl } from "../verify/service.js";
 import { payFromWallet } from "../wallet/service.js";
-import { bundleCheckoutQuote, fundBundle, unfundedBundleGroup } from "./bundle-funding.js";
+import { bundleCheckoutQuote, fundBundle, notifyRiderOfCombinedDelivery, unfundedBundleGroup } from "./bundle-funding.js";
 import { isSubscriptionCurrent } from "../riders/subscription.js";
 import {
   activateMerchantAllocationsForFundedOrder,
@@ -834,6 +834,7 @@ async function assignRider(
         await logEvent(bundleOrderId, "Match", `Combined delivery assigned to rider ${riderName}`, riderId);
         if (order.payment_rail === "float") await logEvent(bundleOrderId, "Fund", "Cash rail — rider fronting funds, no payment needed upfront", riderId);
       }
+      await notifyRiderOfCombinedDelivery(id);
     }
   }
 

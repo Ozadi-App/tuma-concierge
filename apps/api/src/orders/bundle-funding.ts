@@ -12,6 +12,7 @@ import {
   paymentProviderHttpStatus,
   UnsupportedNetworkError,
 } from "../payments/service.js";
+import { notifyUser } from "../lib/webpush.js";
 import { payBundleFromWallet } from "../wallet/service.js";
 
 type Row = Record<string, unknown>;
@@ -151,6 +152,7 @@ export async function fundBundle(input: {
     for (const part of parts) {
       await deps.logEvent(String(part.order.id), "Fund", "Cash rail — rider collects full payment from the customer on delivery", user.sub);
     }
+    await notifyRiderOfCombinedDelivery(leadId);
     return c.json({ order: await deps.getOrder(leadId), funded: true, rail: "float" });
   }
 
@@ -205,6 +207,7 @@ export async function fundBundle(input: {
       await activateMerchantAllocationsForFundedOrder(orderId);
       await deps.logEvent(orderId, "Fund", sharedSpend ? "Paid from a shared wallet with the combined delivery — shopping started" : "Paid from wallet with the combined delivery — shopping started", user.sub);
     }
+    await notifyRiderOfCombinedDelivery(leadId);
     return c.json({ order: await deps.getOrder(leadId), payment: { id: paymentIds[0], status: "successful", network: null } });
   }
 
@@ -337,4 +340,29 @@ export async function finishBundleChildren(parentPaymentId: string, outcome: "su
   }
   await executeBatch(statements);
   for (const kid of kids.rows as Row[]) await activateMerchantAllocationsForFundedOrder(String(kid.order_id));
+  const parent = await db.execute({ sql: "SELECT order_id FROM payments WHERE id = ?", args: [parentPaymentId] });
+  if (parent.rows[0]) await notifyRiderOfCombinedDelivery(String((parent.rows[0] as Row).order_id));
+}
+
+/** Tells the rider, by push, that their delivery has more than one restaurant to collect from. */
+export async function notifyRiderOfCombinedDelivery(orderId: string): Promise<void> {
+  try {
+    const order = (await db.execute({ sql: "SELECT id, rider_id, delivery_bundle_id FROM orders WHERE id = ?", args: [orderId] })).rows[0] as Row | undefined;
+    if (!order?.rider_id || !order.delivery_bundle_id) return;
+    const stops = (await db.execute({
+      sql: `SELECT COALESCE(r.name, 'Pickup') AS name FROM orders o LEFT JOIN restaurants r ON r.id = o.restaurant_id
+            WHERE o.delivery_bundle_id = ? AND o.stage != 'Cancelled'
+            ORDER BY CASE WHEN o.id = o.delivery_bundle_id THEN 0 ELSE 1 END, o.created_at, o.id`,
+      args: [String(order.delivery_bundle_id)],
+    })).rows as Row[];
+    if (stops.length < 2) return;
+    await notifyUser(String(order.rider_id), {
+      title: `Combined delivery: ${stops.length} restaurants`,
+      body: `Collect from ${stops.map((stop) => String(stop.name)).join(", then ")}, and deliver everything together.`,
+      url: `/jobs/${String(order.delivery_bundle_id)}`,
+      tag: `bundle-${String(order.delivery_bundle_id)}`,
+    });
+  } catch (error) {
+    console.error("Could not notify the rider about the combined delivery", error);
+  }
 }

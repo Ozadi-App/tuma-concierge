@@ -8,6 +8,7 @@ import { signToken } from "../auth/jwt.js";
 import { setD1Binding, type D1Database } from "../db/client.js";
 import { splitSqlStatements } from "../db/split-sql.js";
 import { reconcilePayment } from "../payments/reconciliation.js";
+import { riderRoutes } from "../riders/routes.js";
 import { orderRoutes } from "./routes.js";
 
 function bindDatabase(client: Client) {
@@ -56,7 +57,8 @@ test("a combined delivery is paid once and every pickup is funded together", asy
     }
     await client.execute("INSERT INTO riders (user_id, verified) VALUES ('rider', 1)");
     await client.execute("INSERT INTO restaurants (id, owner_id, name, status, is_open, environment) VALUES ('rest-a', 'other', 'Kitchen A', 'active', 1, 'live'), ('rest-b', 'other', 'Kitchen B', 'active', 1, 'live')");
-    const app = new Hono().route("/v1", orderRoutes);
+    const app = new Hono().route("/v1", orderRoutes).route("/v1", riderRoutes);
+    const riderToken = await signToken({ sub: "rider", role: "rider" });
     const token = await signToken({ sub: "customer", role: "customer" });
     const request = (path: string, body?: object) => app.request(`/v1/orders/${path}`, {
       method: body ? "POST" : "GET", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, ...(body ? { body: JSON.stringify(body) } : {}),
@@ -128,6 +130,14 @@ test("a combined delivery is paid once and every pickup is funded together", asy
       assert.equal(Number((await client.execute("SELECT wallet_balance FROM users WHERE id = 'customer'")).rows[0].wallet_balance), 40000);
       assert.equal((await client.execute({ sql: "SELECT COUNT(*) AS n FROM payments WHERE order_id IN (?, ?)", args: [lead, second] })).rows[0].n, 0);
       await client.execute("UPDATE users SET wallet_balance = 100000 WHERE id = 'customer'");
+    });
+
+    await t.test("the rider sees every restaurant of a combined delivery in order", async () => {
+      const { lead } = await bundle("live");
+      const res = await app.request("/v1/riders/me/orders", { headers: { Authorization: `Bearer ${riderToken}` } });
+      assert.equal(res.status, 200);
+      const orders = ((await res.json()) as { orders: Array<{ id: string; bundle_pickups: string | null }> }).orders;
+      assert.equal(orders.find((o) => o.id === lead)?.bundle_pickups, "Kitchen A → Kitchen B");
     });
 
     await t.test("cash on delivery starts both pickups", async () => {

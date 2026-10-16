@@ -96,6 +96,7 @@ export function toOpenJob(
     store_name: order.store_name ?? null,
     store_category: order.store_category ?? null,
     bundle_order_count: Number(order.bundle_order_count ?? 1),
+    bundle_pickups: (order.bundle_pickups as string | null | undefined) ?? null,
     // A passenger ride is `type: 'parcel'` with this flag set (see
     // 0039_ride_orders.sql) — surfaced here so the rider app can
     // categorize it as "Ride" rather than plain "Parcel".
