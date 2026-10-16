@@ -1079,6 +1079,7 @@ export default function RestaurantPage() {
 
 
   async function checkout() {
+    if (!deliveryFeeKnown) return;
     const d = placeFields(delivery);
     if (!d.area && !d.address) {
       setError(t("restaurant_choose_delivery_location"));
@@ -1137,6 +1138,8 @@ export default function RestaurantPage() {
   const onCheckoutStep = checkoutRequested || step === "checkout";
   const orderingUnavailable = !!restaurant && !!restaurant.is_demo && !restaurant.demo_checkout_enabled;
   const estimatedFee = sharedDelivery ? combinedRouteFee : selectedBundle ? bundleExtraDeliveryFee : estimatedDeliveryFee;
+  // Checkout stays off until the delivery fee is worked out, so the customer never pays an unconfirmed amount.
+  const deliveryFeeKnown = !!delivery && estimatedFee != null && Number.isFinite(estimatedFee);
   const checkoutItemsTotal = itemsTotal + (combineOther ? combineOtherItemsTotal : 0);
   const orderItemCount = cart.reduce((n, l) => n + l.quantity, 0) + (combineOther ? combineOther.lines.reduce((n, l) => n + l.quantity, 0) : 0);
   // Checkout step: nav Back returns to the menu (the place picker has its own Back).
@@ -1148,8 +1151,8 @@ export default function RestaurantPage() {
         ? {
             tone: "gold",
             label: orderingUnavailable ? "Unavailable" : busy ? "Please wait…" : "Checkout",
-            detail: formatUgx(checkoutItemsTotal + (estimatedFee != null && Number.isFinite(estimatedFee) ? estimatedFee : 0)),
-            disabled: busy || !delivery || cart.length === 0 || !restaurant.is_open || orderingUnavailable,
+            detail: deliveryFeeKnown ? formatUgx(checkoutItemsTotal + estimatedFee!) : "—",
+            disabled: busy || !delivery || !deliveryFeeKnown || cart.length === 0 || !restaurant.is_open || orderingUnavailable,
             busy,
             onClick: () => void checkout(),
           }
@@ -1280,10 +1283,10 @@ export default function RestaurantPage() {
           </div>
           <div className="flex items-center justify-between text-sm text-ink-500">
             <span>{combineOther ? "Delivery (one rider, 2 pickups)" : t("restaurant_delivery_fee")}</span>
-            <span>{combineOther ? (sharedDelivery ? `~${formatUgx(combinedRouteFee!)}` : "Choose location") : selectedBundle ? (bundleExtraDeliveryFee != null ? `+${formatUgx(bundleExtraDeliveryFee)}` : "—") : estimatedDeliveryFee != null ? `~${formatUgx(estimatedDeliveryFee)}` : t("loading")}</span>
+            <span>{combineOther ? (sharedDelivery ? formatUgx(combinedRouteFee!) : "Choose location") : selectedBundle ? (bundleExtraDeliveryFee != null ? `+${formatUgx(bundleExtraDeliveryFee)}` : "—") : estimatedDeliveryFee != null ? formatUgx(estimatedDeliveryFee) : t("loading")}</span>
           </div>
           <div className="flex items-center justify-between border-t border-[var(--border-faint)] pt-1.5 text-sm font-bold text-ink">
-            <span>{t("restaurant_estimated_total")}</span>
+            <span>Total</span>
             <span>{combineOther && !sharedDelivery ? "—" : estimatedFee != null ? formatUgx(checkoutItemsTotal + estimatedFee) : t("loading")}</span>
           </div>
         </div>
