@@ -95,10 +95,24 @@ function RiderSummaryCard({
 
 type RelayLeg = OrderRelay["legs"][number];
 
-function relayLegTitle(leg: RelayLeg, stationName: string | null): string {
+/** The stage where the customer meets the matatu, while that's still the plan (not missed). */
+function activeMeetStage(relay: OrderRelay): NonNullable<OrderRelay["meetStage"]> | null {
+  return relay.meetStage && !relay.missedAt ? relay.meetStage : null;
+}
+
+/** How soon the matatu gets there, from its live position. */
+function matatuArrival(relay: OrderRelay, leg: RelayLeg | undefined, meeting: boolean): string | null {
+  if (!leg) return null;
+  if (leg.status === "arrived") return meeting ? "At the stage now" : null;
+  if (leg.status !== "in_transit") return null;
+  if (typeof relay.etaMinutes === "number") return `Arrives in about ${Math.max(1, Math.round(relay.etaMinutes))} min`;
+  return meeting ? "On its way" : null;
+}
+
+function relayLegTitle(leg: RelayLeg, stationName: string | null, meetName: string | null): string {
   if (leg.leg === 3) return "Boda to your door";
   if (leg.kind === "matatu") {
-    return `Matatu${leg.vehiclePlate ? ` ${leg.vehiclePlate}` : ""} to ${stationName ?? leg.toName ?? "stage"}`;
+    return `Matatu${leg.vehiclePlate ? ` ${leg.vehiclePlate}` : ""} to ${meetName ?? stationName ?? leg.toName ?? "stage"}`;
   }
   return `Boda to ${leg.toName ?? "stage"}`;
 }
@@ -112,11 +126,13 @@ function relayLegStatus(leg: RelayLeg): string {
 
 type RelayStep = { key: string; title: string; status: string; done: boolean; active: boolean };
 
-function legStep(leg: RelayLeg, stationName: string | null): RelayStep {
+function legStep(leg: RelayLeg, relay: OrderRelay, stationName: string | null): RelayStep {
+  const meet = activeMeetStage(relay);
+  const arrival = leg.kind === "matatu" ? matatuArrival(relay, leg, !!meet) : null;
   return {
     key: leg.id,
-    title: relayLegTitle(leg, stationName),
-    status: `${relayLegStatus(leg)}${leg.providerName ? ` · ${leg.providerName}` : ""}`,
+    title: relayLegTitle(leg, stationName, leg.kind === "matatu" ? meet?.name ?? null : null),
+    status: `${arrival ?? relayLegStatus(leg)}${leg.providerName ? ` · ${leg.providerName}` : ""}`,
     done: leg.status === "done",
     active: leg.status === "in_transit" || leg.status === "arrived",
   };
@@ -126,13 +142,25 @@ function legStep(leg: RelayLeg, stationName: string | null): RelayStep {
 function RelayTimeline({ relay }: { relay: OrderRelay }) {
   const legs = [...relay.legs].sort((a, b) => a.leg - b.leg);
   const station = relay.dropMode === "station" ? relay.station ?? null : null;
+  const meet = activeMeetStage(relay);
   let steps: RelayStep[];
   if (!station) {
-    steps = legs.map((leg) => legStep(leg, null));
+    steps = legs.map((leg) => legStep(leg, relay, null));
+  } else if (meet) {
+    const collected = relay.releasedTo === "customer";
+    const matatu = legs.find((leg) => leg.kind === "matatu");
+    steps = legs.filter((leg) => leg.leg < 3).map((leg) => legStep(leg, relay, station.name));
+    steps.push({
+      key: "meet",
+      title: `Meet it at ${meet.name}`,
+      status: collected ? `Collected${relay.releasedAt ? ` ${formatTime(relay.releasedAt)}` : ""}` : matatu?.status === "arrived" ? "Ready" : "Waiting",
+      done: collected,
+      active: !collected && matatu?.status === "arrived",
+    });
   } else {
     const held = !!relay.heldAt;
     const released = !!relay.releasedAt;
-    steps = legs.filter((leg) => leg.leg < 3).map((leg) => legStep(leg, station.name));
+    steps = legs.filter((leg) => leg.leg < 3).map((leg) => legStep(leg, relay, station.name));
     steps.push({
       key: "station",
       title: `At ${station.name}`,
@@ -144,7 +172,7 @@ function RelayTimeline({ relay }: { relay: OrderRelay }) {
     });
     const leg3 = legs.find((leg) => leg.leg === 3);
     if (relay.lastMile === "door" && leg3) {
-      steps.push(legStep(leg3, station.name));
+      steps.push(legStep(leg3, relay, station.name));
     } else {
       const collected = relay.releasedTo === "customer";
       steps.push({
@@ -180,12 +208,53 @@ function RelayTimeline({ relay }: { relay: OrderRelay }) {
   );
 }
 
+/** Meeting the matatu at a stage on its route: where, when, and the code to show the conductor. */
+function MeetStageCard({ relay }: { relay: OrderRelay }) {
+  const meet = activeMeetStage(relay);
+  if (!meet) return null;
+  if (relay.releasedTo === "customer") {
+    return (
+      <section className="home-card">
+        <p className="text-sm font-semibold text-green">Collected at {meet.name}</p>
+      </section>
+    );
+  }
+  if (!relay.collectCode || relay.releasedAt) return null;
+  const arrival = matatuArrival(relay, relay.legs.find((leg) => leg.kind === "matatu"), true);
+  const directions = meet.lat != null && meet.lng != null
+    ? `https://www.google.com/maps/dir/?api=1&destination=${meet.lat},${meet.lng}`
+    : null;
+  return (
+    <section className="home-card space-y-3 !border-l-4 !border-l-gold">
+      <div className="space-y-0.5">
+        <h2 className="text-base font-bold text-ink">Meet the matatu at {meet.name}</h2>
+        {arrival && <p className="text-sm font-semibold text-ink">{arrival}</p>}
+        {directions && (
+          <a href={directions} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-sm font-semibold text-gold">
+            <MapPin className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
+            Directions
+          </a>
+        )}
+      </div>
+      <div className="flex flex-col items-center gap-2">
+        <p className="text-xs text-ink-500">Show this code to the conductor</p>
+        <p className="font-mono text-4xl font-black tracking-[0.2em] text-ink">{relay.collectCode}</p>
+        <CodeQr value={relay.collectCode} size={180} />
+      </div>
+      {relay.station && <p className="text-xs text-ink-500">The matatu can&apos;t wait. If you miss it, collect at {relay.station.name}.</p>}
+    </section>
+  );
+}
+
 /** Waiting at (or on its way to) the petrol station: the customer's code, or a rider instead. */
 function StationPickupCard({ orderId, relay, onChanged }: { orderId: string; relay: OrderRelay; onChanged: () => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<{ message: string; topUp: boolean } | null>(null);
   const station = relay.station;
-  if (!station) return null;
+  if (!station || activeMeetStage(relay)) return null;
+  const missed = relay.meetStage && relay.missedAt ? (
+    <p className="text-sm font-semibold text-ink">You missed the matatu — collect at {station.name}</p>
+  ) : null;
 
   if (relay.releasedTo === "customer") {
     return (
@@ -214,6 +283,7 @@ function StationPickupCard({ orderId, relay, onChanged }: { orderId: string; rel
   const fee = relay.sendRiderFee ?? 0;
   return (
     <section className="home-card space-y-3 !border-l-4 !border-l-gold">
+      {missed}
       <div className="space-y-0.5">
         <h2 className="text-base font-bold text-ink">{held ? `Ready at ${station.name}` : `On its way to ${station.name}`}</h2>
         {station.address && <p className="text-sm text-ink-500">{station.address}</p>}
@@ -544,7 +614,10 @@ export default function OrderDetailPage() {
       {detail.relay && detail.relay.legs.length > 0 && <RelayTimeline relay={detail.relay} />}
 
       {detail.relay?.dropMode === "station" && (
-        <StationPickupCard orderId={orderId} relay={detail.relay} onChanged={() => void load().catch(() => {})} />
+        <>
+          <MeetStageCard relay={detail.relay} />
+          <StationPickupCard orderId={orderId} relay={detail.relay} onChanged={() => void load().catch(() => {})} />
+        </>
       )}
 
       {(order.rider_id || onMatatu) && !["Settle", "Handover"].includes(order.stage) && (

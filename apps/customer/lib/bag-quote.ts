@@ -21,6 +21,8 @@ export type BagRelay = {
   doorTotal: number;
   collectTotal: number | null;
   choiceAtOrder: boolean;
+  /** Stages on the matatu's route where the customer may meet it instead (priced like collecting). */
+  meetStages?: Array<{ id: string; name: string; distanceKm: number; isStation: boolean }>;
   legs: Array<{ leg: number; kind: "boda" | "matatu"; fromName: string; toName: string; fee: number }>;
 };
 
@@ -29,7 +31,12 @@ export type BagRelay = {
  * trip through every store in the bag. Null while loading or after an error,
  * so checkout can stay off until the fee is known (never an estimate).
  */
-export function useBagQuote(items: CartItem[], enabled: boolean, relayLastMile: "door" | "collect" = "door") {
+export function useBagQuote(
+  items: CartItem[],
+  enabled: boolean,
+  relayLastMile: "door" | "collect" | "meet" = "door",
+  relayMeetStageId?: string,
+) {
   const [quote, setQuote] = useState<{ key: string; base: string; value: BagQuote } | null>(null);
   const [failedKey, setFailedKey] = useState<string | null>(null);
   const [retry, setRetry] = useState(0);
@@ -37,7 +44,8 @@ export function useBagQuote(items: CartItem[], enabled: boolean, relayLastMile: 
   const lat = coords.lat || 0.3353;
   const lng = coords.lng || 32.5857;
   const base = `${lat},${lng}|${items.map((it) => `${it.storeId}:${it.productId}:${it.variantId ?? ""}:${it.price}x${it.quantity}`).join(",")}`;
-  const key = `${relayLastMile}|${base}`;
+  const meetStageId = relayLastMile === "meet" ? relayMeetStageId : undefined;
+  const key = `${relayLastMile}:${meetStageId ?? ""}|${base}`;
 
   useEffect(() => {
     if (!enabled || items.length === 0) return;
@@ -52,6 +60,7 @@ export function useBagQuote(items: CartItem[], enabled: boolean, relayLastMile: 
         destinationLat: lat,
         destinationLng: lng,
         relayLastMile,
+        relayMeetStageId: meetStageId,
       })
       .then((res) => {
         if (!cancelled) setQuote({ key, base, value: { deliveryFee: res.deliveryFee, total: res.total, stores: res.stores, relay: res.relay ?? null } });

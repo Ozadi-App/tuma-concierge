@@ -11,7 +11,7 @@ import { api, errorMessage } from "../../lib/api";
 import { useTranslate } from "../../lib/i18n";
 import { placeFields } from "../../lib/places";
 import { RouteSummary } from "./RouteSummary";
-import { LastMileChoice, type LastMileChoiceValue } from "../LastMileChoice";
+import { LastMileChoice, pickMeetStageId, type LastMileChoiceValue } from "../LastMileChoice";
 import { OrderVoiceNoteRecorder } from "./OrderVoiceNoteRecorder";
 
 /** Great-circle distance in km — mirrors apps/api/src/lib/geo.ts, used only
@@ -79,9 +79,13 @@ export function ParcelModal({ onClose }: { onClose: () => void }) {
   const relay = !quoteLoading && relayQuote ? relayQuote.relay : null;
   // Station drops: the matatu leaves it at a petrol station near the customer.
   const [lastMile, setLastMile] = useState<LastMileChoiceValue>("door");
+  const [meetStageId, setMeetStageId] = useState<string | null>(null);
   const station = relay?.dropMode === "station" && relay.station && relay.collectTotal != null ? relay.station : null;
-  const stationChoice = station != null && relay?.choiceAtOrder === true;
-  const toDoor = !station || (stationChoice && lastMile === "door");
+  const choiceAtOrder = relay?.choiceAtOrder === true;
+  const meetStages = station ? relay?.meetStages ?? [] : [];
+  const stationChoice = station != null && (choiceAtOrder || meetStages.length > 0);
+  const meeting = stationChoice && lastMile === "meet" && meetStages.length > 0;
+  const toDoor = !station || (stationChoice && choiceAtOrder && lastMile === "door");
   const relayFare = relay ? (toDoor ? relay.total : (relay.collectTotal as number)) : null;
   const relayLegs = relay ? relay.legs.filter((leg) => toDoor || leg.leg < 3) : [];
   const fare = relay ? relayFare : liveEstimate;
@@ -134,7 +138,9 @@ export function ParcelModal({ onClose }: { onClose: () => void }) {
         destinationLat: df.lat,
         destinationLng: df.lng,
         paymentRail: "escrow",
-        relayLastMile: stationChoice ? lastMile : undefined,
+        ...(meeting
+          ? { relayLastMile: "meet" as const, relayMeetStageId: pickMeetStageId(meetStages, meetStageId) }
+          : { relayLastMile: stationChoice ? (lastMile === "meet" ? "door" : lastMile) : undefined }),
         estimatedTotal: fare ?? (estimatedTotal ? roundFare(Number(estimatedTotal), pricing?.minimum) : undefined),
       });
       if (voiceNote) {
@@ -191,6 +197,10 @@ export function ParcelModal({ onClose }: { onClose: () => void }) {
                 stationName={station.name}
                 doorTotal={relay.total}
                 collectTotal={relay.collectTotal as number}
+                choiceAtOrder={choiceAtOrder}
+                meetStages={meetStages}
+                meetStageId={meetStageId}
+                onMeetStageChange={setMeetStageId}
                 disabled={busy}
               />
             ) : station ? (
@@ -212,7 +222,7 @@ export function ParcelModal({ onClose }: { onClose: () => void }) {
           <div className="flex items-center gap-2 rounded-xl border border-gold bg-gold/10 p-3">
             <Route className="h-4 w-4 shrink-0 text-gold" strokeWidth={2.25} aria-hidden />
             <p className="text-sm text-ink">
-              <span className="font-bold">UGX {liveEstimate.toLocaleString("en-UG")}</span> {t("parcel_estimated")} ·{" "}
+              Delivery <span className="font-bold">UGX {liveEstimate.toLocaleString("en-UG")}</span> ·{" "}
               {distanceKm!.toFixed(1)} km
             </p>
           </div>

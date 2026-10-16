@@ -24,7 +24,7 @@ import { ProductImage } from "./ProductImage";
 import { api, errorMessage } from "../lib/api";
 import { getCachedCustomerCoordinates } from "../lib/location";
 import { useBagQuote } from "../lib/bag-quote";
-import { BagRelayDetails, bagRelayHasChoice } from "./BagRelayDetails";
+import { BagRelayDetails, bagRelayLastMileInput } from "./BagRelayDetails";
 import type { LastMileChoiceValue } from "./LastMileChoice";
 
 export interface CartDrawerProps {
@@ -58,7 +58,8 @@ export function CartDrawer({
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   // The delivery fee is the server's: one rider trip through every store. Checkout waits for it.
   const [relayLastMile, setRelayLastMile] = useState<LastMileChoiceValue>("door");
-  const bagQuote = useBagQuote(selectedItems, isOpen, relayLastMile);
+  const [relayMeetStageId, setRelayMeetStageId] = useState<string | null>(null);
+  const bagQuote = useBagQuote(selectedItems, isOpen, relayLastMile, relayMeetStageId ?? undefined);
   const deliveryFee = bagQuote.quote?.deliveryFee ?? null;
   const total = deliveryFee == null ? null : subtotal + deliveryFee;
   const totalLabel = total == null ? undefined : `UGX ${total.toLocaleString()}`;
@@ -118,7 +119,7 @@ export function CartDrawer({
         destinationArea: "Kampala",
         destinationLat: cached.lat || 0.3353,
         destinationLng: cached.lng || 32.5857,
-        relayLastMile: bagRelayHasChoice(bagQuote.relay) ? relayLastMile : undefined,
+        ...bagRelayLastMileInput(bagQuote.relay, relayLastMile, relayMeetStageId),
       });
 
       const firstOrder = res.order ?? res.orders?.[0];
@@ -382,6 +383,8 @@ export function CartDrawer({
                     relay={bagQuote.relay}
                     lastMile={relayLastMile}
                     onLastMileChange={setRelayLastMile}
+                    meetStageId={relayMeetStageId}
+                    onMeetStageChange={setRelayMeetStageId}
                     disabled={isSubmitting}
                     className="pl-3"
                   />
