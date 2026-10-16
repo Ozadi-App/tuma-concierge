@@ -95,8 +95,12 @@ customerRestaurantRoutes.get("/restaurants/:id/delivery-quote", requireAuth, asy
     if (!other || other.lat == null || other.lng == null || restaurantLat == null || restaurantLng == null || !hasDestination) {
       return c.json({ error: "route_unavailable", message: "Both pickups and your delivery location need map coordinates to work out the delivery fee." }, 409);
     }
-    const distanceKm = haversineKm(Number(other.lat), Number(other.lng), restaurantLat, restaurantLng) + haversineKm(restaurantLat, restaurantLng, lat, lng);
-    return c.json({ deliveryFee: roundFare(distanceKm * deliveryRatePerKm, minimumDeliveryFee), distanceKm: Math.round(distanceKm * 10) / 10 });
+    const lastMileKm = haversineKm(restaurantLat, restaurantLng, lat, lng);
+    const distanceKm = haversineKm(Number(other.lat), Number(other.lng), restaurantLat, restaurantLng) + lastMileKm;
+    const deliveryFee = roundFare(distanceKm * deliveryRatePerKm, minimumDeliveryFee);
+    // Shown to the customer as two lines that add up exactly to the fee charged.
+    const lastMile = Math.min(deliveryFee, roundFare(lastMileKm * deliveryRatePerKm, minimumDeliveryFee));
+    return c.json({ deliveryFee, distanceKm: Math.round(distanceKm * 10) / 10, legs: { betweenPickups: deliveryFee - lastMile, lastMile } });
   }
   if (restaurantLat != null && restaurantLng != null && hasDestination) {
     const distanceKm = haversineKm(restaurantLat, restaurantLng, lat, lng);

@@ -498,7 +498,7 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
       const params = new URLSearchParams();
       if (input.lat != null && input.lng != null) { params.set("lat", String(input.lat)); params.set("lng", String(input.lng)); }
       if (input.alsoFrom) params.set("alsoFrom", input.alsoFrom);
-      return request<{ deliveryFee: number; distanceKm: number | null }>(`/v1/restaurants/${encodeURIComponent(id)}/delivery-quote?${params}`);
+      return request<{ deliveryFee: number; distanceKm: number | null; legs?: { betweenPickups: number; lastMile: number } }>(`/v1/restaurants/${encodeURIComponent(id)}/delivery-quote?${params}`);
     },
     async getRestaurant(id: string) {
       return request<{ restaurant: Restaurant }>(`/v1/restaurants/${id}`);
