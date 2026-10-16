@@ -802,8 +802,11 @@ function ItemDetailPage({
   );
 }
 
-function RestaurantCartSwitchDialog({ cartCount, onKeep, onDiscard, onCancel }: {
+function RestaurantCartSwitchDialog({ cartCount, combine, onCombine, onKeep, onDiscard, onCancel }: {
   cartCount: number;
+  /** Set when exactly one other restaurant cart exists: explains what a shared delivery means. */
+  combine?: { otherName: string; thisName: string; km: number | null; ratePerKm: number | null } | null;
+  onCombine?: () => void;
   onKeep: () => void;
   onDiscard: () => void;
   onCancel: () => void;
@@ -854,11 +857,18 @@ function RestaurantCartSwitchDialog({ cartCount, onKeep, onDiscard, onCancel }: 
           {t(plural ? "restaurant_switch_cart_title_plural" : "restaurant_switch_cart_title")}
         </h2>
         <p id="restaurant-cart-switch-copy" className="restaurant-cart-switch-dialog__copy">
-          {t(plural ? "restaurant_switch_cart_copy_plural" : "restaurant_switch_cart_copy")}
+          {combine
+            ? `One rider can collect from ${combine.otherName} and then ${combine.thisName}, and deliver everything together. The rider has to travel from one restaurant to the other${combine.km != null ? ` (about ${combine.km.toFixed(1)} km)` : ""}, so that extra distance is added to your delivery fee${combine.ratePerKm != null ? ` at ${formatUgx(combine.ratePerKm)} per km` : ""}. You pay one delivery fee at checkout and see the exact amount before you pay.`
+            : t(plural ? "restaurant_switch_cart_copy_plural" : "restaurant_switch_cart_copy")}
         </p>
         <div className="restaurant-cart-switch-dialog__actions">
-          <button ref={keepButtonRef} type="button" className="restaurant-cart-switch-dialog__keep" onClick={onKeep}>
-            {t(plural ? "restaurant_switch_cart_keep_plural" : "restaurant_switch_cart_keep")}
+          {combine && onCombine && (
+            <button ref={keepButtonRef} type="button" className="restaurant-cart-switch-dialog__keep" onClick={onCombine}>
+              Combine into one delivery
+            </button>
+          )}
+          <button ref={combine && onCombine ? undefined : keepButtonRef} type="button" className={combine && onCombine ? "restaurant-cart-switch-dialog__discard" : "restaurant-cart-switch-dialog__keep"} onClick={onKeep}>
+            {combine && onCombine ? "Order separately" : t(plural ? "restaurant_switch_cart_keep_plural" : "restaurant_switch_cart_keep")}
           </button>
           <button type="button" className="restaurant-cart-switch-dialog__discard" onClick={onDiscard}>
             <Trash2 size={16} aria-hidden="true" />
@@ -892,7 +902,23 @@ export default function RestaurantPage() {
   const [restaurantTrustStatus,setRestaurantTrustStatus]=useState<"loading"|"ready"|"unavailable">("loading");
   const [cart, setCart] = useState<CartLine[]>([]);
   const [pendingRestaurantCartSwitch, setPendingRestaurantCartSwitch] = useState<{ item: MenuItem; line: CartAddLine; otherCartKeys: string[] } | null>(null);
-  useEffect(()=>{try{const rows=JSON.parse(sessionStorage.getItem(cartKey)??"[]");setCart(Array.isArray(rows)?rows.filter(isCartLine):[]);}catch{setCart([]);}setPendingRestaurantCartSwitch(null);},[cartKey]);
+  const combineStorageKey=`peebee-food-combine:${user?.id??"guest"}:${id}`;
+  const [combineOtherId, setCombineOtherId] = useState<string | null>(null);
+  const [combineOther, setCombineOther] = useState<{ id: string; name: string; lat: number | null; lng: number | null; lines: CartLine[] } | null>(null);
+  const [switchOther, setSwitchOther] = useState<{ name: string; lat: number | null; lng: number | null } | null>(null);
+  useEffect(()=>{try{const rows=JSON.parse(sessionStorage.getItem(cartKey)??"[]");setCart(Array.isArray(rows)?rows.filter(isCartLine):[]);}catch{setCart([]);}setPendingRestaurantCartSwitch(null);try{setCombineOtherId(sessionStorage.getItem(combineStorageKey));}catch{setCombineOtherId(null);}},[cartKey,combineStorageKey]);
+  function chooseCombine(otherId: string | null){setCombineOtherId(otherId);try{if(otherId)sessionStorage.setItem(combineStorageKey,otherId);else sessionStorage.removeItem(combineStorageKey);}catch{}}
+  // The other restaurant's saved cart, loaded only while a shared delivery is chosen.
+  useEffect(()=>{
+    if(!combineOtherId){setCombineOther(null);return;}
+    let live=true;
+    let lines:CartLine[]=[];
+    try{const rows=JSON.parse(sessionStorage.getItem(`${cartStoragePrefix}${combineOtherId}`)??"[]");lines=Array.isArray(rows)?rows.filter(isCartLine):[];}catch{}
+    if(!lines.length){chooseCombine(null);return;}
+    api.getRestaurant(combineOtherId).then(({restaurant:r})=>{if(live)setCombineOther({id:combineOtherId,name:r.name,lat:r.lat??null,lng:r.lng??null,lines});}).catch(()=>{if(live)setCombineOther(null);});
+    return()=>{live=false;};
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[combineOtherId,cartStoragePrefix]);
   function updateCart(next:CartLine[]){setCart(next);try{sessionStorage.setItem(cartKey,JSON.stringify(next));}catch{}}
   const [step, setStep] = useState<"menu" | "checkout">(checkoutRequested ? "checkout" : "menu");
 
@@ -972,6 +998,11 @@ export default function RestaurantPage() {
       const otherCartKeys = otherRestaurantCartKeys(cartStoragePrefix, cartKey);
       if (otherCartKeys.length > 0) {
         setPendingRestaurantCartSwitch({ item, line, otherCartKeys });
+        setSwitchOther(null);
+        if (otherCartKeys.length === 1) {
+          const otherId = otherCartKeys[0].slice(cartStoragePrefix.length);
+          api.getRestaurant(otherId).then(({ restaurant: r }) => setSwitchOther({ name: r.name, lat: r.lat ?? null, lng: r.lng ?? null })).catch(() => setSwitchOther(null));
+        }
         return false;
       }
     }
@@ -981,6 +1012,14 @@ export default function RestaurantPage() {
 
   function keepOtherCartsAndAdd() {
     if (!pendingRestaurantCartSwitch) return;
+    chooseCombine(null);
+    addToCart(pendingRestaurantCartSwitch.item, pendingRestaurantCartSwitch.line);
+    setPendingRestaurantCartSwitch(null);
+  }
+
+  function combineOtherCartAndAdd() {
+    if (!pendingRestaurantCartSwitch || pendingRestaurantCartSwitch.otherCartKeys.length !== 1) return;
+    chooseCombine(pendingRestaurantCartSwitch.otherCartKeys[0].slice(cartStoragePrefix.length));
     addToCart(pendingRestaurantCartSwitch.item, pendingRestaurantCartSwitch.line);
     setPendingRestaurantCartSwitch(null);
   }
@@ -990,6 +1029,7 @@ export default function RestaurantPage() {
     try {
       pendingRestaurantCartSwitch.otherCartKeys.forEach((key) => sessionStorage.removeItem(key));
     } catch {}
+    chooseCombine(null);
     addToCart(pendingRestaurantCartSwitch.item, pendingRestaurantCartSwitch.line);
     setPendingRestaurantCartSwitch(null);
   }
@@ -1025,6 +1065,17 @@ export default function RestaurantPage() {
     return Math.max(0, roundFare(routeKm * deliverySettings.deliveryRatePerKm, deliverySettings.minimumDeliveryFee) - Number(selectedBundle.delivery_fee ?? 0));
   }, [selectedBundle, restaurant, delivery, deliverySettings]);
 
+  // Shared delivery with another restaurant's saved cart: one rider, one delivery fee for the
+  // whole route (other restaurant -> this restaurant -> customer).
+  const combinedRouteFee = useMemo(() => {
+    const d = placeFields(delivery);
+    if (!combineOther || !restaurant || !deliverySettings || combineOther.lat == null || combineOther.lng == null || restaurant.lat == null || restaurant.lng == null || d.lat == null || d.lng == null) return null;
+    const routeKm = haversineKm(combineOther.lat, combineOther.lng, restaurant.lat, restaurant.lng) + haversineKm(restaurant.lat, restaurant.lng, d.lat, d.lng);
+    return roundFare(routeKm * deliverySettings.deliveryRatePerKm, deliverySettings.minimumDeliveryFee);
+  }, [combineOther, restaurant, delivery, deliverySettings]);
+  const combineOtherItemsTotal = combineOther ? combineOther.lines.reduce((sum, l) => sum + l.unitPrice * l.quantity, 0) : 0;
+  const sharedDelivery = combineOther != null && combinedRouteFee != null;
+
 
 
   async function checkout() {
@@ -1036,6 +1087,32 @@ export default function RestaurantPage() {
     setBusy(true);
     setError(null);
     try {
+      if (sharedDelivery && combineOther) {
+        const shared = { destinationArea: d.area, destinationAddress: d.address, destinationLat: d.lat, destinationLng: d.lng, paymentRail: "escrow" as const };
+        // First pickup (the other restaurant), then this restaurant joins it: one rider, one trip.
+        const first = await api.orderFromRestaurant(combineOther.id, {
+          items: combineOther.lines.map((l) => ({ menuItemId: l.menuItemId, quantity: l.quantity, choiceIds: l.choiceIds })),
+          ...shared,
+        });
+        try { sessionStorage.removeItem(`${cartStoragePrefix}${combineOther.id}`); } catch {}
+        chooseCombine(null);
+        try {
+          await api.orderFromRestaurant(id, {
+            items: cart.map((l) => ({ menuItemId: l.menuItemId, quantity: l.quantity, choiceIds: l.choiceIds })),
+            ...shared,
+            bundleWithOrderId: first.order.id,
+          });
+        } catch (err) {
+          // The first order exists already; keep this cart so nothing is lost, and say so.
+          setError(`${combineOther.name} was ordered, but ${restaurant?.name ?? "this restaurant"} could not be added to the same delivery: ${errorMessage(err)}`);
+          setBusy(false);
+          router.push(`/orders/${first.order.id}/pay`);
+          return;
+        }
+        updateCart([]);
+        router.push(`/orders/${first.order.id}/pay`);
+        return;
+      }
       const { order } = await api.orderFromRestaurant(id, {
         items: cart.map((l) => ({ menuItemId: l.menuItemId, quantity: l.quantity, choiceIds: l.choiceIds })),
         destinationArea: d.area,
@@ -1059,7 +1136,8 @@ export default function RestaurantPage() {
   // gold "Checkout" button wired to checkout() with the same guards.
   const onCheckoutStep = checkoutRequested || step === "checkout";
   const orderingUnavailable = !!restaurant && !!restaurant.is_demo && !restaurant.demo_checkout_enabled;
-  const estimatedFee = selectedBundle ? bundleExtraDeliveryFee : estimatedDeliveryFee;
+  const estimatedFee = sharedDelivery ? combinedRouteFee : selectedBundle ? bundleExtraDeliveryFee : estimatedDeliveryFee;
+  const checkoutItemsTotal = itemsTotal + (sharedDelivery ? combineOtherItemsTotal : 0);
   // Checkout step: nav Back returns to the menu (the place picker has its own Back).
   useRegisterNavBack(!!restaurant && (checkoutRequested || step === "checkout"), backToMenu);
   useRegisterNavPrimaryAction(
@@ -1069,7 +1147,7 @@ export default function RestaurantPage() {
         ? {
             tone: "gold",
             label: orderingUnavailable ? "Unavailable" : busy ? "Please wait…" : "Checkout",
-            detail: formatUgx(itemsTotal + (estimatedFee != null && Number.isFinite(estimatedFee) ? estimatedFee : 0)),
+            detail: formatUgx(checkoutItemsTotal + (estimatedFee != null && Number.isFinite(estimatedFee) ? estimatedFee : 0)),
             disabled: busy || !delivery || cart.length === 0 || !restaurant.is_open || orderingUnavailable,
             busy,
             onClick: () => void checkout(),
@@ -1126,6 +1204,13 @@ export default function RestaurantPage() {
         {pendingRestaurantCartSwitch && (
           <RestaurantCartSwitchDialog
             cartCount={pendingRestaurantCartSwitch.otherCartKeys.length}
+            combine={pendingRestaurantCartSwitch.otherCartKeys.length === 1 && switchOther ? {
+              otherName: switchOther.name,
+              thisName: restaurant?.name ?? "this restaurant",
+              km: switchOther.lat != null && switchOther.lng != null && restaurant?.lat != null && restaurant?.lng != null ? haversineKm(switchOther.lat, switchOther.lng, restaurant.lat, restaurant.lng) : null,
+              ratePerKm: deliverySettings?.deliveryRatePerKm ?? null,
+            } : null}
+            onCombine={combineOtherCartAndAdd}
             onKeep={keepOtherCartsAndAdd}
             onDiscard={discardOtherCartsAndAdd}
             onCancel={() => setPendingRestaurantCartSwitch(null)}
@@ -1138,6 +1223,16 @@ export default function RestaurantPage() {
     return (
       <div className="space-y-6 px-4">
         <div className="flex items-center gap-3"><button aria-label="Back to menu" onClick={backToMenu} className="flex h-11 w-11 items-center justify-center rounded-full glass-panel"><ChevronLeft size={22}/></button><h1 className="text-2xl font-bold text-ink">Delivery and payment</h1></div>
+        {combineOther && (
+          <section className="food-menu-card space-y-2 px-4 py-4" aria-label="Combined delivery">
+            <h2 className="font-bold text-ink">One delivery, two pickups</h2>
+            <p className="text-sm text-ink-500">Your rider collects from {combineOther.name} and then {restaurant.name}, and brings everything together. You pay one delivery fee that covers the whole route{sharedDelivery ? "" : " (choose your delivery location to see it)"}. The rider is told the order has items from both restaurants.</p>
+            <ul className="space-y-1 text-sm text-ink">
+              {combineOther.lines.map((l) => <li key={l.key} className="flex justify-between gap-3"><span className="min-w-0 truncate">{l.quantity}× {l.name} <span className="text-ink-500">· {combineOther.name}</span></span><span className="shrink-0">{formatUgx(l.unitPrice * l.quantity)}</span></li>)}
+            </ul>
+            <button type="button" onClick={() => chooseCombine(null)} className="min-h-10 rounded-full border border-[var(--border-faint)] px-4 text-sm font-bold text-ink">Order separately instead</button>
+          </section>
+        )}
         <div className="food-menu-card flex items-center justify-between gap-3 px-4 py-3">
           <span className="font-semibold">{cartCount} item{cartCount === 1 ? "" : "s"} in your order</span>
           <span className="font-bold">{formatUgx(itemsTotal)}</span>
@@ -1147,7 +1242,7 @@ export default function RestaurantPage() {
         {delivery && (
           <RouteSummary pickup={null} destination={delivery} destinationLabel={t("place_delivery")} onChange={() => setChoosing(true)} />
         )}
-        {bundleCandidates.length > 0 && delivery && (
+        {bundleCandidates.length > 0 && delivery && !combineOther && (
           <section className="food-menu-card space-y-3 px-4 py-4" aria-label="Combine delivery">
             <div><h2 className="font-bold text-ink">Already have an order?</h2><p className="mt-1 text-sm text-ink-500">Combine one unpaid order with this pickup. One rider collects both, then delivers to the same address.</p></div>
             {bundleCandidates.map((candidate) => {
@@ -1184,15 +1279,15 @@ export default function RestaurantPage() {
         <div className="food-menu-card space-y-3 px-4 py-5">
           <div className="flex items-center justify-between text-sm text-ink-500">
             <span>{t("restaurant_items_total")}</span>
-            <span>{formatUgx(itemsTotal)}</span>
+            <span>{formatUgx(checkoutItemsTotal)}</span>
           </div>
           <div className="flex items-center justify-between text-sm text-ink-500">
-            <span>{t("restaurant_delivery_fee")}</span>
-            <span>{selectedBundle ? (bundleExtraDeliveryFee != null ? `+${formatUgx(bundleExtraDeliveryFee)}` : "—") : estimatedDeliveryFee != null ? `~${formatUgx(estimatedDeliveryFee)}` : t("loading")}</span>
+            <span>{sharedDelivery ? "Delivery (one rider, 2 pickups)" : t("restaurant_delivery_fee")}</span>
+            <span>{sharedDelivery ? `~${formatUgx(combinedRouteFee!)}` : selectedBundle ? (bundleExtraDeliveryFee != null ? `+${formatUgx(bundleExtraDeliveryFee)}` : "—") : estimatedDeliveryFee != null ? `~${formatUgx(estimatedDeliveryFee)}` : t("loading")}</span>
           </div>
           <div className="flex items-center justify-between border-t border-[var(--border-faint)] pt-1.5 text-sm font-bold text-ink">
             <span>{t("restaurant_estimated_total")}</span>
-            <span>{(selectedBundle ? bundleExtraDeliveryFee : estimatedDeliveryFee) != null ? formatUgx(itemsTotal + (selectedBundle ? bundleExtraDeliveryFee! : estimatedDeliveryFee!)) : t("loading")}</span>
+            <span>{estimatedFee != null ? formatUgx(checkoutItemsTotal + estimatedFee) : t("loading")}</span>
           </div>
         </div>
 
