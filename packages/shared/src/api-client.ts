@@ -1,4 +1,4 @@
-import type { RelayAdminOrder, RelayMerchantOrder, RelayOpenLeg, RelayOperator, RelayOperatorParcels, RelayQuote, RelayRoute, RelaySettings, RelayStation, RelayStationParcels, RelayTrack } from "./relay.js";
+import type { RelayAdminOrder, RelayRouteStage, RelayMerchantOrder, RelayOpenLeg, RelayOperator, RelayOperatorParcels, RelayQuote, RelayRoute, RelaySettings, RelayStation, RelayStationParcels, RelayTrack } from "./relay.js";
 import type { AdminRole } from "./permissions.js";
 import { workMethods } from "./work-client.js";
 import { workAdminMethods } from "./work-admin-client.js";
@@ -493,7 +493,9 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
       /** Boda rides: Name your fare — the customer's own price, within the quote's band. */
       fareOffer?: number;
       /** A long parcel dropped at a petrol station: bring it to the door, or collect it there. */
-      relayLastMile?: "door" | "collect";
+      relayLastMile?: "door" | "collect" | "meet";
+      /** With relayLastMile "meet": the stage where the customer meets the matatu. */
+      relayMeetStageId?: string;
     }) {
       return request<{ order: OrderRow }>("/v1/orders", { method: "POST", body: JSON.stringify(input) });
     },
@@ -622,6 +624,21 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
     async gasRelayRelease(code: string) {
       return request<{ orderId: string }>("/v1/gas/relay/release", { method: "POST", body: JSON.stringify({ code }) });
     },
+    async relayOperatorHandover(code: string) {
+      return request<{ orderId: string }>("/v1/relay/operator/handover", { method: "POST", body: JSON.stringify({ code }) });
+    },
+    async relayOperatorMissed(legId: string) {
+      return request<{ orderId: string; station: string }>(`/v1/relay/operator/legs/${encodeURIComponent(legId)}/missed`, { method: "POST", body: "{}" });
+    },
+    async adminListRelayRouteStages(routeId: string) {
+      return request<{ stages: RelayRouteStage[]; ready: boolean }>(`/v1/admin/relay/routes/${encodeURIComponent(routeId)}/stages`);
+    },
+    async adminCreateRelayRouteStage(routeId: string, input: { name?: string; seq?: number; lat?: number; lng?: number; outletId?: string | null; active?: boolean }) {
+      return request<{ id: string }>(`/v1/admin/relay/routes/${encodeURIComponent(routeId)}/stages`, { method: "POST", body: JSON.stringify(input) });
+    },
+    async adminUpdateRelayRouteStage(stageId: string, input: Partial<{ name: string; seq: number; lat: number; lng: number; outletId: string | null; active: boolean }>) {
+      return request<{ ok: boolean }>(`/v1/admin/relay/stages/${encodeURIComponent(stageId)}`, { method: "PATCH", body: JSON.stringify(input) });
+    },
     async adminListRelayStations() {
       return request<{ stations: RelayStation[]; ready: boolean }>("/v1/admin/relay/stations");
     },
@@ -656,7 +673,7 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
       return request<{ ok: boolean }>(`/v1/relay/operator/legs/${encodeURIComponent(legId)}/location`, { method: "POST", body: JSON.stringify({ lat, lng }) });
     },
     async adminGetRelaySettings() {
-      return request<{ settings: RelaySettings; ready: boolean; stationsReady?: boolean }>("/v1/admin/relay/settings");
+      return request<{ settings: RelaySettings; ready: boolean; stationsReady?: boolean; stagesReady?: boolean }>("/v1/admin/relay/settings");
     },
     async adminUpdateRelaySettings(input: Partial<RelaySettings>) {
       return request<{ settings: RelaySettings }>("/v1/admin/relay/settings", { method: "PUT", body: JSON.stringify(input) });
@@ -1840,7 +1857,8 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
       destinationArea?: string;
       destinationLat?: number;
       destinationLng?: number;
-      relayLastMile?: "door" | "collect";
+      relayLastMile?: "door" | "collect" | "meet";
+      relayMeetStageId?: string;
     }) {
       return request<{ ok: boolean; orders: OrderRow[]; order: OrderRow }>("/v1/marketplace/checkout", {
         method: "POST",
@@ -1852,7 +1870,8 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
       items: Array<{ productId: string; storeId: string; title: string; price: number; quantity: number; variantId?: string; variantTitle?: string }>;
       destinationLat?: number;
       destinationLng?: number;
-      relayLastMile?: "door" | "collect";
+      relayLastMile?: "door" | "collect" | "meet";
+      relayMeetStageId?: string;
     }) {
       return request<{
         itemsTotal: number;
@@ -1863,6 +1882,8 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
         relay?: {
           routeName: string; dropMode: "stage" | "station"; station: string | null; lastMile: "door" | "collect" | "pending";
           doorTotal: number; collectTotal: number | null; choiceAtOrder: boolean;
+          meetStages?: Array<{ id: string; name: string; distanceKm: number; isStation: boolean }>;
+          meetStage?: string | null;
           legs: Array<{ leg: number; kind: "boda" | "matatu"; fromName: string; toName: string; fee: number }>;
         } | null;
       }>("/v1/marketplace/checkout/quote", { method: "POST", body: JSON.stringify(input) });

@@ -17,6 +17,8 @@ export type RelayQuote = {
   collectTotal?: number | null;
   /** True when the customer picks door or collect now; false when they choose once it arrives. */
   choiceAtOrder?: boolean;
+  /** Stages near the customer where they can meet the matatu instead (admin setting); priced like collecting. */
+  meetStages?: Array<{ id: string; name: string; distanceKm: number; isStation: boolean }>;
   legs: Array<{ leg: 1 | 2 | 3; kind: RelayLegKind; fromName: string; toName: string; distanceKm: number; fee: number }>;
 };
 
@@ -33,6 +35,11 @@ export type OrderRelay = {
   /** Customer only, while it's waiting at the station: their collection code and the price of a rider instead. */
   collectCode?: string | null;
   sendRiderFee?: number;
+  /** Meeting the matatu at a stage (until missed, when it goes on to the station). */
+  meetStage?: { name: string; lat: number | null; lng: number | null } | null;
+  missedAt?: string | null;
+  /** Minutes until the matatu reaches the customer's stage or the station, from its live position. */
+  etaMinutes?: number | null;
   legs: Array<{
     id: string;
     leg: 1 | 2 | 3;
@@ -100,7 +107,12 @@ export type RelayOperator = {
 };
 
 export type RelayOperatorParcels = {
-  carrying: Array<{ id: string; order_id: string; from_name: string; to_name: string; status: RelayLegStatus; handoff_code: string; started_at: string; last_mile_status: RelayLegStatus | null; last_rider_name: string | null }>;
+  carrying: Array<{
+    id: string; order_id: string; from_name: string; to_name: string; status: RelayLegStatus; handoff_code: string; started_at: string;
+    last_mile_status: RelayLegStatus | null; last_rider_name: string | null;
+    /** Set when the customer meets the matatu at this stage: hand it to them with their code. */
+    meet_stage_name?: string | null; customer_name?: string | null; customer_phone?: string | null;
+  }>;
   incoming: Array<{ order_id: string; stage_name: string; stage: string; rider_name: string | null }>;
   recent: Array<{ id: string; order_id: string; from_name: string; to_name: string; handed_over_at: string; paid_amount: number | null }>;
 };
@@ -113,6 +125,15 @@ export type RelaySettings = {
   releasePerLeg: boolean;
   lastMileChoice?: "order" | "arrival";
   stationMaxKm?: number;
+  stagePickup?: boolean;
+  stageFallback?: boolean;
+  matatuSpeedKmh?: number;
+  arrivalNoticeMinutes?: number;
+};
+
+export type RelayRouteStage = {
+  id: string; route_id: string; seq: number; name: string; lat: number; lng: number;
+  outlet_id: string | null; outlet_name: string | null; station_brand: string | null; active: number;
 };
 
 export type RelayAdminOrder = {
