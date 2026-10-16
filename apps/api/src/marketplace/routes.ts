@@ -9,7 +9,7 @@ import { haversineKm } from "../lib/geo.js";
 import { roundFare, type MatchingMode } from "@peebee/shared";
 import { snapshotTimeFees } from "../orders/time-fees.js";
 import { notifyUser } from "../lib/webpush.js";
-import { initialLastMile, insertRelayLegs, planRelay, relayChargeFor, type RelayLastMile, type RelayPlan } from "../relay/service.js";
+import { insertRelayLegs, planRelay, relayChargeFor, resolveLastMile, type RelayLastMile, type RelayMeet, type RelayPlan } from "../relay/service.js";
 
 export const marketplaceRoutes = new Hono();
 
@@ -1730,7 +1730,8 @@ const marketplaceCheckoutSchema = z.object({
   destinationLat: z.number().optional(),
   destinationLng: z.number().optional(),
   /** A long delivery dropped at a petrol station: bring it to the door, or collect it there. */
-  relayLastMile: z.enum(["door", "collect"]).optional(),
+  relayLastMile: z.enum(["door", "collect", "meet"]).optional(),
+  relayMeetStageId: z.string().max(80).optional(),
 });
 
 // Marketplace Cart Checkout -> Real Orders linked to Boda Delivery System
@@ -1824,7 +1825,7 @@ marketplaceRoutes.post("/marketplace/checkout", requireAuth, async (c) => {
 
     await snapshotTimeFees(orderId, stop.deliveryFee);
     if (stop.relay) {
-      await insertRelayLegs(orderId, stop.relay.plan, stop.relay.lastMile);
+      await insertRelayLegs(orderId, stop.relay.plan, stop.relay.lastMile, stop.relay.meet);
       await db.execute({
         sql: "INSERT INTO order_events (id, order_id, stage, note, actor_id) VALUES (?, ?, ?, ?, ?)",
         args: [newId("evt"), orderId, stage, `Relay delivery by boda and matatu (${stop.relay.plan.routeName})`, user.sub],
@@ -1874,7 +1875,7 @@ marketplaceRoutes.post("/marketplace/checkout", requireAuth, async (c) => {
   return c.json({ ok: true, orders, order: orders[0] }, 201);
 });
 
-const quoteSchema = marketplaceCheckoutSchema.pick({ items: true, destinationLat: true, destinationLng: true, relayLastMile: true });
+const quoteSchema = marketplaceCheckoutSchema.pick({ items: true, destinationLat: true, destinationLng: true, relayLastMile: true, relayMeetStageId: true });
 
 /** The exact delivery fee a bag will be charged, split by store. Checkout shows this, never an estimate. */
 marketplaceRoutes.post("/marketplace/checkout/quote", requireAuth, async (c) => {
@@ -1899,6 +1900,8 @@ marketplaceRoutes.post("/marketplace/checkout/quote", requireAuth, async (c) => 
           doorTotal: relayed.plan.total,
           collectTotal: relayed.plan.collectTotal ?? null,
           choiceAtOrder: relayed.plan.dropMode === "station" && relayed.lastMile !== "pending",
+          meetStages: (relayed.plan.meetStages ?? []).map((stage) => ({ id: stage.id, name: stage.name, distanceKm: stage.distanceKm, isStation: !!stage.outletId })),
+          meetStage: relayed.meet?.name ?? null,
           legs: relayed.plan.legs.map((leg) => ({ leg: leg.leg, kind: leg.kind, fromName: leg.fromName, toName: leg.toName, fee: leg.fee })),
         }
       : null,
@@ -1909,7 +1912,7 @@ type CheckoutItem = z.infer<typeof checkoutItemSchema>;
 type DeliveryStop = {
   storeId: string; storeName: string; storeAddress: string | null; lat: number | null; lng: number | null;
   items: CheckoutItem[]; itemsTotal: number; distanceKm: number | null; deliveryFee: number;
-  relay?: { plan: RelayPlan; lastMile: RelayLastMile };
+  relay?: { plan: RelayPlan; lastMile: RelayLastMile; meet: RelayMeet | null };
 };
 
 /**
@@ -1920,7 +1923,7 @@ type DeliveryStop = {
  */
 async function planMarketplaceDelivery(
   items: CheckoutItem[],
-  destination: { destinationLat?: number; destinationLng?: number; relayLastMile?: "door" | "collect" },
+  destination: { destinationLat?: number; destinationLng?: number; relayLastMile?: "door" | "collect" | "meet"; relayMeetStageId?: string },
   environment: Awaited<ReturnType<typeof getPlatformEnvironment>>,
 ): Promise<DeliveryStop[]> {
   const settings = await getDeliverySettings();
@@ -1975,8 +1978,8 @@ async function planMarketplaceDelivery(
       { lat: destinationLat!, lng: destinationLng!, name: "Your door" },
     );
     if (plan) {
-      const lastMile = await initialLastMile(plan, destination.relayLastMile);
-      stop.relay = { plan, lastMile };
+      const { lastMile, meet } = await resolveLastMile(plan, destination.relayLastMile, destination.relayMeetStageId);
+      stop.relay = { plan, lastMile, meet };
       stop.deliveryFee = relayChargeFor(plan, lastMile);
       stop.distanceKm = Math.round(haversineKm(stop.lat!, stop.lng!, destinationLat!, destinationLng!) * 10) / 10;
       return stops;

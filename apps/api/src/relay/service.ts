@@ -46,6 +46,8 @@ export type RelayLegPlan = {
 };
 
 export type RelayDropMode = "stage" | "station";
+/** A stop on a route: its two end stages and the stages between, any of which may be a petrol station. */
+export type RouteStage = { id: string; name: string; lat: number; lng: number; outletId: string | null };
 export type RelayLastMile = "door" | "collect" | "pending";
 
 export type RelayPlan = {
@@ -58,6 +60,8 @@ export type RelayPlan = {
   /** Station routes: the drop station, and what the customer pays to collect there (legs 1 and 2). */
   station?: { outletId: string; name: string; address: string | null; lat: number; lng: number };
   collectTotal?: number;
+  /** Stages near the customer where they can meet the matatu instead (when admin allows it). */
+  meetStages?: Array<RouteStage & { distanceKm: number }>;
 };
 
 type Point = { lat: number; lng: number; name?: string | null };
@@ -81,43 +85,80 @@ export async function planRelay(pickup: Point, destination: Point): Promise<Rela
   const station = stationsReady ? await nearestDropStation(destination, settings.stationMaxKm) : null;
   const boda = (km: number) => roundFare(km * deliveryRatePerKm, minimumDeliveryFee);
   let best: RelayPlan | null = null;
+  const stagePickup = settings.stagePickup && (await relayMeetReady());
   for (const route of routes) {
-    const dropMode: RelayDropMode = stationsReady && route.drop_mode === "station" ? "station" : "stage";
-    if (dropMode === "station" && !station) continue;
-    const a = { name: String(route.stage_a_name), lat: Number(route.stage_a_lat), lng: Number(route.stage_a_lng) };
-    const b = { name: String(route.stage_b_name), lat: Number(route.stage_b_lat), lng: Number(route.stage_b_lng) };
-    // A route runs both ways. On a station route the far end is the station nearest the customer.
-    for (const [board, stageEnd] of [[a, b], [b, a]]) {
-      const alight = dropMode === "station" ? station! : stageEnd;
-      const firstKm = haversineKm(pickup.lat, pickup.lng, board.lat, board.lng);
-      const lastKm = haversineKm(alight.lat, alight.lng, destination.lat, destination.lng);
-      if (firstKm > settings.maxAccessKm || (dropMode === "stage" && lastKm > settings.maxAccessKm)) continue;
-      // The matatu has to actually carry it most of the way.
-      if (firstKm + lastKm >= directKm) continue;
-      const legs: RelayLegPlan[] = [
-        {
-          leg: 1, kind: "boda", fromName: pickup.name || "Pickup", fromLat: pickup.lat, fromLng: pickup.lng,
-          toName: board.name, toLat: board.lat, toLng: board.lng, distanceKm: round1(firstKm), fee: boda(firstKm),
-        },
-        {
-          leg: 2, kind: "matatu", fromName: board.name, fromLat: board.lat, fromLng: board.lng,
-          toName: alight.name, toLat: alight.lat, toLng: alight.lng,
-          distanceKm: round1(haversineKm(board.lat, board.lng, alight.lat, alight.lng)),
-          fee: Math.max(0, Math.round(Number(route.parcel_fare) || 0)),
-        },
-        {
-          leg: 3, kind: "boda", fromName: alight.name, fromLat: alight.lat, fromLng: alight.lng,
-          toName: destination.name || "Destination", toLat: destination.lat, toLng: destination.lng, distanceKm: round1(lastKm), fee: boda(lastKm),
-        },
-      ];
-      const total = legs.reduce((sum, leg) => sum + leg.fee, 0);
-      if (!best || total < best.total) {
-        best = {
-          routeId: String(route.id), routeName: String(route.name), legs, total, dropMode,
-          ...(dropMode === "station" ? { station: station!, collectTotal: legs[0].fee + legs[1].fee } : {}),
-        };
-      }
+    // A station route with no open station near the customer hands over at the stage instead.
+    const dropMode: RelayDropMode = stationsReady && route.drop_mode === "station" && station ? "station" : "stage";
+    const stages = await routeStages(route);
+    // Board at the route's stage nearest the pickup.
+    const board = nearestStage(stages, pickup);
+    if (!board || board.km > settings.maxAccessKm) continue;
+    const rest = stages.filter((stage) => stage.id !== board.stage.id);
+    // A stage drop hands over at the stage nearest the customer; a station drop at the station nearest them.
+    const stageEnd = nearestStage(rest, destination);
+    if (dropMode === "stage" && (!stageEnd || stageEnd.km > settings.maxAccessKm)) continue;
+    const alight = dropMode === "station" ? station! : stageEnd!.stage;
+    const firstKm = board.km;
+    const lastKm = haversineKm(alight.lat, alight.lng, destination.lat, destination.lng);
+    // The matatu has to actually carry it most of the way.
+    if (firstKm + lastKm >= directKm) continue;
+    const legs: RelayLegPlan[] = [
+      {
+        leg: 1, kind: "boda", fromName: pickup.name || "Pickup", fromLat: pickup.lat, fromLng: pickup.lng,
+        toName: board.stage.name, toLat: board.stage.lat, toLng: board.stage.lng, distanceKm: round1(firstKm), fee: boda(firstKm),
+      },
+      {
+        leg: 2, kind: "matatu", fromName: board.stage.name, fromLat: board.stage.lat, fromLng: board.stage.lng,
+        toName: alight.name, toLat: alight.lat, toLng: alight.lng,
+        distanceKm: round1(haversineKm(board.stage.lat, board.stage.lng, alight.lat, alight.lng)),
+        fee: Math.max(0, Math.round(Number(route.parcel_fare) || 0)),
+      },
+      {
+        leg: 3, kind: "boda", fromName: alight.name, fromLat: alight.lat, fromLng: alight.lng,
+        toName: destination.name || "Destination", toLat: destination.lat, toLng: destination.lng, distanceKm: round1(lastKm), fee: boda(lastKm),
+      },
+    ];
+    const total = legs.reduce((sum, leg) => sum + leg.fee, 0);
+    if (!best || total < best.total) {
+      const meetStages = dropMode === "station" && stagePickup
+        ? rest
+            .map((stage) => ({ ...stage, distanceKm: round1(haversineKm(stage.lat, stage.lng, destination.lat, destination.lng)) }))
+            .filter((stage) => stage.distanceKm <= settings.maxAccessKm)
+            .sort((x, y) => x.distanceKm - y.distanceKm)
+            .slice(0, 5)
+        : [];
+      best = {
+        routeId: String(route.id), routeName: String(route.name), legs, total, dropMode,
+        ...(dropMode === "station" ? { station: station!, collectTotal: legs[0].fee + legs[1].fee, meetStages } : {}),
+      };
     }
+  }
+  return best;
+}
+
+/** Migration 0106 adds defined route stages and meeting the matatu. */
+export async function relayMeetReady(): Promise<boolean> {
+  return (await hasTable("relay_route_stages")) && (await hasColumn("order_relay", "meet_stage_id"));
+}
+
+/** A route's stops in order: stage A, the stages admin defined between, then stage B. */
+export async function routeStages(route: Row): Promise<RouteStage[]> {
+  const a: RouteStage = { id: `${String(route.id)}:a`, name: String(route.stage_a_name), lat: Number(route.stage_a_lat), lng: Number(route.stage_a_lng), outletId: null };
+  const b: RouteStage = { id: `${String(route.id)}:b`, name: String(route.stage_b_name), lat: Number(route.stage_b_lat), lng: Number(route.stage_b_lng), outletId: null };
+  if (!(await hasTable("relay_route_stages"))) return [a, b];
+  const rows = (await db.execute({
+    sql: "SELECT * FROM relay_route_stages WHERE route_id = ? AND active = 1 ORDER BY seq, created_at",
+    args: [String(route.id)],
+  })).rows as Row[];
+  const middle = rows.map((row) => ({ id: String(row.id), name: String(row.name), lat: Number(row.lat), lng: Number(row.lng), outletId: (row.outlet_id as string | null) ?? null }));
+  return [a, ...middle, b];
+}
+
+function nearestStage(stages: RouteStage[], point: Point): { stage: RouteStage; km: number } | null {
+  let best: { stage: RouteStage; km: number } | null = null;
+  for (const stage of stages) {
+    const km = haversineKm(stage.lat, stage.lng, point.lat, point.lng);
+    if (!best || km < best.km) best = { stage, km };
   }
   return best;
 }
@@ -147,24 +188,59 @@ export function relayChargeFor(plan: RelayPlan, lastMile: RelayLastMile): number
   return plan.dropMode === "station" && lastMile !== "door" ? plan.collectTotal ?? plan.total : plan.total;
 }
 
+export type RelayMeet = RouteStage;
+
 /** The last-mile choice an order starts with: stage routes always go to the door. */
-export async function initialLastMile(plan: RelayPlan, requested: "door" | "collect" | undefined): Promise<RelayLastMile> {
-  if (plan.dropMode !== "station") return "door";
-  if ((await getRelaySettings()).lastMileChoice === "arrival") return "pending";
-  return requested === "collect" ? "collect" : "door";
+export async function initialLastMile(plan: RelayPlan, requested: "door" | "collect" | "meet" | undefined): Promise<RelayLastMile> {
+  return (await resolveLastMile(plan, requested)).lastMile;
+}
+
+/**
+ * How the parcel reaches the customer. On a station route they may meet the
+ * matatu at a stage (when admin allows it), which is paid like collecting at
+ * the station; if they miss it, the parcel goes on to the station.
+ */
+export async function resolveLastMile(
+  plan: RelayPlan,
+  requested: "door" | "collect" | "meet" | undefined,
+  meetStageId?: string,
+): Promise<{ lastMile: RelayLastMile; meet: RelayMeet | null }> {
+  if (plan.dropMode !== "station") return { lastMile: "door", meet: null };
+  if (requested === "meet") {
+    const meet = plan.meetStages?.find((stage) => stage.id === meetStageId) ?? plan.meetStages?.[0];
+    if (meet) return { lastMile: "collect", meet };
+  }
+  if ((await getRelaySettings()).lastMileChoice === "arrival") return { lastMile: "pending", meet: null };
+  return { lastMile: requested === "collect" ? "collect" : "door", meet: null };
 }
 
 function newHandoffCode(): string {
   return String(100000 + randomInt(900000));
 }
 
-export async function insertRelayLegs(orderId: string, plan: RelayPlan, lastMile: RelayLastMile = "door"): Promise<void> {
+export async function insertRelayLegs(orderId: string, plan: RelayPlan, lastMile: RelayLastMile = "door", meet: RelayMeet | null = null): Promise<void> {
   if (await relayStationsReady()) {
     await db.execute({
       sql: `INSERT INTO order_relay (order_id, drop_mode, outlet_id, last_mile, collect_code, release_code) VALUES (?, ?, ?, ?, ?, ?)`,
       args: [orderId, plan.dropMode, plan.station?.outletId ?? null, lastMile,
         plan.dropMode === "station" ? newHandoffCode() : null, plan.dropMode === "station" ? newHandoffCode() : null],
     });
+    if (meet && (await relayMeetReady())) {
+      await db.execute({
+        sql: "UPDATE order_relay SET meet_stage_id = ?, meet_stage_name = ?, meet_lat = ?, meet_lng = ? WHERE order_id = ?",
+        args: [meet.id, meet.name, meet.lat, meet.lng, orderId],
+      });
+    }
+  }
+  // Meeting the customer: the matatu leg ends at their stage.
+  if (meet) {
+    const leg2 = plan.legs.find((leg) => leg.leg === 2);
+    if (leg2) {
+      leg2.toName = meet.name;
+      leg2.toLat = meet.lat;
+      leg2.toLng = meet.lng;
+      leg2.distanceKm = round1(haversineKm(leg2.fromLat, leg2.fromLng, meet.lat, meet.lng));
+    }
   }
   await executeBatch(plan.legs.map((leg) => ({
     sql: `INSERT INTO order_relay_legs (id, order_id, leg, kind, route_id, from_name, from_lat, from_lng, to_name, to_lat, to_lng, distance_km, fee, status, handoff_code)
@@ -247,6 +323,10 @@ export async function relayView(order: Row, viewerId: string): Promise<Row | nul
     releasedTo: relay?.released_to ?? null,
     // The customer's code to collect at the station, and the price of sending a rider instead.
     collectCode: isCustomer && stillHeld && relay?.last_mile !== "door" ? relay?.collect_code ?? null : undefined,
+    // Meeting the matatu at a stage instead of the station (until missed).
+    meetStage: relay?.meet_stage_id ? { name: relay.meet_stage_name, lat: relay.meet_lat, lng: relay.meet_lng } : null,
+    missedAt: relay?.missed_at ?? null,
+    etaMinutes: await relayEtaMinutes(order),
     sendRiderFee: isCustomer && stillHeld && relay?.last_mile !== "door" ? Number(leg3?.fee ?? 0) : undefined,
     legs: legs.map((leg) => {
       const provider = leg.provider_id ? names.get(String(leg.provider_id)) : undefined;
@@ -644,6 +724,10 @@ export async function receiveAtStation(staff: StationStaff, code: string): Promi
   })).rows[0] as Row | undefined;
   if (!leg2) throw new RelayError(404, "code_not_found", "That code doesn't match a parcel coming to this station.");
   const orderId = String(leg2.order_id);
+  const meeting = await relayRow(orderId);
+  if (meeting?.meet_stage_id && !meeting.missed_at) {
+    throw new RelayError(409, "meeting_customer", `This parcel is for the customer to collect from the matatu at ${meeting.meet_stage_name}.`);
+  }
   const holder = `${staff.kind}:${staff.id}`;
   const changes = await executeBatch([
     {
@@ -816,4 +900,131 @@ export async function canWatchRelay(order: Row, userId: string, role: string): P
     if (member.rows.length) return true;
   }
   return false;
+}
+
+// ---------------------------------------------------------------------------
+// Meeting the matatu, the station fallback, and arrival alerts
+// ---------------------------------------------------------------------------
+
+/** Where the matatu is heading with this parcel: the customer's stage, or the station/stage at the end of its leg. */
+async function matatuTarget(orderId: string): Promise<{ name: string; lat: number; lng: number; meeting: boolean } | null> {
+  const relay = await relayRow(orderId);
+  if (relay?.meet_stage_id && !relay.missed_at && relay.meet_lat != null && relay.meet_lng != null) {
+    return { name: String(relay.meet_stage_name), lat: Number(relay.meet_lat), lng: Number(relay.meet_lng), meeting: true };
+  }
+  const leg2 = (await relayLegs(orderId)).find((leg) => Number(leg.leg) === 2);
+  if (!leg2 || leg2.to_lat == null || leg2.to_lng == null) return null;
+  return { name: String(leg2.to_name), lat: Number(leg2.to_lat), lng: Number(leg2.to_lng), meeting: false };
+}
+
+/** Minutes until the matatu reaches the customer's stage or the station, from its last shared position. */
+export async function relayEtaMinutes(order: Row): Promise<number | null> {
+  if (order.rider_id || order.rider_lat == null || order.rider_lng == null) return null;
+  const leg2 = (await relayLegs(String(order.id))).find((leg) => Number(leg.leg) === 2);
+  if (!leg2 || leg2.status !== "in_transit") return null;
+  const target = await matatuTarget(String(order.id));
+  if (!target) return null;
+  const { matatuSpeedKmh } = await getRelaySettings();
+  const km = haversineKm(Number(order.rider_lat), Number(order.rider_lng), target.lat, target.lng);
+  return Math.max(1, Math.round((km / matatuSpeedKmh) * 60));
+}
+
+/** After each matatu position: tell the customer once when it's a few minutes away. */
+export async function noticeMatatuApproach(orderId: string): Promise<void> {
+  if (!(await relayMeetReady())) return;
+  const order = await orderRow(orderId);
+  const eta = await relayEtaMinutes(order);
+  const { arrivalNoticeMinutes } = await getRelaySettings();
+  if (eta == null || eta > arrivalNoticeMinutes || !order.customer_id) return;
+  const marked = await db.execute({ sql: "UPDATE order_relay SET soon_notified_at = datetime('now') WHERE order_id = ? AND soon_notified_at IS NULL", args: [orderId] });
+  if (!marked.rowsAffected) return;
+  const target = await matatuTarget(orderId);
+  const relay = await relayRow(orderId);
+  await notifyUser(String(order.customer_id), {
+    title: `Your parcel arrives in about ${eta} minutes`,
+    body: target?.meeting
+      ? `Head to ${target.name} now and have your code ready. The matatu can't wait long.`
+      : relay?.last_mile === "door"
+        ? `It's nearly at ${target?.name ?? "the station"}. A rider will bring it to you.`
+        : `It's nearly at ${target?.name ?? "the station"}.`,
+    url: `/orders/${orderId}`,
+    tag: `order-${orderId}-soon`,
+  }).catch(() => {});
+}
+
+/** Tell the customer the matatu has reached their stage or the station. */
+export async function noticeMatatuArrived(orderId: string): Promise<void> {
+  const order = await orderRow(orderId);
+  if (!order?.customer_id) return;
+  const target = await matatuTarget(orderId);
+  if (!target?.meeting) return;
+  await notifyUser(String(order.customer_id), {
+    title: "The matatu is at your stage",
+    body: `It's at ${target.name} now. Show your code to the conductor to collect your parcel.`,
+    url: `/orders/${orderId}`,
+    tag: `order-${orderId}`,
+  }).catch(() => {});
+}
+
+/** Handoff at the stage: the operator enters the customer's code and gives them the parcel. The order is done. */
+export async function handToCustomerAtStage(operatorId: string, code: string): Promise<{ orderId: string }> {
+  const relay = (await db.execute({
+    sql: `SELECT r.*, l.id AS leg2_id FROM order_relay r JOIN order_relay_legs l ON l.order_id = r.order_id AND l.leg = 2
+          WHERE r.collect_code = ? AND r.meet_stage_id IS NOT NULL AND r.missed_at IS NULL AND r.released_at IS NULL
+            AND l.provider_id = ? AND l.status IN ('in_transit', 'arrived')`,
+    args: [code.trim(), operatorId],
+  })).rows[0] as Row | undefined;
+  if (!relay) throw new RelayError(404, "code_not_found", "That code doesn't match a customer meeting your matatu.");
+  const orderId = String(relay.order_id);
+  const changes = await executeBatch([
+    { sql: "UPDATE order_relay SET released_at = datetime('now'), released_to = 'customer', released_by = ? WHERE order_id = ? AND released_at IS NULL", args: [operatorId, orderId] },
+    { sql: "UPDATE order_relay_legs SET status = 'done', handed_over_at = datetime('now'), handed_over_to = ? WHERE id = ?", args: [`customer:${orderId}`, String(relay.leg2_id)] },
+  ]);
+  if (!changes[0]) throw new RelayError(409, "already_collected", "This parcel was already collected.");
+  await logOrderEvent(orderId, `Customer collected the parcel from the matatu at ${relay.meet_stage_name}`, operatorId);
+  await finishCollectedOrder(orderId, operatorId);
+  const order = await orderRow(orderId);
+  if (order.customer_id) {
+    await notifyUser(String(order.customer_id), { title: "Collected — thank you!", body: `You collected your parcel at ${relay.meet_stage_name}.`, url: `/orders/${orderId}`, tag: `order-${orderId}` }).catch(() => {});
+  }
+  return { orderId };
+}
+
+/** The customer wasn't at the stage. If admin allows it, the parcel goes on to the petrol station near them. */
+export async function customerMissedMatatu(operatorId: string, legId: string): Promise<{ orderId: string; station: string }> {
+  const leg2 = (await db.execute({
+    sql: "SELECT * FROM order_relay_legs WHERE id = ? AND leg = 2 AND provider_id = ? AND status IN ('in_transit', 'arrived')",
+    args: [legId, operatorId],
+  })).rows[0] as Row | undefined;
+  if (!leg2) throw new RelayError(404, "not_found", "This parcel isn't on your matatu.");
+  const orderId = String(leg2.order_id);
+  const relay = await relayRow(orderId);
+  if (!relay?.meet_stage_id || relay.missed_at || relay.released_at) throw new RelayError(409, "not_meeting", "This parcel isn't waiting for the customer at a stage.");
+  if (!(await getRelaySettings()).stageFallback) {
+    throw new RelayError(409, "fallback_off", "Call the customer. Leaving parcels at the petrol station is switched off.");
+  }
+  const station = relay.outlet_id
+    ? (await db.execute({
+        sql: "SELECT o.name, o.lat, o.lng, s.brand_name FROM fuel_station_outlets o JOIN fuel_stations s ON s.id = o.station_id WHERE o.id = ?",
+        args: [String(relay.outlet_id)],
+      })).rows[0] as Row | undefined
+    : undefined;
+  if (!station) throw new RelayError(409, "no_station", "There's no petrol station set for this parcel. Call the customer.");
+  const stationName = [station.brand_name, station.name].filter(Boolean).join(" ");
+  await executeBatch([
+    { sql: "UPDATE order_relay SET missed_at = datetime('now'), soon_notified_at = NULL WHERE order_id = ? AND missed_at IS NULL", args: [orderId] },
+    // The matatu leg now ends at the station, where the attendant receives it with the usual code.
+    { sql: "UPDATE order_relay_legs SET status = 'in_transit', to_name = ?, to_lat = ?, to_lng = ? WHERE id = ?", args: [stationName, station.lat, station.lng, legId] },
+  ]);
+  await logOrderEvent(orderId, `Customer wasn't at ${relay.meet_stage_name}; parcel going on to ${stationName}`, operatorId);
+  const order = await orderRow(orderId);
+  if (order.customer_id) {
+    await notifyUser(String(order.customer_id), {
+      title: "You missed the matatu",
+      body: `No problem — your parcel will be at ${stationName}. Collect it there or send a rider.`,
+      url: `/orders/${orderId}`,
+      tag: `order-${orderId}`,
+    }).catch(() => {});
+  }
+  return { orderId, station: stationName };
 }

@@ -171,6 +171,75 @@ test("relay to a petrol station: collect in person, door delivery, or send a rid
       assert.ok(view.relay.collectCode && view.relay.sendRiderFee > 0, "they can collect or send a rider");
       await client.execute("UPDATE settings SET value = 'order' WHERE key = 'relay_last_mile_choice'");
     });
+    // Meeting the matatu at a stage on its route.
+    const ABAYITA = { lat: 0.07, lng: 32.48 };
+    let stageId = "";
+    const toMatatu = async (meetStageId: string) => {
+      const listId = `list${++n}`;
+      await client.execute({ sql: "INSERT INTO lists (id, customer_id, title) VALUES (?, 'customer', 'Parcel')", args: [listId] });
+      const created = await json<{ order: { id: string; estimated_total: number } }>(call("customer", "orders", {
+        listId, type: "parcel", paymentRail: "escrow", relayLastMile: "meet", relayMeetStageId: meetStageId,
+        pickupArea: "Nakasero", pickupLat: PICKUP.lat, pickupLng: PICKUP.lng, destinationArea: "Entebbe", destinationLat: DOOR.lat, destinationLng: DOOR.lng,
+      }));
+      const id = created.order.id;
+      await client.execute({ sql: "UPDATE orders SET rider_id = 'first', stage = 'Deliver' WHERE id = ?", args: [id] });
+      await client.execute({ sql: "INSERT INTO payments (id, order_id, type, provider, amount, currency, status) VALUES (?, ?, 'collection', 'wallet', ?, 'UGX', 'successful')", args: [`pay-${id}`, id, created.order.estimated_total] });
+      const code1 = (await json<{ relay: { legs: { handoffCode?: string }[] } }>(call("first", `orders/${id}`))).relay.legs[0].handoffCode!;
+      assert.equal((await call("op", "relay/operator/receive", { code: code1 })).status, 200);
+      return { id, total: created.order.estimated_total };
+    };
+
+    await t.test("admin defines stages; the customer can choose to meet the matatu at one", async () => {
+      assert.equal((await call("staff", `admin/relay/routes/${routeId}/stages`, { name: "Abayita Ababiri", seq: 1, lat: ABAYITA.lat, lng: ABAYITA.lng })).status, 201);
+      assert.equal((await call("staff", `admin/relay/routes/${routeId}/stages`, { outletId: "out", seq: 2 })).status, 201, "a petrol station can be a stage");
+      const stages = await json<{ stages: { id: string; name: string }[] }>(call("staff", `admin/relay/routes/${routeId}/stages`));
+      assert.deepEqual(stages.stages.map((stage) => stage.name), ["Abayita Ababiri", "Shell Kitoro"]);
+      stageId = stages.stages[0].id;
+      const off = await json<{ relay: { meetStages: unknown[] } }>(call("customer", `relay/quote?pickupLat=${PICKUP.lat}&pickupLng=${PICKUP.lng}&destinationLat=${DOOR.lat}&destinationLng=${DOOR.lng}`));
+      assert.equal(off.relay.meetStages.length, 0, "off until admin allows it");
+      await client.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('relay_stage_pickup', '1')");
+      const on = await json<{ relay: { meetStages: { id: string; isStation: boolean }[]; collectTotal: number } }>(call("customer", `relay/quote?pickupLat=${PICKUP.lat}&pickupLng=${PICKUP.lng}&destinationLat=${DOOR.lat}&destinationLng=${DOOR.lng}`));
+      assert.ok(on.relay.meetStages.some((stage) => stage.id === stageId));
+      assert.ok(on.relay.meetStages.some((stage) => stage.isStation));
+    });
+
+    await t.test("the matatu hands the parcel to the customer at their stage, with their code", async () => {
+      const before = (await wallet("riders", "first")) + (await wallet("users", "op"));
+      const { id, total } = await toMatatu(stageId);
+      const carrying = (await json<{ carrying: { id: string; order_id: string; meet_stage_name: string | null; to_name: string }[] }>(call("op", "relay/operator/parcels"))).carrying.find((p) => p.order_id === id)!;
+      assert.equal(carrying.meet_stage_name, "Abayita Ababiri");
+      assert.equal(carrying.to_name, "Abayita Ababiri");
+      // The matatu is a few minutes away: the customer is told once.
+      assert.equal((await call("op", `relay/operator/legs/${carrying.id}/location`, { lat: 0.075, lng: 32.485 })).status, 200);
+      assert.ok((await client.execute({ sql: "SELECT soon_notified_at FROM order_relay WHERE order_id = ?", args: [id] })).rows[0].soon_notified_at);
+      const view = await json<{ relay: { collectCode: string; etaMinutes: number | null; meetStage: { name: string } } }>(call("customer", `orders/${id}`));
+      assert.equal(view.relay.meetStage.name, "Abayita Ababiri");
+      assert.ok(view.relay.etaMinutes != null && view.relay.etaMinutes <= 10);
+      // The station can't take a parcel the customer is meeting.
+      const leg2 = (await client.execute({ sql: "SELECT handoff_code FROM order_relay_legs WHERE order_id = ? AND leg = 2", args: [id] })).rows[0];
+      assert.equal((await call("att", "gas/relay/receive", { code: String(leg2.handoff_code) })).status, 409);
+      assert.equal((await call("op", "relay/operator/handover", { code: "000000" })).status, 404);
+      assert.equal((await call("op", "relay/operator/handover", { code: view.relay.collectCode })).status, 200);
+      assert.equal((await client.execute({ sql: "SELECT stage FROM orders WHERE id = ?", args: [id] })).rows[0].stage, "Settle");
+      assert.equal((await wallet("riders", "first")) + (await wallet("users", "op")) - before, total);
+    });
+
+    await t.test("a customer who misses the matatu gets the parcel at the petrol station instead", async () => {
+      const { id } = await toMatatu(stageId);
+      const carrying = (await json<{ carrying: { id: string; order_id: string; handoff_code: string }[] }>(call("op", "relay/operator/parcels"))).carrying.find((p) => p.order_id === id)!;
+      await client.execute("UPDATE settings SET value = '0' WHERE key = 'relay_stage_fallback'").then(async (r) => {
+        if (!r.rowsAffected) await client.execute("INSERT INTO settings (key, value) VALUES ('relay_stage_fallback', '0')");
+      });
+      assert.equal((await call("op", `relay/operator/legs/${carrying.id}/missed`, {})).status, 409, "only when admin allows the fallback");
+      await client.execute("UPDATE settings SET value = '1' WHERE key = 'relay_stage_fallback'");
+      assert.equal((await call("op", `relay/operator/legs/${carrying.id}/missed`, {})).status, 200);
+      const after = (await json<{ carrying: { order_id: string; to_name: string }[] }>(call("op", "relay/operator/parcels"))).carrying.find((p) => p.order_id === id)!;
+      assert.equal(after.to_name, "Shell Kitoro");
+      assert.equal((await call("att", "gas/relay/receive", { code: carrying.handoff_code })).status, 200);
+      const view = await json<{ relay: { collectCode: string; missedAt: string } }>(call("customer", `orders/${id}`));
+      assert.ok(view.relay.missedAt);
+      assert.equal((await call("att", "gas/relay/release", { code: view.relay.collectCode })).status, 200);
+    });
   } finally {
     process.env.JWT_SECRET = previousSecret;
     client.close();

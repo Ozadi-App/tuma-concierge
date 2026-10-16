@@ -438,6 +438,13 @@ const DEFAULTS = {
   // "arrival" = once the parcel reaches the station), and how far the station may be from them.
   relay_last_mile_choice: "order",
   relay_station_max_km: "10",
+  // Customers may meet the matatu at a stage on its route (off: parcels go to the petrol station).
+  relay_stage_pickup: "0",
+  // If the customer isn't at the stage, the matatu leaves the parcel at the petrol station instead.
+  relay_stage_fallback: "1",
+  // For arrival times from the matatu's position, and when to say "arriving in N minutes".
+  relay_matatu_speed_kmh: "30",
+  relay_arrival_notice_minutes: "10",
 } as const;
 
 export type SettingKey = keyof typeof DEFAULTS;
