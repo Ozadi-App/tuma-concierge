@@ -48,3 +48,31 @@ test("production CORS accepts configured Peebee apps and rejects unrelated origi
     else process.env.CORS_ORIGINS = previousOrigins;
   }
 });
+
+test("the bundled mobile apps' origins are allowed in production, whatever CORS_ORIGINS lists", async () => {
+  const previousEnvironment = process.env.ENVIRONMENT;
+  const previousOrigins = process.env.CORS_ORIGINS;
+  process.env.ENVIRONMENT = "production";
+  process.env.CORS_ORIGINS = "https://customer.peebee.online";
+  try {
+    for (const origin of ["https://app.peebee.local", "capacitor://app.peebee.local"]) {
+      const preflight = await app.request("/v1/auth/login", {
+        method: "OPTIONS",
+        headers: {
+          Origin: origin,
+          "Access-Control-Request-Method": "POST",
+          "Access-Control-Request-Headers": "Content-Type, Authorization",
+        },
+      });
+      assert.equal(preflight.status, 204);
+      assert.equal(preflight.headers.get("access-control-allow-origin"), origin);
+    }
+    const lookalike = await app.request("/health", { headers: { Origin: "https://app.peebee.local.attacker.example" } });
+    assert.equal(lookalike.headers.get("access-control-allow-origin"), null);
+  } finally {
+    if (previousEnvironment === undefined) delete process.env.ENVIRONMENT;
+    else process.env.ENVIRONMENT = previousEnvironment;
+    if (previousOrigins === undefined) delete process.env.CORS_ORIGINS;
+    else process.env.CORS_ORIGINS = previousOrigins;
+  }
+});

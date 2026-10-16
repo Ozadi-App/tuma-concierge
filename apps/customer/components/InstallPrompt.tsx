@@ -34,7 +34,7 @@ export function InstallPrompt() {
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
-    if (isStandalone()) return;
+    if (process.env.NEXT_PUBLIC_NATIVE === "1" || isStandalone()) return;
 
     const dismissedAt = Number(localStorage.getItem(DISMISS_KEY) || 0);
     if (dismissedAt && Date.now() - dismissedAt < DISMISS_DAYS * 86400000) return;

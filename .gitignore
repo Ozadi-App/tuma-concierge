@@ -44,3 +44,5 @@ local.db-wal
 # ide
 .idea
 .vscode
+.mobile-parked-*
+apps/customer/www

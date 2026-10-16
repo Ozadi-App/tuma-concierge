@@ -14,6 +14,8 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
 }
 
 export function pushSupported(): boolean {
+  // Native builds get push from the device (FCM/APNs), not from the browser.
+  if (process.env.NEXT_PUBLIC_NATIVE === "1") return false;
   return (
     typeof window !== "undefined" && "serviceWorker" in navigator && "PushManager" in window && !!VAPID_PUBLIC_KEY
   );
