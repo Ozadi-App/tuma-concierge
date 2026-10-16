@@ -65,6 +65,46 @@ customerRestaurantRoutes.get("/restaurants/:id", requireAuth, async (c) => {
   return c.json({ restaurant: await reconcileFoodHours(restaurant) });
 });
 
+async function activeRestaurantRow(id: string, environment: string): Promise<Row | undefined> {
+  const demo = environment === "sandbox" ? demoFoodRestaurant(id) : undefined;
+  if (demo) return { ...demo };
+  const res = await db.execute({ sql: "SELECT * FROM restaurants WHERE id = ? AND status = 'active' AND environment = ?", args: [id, environment] });
+  return res.rows[0] as Row | undefined;
+}
+
+/**
+ * The delivery fee an order from this restaurant to a location will be charged,
+ * worked out by the same distance price as the order itself (so what the customer
+ * sees at checkout is final, not an estimate). With `alsoFrom` (another restaurant
+ * whose cart is combined into one delivery) it is the fee for the whole route:
+ * that restaurant -> this restaurant -> the customer.
+ */
+customerRestaurantRoutes.get("/restaurants/:id/delivery-quote", requireAuth, async (c) => {
+  const id = c.req.param("id") as string;
+  const environment = await getPlatformEnvironment();
+  const restaurant = await activeRestaurantRow(id, environment);
+  if (!restaurant) return c.json({ error: "not_found" }, 404);
+  const lat = Number(c.req.query("lat")), lng = Number(c.req.query("lng"));
+  const hasDestination = c.req.query("lat") != null && c.req.query("lng") != null && Number.isFinite(lat) && Number.isFinite(lng);
+  const alsoFromId = c.req.query("alsoFrom");
+  const { deliveryRatePerKm, minimumDeliveryFee, shoppingDeliveryFee } = await getDeliverySettings();
+  const restaurantLat = restaurant.lat as number | null;
+  const restaurantLng = restaurant.lng as number | null;
+  if (alsoFromId) {
+    const other = await activeRestaurantRow(alsoFromId, environment);
+    if (!other || other.lat == null || other.lng == null || restaurantLat == null || restaurantLng == null || !hasDestination) {
+      return c.json({ error: "route_unavailable", message: "Both pickups and your delivery location need map coordinates to work out the delivery fee." }, 409);
+    }
+    const distanceKm = haversineKm(Number(other.lat), Number(other.lng), restaurantLat, restaurantLng) + haversineKm(restaurantLat, restaurantLng, lat, lng);
+    return c.json({ deliveryFee: roundFare(distanceKm * deliveryRatePerKm, minimumDeliveryFee), distanceKm: Math.round(distanceKm * 10) / 10 });
+  }
+  if (restaurantLat != null && restaurantLng != null && hasDestination) {
+    const distanceKm = haversineKm(restaurantLat, restaurantLng, lat, lng);
+    return c.json({ deliveryFee: roundFare(distanceKm * deliveryRatePerKm, minimumDeliveryFee), distanceKm: Math.round(distanceKm * 10) / 10 });
+  }
+  return c.json({ deliveryFee: roundFare(shoppingDeliveryFee), distanceKm: null });
+});
+
 /** Same tree shape as the owner's GET /restaurants/me/menu, filtered down
  * to only what a customer should see: available items only, and empty
  * categories are dropped rather than shown with nothing in them. */

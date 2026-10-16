@@ -67,6 +67,10 @@ const candidates=await (await call('/orders/bundle-candidates')).json() as {orde
 const bundledResponse=await call('/restaurants/food2/order',buyer,'POST',{items:[{menuItemId:'dish2',quantity:1}],destinationArea:'Kampala',destinationAddress:'Home',destinationLat:0.4,destinationLng:32.5,bundleWithOrderId:order.id});assert.equal(bundledResponse.status,201);
 const bundledOrder=(await bundledResponse.json() as {order:{id:string;delivery_fee:number;delivery_bundle_id:string}}).order;
 const linked=await client.execute({sql:'SELECT id,delivery_fee,delivery_bundle_id FROM orders WHERE id IN (?,?) ORDER BY id',args:[order.id,bundledOrder.id]});assert.equal(linked.rows.length,2);assert.equal(linked.rows[0]?.delivery_bundle_id,bundledOrder.delivery_bundle_id);assert.ok(Number(linked.rows.find(row=>row.id===bundledOrder.id)?.delivery_fee)>0);
+const leadFee=Number(linked.rows.find(row=>row.id===order.id)?.delivery_fee),extraFee=Number(linked.rows.find(row=>row.id===bundledOrder.id)?.delivery_fee);
+const singleQuote=await (await call('/restaurants/food/delivery-quote?lat=0.4&lng=32.5')).json() as {deliveryFee:number};assert.equal(singleQuote.deliveryFee,leadFee,'the quoted fee is the fee the order is charged');
+const routeQuote=await (await call('/restaurants/food2/delivery-quote?lat=0.4&lng=32.5&alsoFrom=food')).json() as {deliveryFee:number};assert.equal(routeQuote.deliveryFee,leadFee+extraFee,'a combined delivery quotes the whole route');
+assert.equal((await call('/restaurants/food2/delivery-quote?alsoFrom=food')).status,409,'a combined route needs the delivery location');
 const stops=await call(`/orders/${bundledOrder.id}`);assert.equal(stops.status,200);assert.equal(((await stops.json()) as {bundleStops:Array<unknown>}).bundleStops.length,2);
 await client.execute("UPDATE users SET default_matching_mode='first_to_claim' WHERE id='buyer'");
 await client.execute("INSERT INTO riders(user_id,verified,is_online,stage_lat,stage_lng,area,subscription_status,subscription_paid_through) VALUES('rider',1,1,0.4,32.5,'Kampala','active','2099-01-01')");
