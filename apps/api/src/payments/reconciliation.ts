@@ -3,6 +3,7 @@ import { postLedgerTransaction } from "../ledger/service.js";
 import { newId } from "../lib/ids.js";
 import type { PlatformEnvironment } from "../lib/settings.js";
 import { activateMerchantAllocationsForFundedOrder } from "../merchants/service.js";
+import { BUNDLE_CHILD_PROVIDER, finishBundleChildren } from "../orders/bundle-funding.js";
 import { checkPaymentStatus, type DbPaymentStatus } from "./service.js";
 
 type Row = Record<string, unknown>;
@@ -107,11 +108,19 @@ export async function reconcilePayment(paymentId: string, actorId: string): Prom
     args: [paymentId],
   });
   const op = operation.rows[0] as Row | undefined;
+  // A pickup in a one-payment combined delivery has no provider request of its own:
+  // it follows the first pickup's collection.
+  if (payment.provider === BUNDLE_CHILD_PROVIDER && payment.provider_ref) {
+    await reconcilePayment(String(payment.provider_ref), actorId);
+    const refreshed = await db.execute({ sql: "SELECT status FROM payments WHERE id = ?", args: [paymentId] });
+    return String((refreshed.rows[0] as Row | undefined)?.status ?? payment.status) as DbPaymentStatus;
+  }
   if (payment.status === "successful" || payment.status === "failed") {
     if (payment.status === "successful" && payment.type === "collection" && op && !["successful", "failed"].includes(String(op.status))) {
       await activateMerchantAllocationsForFundedOrder(String(payment.order_id));
       await finishProviderOperation(String(op.id), "successful");
     }
+    if (payment.type === "collection") await finishBundleChildren(paymentId, payment.status as "successful" | "failed", actorId);
     return payment.status as DbPaymentStatus;
   }
 
@@ -131,6 +140,7 @@ export async function reconcilePayment(paymentId: string, actorId: string): Prom
       args: [paymentId],
     });
     if (op) await finishProviderOperation(String(op.id), "failed", "provider_confirmed_failed");
+    await finishBundleChildren(paymentId, "failed", actorId);
     return status;
   }
 
@@ -155,7 +165,10 @@ export async function reconcilePayment(paymentId: string, actorId: string): Prom
     );
   }
   await executeBatch(statements);
-  if (payment.type === "collection") await activateMerchantAllocationsForFundedOrder(String(payment.order_id));
+  if (payment.type === "collection") {
+    await activateMerchantAllocationsForFundedOrder(String(payment.order_id));
+    await finishBundleChildren(paymentId, "successful", actorId);
+  }
   if (op) await finishProviderOperation(String(op.id), "successful");
   return status;
 }

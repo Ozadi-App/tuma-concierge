@@ -858,7 +858,7 @@ function RestaurantCartSwitchDialog({ cartCount, combine, onCombine, onKeep, onD
         </h2>
         <p id="restaurant-cart-switch-copy" className="restaurant-cart-switch-dialog__copy">
           {combine
-            ? `One rider can collect from ${combine.otherName} and then ${combine.thisName}, and deliver everything together. The rider has to travel from one restaurant to the other${combine.km != null ? ` (about ${combine.km.toFixed(1)} km)` : ""}, so that extra distance is added to your delivery fee${combine.ratePerKm != null ? ` at ${formatUgx(combine.ratePerKm)} per km` : ""}. You pay one delivery fee at checkout and see the exact amount before you pay.`
+            ? `One rider collects from ${combine.otherName} and ${combine.thisName}. The extra distance${combine.km != null && combine.km >= 0.1 ? ` (about ${combine.km.toFixed(1)} km)` : ""} is added to your delivery fee${combine.ratePerKm != null ? ` at ${formatUgx(combine.ratePerKm)} per km` : ""}.`
             : t(plural ? "restaurant_switch_cart_copy_plural" : "restaurant_switch_cart_copy")}
         </p>
         <div className="restaurant-cart-switch-dialog__actions">
@@ -1138,6 +1138,7 @@ export default function RestaurantPage() {
   const orderingUnavailable = !!restaurant && !!restaurant.is_demo && !restaurant.demo_checkout_enabled;
   const estimatedFee = sharedDelivery ? combinedRouteFee : selectedBundle ? bundleExtraDeliveryFee : estimatedDeliveryFee;
   const checkoutItemsTotal = itemsTotal + (combineOther ? combineOtherItemsTotal : 0);
+  const orderItemCount = cart.reduce((n, l) => n + l.quantity, 0) + (combineOther ? combineOther.lines.reduce((n, l) => n + l.quantity, 0) : 0);
   // Checkout step: nav Back returns to the menu (the place picker has its own Back).
   useRegisterNavBack(!!restaurant && (checkoutRequested || step === "checkout"), backToMenu);
   useRegisterNavPrimaryAction(
@@ -1223,19 +1224,9 @@ export default function RestaurantPage() {
     return (
       <div className="space-y-6 px-4">
         <div className="flex items-center gap-3"><button aria-label="Back to menu" onClick={backToMenu} className="flex h-11 w-11 items-center justify-center rounded-full glass-panel"><ChevronLeft size={22}/></button><h1 className="text-2xl font-bold text-ink">Delivery and payment</h1></div>
-        {combineOther && (
-          <section className="food-menu-card space-y-2 px-4 py-4" aria-label="Combined delivery">
-            <h2 className="font-bold text-ink">One delivery, two pickups</h2>
-            <p className="text-sm text-ink-500">Your rider collects from {combineOther.name} and then {restaurant.name}, and brings everything together. You pay one delivery fee that covers the whole route{sharedDelivery ? "" : " (choose your delivery location to see it)"}. The rider is told the order has items from both restaurants.</p>
-            <ul className="space-y-1 text-sm text-ink">
-              {combineOther.lines.map((l) => <li key={l.key} className="flex justify-between gap-3"><span className="min-w-0 truncate">{l.quantity}× {l.name} <span className="text-ink-500">· {combineOther.name}</span></span><span className="shrink-0">{formatUgx(l.unitPrice * l.quantity)}</span></li>)}
-            </ul>
-            <button type="button" onClick={() => chooseCombine(null)} className="min-h-10 rounded-full border border-[var(--border-faint)] px-4 text-sm font-bold text-ink">Order separately instead</button>
-          </section>
-        )}
         <div className="food-menu-card flex items-center justify-between gap-3 px-4 py-3">
-          <span className="font-semibold">{cartCount} item{cartCount === 1 ? "" : "s"} in your order</span>
-          <span className="font-bold">{formatUgx(itemsTotal)}</span>
+          <span className="font-semibold">{orderItemCount} item{orderItemCount === 1 ? "" : "s"} in your order</span>
+          <span className="font-bold">{formatUgx(checkoutItemsTotal)}</span>
         </div>
         {!delivery && !choosing && <button onClick={() => setChoosing(true)} className="food-menu-card w-full text-left font-semibold">Choose delivery location →</button>}
 

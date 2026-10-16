@@ -212,7 +212,15 @@ export async function activateMerchantAllocationsForFundedOrder(orderId: string)
     args: [String(order.rider_id)],
   });
   if (existingLock.rows[0] && String((existingLock.rows[0] as Row).order_id) !== orderId) {
-    throw new Error("Rider already has another active funded order");
+    // One lock per rider, but a combined delivery's pickups are one job: the rider holds the lock
+    // under the first pickup and may carry every pickup of that same delivery.
+    const sameDelivery = order.delivery_bundle_id
+      ? await db.execute({
+          sql: "SELECT 1 FROM orders WHERE id = ? AND delivery_bundle_id = ?",
+          args: [String((existingLock.rows[0] as Row).order_id), String(order.delivery_bundle_id)],
+        })
+      : null;
+    if (!sameDelivery || sameDelivery.rows.length === 0) throw new Error("Rider already has another active funded order");
   }
   await ensureOrderBudget(orderId);
   await db.execute({

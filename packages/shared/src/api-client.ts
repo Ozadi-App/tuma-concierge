@@ -599,7 +599,11 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
       return request<{ ok: true }>(`/v1/orders/${orderId}/customer-delete`, { method: "POST" });
     },
     async getOrderCheckout(orderId: string) {
-      return request<{ baseAmount: number; mobileMoney: number; wallet: number; cash: number }>(`/v1/orders/${orderId}/checkout`);
+      return request<{
+        baseAmount: number; mobileMoney: number; wallet: number; cash: number;
+        /** Present on the first pickup of a combined delivery: the quote covers every pickup. */
+        bundle?: { deliveryFee: number; orders: Array<{ id: string; restaurantName: string | null; itemsAndDelivery: number; deliveryFee: number }> };
+      }>(`/v1/orders/${orderId}/checkout`);
     },
     async fundOrder(
       orderId: string,
