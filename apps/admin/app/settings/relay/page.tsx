@@ -1,6 +1,7 @@
 "use client";
 
-import { ApiError, hasPermission, type RelayAdminOrder, type RelayDropMode, type RelayOperator, type RelayRoute, type RelaySettings, type RelayStation } from "@peebee/shared";
+import { ApiError, hasPermission, type RelayAdminOrder, type RelayDropMode, type RelayOperator, type RelayRoute, type RelayRouteStage, type RelaySettings, type RelayStation } from "@peebee/shared";
+import { Select } from "@peebee/shared/select";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { SettingsPageShell, SettingsSaveBar } from "../../../components/SettingsPageShell";
@@ -18,6 +19,7 @@ const smallBtn = "min-h-9 rounded-full px-3 text-xs font-bold";
 function relayError(err: unknown) {
   if (err instanceof ApiError && err.code === "stations_unavailable") return "Petrol-station drops need database migration 0105.";
   if (err instanceof ApiError && err.code === "relay_unavailable") return "Relay delivery needs database migration 0102.";
+  if (err instanceof ApiError && err.code === "stages_unavailable") return "Route stages need database migration 0106.";
   if (err instanceof ApiError && err.code === "location_required") return "Set this station's map location first.";
   return errorMessage(err);
 }
@@ -94,6 +96,14 @@ function StationsNotice() {
   );
 }
 
+function StagesNotice() {
+  return (
+    <p className="rounded-xl bg-gold/15 px-3 py-2 text-sm text-ink">
+      Meeting the matatu at a stage needs database migration 0106. Until it is applied, these settings have no effect.
+    </p>
+  );
+}
+
 function SettingsTab() {
   const [enabled, setEnabled] = useState(false);
   const [minDistance, setMinDistance] = useState("");
@@ -102,8 +112,13 @@ function SettingsTab() {
   const [perLeg, setPerLeg] = useState(true);
   const [choice, setChoice] = useState<"order" | "arrival">("order");
   const [stationKm, setStationKm] = useState("");
+  const [stagePickup, setStagePickup] = useState(false);
+  const [stageFallback, setStageFallback] = useState(true);
+  const [speed, setSpeed] = useState("");
+  const [noticeMin, setNoticeMin] = useState("");
   const [ready, setReady] = useState(true);
   const [stationsReady, setStationsReady] = useState(true);
+  const [stagesReady, setStagesReady] = useState(true);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -117,6 +132,10 @@ function SettingsTab() {
     setPerLeg(s.releasePerLeg);
     setChoice(s.lastMileChoice ?? "order");
     setStationKm(String(s.stationMaxKm ?? 10));
+    setStagePickup(s.stagePickup ?? false);
+    setStageFallback(s.stageFallback ?? true);
+    setSpeed(String(s.matatuSpeedKmh ?? 30));
+    setNoticeMin(String(s.arrivalNoticeMinutes ?? 10));
   }
 
   useEffect(() => {
@@ -126,6 +145,7 @@ function SettingsTab() {
         load(res.settings);
         setReady(res.ready);
         setStationsReady(res.stationsReady !== false);
+        setStagesReady(res.stagesReady !== false);
       })
       .catch((err) => setError(errorMessage(err)))
       .finally(() => setLoading(false));
@@ -145,6 +165,10 @@ function SettingsTab() {
         releasePerLeg: perLeg,
         lastMileChoice: choice,
         stationMaxKm: Number(stationKm),
+        stagePickup,
+        stageFallback,
+        matatuSpeedKmh: Number(speed),
+        arrivalNoticeMinutes: Number(noticeMin),
       });
       load(res.settings);
       setSaved(true);
@@ -161,6 +185,7 @@ function SettingsTab() {
     <form onSubmit={onSubmit} className="space-y-5">
       {!ready && <MigrationNotice />}
       {ready && !stationsReady && <StationsNotice />}
+      {ready && !stagesReady && <StagesNotice />}
       <section className="home-card space-y-3">
         <label className="flex items-center gap-2 text-sm font-bold text-ink">
           <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} className="h-4 w-4 accent-gold" />
@@ -225,6 +250,26 @@ function SettingsTab() {
           ))}
         </div>
       </section>
+      <section className="home-card space-y-3">
+        <p className="text-sm font-bold text-ink">Meeting the matatu</p>
+        <label className="flex items-center gap-2 text-sm font-bold text-ink">
+          <input type="checkbox" checked={stagePickup} onChange={(e) => setStagePickup(e.target.checked)} className="h-4 w-4 accent-gold" />
+          Customers can meet the matatu at a stage
+        </label>
+        <label className="flex items-center gap-2 text-sm font-bold text-ink">
+          <input type="checkbox" checked={stageFallback} onChange={(e) => setStageFallback(e.target.checked)} className="h-4 w-4 accent-gold" />
+          If the customer isn&apos;t there, leave it at the petrol station
+        </label>
+        <p className="text-xs text-ink-500">Off means the operator calls the customer instead.</p>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Average matatu speed (km/h)" hint="Used for arrival times.">
+            <input inputMode="decimal" required value={speed} onChange={(e) => setSpeed(decimal(e.target.value))} className={inputCls} />
+          </Field>
+          <Field label="Send 'arriving soon' this many minutes before">
+            <input inputMode="numeric" required value={noticeMin} onChange={(e) => setNoticeMin(digits(e.target.value))} className={inputCls} />
+          </Field>
+        </div>
+      </section>
       <SettingsSaveBar busy={busy} error={error} saved={saved} />
     </form>
   );
@@ -243,7 +288,7 @@ type RouteForm = {
   dropMode: RelayDropMode;
 };
 
-const EMPTY_ROUTE: RouteForm = { name: "", stageAName: "", stageALat: "", stageALng: "", stageBName: "", stageBLat: "", stageBLng: "", parcelFare: "", active: true, dropMode: "stage" };
+const EMPTY_ROUTE: RouteForm = { name: "", stageAName: "", stageALat: "", stageALng: "", stageBName: "", stageBLat: "", stageBLng: "", parcelFare: "", active: true, dropMode: "station" };
 
 function toForm(r: RelayRoute): RouteForm {
   return {
@@ -268,6 +313,8 @@ function RoutesTab() {
   const [editing, setEditing] = useState<string | "new" | null>(null);
   const [form, setForm] = useState<RouteForm>(EMPTY_ROUTE);
   const [busy, setBusy] = useState(false);
+  const [stagesFor, setStagesFor] = useState<string | null>(null);
+  const stagesRoute = routes.find((r) => r.id === stagesFor) ?? null;
 
   const refresh = useCallback(async () => {
     try {
@@ -285,6 +332,7 @@ function RoutesTab() {
 
   function startEdit(r: RelayRoute | null) {
     setEditing(r ? r.id : "new");
+    setStagesFor(null);
     setForm(r ? toForm(r) : EMPTY_ROUTE);
     setError(null);
   }
@@ -402,6 +450,8 @@ function RoutesTab() {
         </form>
       )}
 
+      {editing === null && stagesRoute && <StagesEditor key={stagesRoute.id} route={stagesRoute} onClose={() => setStagesFor(null)} />}
+
       {routes.length === 0 ? (
         <p className="text-sm text-ink-500">No matatu routes yet.</p>
       ) : (
@@ -431,7 +481,18 @@ function RoutesTab() {
                       <Badge tone={r.active === 1 ? "good" : "neutral"}>{r.active === 1 ? "active" : "off"}</Badge>
                     </button>
                   </td>
-                  <td className="px-3 py-2 text-right">
+                  <td className="whitespace-nowrap px-3 py-2 text-right">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditing(null);
+                        setStagesFor((id) => (id === r.id ? null : r.id));
+                      }}
+                      aria-pressed={stagesFor === r.id}
+                      className={`${smallBtn} mr-2 ${stagesFor === r.id ? "bg-gold text-ink-gold" : "bg-gold/15 text-ink"}`}
+                    >
+                      Stages
+                    </button>
                     <button type="button" onClick={() => startEdit(r)} className={`${smallBtn} bg-gold/15 text-ink`}>
                       Edit
                     </button>
@@ -443,6 +504,227 @@ function RoutesTab() {
         </div>
       )}
     </div>
+  );
+}
+
+type StageDraft = { name: string; seq: string };
+
+/** The stops between stage A and stage B where a customer can meet the matatu. */
+function StagesEditor({ route, onClose }: { route: RelayRoute; onClose: () => void }) {
+  const [stages, setStages] = useState<RelayRouteStage[]>([]);
+  const [drafts, setDrafts] = useState<Record<string, StageDraft>>({});
+  const [stations, setStations] = useState<RelayStation[]>([]);
+  const [ready, setReady] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [addMode, setAddMode] = useState<"point" | "station">("point");
+  const [add, setAdd] = useState({ name: "", lat: "", lng: "", outletId: "", seq: "" });
+
+  const refresh = useCallback(async () => {
+    try {
+      const res = await api.adminListRelayRouteStages(route.id);
+      const sorted = [...res.stages].sort((a, b) => a.seq - b.seq);
+      setStages(sorted);
+      setDrafts(Object.fromEntries(sorted.map((st) => [st.id, { name: st.name, seq: String(st.seq) }])));
+      setReady(res.ready);
+      setError(null);
+    } catch (err) {
+      setError(relayError(err));
+    } finally {
+      setLoading(false);
+    }
+  }, [route.id]);
+
+  useEffect(() => {
+    void refresh();
+    api
+      .adminListRelayStations()
+      .then((res) => setStations(res.stations))
+      .catch(() => setStations([]));
+  }, [refresh]);
+
+  const nextSeq = stages.length ? Math.max(...stages.map((st) => st.seq)) + 1 : 1;
+
+  async function save(st: RelayRouteStage, patch: Partial<{ name: string; seq: number; active: boolean }>) {
+    setBusyId(st.id);
+    setError(null);
+    try {
+      await api.adminUpdateRelayRouteStage(st.id, patch);
+      await refresh();
+    } catch (err) {
+      setError(`${st.name}: ${relayError(err)}`);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function onAdd(e: React.FormEvent) {
+    e.preventDefault();
+    const seq = add.seq ? Number(add.seq) : nextSeq;
+    let input: Parameters<typeof api.adminCreateRelayRouteStage>[1];
+    if (addMode === "station") {
+      if (!add.outletId) {
+        setError("Pick a station.");
+        return;
+      }
+      input = { outletId: add.outletId, seq, ...(add.name.trim() ? { name: add.name.trim() } : {}) };
+    } else {
+      const lat = Number(add.lat);
+      const lng = Number(add.lng);
+      if (!add.name.trim() || !add.lat || !add.lng || !Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+        setError("Enter a name and a valid latitude and longitude.");
+        return;
+      }
+      input = { name: add.name.trim(), lat, lng, seq };
+    }
+    setBusyId("new");
+    setError(null);
+    try {
+      await api.adminCreateRelayRouteStage(route.id, input);
+      setAdd({ name: "", lat: "", lng: "", outletId: "", seq: "" });
+      await refresh();
+    } catch (err) {
+      setError(relayError(err));
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  const ends = (name: string, tag: string) => (
+    <li className="flex items-center justify-between gap-2 rounded-xl bg-[rgb(var(--surface-muted))] px-3 py-2 text-sm">
+      <span className="truncate font-semibold text-ink">{name}</span>
+      <span className="shrink-0 text-xs text-ink-500">{tag}</span>
+    </li>
+  );
+
+  return (
+    <section className="home-card space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm font-bold text-ink">Stages · {route.name}</p>
+        <button type="button" onClick={onClose} className={`${smallBtn} bg-gold/15 text-ink`}>
+          Close
+        </button>
+      </div>
+      <p className="text-xs text-ink-500">Stops where a customer can meet the matatu, in the order it passes them.</p>
+      {!ready && <StagesNotice />}
+      <ErrorNote message={error} />
+      {loading ? (
+        <p className="text-sm text-ink-500">Loading…</p>
+      ) : (
+        <ol className="space-y-2">
+          {ends(route.stage_a_name, "Stage A")}
+          {stages.map((st) => {
+            const d = drafts[st.id] ?? { name: st.name, seq: String(st.seq) };
+            const changed = d.name.trim() !== st.name || Number(d.seq) !== st.seq;
+            const on = st.active === 1;
+            return (
+              <li key={st.id} className={`space-y-2 rounded-xl border border-[var(--border-faint)] px-3 py-2 ${on ? "" : "opacity-60"}`}>
+                <div className="flex items-center gap-2">
+                  <input
+                    aria-label="Order"
+                    inputMode="numeric"
+                    value={d.seq}
+                    onChange={(e) => setDrafts((all) => ({ ...all, [st.id]: { ...d, seq: digits(e.target.value) } }))}
+                    className={`${inputCls} w-16 shrink-0 text-center`}
+                  />
+                  <input
+                    aria-label="Stage name"
+                    value={d.name}
+                    onChange={(e) => setDrafts((all) => ({ ...all, [st.id]: { ...d, name: e.target.value } }))}
+                    className={`${inputCls} min-w-0 flex-1`}
+                  />
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-xs text-ink-500">
+                    {st.outlet_id ? `Petrol station · ${[st.station_brand, st.outlet_name].filter(Boolean).join(" ")}` : `${st.lat}, ${st.lng}`}
+                  </span>
+                  <span className="flex gap-2">
+                    {changed && (
+                      <button
+                        type="button"
+                        disabled={busyId === st.id || d.name.trim().length < 2 || d.seq === ""}
+                        onClick={() => save(st, { name: d.name.trim(), seq: Number(d.seq) })}
+                        className={`${smallBtn} bg-gold text-ink-gold disabled:opacity-50`}
+                      >
+                        Save
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      disabled={busyId === st.id}
+                      onClick={() => save(st, { active: !on })}
+                      aria-pressed={on}
+                      className={`${smallBtn} disabled:opacity-50 ${on ? "bg-gold text-ink-gold" : "bg-gold/15 text-ink"}`}
+                    >
+                      {on ? "Active" : "Off"}
+                    </button>
+                  </span>
+                </div>
+              </li>
+            );
+          })}
+          {ends(route.stage_b_name, "Stage B")}
+        </ol>
+      )}
+
+      <form onSubmit={onAdd} className="space-y-3 border-t border-[var(--border-faint)] pt-3">
+        <p className="text-xs font-bold text-ink-500">Add a stage</p>
+        <div className="grid grid-cols-2 gap-2">
+          {([
+            ["point", "Map point"],
+            ["station", "Peebee Gas station"],
+          ] as ["point" | "station", string][]).map(([value, title]) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setAddMode(value)}
+              aria-pressed={addMode === value}
+              className={`rounded-2xl px-3 py-2.5 text-left text-sm font-bold transition ${addMode === value ? "bg-gold text-ink-gold" : "bg-gold/15 text-ink"}`}
+            >
+              {title}
+            </button>
+          ))}
+        </div>
+        {addMode === "station" ? (
+          <Field label="Station">
+            <Select
+              value={add.outletId}
+              onValueChange={(v) => setAdd((a) => ({ ...a, outletId: v }))}
+              aria-label="Station"
+              sizing="stretch"
+              className="w-full rounded-xl border border-[var(--border-faint)] px-3 py-2.5 text-sm"
+            >
+              <option value="">Choose a station…</option>
+              {stations.map((st) => (
+                <option key={st.id} value={st.id} disabled={st.lat == null || st.lng == null}>
+                  {`${st.station_name} · ${st.name}${st.lat == null || st.lng == null ? " (no map location)" : ""}`}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        ) : null}
+        <Field label={addMode === "station" ? "Name (optional)" : "Name"}>
+          <input value={add.name} onChange={(e) => setAdd((a) => ({ ...a, name: e.target.value }))} placeholder="Mukono stage" className={inputCls} />
+        </Field>
+        {addMode === "point" && (
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Latitude">
+              <input inputMode="decimal" value={add.lat} onChange={(e) => setAdd((a) => ({ ...a, lat: coord(e.target.value) }))} placeholder="0.3533" className={inputCls} />
+            </Field>
+            <Field label="Longitude">
+              <input inputMode="decimal" value={add.lng} onChange={(e) => setAdd((a) => ({ ...a, lng: coord(e.target.value) }))} placeholder="32.7553" className={inputCls} />
+            </Field>
+          </div>
+        )}
+        <Field label="Order" hint="Lower numbers are nearer stage A.">
+          <input inputMode="numeric" value={add.seq} onChange={(e) => setAdd((a) => ({ ...a, seq: digits(e.target.value) }))} placeholder={String(nextSeq)} className={inputCls} />
+        </Field>
+        <button type="submit" disabled={!ready || busyId === "new"} className="min-h-11 w-full rounded-full bg-gold px-4 text-sm font-bold text-ink-gold disabled:opacity-50">
+          {busyId === "new" ? "Adding…" : "Add stage"}
+        </button>
+      </form>
+    </section>
   );
 }
 

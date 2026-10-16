@@ -1,8 +1,8 @@
 "use client";
 
 import { Select } from "@peebee/shared/select";
-import type { RelayLegStatus, RelayOperator, RelayOperatorParcels, RelayRoute, RelayTrack } from "@peebee/shared";
-import { ArrowLeft, ArrowRight, Bus, ChevronDown, ChevronRight, Clock, Package, QrCode, RotateCcw } from "lucide-react";
+import { ApiError, type RelayLegStatus, type RelayOperator, type RelayOperatorParcels, type RelayRoute, type RelayTrack } from "@peebee/shared";
+import { ArrowLeft, ArrowRight, Bus, ChevronDown, ChevronRight, Clock, MapPin, Package, Phone, QrCode, RotateCcw } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { QrCodeImage } from "../../components/QrCodeImage";
@@ -344,6 +344,7 @@ function ReceiveCard({ onReceived }: { onReceived: () => Promise<void> }) {
 function CarryingCard({ leg, onChange }: { leg: RelayOperatorParcels["carrying"][number]; onChange: () => Promise<void> }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [missedStation, setMissedStation] = useState<string | null>(null);
   const arrived = leg.status === "arrived";
 
   async function markArrived() {
@@ -373,15 +374,22 @@ function CarryingCard({ leg, onChange }: { leg: RelayOperatorParcels["carrying"]
         Last rider: {leg.last_rider_name ?? "not yet assigned"}
         {leg.last_mile_status ? ` · ${statusLabel[leg.last_mile_status]}` : ""}
       </p>
-      <div className="flex flex-col items-center gap-2 text-center">
-        <span className="text-[11px] font-bold uppercase tracking-wider text-ink-500">Handoff code</span>
-        <span className="font-mono text-4xl font-black tracking-widest text-ink">{spaced}</span>
-        <QrCodeImage value={leg.handoff_code} size={168} label="Handoff QR code" />
-        <span className="text-xs text-ink-500">Show this code to the rider or pump attendant at {leg.to_name}.</span>
-      </div>
+      {leg.meet_stage_name ? (
+        <MeetCustomer leg={leg} onChange={onChange} onMissed={setMissedStation} />
+      ) : (
+        <div className="flex flex-col items-center gap-2 text-center">
+          <span className="text-[11px] font-bold uppercase tracking-wider text-ink-500">Handoff code</span>
+          <span className="font-mono text-4xl font-black tracking-widest text-ink">{spaced}</span>
+          <QrCodeImage value={leg.handoff_code} size={168} label="Handoff QR code" />
+          <span className="text-xs text-ink-500">Show this code to the rider or pump attendant at {leg.to_name}.</span>
+        </div>
+      )}
+      {missedStation && <p className="text-center text-sm font-semibold text-green">Leave it at {missedStation} instead.</p>}
       {error && <p className={errorBox}>{error}</p>}
       {arrived ? (
-        <p className="text-center text-sm font-semibold text-green">Arrived at {leg.to_name} — waiting for the rider.</p>
+        <p className="text-center text-sm font-semibold text-green">
+          Arrived at {leg.to_name} — {leg.meet_stage_name ? "waiting for the customer." : "waiting for the rider."}
+        </p>
       ) : (
         <button type="button" onClick={markArrived} disabled={busy} className="min-h-12 w-full rounded-full bg-gold font-bold text-ink-gold disabled:opacity-50">
           {busy ? "Please wait…" : `Arrived at ${leg.to_name}`}
@@ -389,6 +397,142 @@ function CarryingCard({ leg, onChange }: { leg: RelayOperatorParcels["carrying"]
       )}
       <FollowParcel orderId={leg.order_id} />
     </article>
+  );
+}
+
+/** The customer meets the matatu at a stage: take their code, or send the parcel on to the station if they don't come. */
+function MeetCustomer({ leg, onChange, onMissed }: { leg: RelayOperatorParcels["carrying"][number]; onChange: () => Promise<void>; onMissed: (station: string) => void }) {
+  const [code, setCode] = useState("");
+  const [scanning, setScanning] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [confirmMissed, setConfirmMissed] = useState(false);
+  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const busyRef = useRef(false);
+
+  const handover = useCallback(
+    async (raw: string) => {
+      const value = raw.replace(/\D/g, "").slice(-6);
+      if (value.length !== 6) {
+        setMessage({ ok: false, text: "Enter the customer's 6-digit code." });
+        return;
+      }
+      if (busyRef.current) return;
+      busyRef.current = true;
+      setBusy(true);
+      setMessage(null);
+      try {
+        await api.relayOperatorHandover(value);
+        setCode("");
+        setMessage({ ok: true, text: "Handed to the customer." });
+        await onChange();
+      } catch (err) {
+        setMessage({ ok: false, text: errorMessage(err) });
+      } finally {
+        busyRef.current = false;
+        setBusy(false);
+      }
+    },
+    [onChange],
+  );
+
+  async function missed() {
+    if (busyRef.current) return;
+    busyRef.current = true;
+    setBusy(true);
+    setMessage(null);
+    try {
+      const res = await api.relayOperatorMissed(leg.id);
+      setConfirmMissed(false);
+      onMissed(res.station);
+      await onChange();
+    } catch (err) {
+      setConfirmMissed(false);
+      setMessage({
+        ok: false,
+        text: err instanceof ApiError && err.code === "fallback_off" ? "Call the customer — leaving it at the station is switched off." : errorMessage(err),
+      });
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
+    }
+  }
+
+  const onScan = useCallback(
+    (value: string) => {
+      setScanning(false);
+      void handover(value);
+    },
+    [handover],
+  );
+  const closeScanner = useCallback(() => setScanning(false), []);
+
+  return (
+    <div className="space-y-3">
+      <div className="space-y-1">
+        <p className="flex items-center gap-2 font-bold text-ink">
+          <MapPin className="h-4 w-4 shrink-0 text-gold" /> Customer meets you at {leg.meet_stage_name}
+        </p>
+        <p className="flex items-center justify-between gap-3 text-sm text-ink-500">
+          <span className="truncate">{leg.customer_name ?? "Customer"}</span>
+          {leg.customer_phone && (
+            <a href={`tel:${leg.customer_phone}`} className="flex shrink-0 items-center gap-1.5 font-bold text-gold">
+              <Phone className="h-4 w-4" /> Call
+            </a>
+          )}
+        </p>
+      </div>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          void handover(code);
+        }}
+        className="flex gap-2"
+      >
+        <input
+          value={code}
+          onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+          inputMode="numeric"
+          autoComplete="one-time-code"
+          placeholder="000000"
+          aria-label="Customer's code"
+          className="min-h-12 min-w-0 flex-1 rounded-xl border border-[var(--border-faint)] text-center font-mono text-lg font-bold tracking-[0.3em] text-ink outline-none focus:ring-2 focus:ring-gold"
+        />
+        <button type="submit" disabled={busy || code.length !== 6} className="min-h-12 rounded-xl bg-gold px-4 font-bold text-ink-gold disabled:opacity-50">
+          {busy ? "…" : "Hand to customer"}
+        </button>
+      </form>
+      <button
+        type="button"
+        onClick={() => setScanning(true)}
+        className="flex min-h-12 w-full items-center justify-center gap-2 rounded-full border border-[var(--border-faint)] font-bold text-ink"
+      >
+        <QrCode className="h-4 w-4 text-gold" /> Scan QR
+      </button>
+      {confirmMissed ? (
+        <div className="space-y-2 rounded-2xl border border-[var(--border-faint)] p-3">
+          <p className="text-sm text-ink">Customer not here? The parcel goes on to the petrol station.</p>
+          <div className="flex gap-2">
+            <button type="button" onClick={() => setConfirmMissed(false)} disabled={busy} className="min-h-11 flex-1 rounded-full border border-[var(--border-faint)] text-sm font-bold text-ink">
+              Cancel
+            </button>
+            <button type="button" onClick={missed} disabled={busy} className="min-h-11 flex-1 rounded-full bg-gold text-sm font-bold text-ink-gold disabled:opacity-50">
+              {busy ? "Please wait…" : "Confirm"}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setConfirmMissed(true)}
+          disabled={busy}
+          className="min-h-11 w-full rounded-full border border-[var(--border-faint)] text-sm font-bold text-ink disabled:opacity-50"
+        >
+          Customer not here
+        </button>
+      )}
+      {message && <p className={message.ok ? "text-sm font-semibold text-green" : errorBox}>{message.text}</p>}
+      {scanning && <QrScanner title="Scan customer's QR" onScan={onScan} onClose={closeScanner} />}
+    </div>
   );
 }
 
