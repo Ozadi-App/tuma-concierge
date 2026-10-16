@@ -23,7 +23,7 @@ import { servicePaused } from "../lib/service-gate.js";
 import { getRideTrackingSettings } from "../settings/ride-tracking.js";
 import { computeCheckoutFees, isCashDepositOk, riderPayout } from "../lib/monetization.js";
 import { notifyUser } from "../lib/webpush.js";
-import { currentVisibilityRadiusKm, orderMatchPoint, parseDbTimestamp } from "./matching.js";
+import { beyondRiderRange, currentVisibilityRadiusKm, orderMatchPoint, ownRangeKm, parseDbTimestamp, riderRangeKm } from "./matching.js";
 import { redactOrder } from "./visibility.js";
 import { assignAvailableRider } from "./assignment.js";
 import { computeBidding, loadBiddingContext, validateBid } from "./bidding.js";
@@ -48,6 +48,7 @@ import { appBaseUrl } from "../verify/service.js";
 import { payFromWallet } from "../wallet/service.js";
 import { bundleCheckoutQuote, fundBundle, notifyRiderOfCombinedDelivery, unfundedBundleGroup } from "./bundle-funding.js";
 import { isSubscriptionCurrent } from "../riders/subscription.js";
+import { insertRelayLegs, planRelay, relayAwaitingCollection, relayBlocksFinalSteps, relayView, settleRelayPayouts, type RelayPlan } from "../relay/service.js";
 import {
   activateMerchantAllocationsForFundedOrder,
   refundUnusedOrderPrincipal,
@@ -354,6 +355,9 @@ export async function createOrderFromInput(
   // migrations/0025_order_delivery_fee.sql.
   let deliveryFee: number | null = null;
   const isRide = d.type === "parcel" && d.isRide === true;
+  // A goods parcel too far for one boda is relayed boda -> matatu -> boda,
+  // each leg priced at its own rate (see ../relay/service.ts).
+  let relayPlan: RelayPlan | null = null;
   if (car) {
     if (d.pickupLat != null && d.pickupLng != null && d.destinationLat != null && d.destinationLng != null) {
       distanceKm = haversineKm(d.pickupLat, d.pickupLng, d.destinationLat, d.destinationLng);
@@ -371,6 +375,18 @@ export async function createOrderFromInput(
     // passenger) even when pickup and destination are barely apart —
     // distance × rate is never allowed to round down toward a near-free ride.
     estimatedTotal = roundFare(distanceKm != null ? distanceKm * rate : (d.estimatedTotal ?? 0), minimum);
+    if (!isRide && distanceKm != null) {
+      relayPlan = await planRelay(
+        { lat: d.pickupLat!, lng: d.pickupLng!, name: d.pickupArea ?? d.pickupAddress },
+        { lat: d.destinationLat!, lng: d.destinationLng!, name: d.destinationArea ?? d.destinationAddress },
+      );
+      if (relayPlan) {
+        if (d.paymentRail === "float") {
+          return c.json({ error: "relay_requires_prepay", message: "Long-distance parcels are paid in the app, not in cash." }, 409);
+        }
+        estimatedTotal = relayPlan.total;
+      }
+    }
     // A parcel ride (goods or passenger) has no items — its whole total IS the delivery fee.
     deliveryFee = estimatedTotal;
   } else if (d.type === "shopping") {
@@ -471,6 +487,10 @@ export async function createOrderFromInput(
     args: [d.listId],
   });
   await logEvent(orderId, "Create", "Order created", user.sub);
+  if (relayPlan) {
+    await insertRelayLegs(orderId, relayPlan);
+    await logEvent(orderId, "Create", `Relay delivery by boda, matatu (${relayPlan.routeName}) and boda`, user.sub);
+  }
   await snapshotTimeFees(orderId, deliveryFee ?? estimatedTotal ?? 0);
 
   // Booking for someone else: only for passenger rides, only while the admin
@@ -643,6 +663,7 @@ orderRoutes.get("/orders/:id", async (c) => {
     feeProposals: feeProposals.rows,
     bundleStops: bundleStops.rows,
     timeFees: await getOrderTimeFees(order),
+    relay: await relayView(order, user.sub),
   });
 });
 
@@ -883,10 +904,11 @@ async function findAutoMatchCandidate(
   if (await isSecondaryBundleOrder(id, order)) return null;
   // A car ride is only ever offered to drivers of its vehicle category.
   if (await isCarOrder(id)) return findCarCandidate(id, order);
-  const { serviceRangeKm } = await getDeliverySettings();
+  const { serviceRangeKm, riderVisibilityRangeKm } = await getDeliverySettings();
   const matchPoint = orderMatchPoint(order);
   const visibleRadiusKm = currentVisibilityRadiusKm(order.updated_at as string);
   const fullyOpen = visibleRadiusKm == null;
+  const ownRangeColumn = (await hasColumn("riders", "visibility_range_km")) ? ", r.visibility_range_km" : "";
 
   // Skips a lapsed subscriber entirely when one's required — auto-match
   // never hands work to a rider who couldn't have claimed it themselves.
@@ -894,7 +916,7 @@ async function findAutoMatchCandidate(
     ? "AND r.subscription_status = 'active' AND r.subscription_paid_through >= datetime('now')"
     : "";
   const eligible = await db.execute({
-    sql: `SELECT u.id, u.name, r.stage_lat, r.stage_lng, r.area FROM riders r JOIN users u ON u.id = r.user_id
+    sql: `SELECT u.id, u.name, r.stage_lat, r.stage_lng, r.area${ownRangeColumn} FROM riders r JOIN users u ON u.id = r.user_id
           WHERE r.verified = 1 AND r.is_online = 1
           ${subscriptionGate}
           AND u.id NOT IN (
@@ -912,6 +934,7 @@ async function findAutoMatchCandidate(
     if (matchPoint && riderLat != null && riderLng != null) {
       const distanceKm = haversineKm(matchPoint.lat, matchPoint.lng, riderLat, riderLng);
       if (!fullyOpen && distanceKm > (visibleRadiusKm as number)) continue; // not their turn yet
+      if (beyondRiderRange(distanceKm, ownRangeKm(row.visibility_range_km, riderVisibilityRangeKm))) continue; // past their range
       if (!nearestKnown || distanceKm < nearestKnown.distanceKm) nearestKnown = { row, distanceKm };
     } else {
       unknownLocation.push(row);
@@ -1095,6 +1118,9 @@ orderRoutes.post("/orders/:id/claim", requireRole("rider"), async (c) => {
       ? haversineKm(matchPoint.lat, matchPoint.lng, riderLat, riderLng)
       : null;
 
+  if (beyondRiderRange(distanceKm, await riderRangeKm(user.sub))) {
+    return c.json({ error: "out_of_range", message: "This job is outside your range." }, 403);
+  }
   if (distanceKm != null) {
     const visibleRadiusKm = currentVisibilityRadiusKm(order.updated_at as string);
     if (visibleRadiusKm != null && distanceKm > visibleRadiusKm) {
@@ -1196,6 +1222,9 @@ orderRoutes.post("/orders/:id/apply", requireRole("rider"), async (c) => {
       ? haversineKm(matchPoint.lat, matchPoint.lng, riderLat, riderLng)
       : null;
 
+  if (beyondRiderRange(distanceKm, await riderRangeKm(user.sub))) {
+    return c.json({ error: "out_of_range", message: "This job is outside your range." }, 403);
+  }
   if (distanceKm != null) {
     const visibleRadiusKm = currentVisibilityRadiusKm(order.updated_at as string);
     if (visibleRadiusKm != null && distanceKm > visibleRadiusKm) {
@@ -2163,6 +2192,8 @@ orderRoutes.post("/orders/:id/location", async (c) => {
   const parsed = orderLocationSchema.safeParse(await c.req.json().catch(() => ({})));
   if (!parsed.success) return c.json({ error: "invalid_body", issues: parsed.error.issues }, 400);
   if (!(await getRideTrackingSettings()).enabled) return c.json({ error: "tracking_disabled" }, 409);
+  // A relay's last rider isn't carrying the parcel until they collect it from the matatu.
+  if (await relayAwaitingCollection(id)) return c.json({ ok: true });
 
   await db.execute({
     sql: "UPDATE orders SET rider_lat = ?, rider_lng = ?, rider_location_updated_at = datetime('now') WHERE id = ? AND rider_id = ? AND stage NOT IN ('Settle', 'Create', 'Cancelled', 'Handover')",
@@ -2242,6 +2273,9 @@ orderRoutes.post("/orders/:id/arrived", async (c) => {
   }
   if (order.stage !== "Deliver") {
     return c.json({ error: "invalid_stage", message: `Cannot mark arrived from stage ${order.stage}` }, 409);
+  }
+  if (await relayBlocksFinalSteps(id)) {
+    return c.json({ error: "relay_leg_pending", message: "This parcel is being relayed. The last rider marks arrival after collecting it from the matatu." }, 409);
   }
 
   const arrived = await db.execute({
@@ -2331,6 +2365,9 @@ orderRoutes.post("/orders/:id/handover", async (c) => {
   if (parsed.data.pin !== order.pin_code) {
     return c.json({ error: "pin_mismatch" }, 400);
   }
+  if (await relayBlocksFinalSteps(id)) {
+    return c.json({ error: "relay_leg_pending", message: "Your parcel hasn't reached the last rider yet." }, 409);
+  }
 
   if (!await finishWaiting(order, "Handover", user.sub)) return c.json({ error: "invalid_stage" }, 409);
   await logEvent(id, "Handover", "PIN confirmed, handover complete", user.sub);
@@ -2406,7 +2443,10 @@ orderRoutes.post("/orders/:id/settle", async (c) => {
 
       // A car ride's pool is shared between its owner, driver and the
       // platform instead of going to a rider's wallet (see car/service.ts).
-      if (payout > 0 && (await isCarOrder(id))) {
+      // A relayed parcel's pool is shared between its riders and the matatu.
+      if (await settleRelayPayouts(order, payout, user.sub)) {
+        await logEvent(id, "Settle", "Relay payout shared between the riders and the matatu operator", user.sub);
+      } else if (payout > 0 && (await isCarOrder(id))) {
         await settleCarBooking(order, payout, user.sub);
       } else if (payout > 0) {
         const balanceColumn = order.environment === "sandbox" ? "wallet_balance_sandbox" : "wallet_balance";

@@ -4,11 +4,12 @@ import { isPracticeMode, isProSubscriptionCurrent, type MerchantPayment, type Or
 import { Crown, MapPin, MessageCircle, Pencil, X } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { CustomerAvatar } from "../../../components/CustomerAvatar";
 import { DeliveryNavigation } from "../../../components/DeliveryNavigation";
 import { FeeProposalVoicePlayer } from "../../../components/FeeProposalVoicePlayer";
 import { LugandaListPlayer } from "../../../components/LugandaListPlayer";
+import { RelayCollectFromMatatu, RelayHandToMatatu } from "../../../components/RelayHandoff";
 import { VoiceNotePlayer } from "../../../components/VoiceNotePlayer";
 import { VoiceReasonRecorder } from "../../../components/VoiceReasonRecorder";
 import { api, errorMessage } from "../../../lib/api";
@@ -64,10 +65,21 @@ export default function JobDetailPage() {
     setReceiptReference("PRACTICE-001");
   }, []);
 
+  // A relay's first rider loses access to the order once the matatu takes the parcel.
+  const [handedOff, setHandedOff] = useState(false);
+  const wasRelayFirstRider = useRef(false);
+
   const load = useCallback(async () => {
-    const res = await api.getOrder(orderId);
-    setDetail(res);
-    return res;
+    try {
+      const res = await api.getOrder(orderId);
+      wasRelayFirstRider.current = !!res.relay?.legs.find((leg) => leg.leg === 1)?.handoffCode;
+      setDetail(res);
+      return res;
+    } catch (err) {
+      const status = (err as { status?: number }).status;
+      if (wasRelayFirstRider.current && (status === 403 || status === 404)) setHandedOff(true);
+      throw err;
+    }
   }, [orderId]);
 
   useLivePolling(() => void load().catch(() => {}), 4000, [load]);
@@ -93,6 +105,20 @@ export default function JobDetailPage() {
     }
   }
 
+  if (handedOff) {
+    return (
+      <div className="space-y-4 px-4 pb-24 pt-4">
+        <section className="home-card space-y-3 text-center">
+          <p className="text-lg font-bold text-ink">Handed to the matatu</p>
+          <p className="text-sm text-ink-500">Your share goes to your wallet.</p>
+          <Link href="/" className="inline-flex min-h-11 w-full items-center justify-center rounded-full bg-gold px-6 text-sm font-bold text-ink-gold">
+            {t("job_back_to_jobs")}
+          </Link>
+        </section>
+      </div>
+    );
+  }
+
   if (!detail) {
     return <div className="p-4 text-sm text-ink-500">{t("job_loading")}</div>;
   }
@@ -106,6 +132,11 @@ export default function JobDetailPage() {
   const currentItemsTotal = (order.final_total ?? order.estimated_total ?? 0) - (order.delivery_fee ?? 0);
   const pendingCount = Object.keys(pendingEdits).length;
   const pendingNetDelta = Object.values(pendingEdits).reduce((sum, e) => sum + e.priceDelta, 0);
+  const relayLeg1 = detail.relay?.legs.find((leg) => leg.leg === 1);
+  const relayMatatu = detail.relay?.legs.find((leg) => leg.leg === 2);
+  const relayLeg3 = detail.relay?.legs.find((leg) => leg.leg === 3);
+  const relayFirstRider = !!relayLeg1?.handoffCode;
+  const relayAwaitingCollect = !relayFirstRider && relayLeg3?.status === "assigned";
 
   function markUnavailable(item: OrderDetail["items"][number]) {
     setPendingEdits((prev) => ({
@@ -659,7 +690,20 @@ export default function JobDetailPage() {
           </form>
         )}
 
-        {order.stage === "Deliver" && (
+        {order.stage === "Deliver" && relayFirstRider && relayLeg1 && (
+          <RelayHandToMatatu leg={relayLeg1} matatu={relayMatatu} />
+        )}
+
+        {order.stage === "Deliver" && relayAwaitingCollect && relayLeg3 && (
+          <RelayCollectFromMatatu
+            leg={relayLeg3}
+            matatu={relayMatatu}
+            busy={busy}
+            onCollect={(code) => run(() => api.collectRelayLeg(relayLeg3.id, code))}
+          />
+        )}
+
+        {order.stage === "Deliver" && !relayFirstRider && !relayAwaitingCollect && (
           <>
             <p className="text-sm text-ink-500">
               {order.is_ride

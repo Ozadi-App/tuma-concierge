@@ -5,6 +5,7 @@ import {
   ArrowUpRight,
   Banknote,
   Briefcase,
+  Bus,
   Bell,
   Car,
   ChevronLeft,
@@ -193,6 +194,16 @@ export function SettingsListContent({ onItemClick }: { onItemClick?: () => void 
       label: "Rider matching",
       value: "Dispatch rules",
       show: true,
+    },
+    {
+      href: "/settings/relay",
+      icon: Bus,
+      label: "Relay delivery",
+      value: "Boda → matatu → boda",
+      show:
+        hasPermission(role, "settings.manage") ||
+        hasPermission(role, "riders.view") ||
+        hasPermission(role, "orders.view"),
     },
   ];
 

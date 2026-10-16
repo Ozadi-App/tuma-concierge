@@ -1,3 +1,4 @@
+import type { RelayAdminOrder, RelayOpenLeg, RelayOperator, RelayOperatorParcels, RelayQuote, RelayRoute, RelaySettings } from "./relay.js";
 import type { AdminRole } from "./permissions.js";
 import { workMethods } from "./work-client.js";
 import { workAdminMethods } from "./work-admin-client.js";
@@ -533,6 +534,63 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
     },
     async getOrder(orderId: string) {
       return request<OrderDetail>(`/v1/orders/${orderId}`);
+    },
+    // Relay delivery (boda -> matatu -> boda for long parcels).
+    async getRelayQuote(input: { pickupLat: number; pickupLng: number; destinationLat: number; destinationLng: number; pickupName?: string; destinationName?: string }) {
+      const params = new URLSearchParams();
+      for (const [key, value] of Object.entries(input)) if (value != null && value !== "") params.set(key, String(value));
+      return request<{ relay: RelayQuote | null }>(`/v1/relay/quote?${params}`);
+    },
+    async listOpenRelayLegs() {
+      return request<{ legs: RelayOpenLeg[] }>("/v1/relay/legs/open");
+    },
+    async claimRelayLeg(legId: string) {
+      return request<{ orderId: string }>(`/v1/relay/legs/${encodeURIComponent(legId)}/claim`, { method: "POST", body: "{}" });
+    },
+    async collectRelayLeg(legId: string, code: string) {
+      return request<{ orderId: string }>(`/v1/relay/legs/${encodeURIComponent(legId)}/collect`, { method: "POST", body: JSON.stringify({ code }) });
+    },
+    async getRelayOperatorMe() {
+      return request<{ operator: RelayOperator | null; routes: Array<Pick<RelayRoute, "id" | "name" | "stage_a_name" | "stage_b_name">>; enabled: boolean }>("/v1/relay/operator/me");
+    },
+    async applyRelayOperator(input: { routeId: string; vehiclePlate: string; phone?: string }) {
+      return request<{ ok: boolean }>("/v1/relay/operator/apply", { method: "POST", body: JSON.stringify(input) });
+    },
+    async getRelayOperatorParcels() {
+      return request<RelayOperatorParcels>("/v1/relay/operator/parcels");
+    },
+    async receiveRelayParcel(code: string) {
+      return request<{ orderId: string }>("/v1/relay/operator/receive", { method: "POST", body: JSON.stringify({ code }) });
+    },
+    async markRelayMatatuArrived(legId: string) {
+      return request<{ ok: boolean }>(`/v1/relay/operator/legs/${encodeURIComponent(legId)}/arrived`, { method: "POST", body: "{}" });
+    },
+    async sendRelayMatatuLocation(legId: string, lat: number, lng: number) {
+      return request<{ ok: boolean }>(`/v1/relay/operator/legs/${encodeURIComponent(legId)}/location`, { method: "POST", body: JSON.stringify({ lat, lng }) });
+    },
+    async adminGetRelaySettings() {
+      return request<{ settings: RelaySettings; ready: boolean }>("/v1/admin/relay/settings");
+    },
+    async adminUpdateRelaySettings(input: Partial<RelaySettings>) {
+      return request<{ settings: RelaySettings }>("/v1/admin/relay/settings", { method: "PUT", body: JSON.stringify(input) });
+    },
+    async adminListRelayRoutes() {
+      return request<{ routes: RelayRoute[]; ready: boolean }>("/v1/admin/relay/routes");
+    },
+    async adminCreateRelayRoute(input: { name: string; stageAName: string; stageALat: number; stageALng: number; stageBName: string; stageBLat: number; stageBLng: number; parcelFare: number; active?: boolean }) {
+      return request<{ id: string }>("/v1/admin/relay/routes", { method: "POST", body: JSON.stringify(input) });
+    },
+    async adminUpdateRelayRoute(id: string, input: Partial<{ name: string; stageAName: string; stageALat: number; stageALng: number; stageBName: string; stageBLat: number; stageBLng: number; parcelFare: number; active: boolean }>) {
+      return request<{ ok: boolean }>(`/v1/admin/relay/routes/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(input) });
+    },
+    async adminListRelayOperators() {
+      return request<{ operators: RelayOperator[] }>("/v1/admin/relay/operators");
+    },
+    async adminSetRelayOperatorStatus(userId: string, status: "approved" | "suspended" | "pending") {
+      return request<{ ok: boolean }>(`/v1/admin/relay/operators/${encodeURIComponent(userId)}/status`, { method: "POST", body: JSON.stringify({ status }) });
+    },
+    async adminListRelayOrders() {
+      return request<{ orders: RelayAdminOrder[] }>("/v1/admin/relay/orders");
     },
     /** Attaches a spoken note to the order — context a typed list can miss (units, brand, exactly where in the shop). */
     async uploadOrderVoiceNote(orderId: string, audio: Blob) {
@@ -2100,6 +2158,12 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
       const res=await f(`${root}/v1/admin/people/${kind}/${encodeURIComponent(id)}/photo`,{headers:authHeaders()});
       if (!res.ok) throw new Error("Photo unavailable");
       return res.blob();
+    },
+    async adminSetRiderVisibilityRange(userId: string, rangeKm: number | null) {
+      return request<{ ok: boolean; rangeKm: number | null }>(`/v1/admin/riders/${encodeURIComponent(userId)}/visibility-range`, {
+        method: "POST",
+        body: JSON.stringify({ rangeKm }),
+      });
     },
     async adminVerifyRider(userId: string, verified: boolean) {
       return request<{ rider: Rider }>(`/v1/admin/riders/${userId}/verify`, {

@@ -26,6 +26,8 @@ const DEFAULTS = {
    * round down toward zero for a very short (or same-building) ride. */
   minimum_delivery_fee: "2000",
   service_range_km: "7",
+  // Furthest a rider can see or take an order, in km. 0 = no limit. A rider can have their own.
+  rider_visibility_range_km: "20",
   /** Flat delivery fee (UGX) charged on top of a shopping order's item
    * costs. Unlike a parcel ride there's no pickup point to measure a
    * distance from at order-creation time (the "pickup" is wherever the
@@ -415,6 +417,12 @@ const DEFAULTS = {
   work_onsite_suspend_after_flags: "0",
   work_onsite_window_days: "30",
   work_location_retention_days: "30",
+  // Relay delivery (boda -> matatu -> boda) for long parcel deliveries. Off until staff turn it on.
+  relay_enabled: "0",
+  relay_min_distance_km: "25",
+  relay_max_access_km: "10",
+  relay_last_mile_radius_km: "5",
+  relay_release_per_leg: "0",
 } as const;
 
 export type SettingKey = keyof typeof DEFAULTS;
@@ -741,6 +749,7 @@ export async function getDeliverySettings(): Promise<{
   deliveryRatePerKm: number;
   minimumDeliveryFee: number;
   serviceRangeKm: number;
+  riderVisibilityRangeKm: number;
   shoppingDeliveryFee: number;
   rideRatePerKm: number;
   rideMinimumFare: number;
@@ -757,10 +766,12 @@ export async function getDeliverySettings(): Promise<{
     getSetting("ride_for_other_enabled"),
     getSetting("ride_for_other_distance_m"),
   ]);
+  const visibility = Number(await getSetting("rider_visibility_range_km"));
   return {
     deliveryRatePerKm: Number(rate) || Number(DEFAULTS.delivery_rate_per_km),
     minimumDeliveryFee: Number(minimumFee) || Number(DEFAULTS.minimum_delivery_fee),
     serviceRangeKm: Number(range) || Number(DEFAULTS.service_range_km),
+    riderVisibilityRangeKm: Number.isFinite(visibility) && visibility >= 0 ? visibility : Number(DEFAULTS.rider_visibility_range_km),
     shoppingDeliveryFee: Number(shoppingFee) || Number(DEFAULTS.shopping_delivery_fee),
     rideRatePerKm: Number(rideRate) || Number(DEFAULTS.ride_rate_per_km),
     rideMinimumFare: Number(rideMinimum) || Number(DEFAULTS.ride_minimum_fare),

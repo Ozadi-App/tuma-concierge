@@ -79,6 +79,7 @@ const REVERT_HANDLERS: Record<string, (entityId: string, before: Row) => Promise
     if (before.car != null) await setCarSettings(before.car as never);
     if (before.deliveryRatePerKm != null) await setSetting("delivery_rate_per_km", String(before.deliveryRatePerKm));
     if (before.serviceRangeKm != null) await setSetting("service_range_km", String(before.serviceRangeKm));
+    if (before.riderVisibilityRangeKm != null) await setSetting("rider_visibility_range_km", String(before.riderVisibilityRangeKm));
     if (before.enabledModes != null) await setMatchingModesEnabled(before.enabledModes as never);
     if (before.nearestWindowSeconds != null) await setSetting("nearest_window_seconds", String(before.nearestWindowSeconds));
     if (before.maxAssignmentMinutes != null) await setSetting("max_assignment_minutes", String(before.maxAssignmentMinutes));
