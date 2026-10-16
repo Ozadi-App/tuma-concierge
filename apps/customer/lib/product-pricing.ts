@@ -39,3 +39,25 @@ export function productPricing(product: { price: number; compare_at_price?: numb
   const discount = compareAt ? Math.round(((compareAt - price) / compareAt) * 100) : 0;
   return { price, from: varying, compareAt, discount };
 }
+
+export type MenuPricingOption = { required: number | boolean; choices: { price_delta: number }[] };
+
+/**
+ * What a food menu card should show as its price. Required option groups
+ * (e.g. Size) add their cheapest choice, so the card never shows less than
+ * the cheapest order you can actually place; when a required group has
+ * choices at different prices the card says "from". Optional extras do not
+ * make the price "from": the dish itself can be bought at the shown price.
+ */
+export function menuItemPricing(item: { price: number; options?: MenuPricingOption[] | null }): { price: number; from: boolean } {
+  let price = Number(item.price);
+  let from = false;
+  for (const option of item.options ?? []) {
+    if (!option.required) continue;
+    const deltas = option.choices.map((c) => Number(c.price_delta)).filter(Number.isFinite);
+    if (deltas.length === 0) continue;
+    price += Math.min(...deltas);
+    if (new Set(deltas).size > 1) from = true;
+  }
+  return { price, from };
+}
