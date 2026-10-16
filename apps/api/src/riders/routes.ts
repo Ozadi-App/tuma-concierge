@@ -300,7 +300,9 @@ riderRoutes.get("/riders/me/orders", requireAuth, requireRole("rider"), async (c
   const bundleFilter = await hasColumn("orders", "delivery_bundle_id")
     ? "AND (o.delivery_bundle_id IS NULL OR o.id=o.delivery_bundle_id)"
     : "";
-  const ownPickups = await hasColumn("orders", "delivery_bundle_id") ? `, ${BUNDLE_PICKUPS_SQL} AS bundle_pickups` : "";
+  const ownPickups = await hasColumn("orders", "delivery_bundle_id")
+    ? `, (CASE WHEN o.delivery_bundle_id IS NULL THEN 1 ELSE (SELECT COUNT(*) FROM orders bundled WHERE bundled.delivery_bundle_id=o.delivery_bundle_id) END) AS bundle_order_count, ${BUNDLE_PICKUPS_SQL} AS bundle_pickups`
+    : "";
   const res = await db.execute({
     sql: `SELECT o.*, u.name as customer_name${ownPickups} FROM orders o
           LEFT JOIN users u ON u.id = o.customer_id

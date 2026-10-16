@@ -858,7 +858,7 @@ function RestaurantCartSwitchDialog({ cartCount, combine, onCombine, onKeep, onD
         </h2>
         <p id="restaurant-cart-switch-copy" className="restaurant-cart-switch-dialog__copy">
           {combine
-            ? `One rider collects from ${combine.otherName} and ${combine.thisName}.${combine.extraFee != null ? ` About ${formatUgx(combine.extraFee)} extra delivery for the added distance; the exact amount is shown at checkout.` : ""}`
+            ? `One rider collects from ${combine.otherName.replace(/\.+$/, "")} and ${combine.thisName.replace(/\.+$/, "")}.${combine.extraFee != null ? ` About ${formatUgx(combine.extraFee)} extra delivery for the added distance; the exact amount is shown at checkout.` : ""}`
             : t(plural ? "restaurant_switch_cart_copy_plural" : "restaurant_switch_cart_copy")}
         </p>
         <div className="restaurant-cart-switch-dialog__actions">
