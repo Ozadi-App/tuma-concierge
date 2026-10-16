@@ -6,6 +6,8 @@ import { BottomNav } from "./BottomNav";
 import { BrandHeader } from "./BrandHeader";
 import { PwaInstallPrompt } from "./PwaInstallPrompt";
 import { PracticeProposalPrompt } from "./PracticeProposalPrompt";
+import { exitPracticeMode } from "@peebee/shared";
+import { PracticeModeFrame } from "@peebee/shared/practice-ui";
 
 export function AppShell({ children }: { children: any }) {
   const pathname = usePathname();
@@ -24,6 +26,8 @@ export function AppShell({ children }: { children: any }) {
       {!isAuthPage && <BottomNav />}
       <PwaInstallPrompt />
       <PracticeProposalPrompt />
+      {/* Same exit as the practice screen's "Back to Pump": leave practice and return to the pump. */}
+      <PracticeModeFrame onExit={() => { exitPracticeMode("gas"); window.dispatchEvent(new Event("storage")); window.location.replace("/"); }} />
     </div>
   );
 }
