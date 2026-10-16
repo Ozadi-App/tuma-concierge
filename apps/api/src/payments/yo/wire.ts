@@ -11,6 +11,7 @@
 
 import { mobileMoneyCurrencyCode, type MobileMoneyNetwork } from "@peebee/shared";
 import { getCredential, isProviderConfigured } from "../credentials.js";
+import { signWithdraw } from "./pki.js";
 import type { GatewayChargeInput, GatewayResult, PaymentGatewayAdapter } from "../gateway.js";
 
 export type YoTransactionStatus = "PENDING" | "SUCCEEDED" | "FAILED" | "INDETERMINATE";
@@ -114,9 +115,15 @@ export async function depositFunds(input: YoDepositWithdrawInput): Promise<YoRes
   return parseResult(xml);
 }
 
-/** Disbursements (acwithdrawfunds) — pays a rider out of escrow at Settle. */
+/**
+ * Disbursements (acwithdrawfunds) — pays a rider out of escrow at Settle.
+ * When a signing key is configured, the request carries a unique nonce and an
+ * RSA-SHA1 signature (Yo! public-key authentication); see ./pki.ts. A key that
+ * is set but unusable throws before anything is sent, so a payout never goes
+ * out unsigned by accident.
+ */
 export async function withdrawFunds(input: YoDepositWithdrawInput): Promise<YoResult> {
-  const xml = await call({
+  const fields: Record<string, string> = {
     Method: "acwithdrawfunds",
     Account: input.msisdn,
     Amount: String(input.amount),
@@ -124,8 +131,22 @@ export async function withdrawFunds(input: YoDepositWithdrawInput): Promise<YoRe
     Narrative: input.narrative,
     ExternalReference: input.referenceId,
     NonBlocking: "FALSE",
-  });
-  return parseResult(xml);
+  };
+  const privateKey = await getCredential("yo", "privateKey");
+  if (privateKey) {
+    const { username } = await credentials();
+    const nonce = crypto.randomUUID();
+    fields.PublicKeyAuthenticationNonce = nonce;
+    fields.PublicKeyAuthenticationSignatureBase64 = await signWithdraw(privateKey, {
+      apiUsername: username,
+      amount: fields.Amount,
+      account: fields.Account,
+      narrative: fields.Narrative,
+      externalReference: fields.ExternalReference,
+      nonce,
+    });
+  }
+  return parseResult(await call(fields));
 }
 
 export async function checkStatus(transactionReference: string): Promise<YoResult> {

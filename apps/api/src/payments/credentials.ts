@@ -57,6 +57,15 @@ export const PROVIDER_CREDENTIAL_FIELDS: Record<PaymentProviderIdentity, Credent
       helpText: '"sandbox" or "production" — defaults to sandbox if left blank.',
     },
     {
+      key: "privateKey",
+      label: "Withdrawal signing key (PEM)",
+      secret: true,
+      required: false,
+      envVar: "YO_PRIVATE_KEY",
+      helpText:
+        "RSA private key (unencrypted PEM) used to sign withdrawals once Yo! has activated public-key authentication. Paste the full key; send Yo! only the matching public key. Leave blank until Yo! has your public key.",
+    },
+    {
       key: "callbackSecret",
       label: "Callback secret",
       secret: true,
