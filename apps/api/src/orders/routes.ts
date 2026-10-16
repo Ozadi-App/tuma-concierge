@@ -728,7 +728,7 @@ orderRoutes.get("/orders/:id", async (c) => {
       args: [id],
     }),
     bundlesAvailable && order.delivery_bundle_id
-      ? db.execute({ sql: `SELECT o.id,o.stage,o.pickup_address,o.pickup_lat,o.pickup_lng,r.name AS restaurant_name,mo.name AS outlet_name
+      ? db.execute({ sql: `SELECT o.id,o.stage,o.pickup_address,o.pickup_lat,o.pickup_lng,COALESCE(r.name,o.pickup_area) AS restaurant_name,mo.name AS outlet_name
                           FROM orders o LEFT JOIN restaurants r ON r.id=o.restaurant_id LEFT JOIN merchant_outlets mo ON mo.id=r.outlet_id
                           WHERE o.delivery_bundle_id=? ORDER BY CASE WHEN o.id=? THEN 0 ELSE 1 END,o.created_at,o.id`, args: [String(order.delivery_bundle_id), id] })
       : Promise.resolve({ rows: [] }),

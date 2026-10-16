@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { requireAuth, requireRole } from "../auth/middleware.js";
-import { db } from "../db/client.js";
+import { db, executeBatch } from "../db/client.js";
 import { newId } from "../lib/ids.js";
 import { getDeliverySettings, getMarketplaceSettings, getMatchingSettings, getPlatformEnvironment } from "../lib/settings.js";
 import { hasColumn, hasTable } from "../lib/schema.js";
@@ -1754,63 +1754,18 @@ marketplaceRoutes.post("/marketplace/checkout", requireAuth, async (c) => {
   const paymentRail = d.paymentRail ?? (d.paymentMethod === "cod" ? "float" : "escrow");
   const stage = paymentRail === "float" ? "Match" : "Create";
 
-  const itemsByStore = new Map<string, typeof d.items>();
-  for (const it of d.items) {
-    const list = itemsByStore.get(it.storeId) ?? [];
-    list.push(it);
-    itemsByStore.set(it.storeId, list);
-  }
-
+  const stops = await planMarketplaceDelivery(d.items, d, environment);
   const createdOrders: Row[] = [];
   const supportsStoreId = (await hasColumn("orders", "store_id")) && (await hasTable("stores"));
 
-  for (const [storeId, storeItems] of itemsByStore.entries()) {
-    await ensureDemoStoreInDb(storeId, environment);
-
-    let storeName = "Marketplace Store";
-    let storeAddress: string | null = null;
-    let storeLat: number | null = null;
-    let storeLng: number | null = null;
-
-    if (await hasTable("stores")) {
-      const sRes = await db.execute({ sql: "SELECT id, name, address, lat, lng, category FROM stores WHERE id = ?", args: [storeId] });
-      const sRow = sRes.rows[0] as Row | undefined;
-      if (sRow) {
-        storeName = String(sRow.name ?? storeName);
-        storeAddress = (sRow.address as string | null) ?? null;
-        storeLat = (sRow.lat as number | null) ?? null;
-        storeLng = (sRow.lng as number | null) ?? null;
-      }
-    }
-
-    if (storeName === "Marketplace Store") {
-      const demo = DEMO_MARKETPLACE_STORES.find((s) => s.id === storeId);
-      if (demo) {
-        storeName = demo.name;
-        storeAddress = demo.address;
-        storeLat = demo.lat ?? null;
-        storeLng = demo.lng ?? null;
-      }
-    }
-
-    const itemsTotal = storeItems.reduce((sum, it) => sum + it.price * it.quantity, 0);
-
-    let distanceKm: number | null = null;
-    if (storeLat != null && storeLng != null && d.destinationLat != null && d.destinationLng != null) {
-      distanceKm = Math.round(haversineKm(storeLat, storeLng, d.destinationLat, d.destinationLng) * 10) / 10;
-    }
-
-    const deliveryFee = distanceKm != null
-      ? roundFare(distanceKm * deliverySettings.deliveryRatePerKm, deliverySettings.minimumDeliveryFee)
-      : roundFare(deliverySettings.shoppingDeliveryFee);
-
+  for (const stop of stops) {
     const listId = newId("list");
     await db.execute({
       sql: "INSERT INTO lists (id, customer_id, title, status, environment) VALUES (?, ?, ?, 'active', ?)",
-      args: [listId, user.sub, `${storeName} Order`, environment],
+      args: [listId, user.sub, `${stop.storeName} Order`, environment],
     });
 
-    for (const it of storeItems) {
+    for (const it of stop.items) {
       const itemName = it.variantTitle ? `${it.title} (${it.variantTitle})` : it.title;
       await db.execute({
         sql: "INSERT INTO list_items (id, list_id, name, quantity, unit_price) VALUES (?, ?, ?, ?, ?)",
@@ -1821,8 +1776,9 @@ marketplaceRoutes.post("/marketplace/checkout", requireAuth, async (c) => {
     const orderId = newId("ord");
     const storeCol = supportsStoreId ? ", store_id" : "";
     const storeVal = supportsStoreId ? ", ?" : "";
-    const storeArgs = supportsStoreId ? [storeId] : [];
+    const storeArgs = supportsStoreId ? [stop.storeId] : [];
 
+    // The total is the items plus this stop's share of the delivery fee, which is what the customer pays.
     await db.execute({
       sql: `INSERT INTO orders (
               id, list_id, customer_id, stage, type, payment_rail, estimated_total, delivery_fee,
@@ -1837,17 +1793,17 @@ marketplaceRoutes.post("/marketplace/checkout", requireAuth, async (c) => {
         user.sub,
         stage,
         paymentRail,
-        itemsTotal,
-        deliveryFee,
-        storeAddress,
-        storeAddress,
-        storeLat,
-        storeLng,
+        stop.itemsTotal + stop.deliveryFee,
+        stop.deliveryFee,
+        stop.storeName,
+        stop.storeAddress,
+        stop.lat,
+        stop.lng,
         d.destinationArea ?? null,
         d.destinationAddress ?? null,
         d.destinationLat ?? null,
         d.destinationLng ?? null,
-        distanceKm,
+        stop.distanceKm,
         matchingMode,
         matchingDeadlineAt,
         environment,
@@ -1857,41 +1813,141 @@ marketplaceRoutes.post("/marketplace/checkout", requireAuth, async (c) => {
 
     await db.execute({
       sql: "INSERT INTO order_events (id, order_id, stage, note, actor_id) VALUES (?, ?, ?, ?, ?)",
-      args: [newId("evt"), orderId, stage, `Order placed from ${storeName}`, user.sub],
+      args: [newId("evt"), orderId, stage, `Order placed from ${stop.storeName}`, user.sub],
     });
 
-    await snapshotTimeFees(orderId, deliveryFee);
-
-    // Notify online verified riders via WebPush
-    try {
-      const onlineRiders = await db.execute({
-        sql: `SELECT u.id FROM riders r JOIN users u ON u.id = r.user_id
-              WHERE r.verified = 1 AND r.is_online = 1`,
-        args: [],
-      });
-      for (const rider of onlineRiders.rows as Row[]) {
-        notifyUser(rider.id as string, {
-          title: `New delivery order: ${storeName}`,
-          body: `Pickup at ${storeName} · Delivery fee: UGX ${deliveryFee.toLocaleString()}`,
-          url: "/riders",
-          tag: `order-${orderId}`,
-        }).catch(() => {});
-      }
-    } catch {
-      // Ignore notification broadcast failures
-    }
-
-    const createdOrder = await db.execute({
-      sql: `SELECT o.*, c.name as customer_name, r.name as rider_name FROM orders o
-            LEFT JOIN users c ON c.id = o.customer_id
-            LEFT JOIN users r ON r.id = o.rider_id
-            WHERE o.id = ?`,
-      args: [orderId],
-    });
-    if (createdOrder.rows[0]) {
-      createdOrders.push(createdOrder.rows[0]);
-    }
+    await snapshotTimeFees(orderId, stop.deliveryFee);
+    createdOrders.push({ id: orderId });
   }
 
-  return c.json({ ok: true, orders: createdOrders, order: createdOrders[0] }, 201);
+  // Several stores in one bag are one delivery: one rider collects from every
+  // store in turn, and the customer pays once (see orders/bundle-funding.ts).
+  if (createdOrders.length > 1 && (await hasColumn("orders", "delivery_bundle_id"))) {
+    const leadId = String(createdOrders[0].id);
+    await executeBatch(createdOrders.map((order) => ({
+      sql: "UPDATE orders SET delivery_bundle_id = ? WHERE id = ?",
+      args: [leadId, String(order.id)],
+    })));
+  }
+
+  const ids = createdOrders.map((order) => String(order.id));
+  const full = await db.execute({
+    sql: `SELECT o.*, c.name as customer_name, r.name as rider_name FROM orders o
+          LEFT JOIN users c ON c.id = o.customer_id
+          LEFT JOIN users r ON r.id = o.rider_id
+          WHERE o.id IN (${ids.map(() => "?").join(",")})`,
+    args: ids,
+  });
+  const byId = new Map((full.rows as Row[]).map((row) => [String(row.id), row]));
+  const orders = ids.map((id) => byId.get(id)).filter(Boolean) as Row[];
+
+  // One notice per delivery, not one per store.
+  try {
+    const onlineRiders = await db.execute("SELECT u.id FROM riders r JOIN users u ON u.id = r.user_id WHERE r.verified = 1 AND r.is_online = 1");
+    const deliveryFee = stops.reduce((sum, stop) => sum + stop.deliveryFee, 0);
+    const where = stops.map((stop) => stop.storeName).join(", ");
+    for (const rider of onlineRiders.rows as Row[]) {
+      notifyUser(rider.id as string, {
+        title: stops.length > 1 ? `New delivery: ${stops.length} pickups` : `New delivery order: ${where}`,
+        body: `Pickup at ${where} · Delivery fee: UGX ${deliveryFee.toLocaleString()}`,
+        url: "/riders",
+        tag: `order-${ids[0]}`,
+      }).catch(() => {});
+    }
+  } catch {
+    // Ignore notification broadcast failures
+  }
+
+  return c.json({ ok: true, orders, order: orders[0] }, 201);
 });
+
+const quoteSchema = marketplaceCheckoutSchema.pick({ items: true, destinationLat: true, destinationLng: true });
+
+/** The exact delivery fee a bag will be charged, split by store. Checkout shows this, never an estimate. */
+marketplaceRoutes.post("/marketplace/checkout/quote", requireAuth, async (c) => {
+  const parsed = quoteSchema.safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) return c.json({ error: "invalid_body", issues: parsed.error.issues }, 400);
+  const stops = await planMarketplaceDelivery(parsed.data.items, parsed.data, await getPlatformEnvironment());
+  const itemsTotal = stops.reduce((sum, stop) => sum + stop.itemsTotal, 0);
+  const deliveryFee = stops.reduce((sum, stop) => sum + stop.deliveryFee, 0);
+  return c.json({
+    itemsTotal,
+    deliveryFee,
+    total: itemsTotal + deliveryFee,
+    stores: stops.map((stop) => ({ storeId: stop.storeId, storeName: stop.storeName, itemsTotal: stop.itemsTotal, deliveryFee: stop.deliveryFee })),
+  });
+});
+
+type CheckoutItem = z.infer<typeof checkoutItemSchema>;
+type DeliveryStop = {
+  storeId: string; storeName: string; storeAddress: string | null; lat: number | null; lng: number | null;
+  items: CheckoutItem[]; itemsTotal: number; distanceKm: number | null; deliveryFee: number;
+};
+
+/**
+ * Groups a bag by store and prices the delivery as one rider trip: store 1,
+ * then store 2, ... then the customer, at the admin's rate per km. Each stop
+ * carries the extra the route costs because of it, so the stops add up
+ * exactly to the whole trip's fee.
+ */
+async function planMarketplaceDelivery(
+  items: CheckoutItem[],
+  destination: { destinationLat?: number; destinationLng?: number },
+  environment: Awaited<ReturnType<typeof getPlatformEnvironment>>,
+): Promise<DeliveryStop[]> {
+  const settings = await getDeliverySettings();
+  const byStore = new Map<string, CheckoutItem[]>();
+  for (const it of items) byStore.set(it.storeId, [...(byStore.get(it.storeId) ?? []), it]);
+
+  const stops: DeliveryStop[] = [];
+  for (const [storeId, storeItems] of byStore.entries()) {
+    await ensureDemoStoreInDb(storeId, environment);
+    let storeName = "Marketplace Store";
+    let storeAddress: string | null = null;
+    let lat: number | null = null;
+    let lng: number | null = null;
+    if (await hasTable("stores")) {
+      const row = (await db.execute({ sql: "SELECT name, address, lat, lng FROM stores WHERE id = ?", args: [storeId] })).rows[0] as Row | undefined;
+      if (row) {
+        storeName = String(row.name ?? storeName);
+        storeAddress = (row.address as string | null) ?? null;
+        lat = (row.lat as number | null) ?? null;
+        lng = (row.lng as number | null) ?? null;
+      }
+    }
+    if (storeName === "Marketplace Store") {
+      const demo = DEMO_MARKETPLACE_STORES.find((store) => store.id === storeId);
+      if (demo) {
+        storeName = demo.name;
+        storeAddress = demo.address;
+        lat = demo.lat ?? null;
+        lng = demo.lng ?? null;
+      }
+    }
+    stops.push({
+      storeId, storeName, storeAddress, lat, lng, items: storeItems,
+      itemsTotal: storeItems.reduce((sum, it) => sum + it.price * it.quantity, 0),
+      distanceKm: null, deliveryFee: 0,
+    });
+  }
+
+  const { destinationLat, destinationLng } = destination;
+  const located = destinationLat != null && destinationLng != null && stops.every((stop) => stop.lat != null && stop.lng != null);
+  if (!located) {
+    // Without coordinates there's no route: the admin's flat shopping fee, once for the whole bag.
+    stops.forEach((stop, i) => { stop.deliveryFee = i === 0 ? roundFare(settings.shoppingDeliveryFee) : 0; });
+    return stops;
+  }
+
+  let travelled = 0;
+  let charged = 0;
+  stops.forEach((stop, i) => {
+    if (i > 0) travelled += haversineKm(stops[i - 1].lat!, stops[i - 1].lng!, stop.lat!, stop.lng!);
+    const lastMile = haversineKm(stop.lat!, stop.lng!, destinationLat!, destinationLng!);
+    stop.distanceKm = Math.round(lastMile * 10) / 10;
+    const routeFee = roundFare((travelled + lastMile) * settings.deliveryRatePerKm, settings.minimumDeliveryFee);
+    stop.deliveryFee = Math.max(0, routeFee - charged);
+    charged += stop.deliveryFee;
+  });
+  return stops;
+}

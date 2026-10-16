@@ -22,6 +22,7 @@ import { ProductImage } from "../../components/ProductImage";
 import { RoundCheck } from "../../components/marketplace/MarketplaceUI";
 import { api, errorMessage } from "../../lib/api";
 import { getCachedCustomerCoordinates } from "../../lib/location";
+import { useBagQuote } from "../../lib/bag-quote";
 import { useRegisterNavPrimaryAction, useRegisterNavBack, goBackOr } from "../../lib/nav-primary-action";
 
 export default function CartPage() {
@@ -33,8 +34,6 @@ export default function CartPage() {
     selectedItems,
     selectedCount,
     subtotal,
-    deliveryFee,
-    total,
     updateQuantity,
     removeItem,
     toggleItemSelection,
@@ -44,9 +43,13 @@ export default function CartPage() {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  // The delivery fee is the server's: one rider trip through every store. Checkout waits for it.
+  const bagQuote = useBagQuote(selectedItems, mounted);
+  const deliveryFee = bagQuote.quote?.deliveryFee ?? null;
+  const total = deliveryFee == null ? null : subtotal + deliveryFee;
 
   const handleCheckout = async () => {
-    if (selectedItems.length === 0 || isSubmitting) return;
+    if (selectedItems.length === 0 || isSubmitting || total == null) return;
     setIsSubmitting(true);
     setCheckoutError(null);
 
@@ -95,9 +98,9 @@ export default function CartPage() {
   useRegisterNavPrimaryAction(
     mounted && items.length > 0
       ? {
-          label: isSubmitting ? "Creating order…" : "Checkout",
-          detail: `UGX ${total.toLocaleString()}`,
-          disabled: selectedCount === 0 || isSubmitting,
+          label: isSubmitting ? "Creating order…" : total == null ? "Please wait…" : "Checkout",
+          detail: total == null ? undefined : `UGX ${total.toLocaleString()}`,
+          disabled: selectedCount === 0 || isSubmitting || total == null,
           busy: isSubmitting,
           onClick: handleCheckout,
         }
@@ -298,30 +301,27 @@ export default function CartPage() {
                   <span>Delivery Fee</span>
                 </span>
                 <span className="font-bold text-ink">
-                  {subtotal > 0 ? (
-                    deliveryFee === 0 ? (
-                      <span className="text-emerald-600 uppercase font-black text-[10px]">Free</span>
-                    ) : (
-                      `UGX ${deliveryFee.toLocaleString()}`
-                    )
-                  ) : (
-                    "UGX 0"
-                  )}
+                  {subtotal === 0 ? "UGX 0" : bagQuote.failed ? (
+                    <button type="button" onClick={bagQuote.retry} className="font-bold text-gold">Retry</button>
+                  ) : deliveryFee == null ? "Calculating…" : `UGX ${deliveryFee.toLocaleString()}`}
                 </span>
               </div>
 
-              {subtotal > 0 && subtotal < 50000 && (
-                <div className="text-[11px] text-ink-500 bg-[rgb(var(--surface-muted))] px-3 py-2 rounded-[14px] flex items-center gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5 text-gold shrink-0" />
-                  <span>
-                    Add <b>UGX {(50000 - subtotal).toLocaleString()}</b> more for free delivery!
-                  </span>
+              {bagQuote.quote && bagQuote.quote.stores.length > 1 && (
+                <div className="space-y-1 pl-5 text-[11px] text-ink-500">
+                  <p>One rider collects from every store:</p>
+                  {bagQuote.quote.stores.map((store) => (
+                    <div key={store.storeId} className="flex justify-between">
+                      <span>{store.storeName}</span>
+                      <span>UGX {store.deliveryFee.toLocaleString()}</span>
+                    </div>
+                  ))}
                 </div>
               )}
 
               <div className="pt-3 border-t border-[var(--border-faint)] flex justify-between items-baseline">
                 <span className="font-bold text-sm text-ink">Total</span>
-                <span className="font-bold text-lg text-ink">UGX {total.toLocaleString()}</span>
+                <span className="font-bold text-lg text-ink">{total == null ? "—" : `UGX ${total.toLocaleString()}`}</span>
               </div>
             </div>
 

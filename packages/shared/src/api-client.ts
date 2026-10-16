@@ -1815,6 +1815,19 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
         body: JSON.stringify(input),
       });
     },
+    /** The exact delivery fee for a bag: one rider trip through every store, split by store. */
+    async quoteMarketplaceCheckout(input: {
+      items: Array<{ productId: string; storeId: string; title: string; price: number; quantity: number; variantId?: string; variantTitle?: string }>;
+      destinationLat?: number;
+      destinationLng?: number;
+    }) {
+      return request<{
+        itemsTotal: number;
+        deliveryFee: number;
+        total: number;
+        stores: Array<{ storeId: string; storeName: string; itemsTotal: number; deliveryFee: number }>;
+      }>("/v1/marketplace/checkout/quote", { method: "POST", body: JSON.stringify(input) });
+    },
 
     // Pharmacy & Prescription Endpoints
     /** The pharmacy the signed-in user works for (403 `not_a_pharmacist` when none). */

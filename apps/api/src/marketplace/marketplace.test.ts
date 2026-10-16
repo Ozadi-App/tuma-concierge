@@ -206,3 +206,57 @@ test("marketplace checkout: links orders to delivery system and alerts boda ride
   assert.equal(getOrderData.order.rider_id, "rider_1");
 });
 
+
+test("marketplace checkout: a bag from several stores is one delivery, priced exactly and paid once", async () => {
+  resetSchemaCache();
+  const client = createClient({ url: "file::memory:" });
+  const migrations = join(process.cwd(), "src/db/migrations");
+  for (const file of readdirSync(migrations).filter((f) => f.endsWith(".sql")).sort()) {
+    for (const sql of splitSqlStatements(readFileSync(join(migrations, file), "utf8"))) await client.execute(sql);
+  }
+  bindDatabase(client);
+  const previousSecret = process.env.JWT_SECRET;
+  process.env.JWT_SECRET = "marketplace-bag-tests-only";
+  try {
+    await client.execute("INSERT INTO users (id, phone, name, password_hash, role, wallet_balance) VALUES ('shopper', 'shopper', 'Shopper', 'hash', 'customer', 1000000), ('boda', 'boda', 'Boda', 'hash', 'rider', 0)");
+    await client.execute("INSERT INTO riders (user_id, verified, is_online, stage_lat, stage_lng) VALUES ('boda', 1, 1, 0.3353, 32.5857)");
+    await client.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('delivery_rate_per_km', '1000'), ('minimum_delivery_fee', '2000')");
+    const shopper = await signToken({ sub: "shopper", role: "customer" });
+    const boda = await signToken({ sub: "boda", role: "rider" });
+    const post = (path: string, token: string, body: object) => app.request(`/v1${path}`, {
+      method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify(body),
+    });
+    const items = [
+      { productId: "prod_avocado", storeId: "store_demo_fresh_mart", title: "Hass Avocados", price: 5000, quantity: 1 },
+      { productId: "prod_retro_high_top", storeId: "store_demo_sneaker_hub", title: "Air Retro", price: 185000, quantity: 1 },
+    ];
+    const destination = { destinationLat: 0.3476, destinationLng: 32.5825 };
+
+    const quote = (await (await post("/marketplace/checkout/quote", shopper, { items, ...destination })).json()) as {
+      itemsTotal: number; deliveryFee: number; total: number; stores: { deliveryFee: number }[];
+    };
+    assert.equal(quote.itemsTotal, 190000);
+    assert.ok(quote.deliveryFee >= 2000);
+    assert.equal(quote.stores.reduce((sum, store) => sum + store.deliveryFee, 0), quote.deliveryFee);
+    assert.equal(quote.total, 190000 + quote.deliveryFee);
+
+    const res = await post("/marketplace/checkout", shopper, { items, paymentRail: "escrow", destinationArea: "Kololo", ...destination });
+    assert.equal(res.status, 201);
+    const { orders } = (await res.json()) as { orders: { id: string; estimated_total: number; delivery_fee: number; delivery_bundle_id: string }[] };
+    assert.equal(orders.length, 2);
+    assert.ok(orders.every((order) => order.delivery_bundle_id === orders[0].id), "both stores are one delivery");
+    assert.deepEqual(orders.map((order) => order.estimated_total - order.delivery_fee), [5000, 185000], "items are not reduced by the delivery fee");
+    assert.equal(orders.reduce((sum, order) => sum + order.estimated_total, 0), quote.total, "the orders charge exactly the quote");
+
+    await client.execute("UPDATE orders SET matching_mode = 'first_to_claim', updated_at = datetime('now', '-1 hour')");
+    assert.equal((await post(`/orders/${orders[0].id}/claim`, boda, {})).status, 200);
+    const fund = await post(`/orders/${orders[0].id}/fund`, shopper, { paymentMethod: "wallet", useWallet: true, acceptedAmount: quote.total });
+    assert.equal(fund.status, 200);
+    const stages = (await client.execute("SELECT stage, rider_id FROM orders ORDER BY created_at")).rows;
+    assert.deepEqual(stages.map((row) => [row.stage, row.rider_id]), [["Shop", "boda"], ["Shop", "boda"]], "one rider, one payment for both stores");
+    assert.equal(Number((await client.execute("SELECT wallet_balance FROM users WHERE id = 'shopper'")).rows[0].wallet_balance), 1000000 - quote.total);
+  } finally {
+    process.env.JWT_SECRET = previousSecret;
+    client.close();
+  }
+});
