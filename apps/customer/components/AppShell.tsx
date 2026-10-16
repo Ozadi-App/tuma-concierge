@@ -8,7 +8,7 @@ import { BottomNav } from "./BottomNav";
 import { BrandHeader } from "./BrandHeader";
 import { FoodBusinessTheme } from "./FoodBusinessTheme";
 import { OfflineBanner } from "./OfflineBanner";
-import { PracticeModeGuard, PracticeModePrompt } from "./PracticeMode";
+import { PracticeModeBanner, PracticeModeGuard, PracticeModePrompt } from "./PracticeMode";
 import { isNavigationOverlayOpen, subscribeToNavigationOverlay } from "../lib/location-flow-state";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -42,6 +42,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       <PracticeModeGuard role="customer" pathname={pathname} />
       {!isAuthPage && <PracticeModePrompt role="customer" />}
+      {!isAuthPage && <PracticeModeBanner role="customer" />}
       {!isAuthPage && <OfflineBanner />}
       {showHeader && <BrandHeader />}
       <main

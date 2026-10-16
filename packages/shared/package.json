@@ -17,7 +17,8 @@
     "./google-button": "./src/GoogleButtonSurface.tsx",
     "./food-cover": "./src/FoodCover.tsx",
     "./colour-scenes.css": "./colour-scenes.css",
-    "./business-theme": "./src/BusinessTheme.tsx"
+    "./business-theme": "./src/BusinessTheme.tsx",
+    "./practice-ui": "./src/PracticeUI.tsx"
   },
   "scripts": {
     "lint": "tsc --noEmit",

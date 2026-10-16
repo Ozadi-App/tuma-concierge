@@ -58,7 +58,8 @@ export function BrandHeader() {
   const [counts,setCounts]=useState<MenuCounts>(EMPTY_COUNTS);
   const [environment,setEnvironment]=useState<PlatformEnvironment|null>(null);
   const [practiceActive,setPracticeActive]=useState(false);
-  const modeLabel=practiceActive?"*practice":environment==="sandbox"?"*demo":null;
+  // Practice is shown by the shared blue border + "Practice mode" tab, not a header label.
+  const modeLabel=!practiceActive&&environment==="sandbox"?"*demo":null;
   const isDark=activeTheme==="dark";
   const close=()=>setExpanded(false);
   useEffect(()=>setExpanded(false),[pathname]);
@@ -97,7 +98,7 @@ export function BrandHeader() {
   return <>
     <header className={`customer-header sticky top-0 z-40 ${expanded?"is-menu-open":""}`}>
       <div className="mx-auto flex h-16 max-w-lg items-center justify-between gap-3 px-4">
-        <Link href="/" aria-label={`Go to home${modeLabel ? `, ${practiceActive ? "practice" : "demo"} mode` : ""}`} className="flex shrink-0 items-start gap-1"><BrandLogo variant={isDark ? "dark" : "light"}/>{modeLabel&&<sup aria-hidden="true" className="pt-1 text-[10px] font-bold leading-none text-gold">{modeLabel}</sup>}</Link>
+        <Link href="/" aria-label={`Go to home${modeLabel ? ", demo mode" : ""}`} className="flex shrink-0 items-start gap-1"><BrandLogo variant={isDark ? "dark" : "light"}/>{modeLabel&&<sup aria-hidden="true" className="pt-1 text-[10px] font-bold leading-none text-gold">{modeLabel}</sup>}</Link>
         <button ref={toggleRef} type="button" aria-label={expanded?"Close menu":"Open menu"} aria-expanded={expanded} aria-controls="header-menu" onClick={()=>setExpanded(value=>!value)} className="customer-header-toggle relative flex h-11 w-11 items-center justify-center rounded-full">
           <ChevronDown size={24} className={`transition-transform duration-300 ${expanded?"rotate-180":""}`} aria-hidden/>
           {!expanded&&cartCount>0&&<span aria-hidden className="customer-header-dot absolute right-1.5 top-1.5 h-2.5 w-2.5 rounded-full"/>}
