@@ -203,7 +203,8 @@ export async function ensureOrderBudget(orderId: string): Promise<Row> {
 export async function activateMerchantAllocationsForFundedOrder(orderId: string): Promise<boolean> {
   const orderResult = await db.execute({ sql: "SELECT * FROM orders WHERE id = ?", args: [orderId] });
   const order = orderResult.rows[0] as Row | undefined;
-  if (!order || order.payment_rail !== "escrow") return false;
+  // Only shopping orders buy goods from merchants; a parcel or ride has no shopping principal.
+  if (!order || order.payment_rail !== "escrow" || order.type !== "shopping") return false;
   const environment = order.environment as PlatformEnvironment;
   if (!(await merchantPaymentsEnabled(environment))) return false;
   if (!order.rider_id) throw new Error("Merchant-funded order must have an assigned rider");
