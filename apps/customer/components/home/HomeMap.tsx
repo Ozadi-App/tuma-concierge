@@ -21,6 +21,22 @@ function FlyTo({ target, nonce }: { target: [number, number] | null; nonce: numb
   return null;
 }
 
+/** Leaving the page mid fly/zoom used to fire Leaflet's zoom-end timer on a
+ * removed map ("_leaflet_pos" of undefined). Stop animations on unmount. */
+function StopAnimationsOnUnmount() {
+  const map = useMap();
+  useEffect(() => () => {
+    // Leaflet's pending zoom-end timer returns early when no zoom is animating.
+    (map as unknown as { _animatingZoom: boolean })._animatingZoom = false;
+    try {
+      map.stop();
+    } catch {
+      /* already removed — nothing left to stop */
+    }
+  }, [map]);
+  return null;
+}
+
 /** Read-only street map behind the home screen: shows where the customer
  * is, follows the admin's maps provider, no pickers or pins. */
 export default function HomeMap({ pickup, destination, stops, bottomInset = 0 }: SelectedRouteLocations & { stops?: MapStop[]; bottomInset?: number }) {
@@ -73,6 +89,7 @@ export default function HomeMap({ pickup, destination, stops, bottomInset = 0 }:
         className={`peebee-map h-full w-full${tiles.jawg ? " peebee-map-native" : ""}`}
       >
         <TileLayer key={tileUrl} url={tileUrl} attribution={tiles.attribution} />
+        <StopAnimationsOnUnmount />
         <FlyTo target={hasSelection && nonce === 0 ? null : position} nonce={nonce} />
         {stops?.length && pickupPoint && destinationPoint ? (
           <MultiStopRoute
