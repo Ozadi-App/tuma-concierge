@@ -9,6 +9,7 @@ import { getDeliverySettings } from "../lib/settings.js";
 import { notifyUser } from "../lib/webpush.js";
 import { creditWallet } from "../wallet/service.js";
 import { getRelaySettings } from "./settings.js";
+import { beyondRiderRange, riderRangeKm } from "../orders/matching.js";
 
 /**
  * Relay delivery: a parcel too far for one boda goes boda -> matatu -> boda.
@@ -362,9 +363,13 @@ export async function claimLastMile(riderId: string, legId: string): Promise<{ o
   })).rows[0] as Row | undefined;
   if (!leg) throw new RelayError(404, "not_found", "This relay pickup no longer exists.");
   if (leg.status !== "open") throw new RelayError(409, "already_claimed", "Another rider already took this pickup.");
-  const rider = (await db.execute({ sql: "SELECT verified, is_online FROM riders WHERE user_id = ?", args: [riderId] })).rows[0] as Row | undefined;
+  const rider = (await db.execute({ sql: "SELECT verified, is_online, stage_lat, stage_lng FROM riders WHERE user_id = ?", args: [riderId] })).rows[0] as Row | undefined;
   if (!rider?.verified) throw new RelayError(403, "not_verified", "Only verified riders can take relay pickups.");
   if (!rider.is_online) throw new RelayError(409, "not_online", "Go online to take jobs.");
+  if (rider.stage_lat != null && rider.stage_lng != null) {
+    const distanceKm = haversineKm(Number(rider.stage_lat), Number(rider.stage_lng), Number(leg.from_lat), Number(leg.from_lng));
+    if (beyondRiderRange(distanceKm, await riderRangeKm(riderId))) throw new RelayError(403, "out_of_range", "This pickup is outside your range.");
+  }
   const orderId = String(leg.order_id);
   const environment = String(leg.environment);
   const changes = await executeBatch([

@@ -383,6 +383,7 @@ const updateSchema = z.object({
   deliveryRatePerKm: z.number().positive().max(1_000_000).optional(),
   minimumDeliveryFee: z.number().int().nonnegative().max(1_000_000).optional(),
   serviceRangeKm: z.number().positive().max(1000).optional(),
+  riderVisibilityRangeKm: z.number().min(0).max(1000).optional(),
   shoppingDeliveryFee: z.number().int().nonnegative().max(1_000_000).optional(),
   shoppingUnits: shoppingUnitSettingsSchema.optional(),
   rideTracking: rideTrackingSchema.optional(),
@@ -621,6 +622,9 @@ settingsRoutes.put(
     }
     if (parsed.data.serviceRangeKm != null) {
       await setSetting("service_range_km", String(parsed.data.serviceRangeKm));
+    }
+    if (parsed.data.riderVisibilityRangeKm != null) {
+      await setSetting("rider_visibility_range_km", String(parsed.data.riderVisibilityRangeKm));
     }
     if (parsed.data.shoppingDeliveryFee != null) {
       await setSetting("shopping_delivery_fee", String(parsed.data.shoppingDeliveryFee));

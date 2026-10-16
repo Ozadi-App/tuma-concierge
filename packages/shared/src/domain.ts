@@ -333,6 +333,8 @@ export type DeliverySettings = {
    * short ride round down toward a near-free delivery. */
   minimumDeliveryFee: number;
   serviceRangeKm: number;
+  /** Furthest a rider can see or take an order, in km (0 = no limit). A rider can have their own. */
+  riderVisibilityRangeKm?: number;
   /** Flat delivery fee (UGX) added on top of a shopping order's item costs
    * — see apps/api/src/lib/settings.ts for why shopping can't be priced by
    * distance the way a parcel ride is. */
@@ -756,6 +758,8 @@ export type ChatThreadDetail = {
 };
 
 export type Rider = {
+  /** Own order visibility range in km (0 = no limit); null uses the admin default. */
+  visibility_range_km?: number | null;
   user_id: string;
   /** Stable rider reference for support and order handoff. */
   rider_code?: string | null;

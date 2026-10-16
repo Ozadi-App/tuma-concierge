@@ -2159,6 +2159,12 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
       if (!res.ok) throw new Error("Photo unavailable");
       return res.blob();
     },
+    async adminSetRiderVisibilityRange(userId: string, rangeKm: number | null) {
+      return request<{ ok: boolean; rangeKm: number | null }>(`/v1/admin/riders/${encodeURIComponent(userId)}/visibility-range`, {
+        method: "POST",
+        body: JSON.stringify({ rangeKm }),
+      });
+    },
     async adminVerifyRider(userId: string, verified: boolean) {
       return request<{ rider: Rider }>(`/v1/admin/riders/${userId}/verify`, {
         method: "POST",

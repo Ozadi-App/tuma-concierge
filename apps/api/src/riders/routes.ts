@@ -13,7 +13,7 @@ import { hasColumn, hasTable } from "../lib/schema.js";
 import { baseMimeType, extensionForMime } from "../lib/mime.js";
 import { clientIp } from "../lib/ratelimit.js";
 import { getDeliverySettings, getLugandaAudioSettings, getMonetizationSettings, getPlatformEnvironment, getProSettings, getRiderReserveSettings } from "../lib/settings.js";
-import { currentVisibilityRadiusKm, orderMatchPoint } from "../orders/matching.js";
+import { beyondRiderRange, currentVisibilityRadiusKm, orderMatchPoint, riderRangeKm } from "../orders/matching.js";
 import { redactOrders, toOpenJob } from "../orders/visibility.js";
 import { computeBidding, loadBiddingContext } from "../orders/bidding.js";
 import { isCarOrder } from "../car/service.js";
@@ -342,6 +342,7 @@ riderRoutes.get("/riders/jobs/available", requireAuth, requireRole("rider"), asy
   }
 
   const { serviceRangeKm } = await getDeliverySettings();
+  const rangeKm = await riderRangeKm(user.sub);
   const riderLat = rider.stage_lat as number | null;
   const riderLng = rider.stage_lng as number | null;
   const bundleFilter = await hasColumn("orders", "delivery_bundle_id")
@@ -387,7 +388,7 @@ riderRoutes.get("/riders/jobs/available", requireAuth, requireRole("rider"), asy
           ? haversineKm(matchPoint.lat, matchPoint.lng, riderLat, riderLng)
           : null;
       const visibleRadiusKm = currentVisibilityRadiusKm(order.updated_at as string);
-      const visible = distanceKm == null || visibleRadiusKm == null || distanceKm <= visibleRadiusKm;
+      const visible = (distanceKm == null || visibleRadiusKm == null || distanceKm <= visibleRadiusKm) && !beyondRiderRange(distanceKm, rangeKm);
       return {
         job: toOpenJob(order, {
           distanceKm: distanceKm != null ? Math.round(distanceKm * 10) / 10 : null,
@@ -423,7 +424,7 @@ riderRoutes.get("/riders/jobs/:id/preview", requireAuth, requireRole("rider"), a
   const user = c.get("user");
 
   const riderRes = await db.execute({
-    sql: "SELECT verified, is_online FROM riders WHERE user_id = ?",
+    sql: "SELECT verified, is_online, stage_lat, stage_lng FROM riders WHERE user_id = ?",
     args: [user.sub],
   });
   const rider = riderRes.rows[0] as Row | undefined;
@@ -432,7 +433,7 @@ riderRoutes.get("/riders/jobs/:id/preview", requireAuth, requireRole("rider"), a
   }
 
   const orderRes = await db.execute({
-    sql: "SELECT id, type, list_id, rider_id, stage FROM orders WHERE id = ?",
+    sql: "SELECT id, type, list_id, rider_id, stage, pickup_lat, pickup_lng, destination_lat, destination_lng FROM orders WHERE id = ?",
     args: [id],
   });
   const order = orderRes.rows[0] as Row | undefined;
@@ -447,6 +448,13 @@ riderRoutes.get("/riders/jobs/:id/preview", requireAuth, requireRole("rider"), a
   });
   if (excludedRes.rows.length > 0) {
     return c.json({ error: "not_available", message: "This job is no longer open." }, 409);
+  }
+  const matchPoint = orderMatchPoint(order);
+  if (matchPoint && rider.stage_lat != null && rider.stage_lng != null) {
+    const distanceKm = haversineKm(matchPoint.lat, matchPoint.lng, Number(rider.stage_lat), Number(rider.stage_lng));
+    if (beyondRiderRange(distanceKm, await riderRangeKm(user.sub))) {
+      return c.json({ error: "out_of_range", message: "This job is outside your range." }, 403);
+    }
   }
 
   const items =
@@ -1180,6 +1188,44 @@ riderRoutes.get(
     return new Response(object.body, {
       headers: uploadResponseHeaders(object.httpMetadata?.contentType, "application/octet-stream"),
     });
+  },
+);
+
+/** A rider's own order visibility range; null puts them back on the admin default. */
+riderRoutes.post(
+  "/admin/riders/:userId/visibility-range",
+  requireAuth,
+  requireRole("admin"),
+  requirePermission("riders.manage"),
+  async (c) => {
+    const userId = c.req.param("userId") as string;
+    if (!(await hasColumn("riders", "visibility_range_km"))) {
+      return c.json({ error: "upgrade_pending", message: "Apply migration 0103 first." }, 503);
+    }
+    const parsed = z.object({ rangeKm: z.number().min(0).max(1000).nullable() }).safeParse(await c.req.json().catch(() => ({})));
+    if (!parsed.success) return c.json({ error: "invalid_body", issues: parsed.error.issues }, 400);
+    const before = (await db.execute({
+      sql: "SELECT r.visibility_range_km, u.name FROM riders r JOIN users u ON u.id = r.user_id WHERE r.user_id = ?",
+      args: [userId],
+    })).rows[0] as Row | undefined;
+    if (!before) return c.json({ error: "not_found" }, 404);
+    await db.execute({
+      sql: "UPDATE riders SET visibility_range_km = ?, updated_at = datetime('now') WHERE user_id = ?",
+      args: [parsed.data.rangeKm, userId],
+    });
+    await logActivity({
+      actor: c.get("user"),
+      action: "rider.visibility_range",
+      entityType: "rider",
+      entityId: userId,
+      summary: parsed.data.rangeKm == null
+        ? `Put rider ${before.name as string} back on the default visibility range`
+        : `Set rider ${before.name as string}'s visibility range to ${parsed.data.rangeKm === 0 ? "no limit" : `${parsed.data.rangeKm} km`}`,
+      before: { visibilityRangeKm: before.visibility_range_km ?? null },
+      after: { visibilityRangeKm: parsed.data.rangeKm },
+      ip: clientIp(c),
+    });
+    return c.json({ ok: true, rangeKm: parsed.data.rangeKm });
   },
 );
 

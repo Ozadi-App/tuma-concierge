@@ -6,6 +6,7 @@ import { requireAuth, requireRole } from "../auth/middleware.js";
 import { db } from "../db/client.js";
 import { haversineKm } from "../lib/geo.js";
 import { newId } from "../lib/ids.js";
+import { riderRangeKm } from "../orders/matching.js";
 import { hasColumn } from "../lib/schema.js";
 import { getPlatformEnvironment } from "../lib/settings.js";
 import { notifyUser } from "../lib/webpush.js";
@@ -87,9 +88,12 @@ relayRoutes.get("/relay/legs/open", requireRole("rider"), async (c) => {
           ORDER BY l.created_at LIMIT 50`,
     args: [await getPlatformEnvironment()],
   });
+  // Within the last-mile radius, and never past the rider's own visibility range.
+  const ownRange = await riderRangeKm(user.sub);
+  const limitKm = ownRange == null ? lastMileRadiusKm : Math.min(lastMileRadiusKm, ownRange);
   const legs = (res.rows as Row[]).filter((leg) =>
     rider?.stage_lat == null || rider?.stage_lng == null ||
-    haversineKm(Number(rider.stage_lat), Number(rider.stage_lng), Number(leg.from_lat), Number(leg.from_lng)) <= lastMileRadiusKm,
+    haversineKm(Number(rider.stage_lat), Number(rider.stage_lng), Number(leg.from_lat), Number(leg.from_lng)) <= limitKm,
   );
   return c.json({ legs });
 });

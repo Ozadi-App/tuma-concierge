@@ -23,7 +23,7 @@ import { servicePaused } from "../lib/service-gate.js";
 import { getRideTrackingSettings } from "../settings/ride-tracking.js";
 import { computeCheckoutFees, isCashDepositOk, riderPayout } from "../lib/monetization.js";
 import { notifyUser } from "../lib/webpush.js";
-import { currentVisibilityRadiusKm, orderMatchPoint, parseDbTimestamp } from "./matching.js";
+import { beyondRiderRange, currentVisibilityRadiusKm, orderMatchPoint, ownRangeKm, parseDbTimestamp, riderRangeKm } from "./matching.js";
 import { redactOrder } from "./visibility.js";
 import { assignAvailableRider } from "./assignment.js";
 import { computeBidding, loadBiddingContext, validateBid } from "./bidding.js";
@@ -904,10 +904,11 @@ async function findAutoMatchCandidate(
   if (await isSecondaryBundleOrder(id, order)) return null;
   // A car ride is only ever offered to drivers of its vehicle category.
   if (await isCarOrder(id)) return findCarCandidate(id, order);
-  const { serviceRangeKm } = await getDeliverySettings();
+  const { serviceRangeKm, riderVisibilityRangeKm } = await getDeliverySettings();
   const matchPoint = orderMatchPoint(order);
   const visibleRadiusKm = currentVisibilityRadiusKm(order.updated_at as string);
   const fullyOpen = visibleRadiusKm == null;
+  const ownRangeColumn = (await hasColumn("riders", "visibility_range_km")) ? ", r.visibility_range_km" : "";
 
   // Skips a lapsed subscriber entirely when one's required — auto-match
   // never hands work to a rider who couldn't have claimed it themselves.
@@ -915,7 +916,7 @@ async function findAutoMatchCandidate(
     ? "AND r.subscription_status = 'active' AND r.subscription_paid_through >= datetime('now')"
     : "";
   const eligible = await db.execute({
-    sql: `SELECT u.id, u.name, r.stage_lat, r.stage_lng, r.area FROM riders r JOIN users u ON u.id = r.user_id
+    sql: `SELECT u.id, u.name, r.stage_lat, r.stage_lng, r.area${ownRangeColumn} FROM riders r JOIN users u ON u.id = r.user_id
           WHERE r.verified = 1 AND r.is_online = 1
           ${subscriptionGate}
           AND u.id NOT IN (
@@ -933,6 +934,7 @@ async function findAutoMatchCandidate(
     if (matchPoint && riderLat != null && riderLng != null) {
       const distanceKm = haversineKm(matchPoint.lat, matchPoint.lng, riderLat, riderLng);
       if (!fullyOpen && distanceKm > (visibleRadiusKm as number)) continue; // not their turn yet
+      if (beyondRiderRange(distanceKm, ownRangeKm(row.visibility_range_km, riderVisibilityRangeKm))) continue; // past their range
       if (!nearestKnown || distanceKm < nearestKnown.distanceKm) nearestKnown = { row, distanceKm };
     } else {
       unknownLocation.push(row);
@@ -1116,6 +1118,9 @@ orderRoutes.post("/orders/:id/claim", requireRole("rider"), async (c) => {
       ? haversineKm(matchPoint.lat, matchPoint.lng, riderLat, riderLng)
       : null;
 
+  if (beyondRiderRange(distanceKm, await riderRangeKm(user.sub))) {
+    return c.json({ error: "out_of_range", message: "This job is outside your range." }, 403);
+  }
   if (distanceKm != null) {
     const visibleRadiusKm = currentVisibilityRadiusKm(order.updated_at as string);
     if (visibleRadiusKm != null && distanceKm > visibleRadiusKm) {
@@ -1217,6 +1222,9 @@ orderRoutes.post("/orders/:id/apply", requireRole("rider"), async (c) => {
       ? haversineKm(matchPoint.lat, matchPoint.lng, riderLat, riderLng)
       : null;
 
+  if (beyondRiderRange(distanceKm, await riderRangeKm(user.sub))) {
+    return c.json({ error: "out_of_range", message: "This job is outside your range." }, 403);
+  }
   if (distanceKm != null) {
     const visibleRadiusKm = currentVisibilityRadiusKm(order.updated_at as string);
     if (visibleRadiusKm != null && distanceKm > visibleRadiusKm) {
