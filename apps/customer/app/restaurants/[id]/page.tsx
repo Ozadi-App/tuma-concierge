@@ -1041,19 +1041,25 @@ export default function RestaurantPage() {
   const itemsTotal = cart.reduce((sum, l) => sum + l.unitPrice * l.quantity, 0);
   const cartCount = cart.reduce((sum, l) => sum + l.quantity, 0);
 
-  // Mirrors the server's own formula (apps/api/src/restaurants/customer.ts)
-  // so this is a real estimate, not just a placeholder — distance-priced
-  // when both the restaurant and the destination have coordinates, else the
-  // same flat fee the server falls back to. Only null before settings load.
-  const estimatedDeliveryFee = useMemo(() => {
-    if (!deliverySettings) return null;
-    const resolved = placeFields(delivery);
-    if (restaurant?.lat != null && restaurant?.lng != null && resolved.lat != null && resolved.lng != null) {
-      const km = haversineKm(restaurant.lat, restaurant.lng, resolved.lat, resolved.lng);
-      return roundFare(km * deliverySettings.deliveryRatePerKm, deliverySettings.minimumDeliveryFee);
-    }
-    return roundFare(deliverySettings.shoppingDeliveryFee);
-  }, [restaurant, delivery, deliverySettings]);
+  // The delivery fee is asked of the server (the same distance price the order is charged with), so what
+  // checkout shows is final. Checkout stays off until it arrives.
+  const placeForFee = placeFields(delivery);
+  const feeKey = delivery ? `${id}|${combineOther?.id ?? ""}|${placeForFee.lat ?? ""},${placeForFee.lng ?? ""}` : null;
+  const [feeQuote, setFeeQuote] = useState<{ key: string; fee: number } | null>(null);
+  const [feeQuoteError, setFeeQuoteError] = useState<string | null>(null);
+  const [feeRetry, setFeeRetry] = useState(0);
+  useEffect(() => {
+    if (!feeKey || !(checkoutRequested || step === "checkout")) return;
+    if (combineOtherId && !combineOther) return;
+    let live = true;
+    setFeeQuoteError(null);
+    api.getRestaurantDeliveryQuote(id, { lat: placeForFee.lat, lng: placeForFee.lng, alsoFrom: combineOther?.id ?? null })
+      .then((r) => { if (live) setFeeQuote({ key: feeKey, fee: r.deliveryFee }); })
+      .catch((err) => { if (live) setFeeQuoteError(errorMessage(err)); });
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [feeKey, combineOtherId, combineOther?.id, checkoutRequested, step, feeRetry]);
+  const confirmedFee = feeQuote && feeQuote.key === feeKey ? feeQuote.fee : null;
 
   const selectedBundle = bundleCandidates.find((candidate) => candidate.id === selectedBundleOrderId) ?? null;
   const bundleExtraDeliveryFee = useMemo(() => {
@@ -1065,20 +1071,13 @@ export default function RestaurantPage() {
     return Math.max(0, roundFare(routeKm * deliverySettings.deliveryRatePerKm, deliverySettings.minimumDeliveryFee) - Number(selectedBundle.delivery_fee ?? 0));
   }, [selectedBundle, restaurant, delivery, deliverySettings]);
 
-  // Shared delivery with another restaurant's saved cart: one rider, one delivery fee for the
-  // whole route (other restaurant -> this restaurant -> customer).
-  const combinedRouteFee = useMemo(() => {
-    const d = placeFields(delivery);
-    if (!combineOther || !restaurant || !deliverySettings || combineOther.lat == null || combineOther.lng == null || restaurant.lat == null || restaurant.lng == null || d.lat == null || d.lng == null) return null;
-    const routeKm = haversineKm(combineOther.lat, combineOther.lng, restaurant.lat, restaurant.lng) + haversineKm(restaurant.lat, restaurant.lng, d.lat, d.lng);
-    return roundFare(routeKm * deliverySettings.deliveryRatePerKm, deliverySettings.minimumDeliveryFee);
-  }, [combineOther, restaurant, delivery, deliverySettings]);
   const combineOtherItemsTotal = combineOther ? combineOther.lines.reduce((sum, l) => sum + l.unitPrice * l.quantity, 0) : 0;
-  const sharedDelivery = combineOther != null && combinedRouteFee != null;
+  const sharedDelivery = combineOther != null && confirmedFee != null;
 
 
 
   async function checkout() {
+    if (!deliveryFeeKnown) return;
     const d = placeFields(delivery);
     if (!d.area && !d.address) {
       setError(t("restaurant_choose_delivery_location"));
@@ -1136,7 +1135,9 @@ export default function RestaurantPage() {
   // gold "Checkout" button wired to checkout() with the same guards.
   const onCheckoutStep = checkoutRequested || step === "checkout";
   const orderingUnavailable = !!restaurant && !!restaurant.is_demo && !restaurant.demo_checkout_enabled;
-  const estimatedFee = sharedDelivery ? combinedRouteFee : selectedBundle ? bundleExtraDeliveryFee : estimatedDeliveryFee;
+  const estimatedFee = selectedBundle ? bundleExtraDeliveryFee : confirmedFee;
+  // Checkout stays off until the delivery fee is worked out, so the customer never pays an unconfirmed amount.
+  const deliveryFeeKnown = !!delivery && estimatedFee != null && Number.isFinite(estimatedFee);
   const checkoutItemsTotal = itemsTotal + (combineOther ? combineOtherItemsTotal : 0);
   const orderItemCount = cart.reduce((n, l) => n + l.quantity, 0) + (combineOther ? combineOther.lines.reduce((n, l) => n + l.quantity, 0) : 0);
   // Checkout step: nav Back returns to the menu (the place picker has its own Back).
@@ -1148,8 +1149,8 @@ export default function RestaurantPage() {
         ? {
             tone: "gold",
             label: orderingUnavailable ? "Unavailable" : busy ? "Please wait…" : "Checkout",
-            detail: formatUgx(checkoutItemsTotal + (estimatedFee != null && Number.isFinite(estimatedFee) ? estimatedFee : 0)),
-            disabled: busy || !delivery || cart.length === 0 || !restaurant.is_open || orderingUnavailable,
+            detail: deliveryFeeKnown ? formatUgx(checkoutItemsTotal + estimatedFee!) : "—",
+            disabled: busy || !delivery || !deliveryFeeKnown || cart.length === 0 || !restaurant.is_open || orderingUnavailable,
             busy,
             onClick: () => void checkout(),
           }
@@ -1280,14 +1281,15 @@ export default function RestaurantPage() {
           </div>
           <div className="flex items-center justify-between text-sm text-ink-500">
             <span>{combineOther ? "Delivery (one rider, 2 pickups)" : t("restaurant_delivery_fee")}</span>
-            <span>{combineOther ? (sharedDelivery ? `~${formatUgx(combinedRouteFee!)}` : "Choose location") : selectedBundle ? (bundleExtraDeliveryFee != null ? `+${formatUgx(bundleExtraDeliveryFee)}` : "—") : estimatedDeliveryFee != null ? `~${formatUgx(estimatedDeliveryFee)}` : t("loading")}</span>
+            <span>{selectedBundle ? (bundleExtraDeliveryFee != null ? `+${formatUgx(bundleExtraDeliveryFee)}` : "—") : confirmedFee != null ? formatUgx(confirmedFee) : feeQuoteError ? "Couldn't confirm" : !delivery ? "Choose location" : "Calculating…"}</span>
           </div>
           <div className="flex items-center justify-between border-t border-[var(--border-faint)] pt-1.5 text-sm font-bold text-ink">
-            <span>{t("restaurant_estimated_total")}</span>
-            <span>{combineOther && !sharedDelivery ? "—" : estimatedFee != null ? formatUgx(checkoutItemsTotal + estimatedFee) : t("loading")}</span>
+            <span>Total</span>
+            <span>{estimatedFee != null ? formatUgx(checkoutItemsTotal + estimatedFee) : "—"}</span>
           </div>
         </div>
 
+        {feeQuoteError && delivery && <button type="button" onClick={() => setFeeRetry((n) => n + 1)} className="min-h-11 w-full rounded-full border border-[var(--border-faint)] px-4 text-sm font-bold text-ink">Couldn&apos;t confirm the delivery fee. Try again</button>}
         {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
         {!delivery && <p className="text-center text-xs text-ink-500">Choose a delivery location to check out.</p>}
 

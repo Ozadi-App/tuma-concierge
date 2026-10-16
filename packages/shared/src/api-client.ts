@@ -493,6 +493,13 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
     async listRestaurants() {
       return request<{ restaurants: Restaurant[]; /** Food ordering is switched off by an admin. */ paused?: boolean }>("/v1/restaurants");
     },
+    /** The exact delivery fee for an order from a food business to a location (the whole route when `alsoFrom` is another business combined into the same delivery). */
+    async getRestaurantDeliveryQuote(id: string, input: { lat?: number | null; lng?: number | null; alsoFrom?: string | null }) {
+      const params = new URLSearchParams();
+      if (input.lat != null && input.lng != null) { params.set("lat", String(input.lat)); params.set("lng", String(input.lng)); }
+      if (input.alsoFrom) params.set("alsoFrom", input.alsoFrom);
+      return request<{ deliveryFee: number; distanceKm: number | null }>(`/v1/restaurants/${encodeURIComponent(id)}/delivery-quote?${params}`);
+    },
     async getRestaurant(id: string) {
       return request<{ restaurant: Restaurant }>(`/v1/restaurants/${id}`);
     },
