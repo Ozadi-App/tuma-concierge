@@ -9,6 +9,7 @@ import { haversineKm } from "../lib/geo.js";
 import { roundFare, type MatchingMode } from "@peebee/shared";
 import { snapshotTimeFees } from "../orders/time-fees.js";
 import { notifyUser } from "../lib/webpush.js";
+import { initialLastMile, insertRelayLegs, planRelay, relayChargeFor, type RelayLastMile, type RelayPlan } from "../relay/service.js";
 
 export const marketplaceRoutes = new Hono();
 
@@ -1728,6 +1729,8 @@ const marketplaceCheckoutSchema = z.object({
   destinationArea: z.string().optional(),
   destinationLat: z.number().optional(),
   destinationLng: z.number().optional(),
+  /** A long delivery dropped at a petrol station: bring it to the door, or collect it there. */
+  relayLastMile: z.enum(["door", "collect"]).optional(),
 });
 
 // Marketplace Cart Checkout -> Real Orders linked to Boda Delivery System
@@ -1755,6 +1758,9 @@ marketplaceRoutes.post("/marketplace/checkout", requireAuth, async (c) => {
   const stage = paymentRail === "float" ? "Match" : "Create";
 
   const stops = await planMarketplaceDelivery(d.items, d, environment);
+  if (stops.some((stop) => stop.relay) && paymentRail === "float") {
+    return c.json({ error: "relay_requires_prepay", message: "Long-distance deliveries are paid in the app, not in cash." }, 409);
+  }
   const createdOrders: Row[] = [];
   const supportsStoreId = (await hasColumn("orders", "store_id")) && (await hasTable("stores"));
 
@@ -1817,6 +1823,13 @@ marketplaceRoutes.post("/marketplace/checkout", requireAuth, async (c) => {
     });
 
     await snapshotTimeFees(orderId, stop.deliveryFee);
+    if (stop.relay) {
+      await insertRelayLegs(orderId, stop.relay.plan, stop.relay.lastMile);
+      await db.execute({
+        sql: "INSERT INTO order_events (id, order_id, stage, note, actor_id) VALUES (?, ?, ?, ?, ?)",
+        args: [newId("evt"), orderId, stage, `Relay delivery by boda and matatu (${stop.relay.plan.routeName})`, user.sub],
+      });
+    }
     createdOrders.push({ id: orderId });
   }
 
@@ -1861,13 +1874,14 @@ marketplaceRoutes.post("/marketplace/checkout", requireAuth, async (c) => {
   return c.json({ ok: true, orders, order: orders[0] }, 201);
 });
 
-const quoteSchema = marketplaceCheckoutSchema.pick({ items: true, destinationLat: true, destinationLng: true });
+const quoteSchema = marketplaceCheckoutSchema.pick({ items: true, destinationLat: true, destinationLng: true, relayLastMile: true });
 
 /** The exact delivery fee a bag will be charged, split by store. Checkout shows this, never an estimate. */
 marketplaceRoutes.post("/marketplace/checkout/quote", requireAuth, async (c) => {
   const parsed = quoteSchema.safeParse(await c.req.json().catch(() => ({})));
   if (!parsed.success) return c.json({ error: "invalid_body", issues: parsed.error.issues }, 400);
   const stops = await planMarketplaceDelivery(parsed.data.items, parsed.data, await getPlatformEnvironment());
+  const relayed = stops.find((stop) => stop.relay)?.relay;
   const itemsTotal = stops.reduce((sum, stop) => sum + stop.itemsTotal, 0);
   const deliveryFee = stops.reduce((sum, stop) => sum + stop.deliveryFee, 0);
   return c.json({
@@ -1875,6 +1889,19 @@ marketplaceRoutes.post("/marketplace/checkout/quote", requireAuth, async (c) => 
     deliveryFee,
     total: itemsTotal + deliveryFee,
     stores: stops.map((stop) => ({ storeId: stop.storeId, storeName: stop.storeName, itemsTotal: stop.itemsTotal, deliveryFee: stop.deliveryFee })),
+    // A long delivery from one store goes by matatu; the customer sees each leg.
+    relay: relayed
+      ? {
+          routeName: relayed.plan.routeName,
+          dropMode: relayed.plan.dropMode,
+          station: relayed.plan.station?.name ?? null,
+          lastMile: relayed.lastMile,
+          doorTotal: relayed.plan.total,
+          collectTotal: relayed.plan.collectTotal ?? null,
+          choiceAtOrder: relayed.plan.dropMode === "station" && relayed.lastMile !== "pending",
+          legs: relayed.plan.legs.map((leg) => ({ leg: leg.leg, kind: leg.kind, fromName: leg.fromName, toName: leg.toName, fee: leg.fee })),
+        }
+      : null,
   });
 });
 
@@ -1882,6 +1909,7 @@ type CheckoutItem = z.infer<typeof checkoutItemSchema>;
 type DeliveryStop = {
   storeId: string; storeName: string; storeAddress: string | null; lat: number | null; lng: number | null;
   items: CheckoutItem[]; itemsTotal: number; distanceKm: number | null; deliveryFee: number;
+  relay?: { plan: RelayPlan; lastMile: RelayLastMile };
 };
 
 /**
@@ -1892,7 +1920,7 @@ type DeliveryStop = {
  */
 async function planMarketplaceDelivery(
   items: CheckoutItem[],
-  destination: { destinationLat?: number; destinationLng?: number },
+  destination: { destinationLat?: number; destinationLng?: number; relayLastMile?: "door" | "collect" },
   environment: Awaited<ReturnType<typeof getPlatformEnvironment>>,
 ): Promise<DeliveryStop[]> {
   const settings = await getDeliverySettings();
@@ -1937,6 +1965,22 @@ async function planMarketplaceDelivery(
     // Without coordinates there's no route: the admin's flat shopping fee, once for the whole bag.
     stops.forEach((stop, i) => { stop.deliveryFee = i === 0 ? roundFare(settings.shoppingDeliveryFee) : 0; });
     return stops;
+  }
+
+  // One store far from the customer: relayed by matatu, each leg at its own rate.
+  if (stops.length === 1) {
+    const stop = stops[0];
+    const plan = await planRelay(
+      { lat: stop.lat!, lng: stop.lng!, name: stop.storeName },
+      { lat: destinationLat!, lng: destinationLng!, name: "Your door" },
+    );
+    if (plan) {
+      const lastMile = await initialLastMile(plan, destination.relayLastMile);
+      stop.relay = { plan, lastMile };
+      stop.deliveryFee = relayChargeFor(plan, lastMile);
+      stop.distanceKm = Math.round(haversineKm(stop.lat!, stop.lng!, destinationLat!, destinationLng!) * 10) / 10;
+      return stops;
+    }
   }
 
   let travelled = 0;

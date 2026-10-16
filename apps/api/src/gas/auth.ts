@@ -98,6 +98,13 @@ export async function requireManager(c: Context, next: Next) {
   await next();
 }
 
+/** Either an attendant or a station manager of the outlet in the token. */
+export async function requireGasStaff(c: Context, next: Next) {
+  const token = await readToken(c);
+  if (!token) return unauthorized(c);
+  return token.kind === "manager" ? requireManager(c, next) : requireAttendant(c, next);
+}
+
 // ---- PINs ------------------------------------------------------------------
 
 const BCRYPT_ROUNDS = 10;

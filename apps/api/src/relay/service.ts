@@ -8,6 +8,7 @@ import { hasColumn, hasTable } from "../lib/schema.js";
 import { getDeliverySettings } from "../lib/settings.js";
 import { notifyUser } from "../lib/webpush.js";
 import { creditWallet } from "../wallet/service.js";
+import { ledgerBalance, postLedgerTransaction } from "../ledger/service.js";
 import { getRelaySettings } from "./settings.js";
 import { beyondRiderRange, riderRangeKm } from "../orders/matching.js";
 
@@ -17,6 +18,11 @@ import { beyondRiderRange, riderRangeKm } from "../orders/matching.js";
  *  leg 1  first rider: pickup -> boarding stage, hands the parcel to the matatu
  *  leg 2  matatu operator: boarding stage -> drop stage
  *  leg 3  last rider: drop stage -> customer, who gives the usual 4-digit PIN
+ *
+ * On a "station" route the matatu doesn't stop for a rider: it drops the
+ * parcel at the Peebee Gas station nearest the customer, where the pump
+ * attendant keeps it. From there the customer collects it with their code,
+ * or a rider takes it to the door (leg 3, paid up front or added later).
  *
  * Each handoff is confirmed by the receiver entering (or scanning) the giver's
  * code, which stamps the time and who took it. Each leg is priced at its own
@@ -39,7 +45,20 @@ export type RelayLegPlan = {
   fee: number;
 };
 
-export type RelayPlan = { routeId: string; routeName: string; legs: RelayLegPlan[]; total: number };
+export type RelayDropMode = "stage" | "station";
+export type RelayLastMile = "door" | "collect" | "pending";
+
+export type RelayPlan = {
+  routeId: string;
+  routeName: string;
+  legs: RelayLegPlan[];
+  /** Every leg, to the door. */
+  total: number;
+  dropMode: RelayDropMode;
+  /** Station routes: the drop station, and what the customer pays to collect there (legs 1 and 2). */
+  station?: { outletId: string; name: string; address: string | null; lat: number; lng: number };
+  collectTotal?: number;
+};
 
 type Point = { lat: number; lng: number; name?: string | null };
 
@@ -58,22 +77,27 @@ export async function planRelay(pickup: Point, destination: Point): Promise<Rela
 
   const routes = (await db.execute("SELECT * FROM relay_routes WHERE active = 1")).rows as Row[];
   const { deliveryRatePerKm, minimumDeliveryFee } = await getDeliverySettings();
+  const stationsReady = await relayStationsReady();
+  const station = stationsReady ? await nearestDropStation(destination, settings.stationMaxKm) : null;
+  const boda = (km: number) => roundFare(km * deliveryRatePerKm, minimumDeliveryFee);
   let best: RelayPlan | null = null;
   for (const route of routes) {
+    const dropMode: RelayDropMode = stationsReady && route.drop_mode === "station" ? "station" : "stage";
+    if (dropMode === "station" && !station) continue;
     const a = { name: String(route.stage_a_name), lat: Number(route.stage_a_lat), lng: Number(route.stage_a_lng) };
     const b = { name: String(route.stage_b_name), lat: Number(route.stage_b_lat), lng: Number(route.stage_b_lng) };
-    // A route runs both ways.
-    for (const [board, alight] of [[a, b], [b, a]]) {
+    // A route runs both ways. On a station route the far end is the station nearest the customer.
+    for (const [board, stageEnd] of [[a, b], [b, a]]) {
+      const alight = dropMode === "station" ? station! : stageEnd;
       const firstKm = haversineKm(pickup.lat, pickup.lng, board.lat, board.lng);
       const lastKm = haversineKm(alight.lat, alight.lng, destination.lat, destination.lng);
-      if (firstKm > settings.maxAccessKm || lastKm > settings.maxAccessKm) continue;
+      if (firstKm > settings.maxAccessKm || (dropMode === "stage" && lastKm > settings.maxAccessKm)) continue;
       // The matatu has to actually carry it most of the way.
       if (firstKm + lastKm >= directKm) continue;
       const legs: RelayLegPlan[] = [
         {
           leg: 1, kind: "boda", fromName: pickup.name || "Pickup", fromLat: pickup.lat, fromLng: pickup.lng,
-          toName: board.name, toLat: board.lat, toLng: board.lng, distanceKm: round1(firstKm),
-          fee: roundFare(firstKm * deliveryRatePerKm, minimumDeliveryFee),
+          toName: board.name, toLat: board.lat, toLng: board.lng, distanceKm: round1(firstKm), fee: boda(firstKm),
         },
         {
           leg: 2, kind: "matatu", fromName: board.name, fromLat: board.lat, fromLng: board.lng,
@@ -83,22 +107,65 @@ export async function planRelay(pickup: Point, destination: Point): Promise<Rela
         },
         {
           leg: 3, kind: "boda", fromName: alight.name, fromLat: alight.lat, fromLng: alight.lng,
-          toName: destination.name || "Destination", toLat: destination.lat, toLng: destination.lng, distanceKm: round1(lastKm),
-          fee: roundFare(lastKm * deliveryRatePerKm, minimumDeliveryFee),
+          toName: destination.name || "Destination", toLat: destination.lat, toLng: destination.lng, distanceKm: round1(lastKm), fee: boda(lastKm),
         },
       ];
       const total = legs.reduce((sum, leg) => sum + leg.fee, 0);
-      if (!best || total < best.total) best = { routeId: String(route.id), routeName: String(route.name), legs, total };
+      if (!best || total < best.total) {
+        best = {
+          routeId: String(route.id), routeName: String(route.name), legs, total, dropMode,
+          ...(dropMode === "station" ? { station: station!, collectTotal: legs[0].fee + legs[1].fee } : {}),
+        };
+      }
     }
   }
   return best;
+}
+
+/** Migration 0105 adds petrol-station drops. Until then every route drops at a stage. */
+export async function relayStationsReady(): Promise<boolean> {
+  return (await hasTable("order_relay")) && (await hasColumn("relay_routes", "drop_mode")) && (await hasColumn("fuel_station_outlets", "relay_drop"));
+}
+
+/** The active station that accepts relay parcels nearest the customer, within the admin's limit. */
+async function nearestDropStation(destination: Point, maxKm: number): Promise<RelayPlan["station"] | null> {
+  const outlets = (await db.execute(`SELECT o.id, o.name, o.address, o.lat, o.lng, s.brand_name AS station_name
+                                     FROM fuel_station_outlets o JOIN fuel_stations s ON s.id = o.station_id
+                                     WHERE o.relay_drop = 1 AND o.status = 'active' AND o.lat IS NOT NULL AND o.lng IS NOT NULL`)).rows as Row[];
+  let best: { row: Row; km: number } | null = null;
+  for (const row of outlets) {
+    const km = haversineKm(Number(row.lat), Number(row.lng), destination.lat, destination.lng);
+    if (km <= maxKm && (!best || km < best.km)) best = { row, km };
+  }
+  if (!best) return null;
+  const name = [best.row.station_name, best.row.name].filter(Boolean).join(" ") || "Petrol station";
+  return { outletId: String(best.row.id), name, address: (best.row.address as string | null) ?? null, lat: Number(best.row.lat), lng: Number(best.row.lng) };
+}
+
+/** What the customer is charged for a plan, given how the last mile goes. */
+export function relayChargeFor(plan: RelayPlan, lastMile: RelayLastMile): number {
+  return plan.dropMode === "station" && lastMile !== "door" ? plan.collectTotal ?? plan.total : plan.total;
+}
+
+/** The last-mile choice an order starts with: stage routes always go to the door. */
+export async function initialLastMile(plan: RelayPlan, requested: "door" | "collect" | undefined): Promise<RelayLastMile> {
+  if (plan.dropMode !== "station") return "door";
+  if ((await getRelaySettings()).lastMileChoice === "arrival") return "pending";
+  return requested === "collect" ? "collect" : "door";
 }
 
 function newHandoffCode(): string {
   return String(100000 + randomInt(900000));
 }
 
-export async function insertRelayLegs(orderId: string, plan: RelayPlan): Promise<void> {
+export async function insertRelayLegs(orderId: string, plan: RelayPlan, lastMile: RelayLastMile = "door"): Promise<void> {
+  if (await relayStationsReady()) {
+    await db.execute({
+      sql: `INSERT INTO order_relay (order_id, drop_mode, outlet_id, last_mile, collect_code, release_code) VALUES (?, ?, ?, ?, ?, ?)`,
+      args: [orderId, plan.dropMode, plan.station?.outletId ?? null, lastMile,
+        plan.dropMode === "station" ? newHandoffCode() : null, plan.dropMode === "station" ? newHandoffCode() : null],
+    });
+  }
   await executeBatch(plan.legs.map((leg) => ({
     sql: `INSERT INTO order_relay_legs (id, order_id, leg, kind, route_id, from_name, from_lat, from_lng, to_name, to_lat, to_lng, distance_km, fee, status, handoff_code)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'waiting', ?)`,
@@ -107,6 +174,16 @@ export async function insertRelayLegs(orderId: string, plan: RelayPlan): Promise
       leg.toName, leg.toLat, leg.toLng, leg.distanceKm, leg.fee, leg.leg === 3 ? null : newHandoffCode(),
     ],
   })));
+}
+
+export async function relayRow(orderId: string): Promise<Row | null> {
+  if (!(await hasTable("order_relay"))) return null;
+  return ((await db.execute({ sql: "SELECT * FROM order_relay WHERE order_id = ?", args: [orderId] })).rows[0] as Row | undefined) ?? null;
+}
+
+/** Legs the customer paid for: the last boda leg only counts when it goes to the door. */
+function boughtLegs(legs: Row[], relay: Row | null): Row[] {
+  return relay && relay.last_mile !== "door" ? legs.filter((leg) => Number(leg.leg) < 3) : legs;
 }
 
 export async function relayLegs(orderId: string): Promise<Row[]> {
@@ -143,8 +220,34 @@ export async function relayView(order: Row, viewerId: string): Promise<Row | nul
     });
     for (const row of res.rows as Row[]) names.set(String(row.id), row);
   }
+  const relay = await relayRow(String(order.id));
+  const station = relay?.outlet_id
+    ? (await db.execute({
+        sql: `SELECT o.name, o.address, o.lat, o.lng, o.phone, s.brand_name AS station_name FROM fuel_station_outlets o
+              JOIN fuel_stations s ON s.id = o.station_id WHERE o.id = ?`,
+        args: [String(relay.outlet_id)],
+      })).rows[0] as Row | undefined
+    : undefined;
+  const isCustomer = order.customer_id === viewerId;
+  const leg3 = legs.find((leg) => Number(leg.leg) === 3);
+  const atStation = relay?.drop_mode === "station";
+  const stillHeld = atStation && !relay?.released_at;
   return {
     routeName: route?.name ?? null,
+    dropMode: relay?.drop_mode ?? "stage",
+    lastMile: relay?.last_mile ?? "door",
+    station: station
+      ? {
+          name: [station.station_name, station.name].filter(Boolean).join(" "),
+          address: station.address ?? null, lat: station.lat ?? null, lng: station.lng ?? null, phone: station.phone ?? null,
+        }
+      : null,
+    heldAt: relay?.held_at ?? null,
+    releasedAt: relay?.released_at ?? null,
+    releasedTo: relay?.released_to ?? null,
+    // The customer's code to collect at the station, and the price of sending a rider instead.
+    collectCode: isCustomer && stillHeld && relay?.last_mile !== "door" ? relay?.collect_code ?? null : undefined,
+    sendRiderFee: isCustomer && stillHeld && relay?.last_mile !== "door" ? Number(leg3?.fee ?? 0) : undefined,
     legs: legs.map((leg) => {
       const provider = leg.provider_id ? names.get(String(leg.provider_id)) : undefined;
       const showCode = Number(leg.leg) === 1 && leg.status !== "done" && order.rider_id === viewerId;
@@ -175,16 +278,26 @@ export async function relayView(order: Row, viewerId: string): Promise<Row | nul
 // Payouts
 // ---------------------------------------------------------------------------
 
+const MERCHANT_MODEL = "merchant_allocations_v1";
+
+/** Money records name a user as the actor; station staff aren't users, so their actions carry none. */
+const userActor = (actorId: string): string | undefined => (actorId.includes(":") ? undefined : actorId);
+
 /** What the riders and operator share between them: the same amount a single
- * rider would get for this order (escrow collected, less the platform fees
- * locked in at Fund). */
-export async function relayPayoutPool(orderId: string): Promise<number> {
+ * rider would get for this order. Escrow orders: what was collected, less the
+ * platform fees locked in at Fund. Merchant-funded store orders: the delivery
+ * fee less commission, as settle works it out. */
+export async function relayPayoutPool(order: Row): Promise<number> {
+  const orderId = String(order.id);
+  const fees = (await db.execute({ sql: "SELECT * FROM order_fees WHERE order_id = ?", args: [orderId] })).rows[0] as Row | undefined;
+  if (order.funds_model === MERCHANT_MODEL) {
+    return Math.max(0, Number(order.delivery_fee ?? 0) - Number(fees?.delivery_commission ?? 0) - Number(fees?.processing_fee_rider ?? 0));
+  }
   const collected = await db.execute({
     sql: "SELECT COALESCE(SUM(amount), 0) AS collected FROM payments WHERE order_id = ? AND type = 'collection' AND status = 'successful'",
     args: [orderId],
   });
   const released = Number((collected.rows[0] as Row)?.collected ?? 0);
-  const fees = (await db.execute({ sql: "SELECT * FROM order_fees WHERE order_id = ?", args: [orderId] })).rows[0] as Row | undefined;
   if (!fees) return released;
   const serviceFee = Number(fees.service_fee) || 0;
   const processingFeeCustomer = Number(fees.processing_fee_customer) || 0;
@@ -204,7 +317,8 @@ function shareOf(pool: number, legs: Row[], leg: number): number {
   return Math.floor((pool * Number(row.fee)) / total);
 }
 
-/** Pays one leg once. A boda leg goes to the rider's wallet, the matatu leg to the operator's. */
+/** Pays one leg once. A boda leg goes to the rider's wallet, the matatu leg to the operator's.
+ * On a merchant-funded store order the money moves through the ledger from the order's escrow. */
 async function payLeg(order: Row, leg: Row, amount: number, actorId: string): Promise<number> {
   const marked = await db.execute({
     sql: "UPDATE order_relay_legs SET paid_amount = ?, paid_at = datetime('now') WHERE id = ? AND paid_at IS NULL",
@@ -212,46 +326,105 @@ async function payLeg(order: Row, leg: Row, amount: number, actorId: string): Pr
   });
   if (!marked.rowsAffected || amount <= 0 || !leg.provider_id) return marked.rowsAffected ? amount : 0;
   const environment = order.environment === "sandbox" ? "sandbox" : "live";
+  const providerId = String(leg.provider_id);
+  if (order.funds_model === MERCHANT_MODEL) {
+    const isBoda = leg.kind === "boda";
+    await postLedgerTransaction({
+      kind: "relay_leg_paid",
+      idempotencyKey: `relay-leg:${String(leg.id)}`,
+      environment,
+      referenceType: "order",
+      referenceId: String(order.id),
+      actorId: userActor(actorId),
+      postings: [
+        { ownerType: "order", ownerId: String(order.id), purpose: "settlement_escrow", environment, amount: -amount },
+        isBoda
+          ? { ownerType: "rider", ownerId: providerId, purpose: "earnings_available", environment, amount }
+          : { ownerType: "customer", ownerId: providerId, purpose: "wallet_payable", environment, amount },
+      ],
+      additionalStatements: [
+        isBoda
+          ? { sql: `UPDATE riders SET ${environment === "sandbox" ? "wallet_balance_sandbox" : "wallet_balance"} = ${environment === "sandbox" ? "wallet_balance_sandbox" : "wallet_balance"} + ?, updated_at = datetime('now') WHERE user_id = ?`, args: [amount, providerId] }
+          : { sql: `UPDATE users SET ${environment === "sandbox" ? "wallet_balance_sandbox" : "wallet_balance"} = ${environment === "sandbox" ? "wallet_balance_sandbox" : "wallet_balance"} + ?, updated_at = datetime('now') WHERE id = ?`, args: [amount, providerId] },
+      ],
+    });
+    return amount;
+  }
   if (leg.kind === "boda") {
     const column = environment === "sandbox" ? "wallet_balance_sandbox" : "wallet_balance";
     await db.execute({
       sql: `UPDATE riders SET ${column} = ${column} + ?, updated_at = datetime('now') WHERE user_id = ?`,
-      args: [amount, String(leg.provider_id)],
+      args: [amount, providerId],
     });
   } else {
-    await creditWallet(String(leg.provider_id), amount, {
+    await creditWallet(providerId, amount, {
       type: "adjustment",
       environment,
       orderId: String(order.id),
       note: "Relay parcel carried by matatu",
-      actorId,
+      actorId: userActor(actorId),
     });
   }
   return amount;
 }
 
-async function payLegAtHandoff(order: Row, legNumber: number, actorId: string): Promise<void> {
-  if (order.payment_rail !== "escrow" || !(await getRelaySettings()).releasePerLeg) return;
-  const legs = await relayLegs(String(order.id));
+async function payLegAtHandoff(orderId: string, legNumber: number, actorId: string): Promise<void> {
+  const order = (await db.execute({ sql: "SELECT * FROM orders WHERE id = ?", args: [orderId] })).rows[0] as Row | undefined;
+  if (!order || order.payment_rail !== "escrow" || !(await getRelaySettings()).releasePerLeg) return;
+  const legs = boughtLegs(await relayLegs(String(order.id)), await relayRow(String(order.id)));
   const leg = legs.find((row) => Number(row.leg) === legNumber);
   if (!leg) return;
-  await payLeg(order, leg, shareOf(await relayPayoutPool(String(order.id)), legs, legNumber), actorId);
+  await payLeg(order, leg, shareOf(await relayPayoutPool(order), legs, legNumber), actorId);
 }
 
-/** At settle: pays any leg not paid at its handoff, then the last rider the rest of the pool. */
+/** At settle: pays any leg not paid at its handoff, then the last rider (if
+ * the customer bought the last leg) the rest of the pool. A merchant-funded
+ * order's leftover escrow goes to the platform, as a normal settle does. */
 export async function settleRelayPayouts(order: Row, pool: number, actorId: string): Promise<boolean> {
-  const legs = await relayLegs(String(order.id));
-  if (!legs.length) return false;
+  const all = await relayLegs(String(order.id));
+  if (!all.length) return false;
+  const relay = await relayRow(String(order.id));
+  const legs = boughtLegs(all, relay);
+  const last = legs.find((row) => Number(row.leg) === 3);
   let paid = 0;
   for (const leg of legs.filter((row) => Number(row.leg) < 3)) {
-    paid += leg.paid_at ? Number(leg.paid_amount ?? 0) : await payLeg(order, leg, shareOf(pool, legs, Number(leg.leg)), actorId);
+    // Without a last leg, the matatu leg takes what's left so the pool is paid out exactly.
+    const share = !last && Number(leg.leg) === 2 ? Math.max(0, pool - paid) : shareOf(pool, legs, Number(leg.leg));
+    paid += leg.paid_at ? Number(leg.paid_amount ?? 0) : await payLeg(order, leg, share, actorId);
   }
-  const last = legs.find((row) => Number(row.leg) === 3);
   if (last) {
     await payLeg(order, { ...last, provider_id: last.provider_id ?? order.rider_id }, Math.max(0, pool - paid), actorId);
     await db.execute({ sql: "UPDATE order_relay_legs SET status = 'done', handed_over_at = datetime('now') WHERE id = ?", args: [String(last.id)] });
   }
+  if (order.funds_model === MERCHANT_MODEL) await closeMerchantEscrow(order, actorId);
   return true;
+}
+
+async function closeMerchantEscrow(order: Row, actorId: string): Promise<void> {
+  const environment = order.environment === "sandbox" ? "sandbox" : "live";
+  const orderId = String(order.id);
+  const escrow = await ledgerBalance({ ownerType: "order", ownerId: orderId, purpose: "settlement_escrow", environment });
+  const statements = [
+    { sql: "UPDATE order_budgets SET status = 'closed', updated_at = datetime('now') WHERE order_id = ?", args: [orderId] },
+    { sql: "DELETE FROM rider_order_locks WHERE order_id = ?", args: [orderId] },
+  ];
+  if (escrow > 0) {
+    await postLedgerTransaction({
+      kind: "merchant_order_settled",
+      idempotencyKey: `merchant-order:${orderId}:settle`,
+      environment,
+      referenceType: "order",
+      referenceId: orderId,
+      actorId: userActor(actorId),
+      postings: [
+        { ownerType: "order", ownerId: orderId, purpose: "settlement_escrow", environment, amount: -escrow },
+        { ownerType: "platform", ownerId: "peebee", purpose: "order_revenue", environment, amount: escrow },
+      ],
+      additionalStatements: statements,
+    });
+  } else {
+    for (const statement of statements) await db.execute(statement);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -293,6 +466,8 @@ export async function receiveAtMatatu(operatorId: string, code: string): Promise
   }
   const orderId = String(leg1.order_id);
   const firstRider = String(leg1.rider_id);
+  const relay = await relayRow(orderId);
+  const toStation = relay?.drop_mode === "station";
   const clearLocation = (await hasColumn("orders", "rider_location_updated_at"))
     ? ", rider_lat = NULL, rider_lng = NULL, rider_location_updated_at = NULL" : "";
   const changes = await executeBatch([
@@ -306,18 +481,21 @@ export async function receiveAtMatatu(operatorId: string, code: string): Promise
             WHERE order_id = ? AND leg = 2 AND EXISTS (SELECT 1 FROM order_relay_legs WHERE id = ? AND handed_over_to = ?)`,
       args: [operatorId, orderId, String(leg1.id), operatorId],
     },
+    // A stage drop opens the last leg now; a station drop opens it once the parcel is at the station.
     {
-      sql: "UPDATE order_relay_legs SET status = 'open' WHERE order_id = ? AND leg = 3 AND status = 'waiting'",
+      sql: `UPDATE order_relay_legs SET status = 'open' WHERE order_id = ? AND leg = 3 AND status = 'waiting' AND ${toStation ? "0" : "1"}`,
       args: [orderId],
     },
     {
       sql: `UPDATE orders SET rider_id = NULL${clearLocation}, updated_at = datetime('now') WHERE id = ? AND rider_id = ?`,
       args: [orderId, firstRider],
     },
+    // A store order's first rider is free for their next shop.
+    { sql: "DELETE FROM rider_order_locks WHERE rider_id = ? AND order_id = ?", args: [firstRider, orderId] },
   ]);
   if (!changes[0]) throw new RelayError(409, "already_received", "This parcel has already been handed over.");
   await logOrderEvent(orderId, `Parcel handed to matatu ${operator.vehicle_plate} at ${leg1.to_name}`, operatorId);
-  await payLegAtHandoff({ ...leg1, id: orderId }, 1, operatorId);
+  await payLegAtHandoff(orderId, 1, operatorId);
 
   const notes: Promise<unknown>[] = [
     notifyUser(firstRider, { title: "Handoff confirmed", body: `The matatu took the parcel at ${leg1.to_name}. You're free for your next job.`, url: "/", tag: `relay-${orderId}` }),
@@ -325,12 +503,14 @@ export async function receiveAtMatatu(operatorId: string, code: string): Promise
   if (leg1.customer_id) {
     notes.push(notifyUser(String(leg1.customer_id), {
       title: "Your parcel is on the matatu",
-      body: `It left ${leg1.to_name}. A rider will bring it to your door.`,
+      body: toStation
+        ? `It left ${leg1.to_name} for the petrol station near you.`
+        : `It left ${leg1.to_name}. A rider will bring it to your door.`,
       url: `/orders/${orderId}`,
       tag: `order-${orderId}`,
     }));
   }
-  await Promise.allSettled([...notes, notifyRidersOfLastMile(orderId)]);
+  await Promise.allSettled([...notes, ...(toStation ? [] : [notifyRidersOfLastMile(orderId)])]);
   return { orderId };
 }
 
@@ -342,13 +522,16 @@ async function notifyRidersOfLastMile(orderId: string): Promise<void> {
   })).rows[0] as Row | undefined;
   if (!leg3) return;
   const { lastMileRadiusKm } = await getRelaySettings();
+  const atStation = (await relayRow(orderId))?.drop_mode === "station";
   const riders = (await db.execute("SELECT user_id, stage_lat, stage_lng FROM riders WHERE verified = 1 AND is_online = 1 AND stage_lat IS NOT NULL AND stage_lng IS NOT NULL")).rows as Row[];
   const near = riders
     .filter((r) => haversineKm(Number(r.stage_lat), Number(r.stage_lng), Number(leg3.from_lat), Number(leg3.from_lng)) <= lastMileRadiusKm)
     .slice(0, 25);
   await Promise.allSettled(near.map((r) => notifyUser(String(r.user_id), {
     title: "Relay pickup near you",
-    body: `Meet a matatu at ${leg3.from_name} and deliver ${leg3.distance_km} km.`,
+    body: atStation
+      ? `Collect a parcel at ${leg3.from_name} and deliver ${leg3.distance_km} km.`
+      : `Meet a matatu at ${leg3.from_name} and deliver ${leg3.distance_km} km.`,
     url: "/",
     tag: `relay-open-${orderId}`,
   })));
@@ -409,6 +592,8 @@ export async function collectFromMatatu(riderId: string, legId: string, code: st
     throw new RelayError(403, "not_your_pickup", "This pickup isn't assigned to you.");
   }
   const orderId = String(leg3.order_id);
+  const relay = await relayRow(orderId);
+  if (relay?.drop_mode === "station") return collectFromStation(riderId, leg3, relay, code);
   const leg2 = (await db.execute({ sql: "SELECT * FROM order_relay_legs WHERE order_id = ? AND leg = 2", args: [orderId] })).rows[0] as Row | undefined;
   if (!leg2 || !["in_transit", "arrived"].includes(String(leg2.status))) {
     throw new RelayError(409, "not_on_matatu", "The parcel isn't on the matatu yet.");
@@ -428,7 +613,7 @@ export async function collectFromMatatu(riderId: string, legId: string, code: st
   if (!changes[0]) throw new RelayError(409, "already_collected", "This parcel was already collected.");
   await logOrderEvent(orderId, `Last-mile rider collected the parcel from the matatu at ${leg3.from_name}`, riderId);
   const order = (await db.execute({ sql: "SELECT * FROM orders WHERE id = ?", args: [orderId] })).rows[0] as Row;
-  await payLegAtHandoff({ ...leg2, ...order, id: orderId }, 2, riderId);
+  await payLegAtHandoff(orderId, 2, riderId);
   if (order.customer_id) {
     await notifyUser(String(order.customer_id), {
       title: "Your parcel is on the last stretch",
@@ -438,4 +623,197 @@ export async function collectFromMatatu(riderId: string, legId: string, code: st
     }).catch(() => {});
   }
   return { orderId };
+}
+
+// ---------------------------------------------------------------------------
+// Petrol-station drop
+// ---------------------------------------------------------------------------
+
+export type StationStaff = { kind: "attendant" | "manager"; id: string; outletId: string; name: string };
+
+async function orderRow(orderId: string): Promise<Row> {
+  return (await db.execute({ sql: "SELECT * FROM orders WHERE id = ?", args: [orderId] })).rows[0] as Row;
+}
+
+/** The matatu drops the parcel: the attendant enters the operator's code and keeps it in the shop. */
+export async function receiveAtStation(staff: StationStaff, code: string): Promise<{ orderId: string }> {
+  const leg2 = (await db.execute({
+    sql: `SELECT l.*, r.last_mile, r.outlet_id FROM order_relay_legs l JOIN order_relay r ON r.order_id = l.order_id
+          WHERE l.leg = 2 AND l.status IN ('in_transit', 'arrived') AND l.handoff_code = ? AND r.drop_mode = 'station' AND r.outlet_id = ?`,
+    args: [code.trim(), staff.outletId],
+  })).rows[0] as Row | undefined;
+  if (!leg2) throw new RelayError(404, "code_not_found", "That code doesn't match a parcel coming to this station.");
+  const orderId = String(leg2.order_id);
+  const holder = `${staff.kind}:${staff.id}`;
+  const changes = await executeBatch([
+    {
+      sql: "UPDATE order_relay_legs SET status = 'done', handed_over_at = datetime('now'), handed_over_to = ? WHERE id = ? AND status IN ('in_transit', 'arrived')",
+      args: [holder, String(leg2.id)],
+    },
+    { sql: "UPDATE order_relay SET held_at = datetime('now'), held_by = ? WHERE order_id = ? AND held_at IS NULL", args: [holder, orderId] },
+    // Door delivery is already paid for: the rider is called straight away.
+    { sql: "UPDATE order_relay_legs SET status = 'open' WHERE order_id = ? AND leg = 3 AND status = 'waiting' AND ? = 'door'", args: [orderId, String(leg2.last_mile)] },
+  ]);
+  if (!changes[0]) throw new RelayError(409, "already_received", "This parcel is already at the station.");
+  await logOrderEvent(orderId, `Parcel dropped at ${leg2.to_name} and kept by ${staff.name}`, holder);
+  await payLegAtHandoff(orderId, 2, holder);
+
+  const order = await orderRow(orderId);
+  const relay = await relayRow(orderId);
+  const notes: Promise<unknown>[] = [];
+  if (order.customer_id) {
+    notes.push(notifyUser(String(order.customer_id), relay?.last_mile === "door"
+      ? { title: "Your parcel is at the petrol station", body: `It's at ${leg2.to_name}. A rider is being called to bring it to you.`, url: `/orders/${orderId}`, tag: `order-${orderId}` }
+      : relay?.last_mile === "collect"
+        ? { title: "Ready to collect", body: `Collect it at ${leg2.to_name}. Show your code at the shop.`, url: `/orders/${orderId}`, tag: `order-${orderId}` }
+        : { title: "Your parcel is at the petrol station", body: `It's at ${leg2.to_name}. Collect it, or send a rider to bring it to you.`, url: `/orders/${orderId}`, tag: `order-${orderId}` }));
+  }
+  if (leg2.provider_id) {
+    notes.push(notifyUser(String(leg2.provider_id), { title: "Drop confirmed", body: `The station took the parcel at ${leg2.to_name}.`, url: "/relay", tag: `relay-${orderId}` }));
+  }
+  if (relay?.last_mile === "door") notes.push(notifyRidersOfLastMile(orderId));
+  await Promise.allSettled(notes);
+  return { orderId };
+}
+
+/** A rider collects at the station: they enter the code the attendant shows them. */
+async function collectFromStation(riderId: string, leg3: Row, relay: Row, code: string): Promise<{ orderId: string }> {
+  const orderId = String(leg3.order_id);
+  if (!relay.held_at) throw new RelayError(409, "not_at_station", "The parcel hasn't reached the station yet.");
+  if (relay.released_at) throw new RelayError(409, "already_collected", "This parcel was already collected.");
+  if (String(relay.release_code) !== code.trim()) throw new RelayError(400, "code_mismatch", "That code doesn't match. Ask the pump attendant for the parcel's code.");
+  const changes = await executeBatch([
+    {
+      sql: "UPDATE order_relay SET released_at = datetime('now'), released_to = 'rider', released_by = ? WHERE order_id = ? AND released_at IS NULL",
+      args: [riderId, orderId],
+    },
+    {
+      sql: "UPDATE order_relay_legs SET status = 'in_transit', started_at = datetime('now') WHERE id = ? AND status = 'assigned' AND provider_id = ?",
+      args: [String(leg3.id), riderId],
+    },
+  ]);
+  if (!changes[0]) throw new RelayError(409, "already_collected", "This parcel was already collected.");
+  await logOrderEvent(orderId, `Rider collected the parcel at ${leg3.from_name}`, riderId);
+  const order = await orderRow(orderId);
+  if (order.customer_id) {
+    await notifyUser(String(order.customer_id), {
+      title: "Your parcel is on the last stretch",
+      body: `A rider collected it at ${leg3.from_name} and is bringing it to you.`,
+      url: `/orders/${orderId}`,
+      tag: `order-${orderId}`,
+    }).catch(() => {});
+  }
+  return { orderId };
+}
+
+/** The customer collects in person: the attendant enters the customer's code. The order is done. */
+export async function releaseToCustomer(staff: StationStaff, code: string): Promise<{ orderId: string }> {
+  const relay = (await db.execute({
+    sql: `SELECT * FROM order_relay WHERE collect_code = ? AND outlet_id = ? AND drop_mode = 'station'
+          AND held_at IS NOT NULL AND released_at IS NULL AND last_mile != 'door'`,
+    args: [code.trim(), staff.outletId],
+  })).rows[0] as Row | undefined;
+  if (!relay) throw new RelayError(404, "code_not_found", "That code doesn't match a parcel waiting here for collection.");
+  const orderId = String(relay.order_id);
+  const holder = `${staff.kind}:${staff.id}`;
+  const released = await db.execute({
+    sql: "UPDATE order_relay SET released_at = datetime('now'), released_to = 'customer', released_by = ? WHERE order_id = ? AND released_at IS NULL",
+    args: [holder, orderId],
+  });
+  if (!released.rowsAffected) throw new RelayError(409, "already_collected", "This parcel was already collected.");
+  await logOrderEvent(orderId, `Customer collected the parcel at the station (${staff.name})`, holder);
+  await finishCollectedOrder(orderId, holder);
+  const order = await orderRow(orderId);
+  if (order.customer_id) {
+    await notifyUser(String(order.customer_id), { title: "Collected — thank you!", body: "Your parcel was handed to you at the petrol station.", url: `/orders/${orderId}`, tag: `order-${orderId}` }).catch(() => {});
+  }
+  return { orderId };
+}
+
+/** Settles an order the customer collected at the station: pays the legs they bought and closes it. */
+async function finishCollectedOrder(orderId: string, actorId: string): Promise<void> {
+  const order = await orderRow(orderId);
+  if (order.payment_rail === "escrow") {
+    if (order.funds_model === MERCHANT_MODEL) {
+      const { refundUnusedOrderPrincipal } = await import("../merchants/service.js");
+      await refundUnusedOrderPrincipal(orderId, userActor(actorId) ?? String(order.customer_id));
+    }
+    await settleRelayPayouts(order, await relayPayoutPool(order), actorId);
+  }
+  const total = Number(order.final_total ?? order.estimated_total ?? 0);
+  await db.execute({ sql: "UPDATE orders SET stage = 'Settle', final_total = ?, updated_at = datetime('now') WHERE id = ?", args: [total, orderId] });
+  await db.execute({ sql: "UPDATE lists SET status = 'delivered', updated_at = datetime('now') WHERE id = ?", args: [String(order.list_id)] });
+  await db.execute({
+    sql: "INSERT INTO order_events (id, order_id, stage, note, actor_id) VALUES (?, ?, 'Settle', ?, ?)",
+    args: [newId("evt"), orderId, "Order complete — collected at the petrol station", actorId],
+  });
+}
+
+/** The customer chose to collect (or hasn't chosen) and now wants a rider to bring it. They pay the last leg from their wallet. */
+export async function sendRiderFromStation(customerId: string, orderId: string): Promise<{ orderId: string; charged: number }> {
+  const order = await orderRow(orderId);
+  if (!order || order.customer_id !== customerId) throw new RelayError(404, "not_found", "Order not found.");
+  const relay = await relayRow(orderId);
+  if (relay?.drop_mode !== "station" || relay.last_mile === "door") throw new RelayError(409, "not_available", "A rider is already arranged for this parcel.");
+  if (relay.released_at) throw new RelayError(409, "already_collected", "This parcel was already collected.");
+  const leg3 = (await relayLegs(orderId)).find((leg) => Number(leg.leg) === 3);
+  if (!leg3) throw new RelayError(409, "not_available", "This parcel can't be sent with a rider.");
+  const fee = Number(leg3.fee);
+  const environment = order.environment === "sandbox" ? "sandbox" : "live";
+  const switched = await db.execute({
+    sql: "UPDATE order_relay SET last_mile = 'door' WHERE order_id = ? AND last_mile != 'door' AND released_at IS NULL",
+    args: [orderId],
+  });
+  if (!switched.rowsAffected) throw new RelayError(409, "not_available", "A rider is already arranged for this parcel.");
+  const { payFromWallet } = await import("../wallet/service.js");
+  const paymentId = fee > 0 ? await payFromWallet({ userId: customerId, amount: fee, orderId, environment, note: `Rider from the petrol station, order ${orderId}` }) : "free";
+  if (!paymentId) {
+    await db.execute({ sql: "UPDATE order_relay SET last_mile = ? WHERE order_id = ?", args: [String(relay.last_mile), orderId] });
+    throw new RelayError(409, "insufficient_wallet_balance", `Top up your wallet with at least UGX ${fee.toLocaleString("en-UG")} to send a rider.`);
+  }
+  await db.execute({
+    sql: "UPDATE orders SET estimated_total = COALESCE(estimated_total, 0) + ?, delivery_fee = COALESCE(delivery_fee, 0) + ?, updated_at = datetime('now') WHERE id = ?",
+    args: [fee, fee, orderId],
+  });
+  if (fee > 0 && order.funds_model === MERCHANT_MODEL) {
+    // The extra payment funds the order's delivery escrow, as the original collection did.
+    await postLedgerTransaction({
+      kind: "relay_last_leg_funded",
+      idempotencyKey: `relay-last-leg:${orderId}`,
+      environment,
+      referenceType: "order",
+      referenceId: orderId,
+      actorId: customerId,
+      postings: [
+        { ownerType: "provider", ownerId: "collections", purpose: "clearing", environment, amount: -fee },
+        { ownerType: "order", ownerId: orderId, purpose: "settlement_escrow", environment, amount: fee },
+      ],
+    });
+  }
+  await logOrderEvent(orderId, `Customer sent for a rider from the station (UGX ${fee.toLocaleString("en-UG")})`, customerId);
+  if (relay.held_at) {
+    await db.execute({ sql: "UPDATE order_relay_legs SET status = 'open' WHERE id = ? AND status = 'waiting'", args: [String(leg3.id)] });
+    await notifyRidersOfLastMile(orderId);
+  }
+  return { orderId, charged: fee };
+}
+
+/** Who may watch a relayed order: the customer, everyone who carries or holds it, the seller, and staff. */
+export async function canWatchRelay(order: Row, userId: string, role: string): Promise<boolean> {
+  if (role === "admin" || order.customer_id === userId || order.rider_id === userId) return true;
+  const legs = await relayLegs(String(order.id));
+  if (legs.some((leg) => leg.provider_id === userId)) return true;
+  if (order.restaurant_id) {
+    const owner = await db.execute({ sql: "SELECT 1 FROM restaurants WHERE id = ? AND owner_id = ?", args: [String(order.restaurant_id), userId] });
+    if (owner.rows.length) return true;
+  }
+  if (order.store_id && (await hasTable("stores"))) {
+    const member = await db.execute({
+      sql: `SELECT 1 FROM stores s JOIN merchant_members mm ON mm.merchant_id = s.merchant_id
+            WHERE s.id = ? AND mm.user_id = ? AND mm.status = 'active'`,
+      args: [String(order.store_id), userId],
+    });
+    if (member.rows.length) return true;
+  }
+  return false;
 }

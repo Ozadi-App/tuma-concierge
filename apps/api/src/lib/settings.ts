@@ -434,6 +434,10 @@ const DEFAULTS = {
   relay_max_access_km: "10",
   relay_last_mile_radius_km: "5",
   relay_release_per_leg: "0",
+  // Petrol-station drop: when the customer picks door delivery or collection ("order" = when ordering,
+  // "arrival" = once the parcel reaches the station), and how far the station may be from them.
+  relay_last_mile_choice: "order",
+  relay_station_max_km: "10",
 } as const;
 
 export type SettingKey = keyof typeof DEFAULTS;

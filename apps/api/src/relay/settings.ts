@@ -15,6 +15,10 @@ export type RelaySettings = {
   lastMileRadiusKm: number;
   /** Pay each leg at its handoff instead of all legs when the order settles. */
   releasePerLeg: boolean;
+  /** Petrol-station drop: the customer picks door delivery or collection when ordering, or once the parcel arrives. */
+  lastMileChoice: "order" | "arrival";
+  /** Furthest a drop station may be from the customer. */
+  stationMaxKm: number;
 };
 
 const num = (value: string | null, fallback: number) => {
@@ -23,12 +27,14 @@ const num = (value: string | null, fallback: number) => {
 };
 
 export async function getRelaySettings(): Promise<RelaySettings> {
-  const [enabled, minKm, accessKm, radiusKm, perLeg] = await Promise.all([
+  const [enabled, minKm, accessKm, radiusKm, perLeg, choice, stationKm] = await Promise.all([
     getSetting("relay_enabled"),
     getSetting("relay_min_distance_km"),
     getSetting("relay_max_access_km"),
     getSetting("relay_last_mile_radius_km"),
     getSetting("relay_release_per_leg"),
+    getSetting("relay_last_mile_choice"),
+    getSetting("relay_station_max_km"),
   ]);
   return {
     enabled: enabled === "1",
@@ -36,6 +42,8 @@ export async function getRelaySettings(): Promise<RelaySettings> {
     maxAccessKm: num(accessKm, 10),
     lastMileRadiusKm: num(radiusKm, 5),
     releasePerLeg: perLeg === "1",
+    lastMileChoice: choice === "arrival" ? "arrival" : "order",
+    stationMaxKm: num(stationKm, 10),
   };
 }
 
@@ -44,5 +52,7 @@ export async function setRelaySettings(next: Partial<RelaySettings>): Promise<vo
   if (next.minDistanceKm != null) await setSetting("relay_min_distance_km", String(next.minDistanceKm));
   if (next.maxAccessKm != null) await setSetting("relay_max_access_km", String(next.maxAccessKm));
   if (next.lastMileRadiusKm != null) await setSetting("relay_last_mile_radius_km", String(next.lastMileRadiusKm));
+  if (next.lastMileChoice != null) await setSetting("relay_last_mile_choice", next.lastMileChoice);
+  if (next.stationMaxKm != null) await setSetting("relay_station_max_km", String(next.stationMaxKm));
   if (next.releasePerLeg != null) await setSetting("relay_release_per_leg", next.releasePerLeg ? "1" : "0");
 }

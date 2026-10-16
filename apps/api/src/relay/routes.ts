@@ -12,12 +12,16 @@ import { getPlatformEnvironment } from "../lib/settings.js";
 import { notifyUser } from "../lib/webpush.js";
 import {
   approvedOperator,
+  canWatchRelay,
   claimLastMile,
   collectFromMatatu,
   planRelay,
   receiveAtMatatu,
   relayReady,
+  relayStationsReady,
+  relayView,
   RelayError,
+  sendRiderFromStation,
 } from "./service.js";
 import { getRelaySettings, setRelaySettings } from "./settings.js";
 
@@ -59,13 +63,71 @@ relayRoutes.get("/relay/quote", async (c) => {
     { lat: d.pickupLat, lng: d.pickupLng, name: d.pickupName },
     { lat: d.destinationLat, lng: d.destinationLng, name: d.destinationName },
   );
+  const { lastMileChoice } = await getRelaySettings();
   return c.json({
     relay: plan && {
       routeName: plan.routeName,
       total: plan.total,
+      dropMode: plan.dropMode,
+      // Petrol-station drop: where it's left, what collecting there costs, and whether the customer chooses now.
+      station: plan.station ? { name: plan.station.name, address: plan.station.address } : null,
+      collectTotal: plan.collectTotal ?? null,
+      choiceAtOrder: plan.dropMode === "station" && lastMileChoice === "order",
       legs: plan.legs.map((leg) => ({ leg: leg.leg, kind: leg.kind, fromName: leg.fromName, toName: leg.toName, distanceKm: leg.distanceKm, fee: leg.fee })),
     },
   });
+});
+
+/** Everyone involved in a relayed order follows it here: the customer, the
+ * riders, the matatu operator and the seller (staff use the admin view). */
+relayRoutes.get("/relay/orders/:id/track", async (c) => {
+  const user = c.get("user");
+  const order = (await db.execute({
+    sql: `SELECT o.*, c.name AS customer_name, r.name AS rider_name FROM orders o
+          LEFT JOIN users c ON c.id = o.customer_id LEFT JOIN users r ON r.id = o.rider_id WHERE o.id = ?`,
+    args: [c.req.param("id") as string],
+  })).rows[0] as Row | undefined;
+  if (!order) return c.json({ error: "not_found" }, 404);
+  if (!(await canWatchRelay(order, user.sub, user.role))) return c.json({ error: "forbidden" }, 403);
+  const relay = await relayView(order, user.sub);
+  if (!relay) return c.json({ error: "not_relayed" }, 404);
+  const events = await db.execute({ sql: "SELECT stage, note, created_at FROM order_events WHERE order_id = ? ORDER BY created_at", args: [String(order.id)] });
+  return c.json({
+    order: {
+      id: order.id, stage: order.stage, type: order.type, createdAt: order.created_at,
+      pickupArea: order.pickup_area, destinationArea: order.destination_area,
+      customerName: order.customer_name, riderName: order.rider_name,
+      // Live position: the boda carrying it, or the matatu while it's on board.
+      lat: order.rider_lat ?? null, lng: order.rider_lng ?? null, locationAt: order.rider_location_updated_at ?? null,
+    },
+    relay,
+    events: events.rows,
+  });
+});
+
+/** The customer switches to door delivery from the station, paying the last leg from their wallet. */
+relayRoutes.post("/relay/orders/:id/send-rider", async (c) => {
+  try {
+    return c.json(await sendRiderFromStation(c.get("user").sub, c.req.param("id") as string));
+  } catch (e) {
+    return fail(c, e);
+  }
+});
+
+/** A seller's relayed orders, so they can follow each one to the customer. */
+relayRoutes.get("/relay/merchant/orders", async (c) => {
+  const user = c.get("user");
+  const res = await db.execute({
+    sql: `SELECT DISTINCT o.id, o.stage, o.created_at, o.destination_area, st.name AS store_name, c.name AS customer_name
+          FROM orders o
+          JOIN order_relay_legs l ON l.order_id = o.id
+          JOIN stores st ON st.id = o.store_id
+          JOIN merchant_members mm ON mm.merchant_id = st.merchant_id AND mm.user_id = ? AND mm.status = 'active'
+          LEFT JOIN users c ON c.id = o.customer_id
+          ORDER BY o.created_at DESC LIMIT 50`,
+    args: [user.sub],
+  }).catch(() => ({ rows: [] }));
+  return c.json({ orders: res.rows });
 });
 
 // ---------------------------------------------------------------------------
@@ -248,7 +310,7 @@ relayRoutes.post("/relay/operator/legs/:id/location", async (c) => {
 // ---------------------------------------------------------------------------
 
 relayRoutes.get("/admin/relay/settings", requirePermission("settings.manage"), async (c) => {
-  return c.json({ settings: await getRelaySettings(), ready: await relayReady() });
+  return c.json({ settings: await getRelaySettings(), ready: await relayReady(), stationsReady: await relayStationsReady() });
 });
 
 const settingsSchema = z.object({
@@ -257,6 +319,8 @@ const settingsSchema = z.object({
   maxAccessKm: z.number().min(0.5).max(100),
   lastMileRadiusKm: z.number().min(0.5).max(100),
   releasePerLeg: z.boolean(),
+  lastMileChoice: z.enum(["order", "arrival"]),
+  stationMaxKm: z.number().min(0.5).max(100),
 }).partial();
 
 relayRoutes.put("/admin/relay/settings", requirePermission("settings.manage"), async (c) => {
@@ -286,19 +350,25 @@ const routeFields = {
   stageBLng: z.number().min(-180).max(180),
   parcelFare: z.number().int().min(0).max(1_000_000),
   active: z.boolean(),
+  /** Where the matatu hands over at the far end: to a rider at the stage, or at the petrol station nearest the customer. */
+  dropMode: z.enum(["stage", "station"]),
 };
 
 relayRoutes.post("/admin/relay/routes", requirePermission("settings.manage"), async (c) => {
   if (!(await relayReady())) return c.json({ error: "relay_unavailable", message: "Apply migration 0102 first." }, 503);
-  const parsed = z.object({ ...routeFields, active: routeFields.active.default(true) }).safeParse(await c.req.json().catch(() => ({})));
+  const parsed = z.object({ ...routeFields, active: routeFields.active.default(true), dropMode: routeFields.dropMode.default("stage") }).safeParse(await c.req.json().catch(() => ({})));
   if (!parsed.success) return c.json({ error: "invalid_body", issues: parsed.error.issues }, 400);
   const d = parsed.data;
+  if (d.dropMode === "station" && !(await relayStationsReady())) {
+    return c.json({ error: "stations_unavailable", message: "Apply migration 0105 to drop at petrol stations." }, 503);
+  }
   const id = newId("rrt");
   await db.execute({
     sql: `INSERT INTO relay_routes (id, name, stage_a_name, stage_a_lat, stage_a_lng, stage_b_name, stage_b_lat, stage_b_lng, parcel_fare, active)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     args: [id, d.name, d.stageAName, d.stageALat, d.stageALng, d.stageBName, d.stageBLat, d.stageBLng, d.parcelFare, d.active ? 1 : 0],
   });
+  if (d.dropMode === "station") await db.execute({ sql: "UPDATE relay_routes SET drop_mode = 'station' WHERE id = ?", args: [id] });
   await logActivity({ actor: c.get("user"), action: "relay.route.create", summary: `Added relay route "${d.name}"`, entityType: "relay_route", entityId: id, after: d, ip: ip(c) });
   return c.json({ id }, 201);
 });
@@ -314,7 +384,11 @@ relayRoutes.patch("/admin/relay/routes/:id", requirePermission("settings.manage"
     ["name", d.name], ["stage_a_name", d.stageAName], ["stage_a_lat", d.stageALat], ["stage_a_lng", d.stageALng],
     ["stage_b_name", d.stageBName], ["stage_b_lat", d.stageBLat], ["stage_b_lng", d.stageBLng],
     ["parcel_fare", d.parcelFare], ["active", d.active == null ? undefined : d.active ? 1 : 0],
+    ["drop_mode", d.dropMode],
   ];
+  if (d.dropMode && !(await relayStationsReady())) {
+    return c.json({ error: "stations_unavailable", message: "Apply migration 0105 to drop at petrol stations." }, 503);
+  }
   const set = columns.filter(([, value]) => value !== undefined);
   if (!set.length) return c.json({ ok: true });
   await db.execute({
@@ -365,4 +439,32 @@ relayRoutes.get("/admin/relay/orders", requirePermission("orders.view"), async (
     });
   }
   return c.json({ orders: [...byOrder.values()] });
+});
+
+/** Peebee Gas stations, and whether each accepts relay parcels. */
+relayRoutes.get("/admin/relay/stations", requirePermission("settings.manage"), async (c) => {
+  if (!(await relayStationsReady())) return c.json({ stations: [], ready: false });
+  const res = await db.execute(`SELECT o.id, o.name, o.address, o.lat, o.lng, o.status, o.relay_drop, s.brand_name AS station_name,
+                                       (SELECT COUNT(*) FROM order_relay r WHERE r.outlet_id = o.id AND r.held_at IS NOT NULL AND r.released_at IS NULL) AS holding
+                                FROM fuel_station_outlets o JOIN fuel_stations s ON s.id = o.station_id
+                                ORDER BY o.relay_drop DESC, s.brand_name, o.name`);
+  return c.json({ stations: res.rows, ready: true });
+});
+
+relayRoutes.post("/admin/relay/stations/:outletId", requirePermission("settings.manage"), async (c) => {
+  if (!(await relayStationsReady())) return c.json({ error: "stations_unavailable", message: "Apply migration 0105 first." }, 503);
+  const outletId = c.req.param("outletId") as string;
+  const parsed = z.object({ relayDrop: z.boolean() }).safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) return c.json({ error: "invalid_body" }, 400);
+  const before = (await db.execute({ sql: "SELECT id, name, relay_drop, lat, lng FROM fuel_station_outlets WHERE id = ?", args: [outletId] })).rows[0] as Row | undefined;
+  if (!before) return c.json({ error: "not_found" }, 404);
+  if (parsed.data.relayDrop && (before.lat == null || before.lng == null)) {
+    return c.json({ error: "location_required", message: "Set this station's map location first." }, 400);
+  }
+  await db.execute({ sql: "UPDATE fuel_station_outlets SET relay_drop = ?, updated_at = datetime('now') WHERE id = ?", args: [parsed.data.relayDrop ? 1 : 0, outletId] });
+  await logActivity({
+    actor: c.get("user"), action: "relay.station", summary: `${parsed.data.relayDrop ? "Opened" : "Closed"} ${before.name} for relay parcels`,
+    entityType: "fuel_station_outlet", entityId: outletId, before: { relayDrop: before.relay_drop }, after: parsed.data, ip: ip(c),
+  });
+  return c.json({ ok: true });
 });

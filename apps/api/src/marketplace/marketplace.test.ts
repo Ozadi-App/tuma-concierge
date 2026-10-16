@@ -260,3 +260,42 @@ test("marketplace checkout: a bag from several stores is one delivery, priced ex
     client.close();
   }
 });
+
+test("marketplace checkout: a long delivery from one store is relayed by matatu", async () => {
+  resetSchemaCache();
+  const client = createClient({ url: "file::memory:" });
+  const migrations = join(process.cwd(), "src/db/migrations");
+  for (const file of readdirSync(migrations).filter((f) => f.endsWith(".sql")).sort()) {
+    for (const sql of splitSqlStatements(readFileSync(join(migrations, file), "utf8"))) await client.execute(sql);
+  }
+  bindDatabase(client);
+  const previousSecret = process.env.JWT_SECRET;
+  process.env.JWT_SECRET = "marketplace-relay-tests-only";
+  try {
+    await client.execute("INSERT INTO users (id, phone, name, password_hash, role) VALUES ('shopper', 'shopper', 'Shopper', 'hash', 'customer')");
+    await client.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('delivery_rate_per_km', '2000'), ('minimum_delivery_fee', '2000'), ('relay_enabled', '1')");
+    // FreshMart is at Acacia Mall, Kololo; the customer is in Entebbe.
+    await client.execute(`INSERT INTO relay_routes (id, name, stage_a_name, stage_a_lat, stage_a_lng, stage_b_name, stage_b_lat, stage_b_lng, parcel_fare, drop_mode)
+                          VALUES ('r', 'Kampala - Entebbe', 'Kampala taxi park', 0.3136, 32.5811, 'Entebbe stage', 0.0512, 32.4637, 5000, 'stage')`);
+    const shopper = await signToken({ sub: "shopper", role: "customer" });
+    const post = (path: string, body: object) => app.request(`/v1${path}`, {
+      method: "POST", headers: { Authorization: `Bearer ${shopper}`, "Content-Type": "application/json" }, body: JSON.stringify(body),
+    });
+    const items = [{ productId: "prod_avocados_pack", storeId: "store_demo_fresh_mart", title: "Hass Avocados", price: 5000, quantity: 1 }];
+    const destination = { destinationLat: 0.06, destinationLng: 32.47 };
+    const quote = (await (await post("/marketplace/checkout/quote", { items, ...destination })).json()) as {
+      deliveryFee: number; relay: { legs: { kind: string; fee: number }[]; doorTotal: number } | null;
+    };
+    assert.ok(quote.relay, "relayed");
+    assert.deepEqual(quote.relay!.legs.map((leg) => leg.kind), ["boda", "matatu", "boda"]);
+    assert.equal(quote.deliveryFee, quote.relay!.doorTotal);
+    const res = await post("/marketplace/checkout", { items, paymentRail: "escrow", ...destination });
+    const { order } = (await res.json()) as { order: { id: string; delivery_fee: number; estimated_total: number } };
+    assert.equal(order.delivery_fee, quote.deliveryFee);
+    assert.equal(order.estimated_total, 5000 + quote.deliveryFee);
+    assert.equal((await client.execute({ sql: "SELECT COUNT(*) AS n FROM order_relay_legs WHERE order_id = ?", args: [order.id] })).rows[0].n, 3);
+  } finally {
+    process.env.JWT_SECRET = previousSecret;
+    client.close();
+  }
+});
