@@ -3,15 +3,36 @@
 export type RelayLegKind = "boda" | "matatu";
 export type RelayLegStatus = "waiting" | "open" | "assigned" | "in_transit" | "arrived" | "done";
 
+export type RelayDropMode = "stage" | "station";
+/** door: a rider brings it (paid). collect: the customer collects at the station. pending: they choose once it arrives. */
+export type RelayLastMile = "door" | "collect" | "pending";
+
 export type RelayQuote = {
   routeName: string;
+  /** Every leg, to the door. */
   total: number;
+  dropMode?: RelayDropMode;
+  /** Station routes: where the matatu leaves it, and the price to collect there (legs 1 and 2). */
+  station?: { name: string; address: string | null } | null;
+  collectTotal?: number | null;
+  /** True when the customer picks door or collect now; false when they choose once it arrives. */
+  choiceAtOrder?: boolean;
   legs: Array<{ leg: 1 | 2 | 3; kind: RelayLegKind; fromName: string; toName: string; distanceKm: number; fee: number }>;
 };
 
 /** The relay as the order page shows it. handoffCode is only sent to whoever is handing the parcel over. */
 export type OrderRelay = {
   routeName: string | null;
+  dropMode?: RelayDropMode;
+  lastMile?: RelayLastMile;
+  station?: { name: string; address: string | null; lat: number | null; lng: number | null; phone: string | null } | null;
+  /** When the station received it, and when (and to whom) it was handed on. */
+  heldAt?: string | null;
+  releasedAt?: string | null;
+  releasedTo?: "customer" | "rider" | null;
+  /** Customer only, while it's waiting at the station: their collection code and the price of a rider instead. */
+  collectCode?: string | null;
+  sendRiderFee?: number;
   legs: Array<{
     id: string;
     leg: 1 | 2 | 3;
@@ -51,6 +72,7 @@ export type RelayOpenLeg = {
 
 export type RelayRoute = {
   id: string;
+  drop_mode?: RelayDropMode;
   name: string;
   stage_a_name: string;
   stage_a_lat: number;
@@ -89,6 +111,8 @@ export type RelaySettings = {
   maxAccessKm: number;
   lastMileRadiusKm: number;
   releasePerLeg: boolean;
+  lastMileChoice?: "order" | "arrival";
+  stationMaxKm?: number;
 };
 
 export type RelayAdminOrder = {
@@ -98,3 +122,33 @@ export type RelayAdminOrder = {
   environment: string;
   legs: Array<{ leg: number; kind: RelayLegKind; fromName: string; toName: string; fee: number; status: RelayLegStatus; providerName: string | null; handedOverAt: string | null; paidAmount: number | null; paidAt: string | null }>;
 };
+
+/** A relayed order as anyone involved follows it (customer, riders, matatu, seller). */
+export type RelayTrack = {
+  order: {
+    id: string; stage: string; type: string; createdAt: string;
+    pickupArea: string | null; destinationArea: string | null; customerName: string | null; riderName: string | null;
+    lat: number | null; lng: number | null; locationAt: string | null;
+  };
+  relay: OrderRelay;
+  events: Array<{ stage: string; note: string; created_at: string }>;
+};
+
+/** The petrol station's view in the Peebee Gas app. */
+export type RelayStationParcels = {
+  incoming: Array<{ order_id: string; from_name: string; matatu_status: RelayLegStatus; vehicle_plate: string | null; operator_name: string | null; started_at: string | null }>;
+  held: Array<{
+    order_id: string; last_mile: RelayLastMile; held_at: string; customer_name: string | null; customer_phone: string | null;
+    rider_status: RelayLegStatus | null; rider_name: string | null;
+    /** Shown once a rider is on the way: the rider enters it to take the parcel. */
+    release_code: string | null;
+  }>;
+  recent: Array<{ order_id: string; released_to: "customer" | "rider"; released_at: string; customer_name: string | null }>;
+};
+
+export type RelayStation = {
+  id: string; name: string; address: string | null; lat: number | null; lng: number | null; status: string;
+  relay_drop: number; station_name: string; holding: number;
+};
+
+export type RelayMerchantOrder = { id: string; stage: string; created_at: string; destination_area: string | null; store_name: string; customer_name: string | null };
