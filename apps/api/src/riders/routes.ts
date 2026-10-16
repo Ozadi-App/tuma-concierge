@@ -12,10 +12,11 @@ import { ensureRiderCode } from "../lib/profile-codes.js";
 import { hasColumn, hasTable } from "../lib/schema.js";
 import { baseMimeType, extensionForMime } from "../lib/mime.js";
 import { clientIp } from "../lib/ratelimit.js";
-import { getDeliverySettings, getLugandaAudioSettings, getMonetizationSettings, getPlatformEnvironment, getProSettings, getRiderReserveSettings } from "../lib/settings.js";
+import { getDeliverySettings, getLugandaAudioSettings, getMonetizationSettings, getPlatformEnvironment, getProSettings, getRiderReserveSettings, getRideExtrasSettings } from "../lib/settings.js";
 import { beyondRiderRange, currentVisibilityRadiusKm, orderMatchPoint, riderRangeKm } from "../orders/matching.js";
 import { redactOrders, toOpenJob } from "../orders/visibility.js";
 import { computeBidding, loadBiddingContext } from "../orders/bidding.js";
+import { offerSummary, rideExtrasAvailable, timestampMs } from "../orders/ride-extras.js";
 import { isCarOrder } from "../car/service.js";
 import {
   checkPaymentStatus,
@@ -379,6 +380,22 @@ riderRoutes.get("/riders/jobs/available", requireAuth, requireRole("rider"), asy
   ]);
   const appliedOrderIds = new Set((appliedRes.rows as Row[]).map((r) => r.order_id as string));
   const biddingContext = await loadBiddingContext();
+  // Name your fare (0104): offers on open rides + this rider's own open counters.
+  const offersOn = (res.rows as Row[]).some((order) => order.fare_offer != null) && (await rideExtrasAvailable()).offers;
+  const extrasSettings = offersOn ? await getRideExtrasSettings() : null;
+  const myCounters = new Map<string, { id: string; amount: number; expiresAt: string | null }>();
+  if (offersOn) {
+    const counters = await db.execute({
+      sql: `SELECT id, order_id, proposed_total, expires_at FROM fee_proposals
+            WHERE rider_id = ? AND kind = 'counter' AND status = 'pending'`,
+      args: [user.sub],
+    });
+    for (const row of counters.rows as Row[]) {
+      if (timestampMs(row.expires_at) > Date.now()) {
+        myCounters.set(String(row.order_id), { id: String(row.id), amount: Number(row.proposed_total), expiresAt: (row.expires_at as string | null) ?? null });
+      }
+    }
+  }
 
   const jobs = (res.rows as Row[])
     .map((order) => {
@@ -397,6 +414,12 @@ riderRoutes.get("/riders/jobs/available", requireAuth, requireRole("rider"), asy
           bidding: (() => {
             const b = computeBidding(order, biddingContext.settings, biddingContext.enabledModes);
             return b.active ? { appPrice: b.appPrice, min: b.min, max: b.max } : null;
+          })(),
+          fareOffer: (() => {
+            const summary = extrasSettings ? offerSummary(order, extrasSettings) : null;
+            return summary
+              ? { amount: summary.amount, quote: summary.quote, min: summary.min, max: summary.max, expiresAt: summary.expiresAt, expired: summary.expired, myCounter: myCounters.get(String(order.id)) ?? null }
+              : null;
           })(),
         }),
         sortKey: distanceKm ?? Infinity,

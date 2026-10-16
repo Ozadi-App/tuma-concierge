@@ -10,6 +10,7 @@ import { DeliveryNavigation } from "../../../components/DeliveryNavigation";
 import { FeeProposalVoicePlayer } from "../../../components/FeeProposalVoicePlayer";
 import { LugandaListPlayer } from "../../../components/LugandaListPlayer";
 import { RelayCollectFromMatatu, RelayHandToMatatu } from "../../../components/RelayHandoff";
+import { RideStopsPanel } from "../../../components/RideStopsPanel";
 import { VoiceNotePlayer } from "../../../components/VoiceNotePlayer";
 import { VoiceReasonRecorder } from "../../../components/VoiceReasonRecorder";
 import { api, errorMessage } from "../../../lib/api";
@@ -124,6 +125,10 @@ export default function JobDetailPage() {
   }
 
   const { order, items, substitutions, feeProposals } = detail;
+  const rideStops = detail.rideStops ?? [];
+  // Multi-stop: the next stop not yet left behind (null = straight to the destination).
+  const nextStop = rideStops.find((stop) => stop.status !== "done") ?? null;
+  const stopAfter = nextStop ? rideStops.find((stop) => stop.position > nextStop.position) ?? null : null;
   const canDeliver = ["Shop", "Substitute", "Approve"].includes(order.stage);
   const canPropose = order.type === "shopping" && (order.stage === "Shop" || order.stage === "Substitute");
   const canProposeFee = !["Create", "Settle"].includes(order.stage);
@@ -321,6 +326,8 @@ export default function JobDetailPage() {
           </p>
         )}
       </header>
+
+      {rideStops.length > 0 && <RideStopsPanel order={order} stops={rideStops} />}
 
       {(detail.bundleStops?.length ?? 0) > 1 && (
         <section className="rounded-2xl border border-gold/25 bg-gold/10 p-4" aria-label="Combined delivery pickups">
@@ -752,7 +759,45 @@ export default function JobDetailPage() {
           <p className="text-sm text-ink-500">{t("job_customer_notified_handover")}</p>
         )}
 
-        {order.stage === "PickedUp" && (
+        {order.stage === "PickedUp" && nextStop?.status === "pending" && (
+          <>
+            <p className="text-sm text-ink-500">
+              {t("stop_heading", { n: nextStop.position })}
+              {nextStop.area ? ` · ${nextStop.area}` : ""}
+            </p>
+            <DeliveryNavigation
+              key={`stop-${nextStop.position}`}
+              orderId={orderId}
+              destinationLat={nextStop.lat}
+              destinationLng={nextStop.lng}
+              busy={busy}
+              onConfirmDelivery={() => run(() => api.arrivedAtStop(orderId, nextStop.position))}
+              confirmButtonLabel={t("stop_arrived_btn", { n: nextStop.position })}
+              confirmModalDescription={t("stop_arrived_desc")}
+            />
+          </>
+        )}
+
+        {order.stage === "PickedUp" && nextStop?.status === "arrived" && (
+          <>
+            <p className="text-sm font-semibold text-ink" role="status">
+              {t("stop_waiting", { n: nextStop.position })}
+              {nextStop.area ? ` · ${nextStop.area}` : ""}
+            </p>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => run(() => api.continueFromStop(orderId, nextStop.position))}
+              className="min-h-11 w-full rounded-full bg-gold px-4 text-sm font-bold text-ink-gold disabled:opacity-60"
+            >
+              {t("stop_continue_btn", {
+                next: stopAfter ? t("stop_label", { n: stopAfter.position }) : t("stop_the_destination"),
+              })}
+            </button>
+          </>
+        )}
+
+        {order.stage === "PickedUp" && !nextStop && (
           <>
             <p className="text-sm text-ink-500">{t("job_heading_destination")}</p>
             <DeliveryNavigation

@@ -129,8 +129,68 @@ export type OrderRow = {
   rider_lat: number | null;
   rider_lng: number | null;
   rider_location_updated_at: string | null;
+  /** Name your fare (migration 0104): the customer's offer, the app quote it
+   * was measured against, when riders stop countering and how many raises. */
+  fare_offer?: number | null;
+  fare_offer_quote?: number | null;
+  fare_offer_expires_at?: string | null;
+  fare_offer_raises?: number;
+  /** Multi-stop rides (0104): number of stops between pickup and destination. */
+  stop_count?: number;
   created_at: string;
   updated_at: string;
+};
+
+/** One stop on a multi-stop boda ride (0104). */
+export type RideStop = {
+  position: number;
+  area: string | null;
+  address: string | null;
+  lat: number;
+  lng: number;
+  status: "pending" | "arrived" | "done";
+  arrivedAt: string | null;
+  departedAt: string | null;
+};
+
+/** A stop as the customer chooses it, before booking. */
+export type RideStopInput = { area?: string; address?: string; lat: number; lng: number };
+
+/** The app's quote for a boda ride through any stops, plus the Name-your-fare band. */
+export type RideQuote = {
+  quote: number;
+  base: number;
+  stopFees: number;
+  stopFee: number;
+  stops: number;
+  distanceKm: number;
+  maxStops: number;
+  offers: { min: number; max: number; ttlMinutes: number; maxRaises: number } | null;
+};
+
+/** A customer's live offer on a ride. */
+export type FareOffer = {
+  amount: number;
+  quote: number;
+  min: number;
+  max: number;
+  expiresAt: string | null;
+  expired: boolean;
+  raises: number;
+  raisesLeft: number;
+};
+
+/** A rider's counter to a customer's offer, waiting for the customer. */
+export type FareCounter = {
+  id: string;
+  amount: number;
+  offer: number;
+  rider_id: string;
+  rider_name: string | null;
+  rider_rating: number | null;
+  rider_verified: number | null;
+  expires_at: string | null;
+  created_at: string;
 };
 
 /**
@@ -190,6 +250,18 @@ export type AvailableJob = Pick<
   applied: boolean;
   /** Set when riders may bid on this job: the app's price and the allowed range for a bid. */
   bidding?: { appPrice: number | null; min: number | null; max: number | null } | null;
+  /** Multi-stop rides: stops between pickup and destination (0 = single destination). */
+  stop_count?: number;
+  /** Name your fare: the customer's offer, the app quote, the counter band and this rider's open counter. */
+  fareOffer?: {
+    amount: number;
+    quote: number;
+    min: number;
+    max: number;
+    expiresAt: string | null;
+    expired: boolean;
+    myCounter: { id: string; amount: number; expiresAt: string | null } | null;
+  } | null;
 };
 
 /**
@@ -1276,6 +1348,8 @@ export type SharedTrip = {
   riderLat: number | null;
   riderLng: number | null;
   etaMinutes: number | null;
+  /** Multi-stop rides: the stops on the way, in order, with progress. */
+  stops?: Array<{ position: number; area: string | null; address: string | null; status: "pending" | "arrived" | "done" }>;
 };
 
 export type SavedLocation = {
@@ -1565,6 +1639,11 @@ export type OrderDetail = {
   bundleStops?: Array<{ id: string; stage: string; pickup_address: string | null; pickup_lat: number | null; pickup_lng: number | null; restaurant_name: string | null; outlet_name: string | null }>;
   /** Set when the parcel is relayed boda -> matatu -> boda. */
   relay?: import("./relay.js").OrderRelay | null;
+  /** Multi-stop rides (0104). */
+  rideStops?: RideStop[];
+  /** Name your fare (0104). */
+  fareOffer?: FareOffer | null;
+  fareCounters?: FareCounter[];
 };
 
 /** A rider's mobile-money cash-out of their wallet balance. */

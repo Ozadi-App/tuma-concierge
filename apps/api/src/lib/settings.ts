@@ -348,6 +348,17 @@ const DEFAULTS = {
   /** A bid may be this % of the app's price at the lowest / highest. */
   bidding_min_percent: "50",
   bidding_max_percent: "150",
+  /** Name your fare (boda rides): a customer's offer may be this % of the app's quote, lowest / highest. */
+  fare_offer_min_percent: "70",
+  fare_offer_max_percent: "150",
+  /** How long an offer stays open for rider counters, and how long one counter waits for the customer. */
+  fare_offer_ttl_minutes: "10",
+  fare_counter_ttl_seconds: "120",
+  /** How many times a customer may raise one offer. */
+  fare_offer_max_raises: "5",
+  /** Multi-stop boda rides: the most stops between pickup and destination, and a flat fee per stop (UGX). */
+  ride_max_stops: "3",
+  ride_stop_fee: "1000",
   /** On by default: jobs nobody serves within 6 hours expire. Admin can
    * change the time/unit or switch it off (Settings → Rider matching). */
   job_expiry_enabled: "1",
@@ -687,6 +698,39 @@ export async function getBiddingSettings(): Promise<BiddingSettings> {
   const minPercent = Math.min(100, Math.max(1, Number(min) || Number(DEFAULTS.bidding_min_percent)));
   const maxPercent = Math.max(100, Math.min(500, Number(max) || Number(DEFAULTS.bidding_max_percent)));
   return { enabled: enabled === "1", minPercent, maxPercent };
+}
+
+export type RideExtrasSettings = {
+  offerMinPercent: number;
+  offerMaxPercent: number;
+  offerTtlMinutes: number;
+  counterTtlSeconds: number;
+  maxRaises: number;
+  maxStops: number;
+  stopFee: number;
+};
+
+/** Name your fare + multi-stop limits. Stored as plain settings keys, so no migration is needed to tune them. */
+export async function getRideExtrasSettings(): Promise<RideExtrasSettings> {
+  const [minP, maxP, ttl, counterTtl, raises, maxStops, stopFee] = await Promise.all([
+    getSetting("fare_offer_min_percent"),
+    getSetting("fare_offer_max_percent"),
+    getSetting("fare_offer_ttl_minutes"),
+    getSetting("fare_counter_ttl_seconds"),
+    getSetting("fare_offer_max_raises"),
+    getSetting("ride_max_stops"),
+    getSetting("ride_stop_fee"),
+  ]);
+  const num = (v: string, d: string) => (Number.isFinite(Number(v)) && v !== "" ? Number(v) : Number(d));
+  return {
+    offerMinPercent: Math.min(100, Math.max(10, num(minP, DEFAULTS.fare_offer_min_percent))),
+    offerMaxPercent: Math.max(100, Math.min(500, num(maxP, DEFAULTS.fare_offer_max_percent))),
+    offerTtlMinutes: Math.max(1, Math.min(120, num(ttl, DEFAULTS.fare_offer_ttl_minutes))),
+    counterTtlSeconds: Math.max(30, Math.min(1800, num(counterTtl, DEFAULTS.fare_counter_ttl_seconds))),
+    maxRaises: Math.max(0, Math.min(20, num(raises, DEFAULTS.fare_offer_max_raises))),
+    maxStops: Math.max(0, Math.min(5, num(maxStops, DEFAULTS.ride_max_stops))),
+    stopFee: Math.max(0, Math.min(100_000, num(stopFee, DEFAULTS.ride_stop_fee))),
+  };
 }
 
 export async function setBiddingSettings(next: BiddingSettings): Promise<void> {

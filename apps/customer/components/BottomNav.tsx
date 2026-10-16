@@ -179,7 +179,9 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
   // the active order's own tracking page, and Home (which has the Active
   // order card — the chip just sat on top of it while scrolling).
   const isOnActiveOrderPage = activeOrder ? pathname === `/orders/${activeOrder.id}` : false;
-  const showActiveDeliveryBadge = !overlay && !!activeOrder && !isOnActiveOrderPage && pathname !== "/";
+  // The Ride home shows an active ride in its own live-trip card, so the chip would repeat it.
+  const isRideHomeWithRide = pathname === "/ride" && !!activeOrder?.is_ride;
+  const showActiveDeliveryBadge = !overlay && !!activeOrder && !isOnActiveOrderPage && pathname !== "/" && !isRideHomeWithRide;
 
   useEffect(() => {
     const nav = navRef.current;
@@ -338,6 +340,8 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
                 <span className="flex min-w-0 items-center gap-2">
                   {primaryAction.busy ? (
                     <Loader2 className="h-5 w-5 shrink-0 animate-spin" aria-hidden />
+                  ) : primaryAction.icon ? (
+                    <primaryAction.icon className="h-5 w-5 shrink-0" strokeWidth={2.2} aria-hidden />
                   ) : (
                     <ShoppingBag className="h-5 w-5 shrink-0" strokeWidth={2.2} aria-hidden />
                   )}

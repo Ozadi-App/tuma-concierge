@@ -1,7 +1,7 @@
-import { ServiceLanding } from "../../components/ServiceLanding";
+import { RideHome } from "../../components/ride/RideHome";
 
 export const metadata = { title: "Ride | Peebee" };
 
 export default function RideHomePage() {
-  return <ServiceLanding group="ride" />;
+  return <RideHome />;
 }

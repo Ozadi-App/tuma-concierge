@@ -1435,3 +1435,155 @@ select:focus {
   border-top: 1px solid var(--border-faint);
   opacity: 0.7;
 }
+
+/* ------------------------------------------------------------------ */
+/* Ride home ("Live Canvas"): live map + bottom sheet + fare board.     */
+/* Bright in light mode; the darker treatment only applies in dark.     */
+/* ------------------------------------------------------------------ */
+.ride-home {
+  --ride-red: 217 45 32;
+  height: calc(100dvh - 4rem);
+  /* The sheet handles the nav clearance itself; cancel <main>'s padding so the page never scrolls. */
+  margin-bottom: calc(-1 * var(--customer-nav-content-gap, calc(87px + env(safe-area-inset-bottom))));
+}
+.ride-map-placeholder {
+  background-color: #eceee9;
+  background-image:
+    radial-gradient(60% 50% at 50% 38%, rgb(var(--color-gold) / .16), transparent 70%),
+    linear-gradient(rgb(10 10 10 / .045) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(10 10 10 / .045) 1px, transparent 1px);
+  background-size: auto, 28px 28px, 28px 28px;
+}
+.ride-sheet {
+  background: rgb(var(--surface-card));
+  border-top-left-radius: 28px;
+  border-top-right-radius: 28px;
+  border-top: 1px solid var(--border-faint);
+  box-shadow: 0 -12px 40px -14px rgb(10 10 10 / .24);
+  transition: height .34s cubic-bezier(.2, .8, .2, 1);
+}
+.ride-where { background: rgb(var(--surface-muted)); }
+.ride-when-btn { background: rgb(var(--surface-card)); box-shadow: 0 1px 2px rgb(10 10 10 / .08); }
+.ride-chip {
+  display: inline-flex; align-items: center; min-height: 40px; padding: 0 14px; border-radius: 999px;
+  border: 1px solid var(--border-faint); background: rgb(var(--surface-card)); color: rgb(var(--color-ink));
+  font-size: 13px; font-weight: 700; white-space: nowrap;
+}
+.ride-chip.is-on { background: rgb(var(--color-gold)); border-color: rgb(var(--color-gold)); color: rgb(var(--color-ink-gold)); }
+.ride-place {
+  display: flex; align-items: center; gap: 8px; min-height: 48px; padding: 6px 12px 6px 6px; border-radius: 15px;
+  border: 1px solid var(--border-faint); background: rgb(var(--surface-card));
+}
+.ride-place__icon { display: flex; height: 32px; width: 32px; flex-shrink: 0; align-items: center; justify-content: center; border-radius: 10px; background: rgb(var(--surface-muted)); color: rgb(var(--color-ink)); }
+.ride-place.is-hot { border-color: rgb(var(--color-gold) / .55); background: linear-gradient(135deg, #fff6d8, #f7e3a3); }
+.ride-place.is-hot .ride-place__icon, .ride-place.is-upcoming .ride-place__icon { background: rgb(var(--color-gold)); color: rgb(var(--color-ink-gold)); }
+.ride-mode {
+  position: relative; display: flex; height: 96px; width: 92px; flex-direction: column; justify-content: space-between;
+  border-radius: 18px; background: rgb(var(--surface-muted)); padding: 10px; text-align: left; color: rgb(var(--color-ink));
+  transition: box-shadow .2s, background-color .2s, transform .15s;
+}
+.ride-mode:active { transform: scale(.97); }
+.ride-mode.is-on { background: rgb(var(--surface-card)); box-shadow: 0 0 0 2px rgb(var(--color-gold)), 0 8px 20px -8px rgb(var(--color-gold) / .7); }
+.ride-mode.is-on .ride-mode__icon { color: #a8851a; }
+.ride-mode:focus-visible, .ride-place:focus-visible, .ride-chip:focus-visible, .ride-board__row:focus-within { outline: 2px solid rgb(var(--color-gold)); outline-offset: 2px; }
+.ride-amb { background: #fef3f2; border: 1px solid rgb(var(--ride-red) / .22); color: rgb(var(--ride-red)); }
+.ride-amb__icon { background: rgb(var(--ride-red) / .12); color: rgb(var(--ride-red)); }
+.ride-hold { background: rgb(var(--ride-red)); box-shadow: 0 6px 16px -6px rgb(var(--ride-red) / .6); -webkit-touch-callout: none; }
+.ride-hold__bar { position: absolute; inset: auto 0 0 0; height: 3px; background: rgb(255 255 255 / .7); transform: scaleX(0); transform-origin: left; }
+.ride-hold.is-holding .ride-hold__bar { transform: scaleX(1); transition: transform var(--hold-ms, 1.2s) linear; }
+.ride-trip-card { background: rgb(var(--surface-card)); border: 1px solid rgb(var(--color-gold) / .38); box-shadow: var(--shadow-float-capsule); }
+.ride-trip-card::before { content: ""; position: absolute; inset: 0 62% 0 0; background: linear-gradient(90deg, rgb(var(--color-gold) / .2), transparent); pointer-events: none; }
+.ride-trip-card__avatar { background: linear-gradient(135deg, #6b4f2a, #2d2215); color: #f3d77a; border: 2px solid rgb(var(--color-gold)); }
+.ride-trip-card__btn { display: flex; height: 38px; width: 38px; align-items: center; justify-content: center; border-radius: 12px; background: rgb(var(--surface-muted)); color: rgb(var(--color-ink)); }
+.ride-trip-card__track { background: rgb(var(--surface-muted)); }
+.ride-gold-fill { background: linear-gradient(90deg, #f3d77a, #c9a227); transition: width .6s ease; }
+.ride-route-card { background: rgb(var(--surface-card)); border: 1px solid var(--border-faint); box-shadow: 0 1px 2px rgb(10 10 10 / .04), 0 8px 24px -10px rgb(10 10 10 / .14); }
+.ride-pill { display: inline-flex; align-items: center; gap: 4px; min-height: 24px; padding: 0 8px; border-radius: 8px; background: rgb(var(--surface-muted)); }
+.ride-board { background: rgb(var(--surface-card)); border: 1px solid var(--border-faint); box-shadow: 0 1px 2px rgb(10 10 10 / .04), 0 8px 24px -10px rgb(10 10 10 / .14); }
+.ride-board__row + .ride-board__row { border-top: 1px solid var(--border-faint); }
+.ride-board__row { transition: background-color .2s; }
+.ride-board__row.is-on { background: linear-gradient(135deg, #fff6d8, #f9ebbb); box-shadow: inset 3px 0 0 rgb(var(--color-gold)); }
+.ride-board__row.is-blocked { cursor: not-allowed; opacity: .55; }
+.ride-tile { background: rgb(var(--color-gold) / .14); color: #a8851a; }
+.ride-badge { flex-shrink: 0; border-radius: 6px; background: rgb(var(--color-gold)); color: rgb(var(--color-ink-gold)); padding: 2px 6px; font-size: 10px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+.ride-link-tile { border: 1px solid var(--border-faint); background: rgb(var(--surface-card)); color: rgb(var(--color-ink)); }
+.ride-skeleton { background: linear-gradient(90deg, rgb(var(--surface-muted)), rgb(var(--color-ink-500) / .14), rgb(var(--surface-muted))); background-size: 200% 100%; animation: ride-shimmer 1.2s linear infinite; }
+@keyframes ride-shimmer { to { background-position: -200% 0; } }
+.ride-live-dot { box-shadow: 0 0 0 4px rgb(var(--color-green) / .2); animation: ride-pulse 2s ease-in-out infinite; }
+@keyframes ride-pulse { 50% { box-shadow: 0 0 0 7px rgb(var(--color-green) / .08); } }
+
+:root[data-theme="dark"] .ride-map-placeholder {
+  background-color: #141414;
+  background-image: radial-gradient(60% 50% at 50% 38%, rgb(var(--color-gold) / .12), transparent 70%), linear-gradient(rgb(255 255 255 / .04) 1px, transparent 1px), linear-gradient(90deg, rgb(255 255 255 / .04) 1px, transparent 1px);
+}
+:root[data-theme="dark"] .ride-sheet { background: #161616; border-top-color: rgb(255 255 255 / .07); box-shadow: 0 -12px 40px -10px rgb(0 0 0 / .8); }
+:root[data-theme="dark"] .ride-place.is-hot { background: linear-gradient(135deg, rgb(var(--color-gold) / .24), rgb(var(--color-gold) / .1)); }
+:root[data-theme="dark"] .ride-mode.is-on { background: #221d10; }
+:root[data-theme="dark"] .ride-mode.is-on .ride-mode__icon, :root[data-theme="dark"] .ride-tile { color: rgb(var(--color-gold-400)); }
+:root[data-theme="dark"] .ride-amb { background: rgb(var(--ride-red) / .14); color: #ff8a80; }
+:root[data-theme="dark"] .ride-amb__icon { color: #ff8a80; }
+:root[data-theme="dark"] .ride-trip-card { background: #1c1c1c; }
+:root[data-theme="dark"] .ride-board__row.is-on { background: linear-gradient(135deg, rgb(var(--color-gold) / .22), rgb(var(--color-gold) / .08)); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .ride-map-placeholder {
+    background-color: #141414;
+    background-image: radial-gradient(60% 50% at 50% 38%, rgb(var(--color-gold) / .12), transparent 70%), linear-gradient(rgb(255 255 255 / .04) 1px, transparent 1px), linear-gradient(90deg, rgb(255 255 255 / .04) 1px, transparent 1px);
+  }
+  :root:not([data-theme="light"]) .ride-sheet { background: #161616; border-top-color: rgb(255 255 255 / .07); box-shadow: 0 -12px 40px -10px rgb(0 0 0 / .8); }
+  :root:not([data-theme="light"]) .ride-place.is-hot { background: linear-gradient(135deg, rgb(var(--color-gold) / .24), rgb(var(--color-gold) / .1)); }
+  :root:not([data-theme="light"]) .ride-mode.is-on { background: #221d10; }
+  :root:not([data-theme="light"]) .ride-mode.is-on .ride-mode__icon, :root:not([data-theme="light"]) .ride-tile { color: rgb(var(--color-gold-400)); }
+  :root:not([data-theme="light"]) .ride-amb { background: rgb(var(--ride-red) / .14); color: #ff8a80; }
+  :root:not([data-theme="light"]) .ride-amb__icon { color: #ff8a80; }
+  :root:not([data-theme="light"]) .ride-trip-card { background: #1c1c1c; }
+  :root:not([data-theme="light"]) .ride-board__row.is-on { background: linear-gradient(135deg, rgb(var(--color-gold) / .22), rgb(var(--color-gold) / .08)); }
+}
+/* Multi-stop rides */
+.ride-stop-row { background: rgb(var(--surface-card)); border: 1px solid var(--border-faint); }
+.ride-stop-chip { background: rgb(var(--surface-muted)); color: rgb(var(--color-ink)); }
+.ride-stop-chip.is-here { background: rgb(var(--color-gold) / .2); box-shadow: inset 0 0 0 1px rgb(var(--color-gold) / .6); }
+.ride-stop-chip.is-done { color: rgb(var(--color-ink-500)); }
+.ride-stop-chip__n { display: inline-flex; min-width: 18px; height: 18px; align-items: center; justify-content: center; border-radius: 9999px; background: rgb(10 10 10); color: #e8c55a; font-size: 10px; font-weight: 800; }
+.ride-stop-chip.is-done .ride-stop-chip__n, .ride-stop-chip__n.is-done { background: rgb(var(--color-green)); color: #fff; }
+.ride-icon-btn { display: flex; height: 36px; width: 36px; flex-shrink: 0; align-items: center; justify-content: center; border-radius: 10px; background: rgb(var(--surface-muted)); color: rgb(var(--color-ink)); }
+.ride-icon-btn:disabled { opacity: .35; }
+.ride-icon-btn:focus-visible, .ride-add-stop:focus-visible, .ride-switch:focus-visible, .ride-accept-btn:focus-visible { outline: 2px solid rgb(var(--color-gold)); outline-offset: 2px; }
+.ride-add-stop { border: 1.5px dashed rgb(var(--color-gold) / .55); background: rgb(var(--color-gold) / .06); }
+/* Name your fare */
+.ride-nyf { background: rgb(var(--surface-card)); border: 1px solid var(--border-faint); box-shadow: 0 1px 2px rgb(10 10 10 / .04), 0 8px 24px -10px rgb(10 10 10 / .14); }
+.ride-nyf.is-on { border-color: rgb(var(--color-gold) / .6); }
+.ride-switch { background: rgb(var(--color-ink-500) / .3); transition: background-color .2s; }
+.ride-switch.is-on { background: rgb(var(--color-gold)); }
+.ride-switch__knob { left: 4px; background: #fff; box-shadow: 0 1px 3px rgb(0 0 0 / .3); transition: transform .2s; }
+.ride-switch.is-on .ride-switch__knob { transform: translateX(20px); }
+.ride-nyf__tone.is-low { background: rgb(var(--surface-muted)); color: rgb(var(--color-ink-500)); }
+.ride-nyf__tone.is-fair { background: rgb(var(--color-gold) / .18); color: #8a6c12; }
+.ride-nyf__tone.is-quick { background: rgb(var(--color-green) / .14); color: rgb(var(--color-green)); }
+.ride-nyf__quote { background: rgb(var(--color-ink)); border-radius: 1px; transform: translateX(-1px); }
+.ride-range { -webkit-appearance: none; appearance: none; height: 28px; background: transparent; }
+.ride-range::-webkit-slider-runnable-track { height: 8px; border-radius: 9999px; background: linear-gradient(90deg, #c9a227 0, #f3d77a var(--fill, 50%), rgb(var(--surface-muted)) var(--fill, 50%)); }
+.ride-range::-moz-range-track { height: 8px; border-radius: 9999px; background: linear-gradient(90deg, #c9a227 0, #f3d77a var(--fill, 50%), rgb(var(--surface-muted)) var(--fill, 50%)); }
+.ride-range::-webkit-slider-thumb { -webkit-appearance: none; height: 26px; width: 26px; margin-top: -9px; border-radius: 9999px; background: #0a0a0a; border: 3px solid #f3d77a; box-shadow: 0 2px 6px rgb(0 0 0 / .3); }
+.ride-range::-moz-range-thumb { height: 20px; width: 20px; border-radius: 9999px; background: #0a0a0a; border: 3px solid #f3d77a; }
+.ride-range:focus-visible { outline: 2px solid rgb(var(--color-gold)); outline-offset: 4px; border-radius: 9999px; }
+.ride-offer-live { background: rgb(var(--surface-card)); border: 1px solid rgb(var(--color-gold) / .45); box-shadow: var(--shadow-float-capsule); }
+.ride-offer-live .ride-live-dot { box-shadow: 0 0 0 4px rgb(var(--color-gold) / .25); }
+.ride-counter { background: rgb(var(--surface-muted)); }
+.ride-accept-btn { background: rgb(var(--color-gold)); color: rgb(var(--color-ink-gold)); }
+:root[data-theme="dark"] .ride-stop-row, :root[data-theme="dark"] .ride-nyf, :root[data-theme="dark"] .ride-offer-live { background: #1c1c1c; }
+:root[data-theme="dark"] .ride-stop-chip__n { background: rgb(var(--color-gold)); color: #0a0a0a; }
+:root[data-theme="dark"] .ride-stop-chip.is-done .ride-stop-chip__n, :root[data-theme="dark"] .ride-stop-chip__n.is-done { background: rgb(var(--color-green)); color: #fff; }
+:root[data-theme="dark"] .ride-nyf__tone.is-fair { color: rgb(var(--color-gold-400)); }
+:root[data-theme="dark"] .ride-nyf__quote { background: #f3d77a; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .ride-stop-row, :root:not([data-theme="light"]) .ride-nyf, :root:not([data-theme="light"]) .ride-offer-live { background: #1c1c1c; }
+  :root:not([data-theme="light"]) .ride-stop-chip__n { background: rgb(var(--color-gold)); color: #0a0a0a; }
+  :root:not([data-theme="light"]) .ride-stop-chip.is-done .ride-stop-chip__n, :root:not([data-theme="light"]) .ride-stop-chip__n.is-done { background: rgb(var(--color-green)); color: #fff; }
+  :root:not([data-theme="light"]) .ride-nyf__tone.is-fair { color: rgb(var(--color-gold-400)); }
+  :root:not([data-theme="light"]) .ride-nyf__quote { background: #f3d77a; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ride-sheet, .ride-mode, .ride-board__row, .ride-gold-fill, .ride-switch, .ride-switch__knob { transition: none; }
+  .ride-skeleton, .ride-live-dot { animation: none; }
+  .ride-hold.is-holding .ride-hold__bar { transition: none; transform: scaleX(1); opacity: .45; }
+}

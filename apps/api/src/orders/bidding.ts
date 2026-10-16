@@ -30,6 +30,8 @@ export function appPriceOf(order: Row): number | null {
  */
 export function computeBidding(order: Row, settings: BiddingSettings, enabledModes: MatchingMode[]): BiddingState {
   if (!settings.enabled) return OFF;
+  // Name your fare: the customer set the price; riders counter instead of bidding.
+  if (order.fare_offer != null) return OFF;
   if (!enabledModes.includes("customer_selects") || order.matching_mode !== "customer_selects") return OFF;
   const isRideOrParcel = order.is_ride === 1 || order.is_ride === true || (order.type === "parcel" && !order.restaurant_id);
   if (!isRideOrParcel) return OFF;
