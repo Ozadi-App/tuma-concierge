@@ -9,8 +9,11 @@ import { AuthGate } from "./AuthGate";
 import { BottomNav } from "./BottomNav";
 import { ServiceBanner } from "./ServiceBanner";
 import { PracticeModeBanner, PracticeModeGuard, PracticeModePrompt } from "./PracticeMode";
+import { usePracticeModeActive } from "@peebee/shared/practice-ui";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
+  // Practice is shown by the shared blue border + tab, so the sandbox "Demo" chip is hidden while practising.
+  const practiceActive = usePracticeModeActive();
   const pathname = usePathname();
   const { merchant } = useAuth();
   const activeTheme = useResolvedTheme();
@@ -49,7 +52,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   {merchant.display_name}
                 </p>
               )}
-              {merchant?.environment === "sandbox" && (
+              {merchant?.environment === "sandbox" && !practiceActive && (
                 <span
                   className={`rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-wide ${
                     isDarkMode
