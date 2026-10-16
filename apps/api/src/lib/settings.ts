@@ -415,6 +415,12 @@ const DEFAULTS = {
   work_onsite_suspend_after_flags: "0",
   work_onsite_window_days: "30",
   work_location_retention_days: "30",
+  // Relay delivery (boda -> matatu -> boda) for long parcel deliveries. Off until staff turn it on.
+  relay_enabled: "0",
+  relay_min_distance_km: "25",
+  relay_max_access_km: "10",
+  relay_last_mile_radius_km: "5",
+  relay_release_per_leg: "0",
 } as const;
 
 export type SettingKey = keyof typeof DEFAULTS;
