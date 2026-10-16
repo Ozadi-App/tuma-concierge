@@ -111,8 +111,13 @@ test("relay delivery: boda -> matatu -> boda with coded handoffs and split payou
 
     let leg1Code = "";
     await t.test("the first rider hands the parcel to the matatu with their code", async () => {
-      await client.execute({ sql: "UPDATE orders SET rider_id = 'first', stage = 'Deliver', pin_code = '4321', payment_rail = 'escrow' WHERE id = ?", args: [orderId] });
-      await client.execute({ sql: "INSERT INTO payments (id, order_id, type, provider, amount, currency, status) VALUES ('pay', ?, 'collection', 'wallet', ?, 'UGX', 'successful')", args: [orderId, total] });
+      // Paid from the wallet with merchant payments on: a parcel has no shopping principal and must still fund.
+      // (Sandbox, where merchant payments need no custody approval.)
+      await client.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('merchant_sandbox_enabled', '1')");
+      await client.execute({ sql: "UPDATE users SET wallet_balance_sandbox = ? WHERE id = 'customer'", args: [total] });
+      await client.execute({ sql: "UPDATE orders SET rider_id = 'first', stage = 'Match', environment = 'sandbox' WHERE id = ?", args: [orderId] });
+      assert.equal((await call("customer", `orders/${orderId}/fund`, { paymentMethod: "wallet", useWallet: true, acceptedAmount: total })).status, 200);
+      await client.execute({ sql: "UPDATE orders SET stage = 'Deliver', pin_code = '4321', environment = 'live' WHERE id = ?", args: [orderId] });
       const view = (await (await call("first", `orders/${orderId}`)).json()) as { relay: { legs: { handoffCode?: string }[] } };
       leg1Code = view.relay.legs[0].handoffCode!;
       assert.match(leg1Code, /^\d{6}$/);
