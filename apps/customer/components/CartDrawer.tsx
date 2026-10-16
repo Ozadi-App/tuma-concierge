@@ -24,6 +24,8 @@ import { ProductImage } from "./ProductImage";
 import { api, errorMessage } from "../lib/api";
 import { getCachedCustomerCoordinates } from "../lib/location";
 import { useBagQuote } from "../lib/bag-quote";
+import { BagRelayDetails, bagRelayHasChoice } from "./BagRelayDetails";
+import type { LastMileChoiceValue } from "./LastMileChoice";
 
 export interface CartDrawerProps {
   isOpen: boolean;
@@ -55,7 +57,8 @@ export function CartDrawer({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   // The delivery fee is the server's: one rider trip through every store. Checkout waits for it.
-  const bagQuote = useBagQuote(selectedItems, isOpen);
+  const [relayLastMile, setRelayLastMile] = useState<LastMileChoiceValue>("door");
+  const bagQuote = useBagQuote(selectedItems, isOpen, relayLastMile);
   const deliveryFee = bagQuote.quote?.deliveryFee ?? null;
   const total = deliveryFee == null ? null : subtotal + deliveryFee;
   const totalLabel = total == null ? undefined : `UGX ${total.toLocaleString()}`;
@@ -115,6 +118,7 @@ export function CartDrawer({
         destinationArea: "Kampala",
         destinationLat: cached.lat || 0.3353,
         destinationLng: cached.lng || 32.5857,
+        relayLastMile: bagRelayHasChoice(bagQuote.relay) ? relayLastMile : undefined,
       });
 
       const firstOrder = res.order ?? res.orders?.[0];
@@ -373,6 +377,15 @@ export function CartDrawer({
                     <button type="button" onClick={bagQuote.retry} className="font-bold text-gold">Retry</button>
                   ) : deliveryFee == null ? "Calculating…" : `UGX ${deliveryFee.toLocaleString()}`}</span>
                 </div>
+                {bagQuote.relay && (
+                  <BagRelayDetails
+                    relay={bagQuote.relay}
+                    lastMile={relayLastMile}
+                    onLastMileChange={setRelayLastMile}
+                    disabled={isSubmitting}
+                    className="pl-3"
+                  />
+                )}
                 {bagQuote.quote && bagQuote.quote.stores.length > 1 && (
                   <div className="space-y-1 pl-3 text-[11px] text-ink-500">
                     <p>One rider collects from every store:</p>

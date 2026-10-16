@@ -49,11 +49,14 @@ export function RelayHandToMatatu({ leg, matatu }: { leg: Leg; matatu?: Leg }) {
 export function RelayCollectFromMatatu({
   leg,
   matatu,
+  station,
   busy,
   onCollect,
 }: {
   leg: Leg;
   matatu?: Leg;
+  /** Set when the matatu dropped it at a petrol station: the rider collects from the pump attendant. */
+  station?: OrderRelay["station"];
   busy: boolean;
   onCollect: (code: string) => void;
 }) {
@@ -77,15 +80,25 @@ export function RelayCollectFromMatatu({
 
   return (
     <div className="space-y-3 rounded-2xl border border-gold/30 bg-gold/10 p-4">
-      <div>
-        <p className="font-bold text-ink">
-          Meet matatu{matatu?.vehiclePlate ? ` ${matatu.vehiclePlate}` : ""} at {leg.fromName ?? "the stage"}
-        </p>
-        <p className="mt-0.5 text-sm text-ink-500">
-          {matatu?.status === "arrived" ? "The matatu is at the stage. " : ""}
-          Enter the code they show you. Then deliver {leg.distanceKm != null ? `${leg.distanceKm} km ` : ""}for {formatUgx(leg.fee)}.
-        </p>
-      </div>
+      {station ? (
+        <div>
+          <p className="font-bold text-ink">Collect at {station.name}</p>
+          {station.address && <p className="mt-0.5 text-sm text-ink-500">{station.address}</p>}
+          <p className="mt-0.5 text-sm text-ink-500">
+            Enter the code the pump attendant shows you. Then deliver {leg.distanceKm != null ? `${leg.distanceKm} km ` : ""}for {formatUgx(leg.fee)}.
+          </p>
+        </div>
+      ) : (
+        <div>
+          <p className="font-bold text-ink">
+            Meet matatu{matatu?.vehiclePlate ? ` ${matatu.vehiclePlate}` : ""} at {leg.fromName ?? "the stage"}
+          </p>
+          <p className="mt-0.5 text-sm text-ink-500">
+            {matatu?.status === "arrived" ? "The matatu is at the stage. " : ""}
+            Enter the code they show you. Then deliver {leg.distanceKm != null ? `${leg.distanceKm} km ` : ""}for {formatUgx(leg.fee)}.
+          </p>
+        </div>
+      )}
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -119,8 +132,8 @@ export function RelayCollectFromMatatu({
           </button>
         </div>
       </form>
-      <DirectionsButton lat={leg.fromLat} lng={leg.fromLng} />
-      {scanning && <QrScanner title="Scan matatu code" onScan={handleScan} onClose={closeScanner} />}
+      <DirectionsButton lat={station?.lat ?? leg.fromLat} lng={station?.lng ?? leg.fromLng} />
+      {scanning && <QrScanner title={station ? "Scan attendant code" : "Scan matatu code"} onScan={handleScan} onClose={closeScanner} />}
     </div>
   );
 }

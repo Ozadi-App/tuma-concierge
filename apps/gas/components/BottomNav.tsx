@@ -1,12 +1,13 @@
 "use client";
 
-import { Briefcase, Fuel, GraduationCap, History, Store } from "lucide-react";
+import { Briefcase, Fuel, GraduationCap, History, Package, Store } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "../lib/auth-context";
 
 const BASE_TABS = [
   { href: "/", label: "Pump", icon: Fuel },
+  { href: "/parcels", label: "Parcels", icon: Package },
   { href: "/manager", label: "Manager", icon: Briefcase },
   { href: "/shift", label: "Shift", icon: History },
   { href: "/prices", label: "Prices", icon: Store },

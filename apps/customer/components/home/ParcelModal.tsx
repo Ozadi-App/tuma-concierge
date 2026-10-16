@@ -11,6 +11,7 @@ import { api, errorMessage } from "../../lib/api";
 import { useTranslate } from "../../lib/i18n";
 import { placeFields } from "../../lib/places";
 import { RouteSummary } from "./RouteSummary";
+import { LastMileChoice, type LastMileChoiceValue } from "../LastMileChoice";
 import { OrderVoiceNoteRecorder } from "./OrderVoiceNoteRecorder";
 
 /** Great-circle distance in km — mirrors apps/api/src/lib/geo.ts, used only
@@ -76,7 +77,14 @@ export function ParcelModal({ onClose }: { onClose: () => void }) {
   const quoteFailed = quoteKey != null && relayQuote?.key === quoteKey && relayQuote.failed === true;
   const quoteLoading = quoteKey != null && (relayQuote?.key !== quoteKey || quoteFailed);
   const relay = !quoteLoading && relayQuote ? relayQuote.relay : null;
-  const fare = relay ? relay.total : liveEstimate;
+  // Station drops: the matatu leaves it at a petrol station near the customer.
+  const [lastMile, setLastMile] = useState<LastMileChoiceValue>("door");
+  const station = relay?.dropMode === "station" && relay.station && relay.collectTotal != null ? relay.station : null;
+  const stationChoice = station != null && relay?.choiceAtOrder === true;
+  const toDoor = !station || (stationChoice && lastMile === "door");
+  const relayFare = relay ? (toDoor ? relay.total : (relay.collectTotal as number)) : null;
+  const relayLegs = relay ? relay.legs.filter((leg) => toDoor || leg.leg < 3) : [];
+  const fare = relay ? relayFare : liveEstimate;
 
   // "Next: payment" is the bottom nav's right capsule (intermediate step).
   const navFare = quoteLoading ? null : fare ?? (estimatedTotal ? Number(estimatedTotal) : null);
@@ -126,6 +134,7 @@ export function ParcelModal({ onClose }: { onClose: () => void }) {
         destinationLat: df.lat,
         destinationLng: df.lng,
         paymentRail: "escrow",
+        relayLastMile: stationChoice ? lastMile : undefined,
         estimatedTotal: fare ?? (estimatedTotal ? roundFare(Number(estimatedTotal), pricing?.minimum) : undefined),
       });
       if (voiceNote) {
@@ -172,11 +181,23 @@ export function ParcelModal({ onClose }: { onClose: () => void }) {
             <div className="flex items-center gap-2">
               <Route className="h-4 w-4 shrink-0 text-gold" strokeWidth={2.25} aria-hidden />
               <p className="flex-1 text-sm font-bold text-ink">Delivery</p>
-              <p className="text-sm font-bold text-ink">Total UGX {relay.total.toLocaleString("en-UG")}</p>
+              <p className="text-sm font-bold text-ink">Total UGX {(relayFare ?? relay.total).toLocaleString("en-UG")}</p>
             </div>
             <p className="text-xs text-ink-500">Long trip: relayed by boda and matatu.</p>
+            {station && stationChoice ? (
+              <LastMileChoice
+                value={lastMile}
+                onChange={setLastMile}
+                stationName={station.name}
+                doorTotal={relay.total}
+                collectTotal={relay.collectTotal as number}
+                disabled={busy}
+              />
+            ) : station ? (
+              <p className="text-xs text-ink-500">Collect at {station.name}, or send a rider when it arrives.</p>
+            ) : null}
             <ul className="space-y-1 border-t border-[var(--border-faint)] pt-2">
-              {relay.legs.map((leg) => (
+              {relayLegs.map((leg) => (
                 <li key={leg.leg} className="flex justify-between gap-3 text-xs text-ink">
                   <span className="min-w-0">
                     <span className="font-semibold">{leg.kind === "matatu" ? "Matatu" : "Boda"}:</span> {leg.fromName} to{" "}

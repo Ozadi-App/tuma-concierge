@@ -23,6 +23,8 @@ import { RoundCheck } from "../../components/marketplace/MarketplaceUI";
 import { api, errorMessage } from "../../lib/api";
 import { getCachedCustomerCoordinates } from "../../lib/location";
 import { useBagQuote } from "../../lib/bag-quote";
+import { BagRelayDetails, bagRelayHasChoice } from "../../components/BagRelayDetails";
+import type { LastMileChoiceValue } from "../../components/LastMileChoice";
 import { useRegisterNavPrimaryAction, useRegisterNavBack, goBackOr } from "../../lib/nav-primary-action";
 
 export default function CartPage() {
@@ -44,7 +46,8 @@ export default function CartPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   // The delivery fee is the server's: one rider trip through every store. Checkout waits for it.
-  const bagQuote = useBagQuote(selectedItems, mounted);
+  const [relayLastMile, setRelayLastMile] = useState<LastMileChoiceValue>("door");
+  const bagQuote = useBagQuote(selectedItems, mounted, relayLastMile);
   const deliveryFee = bagQuote.quote?.deliveryFee ?? null;
   const total = deliveryFee == null ? null : subtotal + deliveryFee;
 
@@ -72,6 +75,7 @@ export default function CartPage() {
         destinationArea: "Kampala",
         destinationLat: cached.lat || 0.3353,
         destinationLng: cached.lng || 32.5857,
+        relayLastMile: bagRelayHasChoice(bagQuote.relay) ? relayLastMile : undefined,
       });
 
       const firstOrder = res.order ?? res.orders?.[0];
@@ -307,6 +311,15 @@ export default function CartPage() {
                 </span>
               </div>
 
+              {subtotal > 0 && bagQuote.relay && (
+                <BagRelayDetails
+                  relay={bagQuote.relay}
+                  lastMile={relayLastMile}
+                  onLastMileChange={setRelayLastMile}
+                  disabled={isSubmitting}
+                  className="pl-5"
+                />
+              )}
               {bagQuote.quote && bagQuote.quote.stores.length > 1 && (
                 <div className="space-y-1 pl-5 text-[11px] text-ink-500">
                   <p>One rider collects from every store:</p>

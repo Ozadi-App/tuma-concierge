@@ -1,12 +1,13 @@
 "use client";
 
 import { Select } from "@peebee/shared/select";
-import type { RelayLegStatus, RelayOperator, RelayOperatorParcels, RelayRoute } from "@peebee/shared";
-import { ArrowLeft, ArrowRight, Bus, Clock, Package, QrCode, RotateCcw } from "lucide-react";
+import type { RelayLegStatus, RelayOperator, RelayOperatorParcels, RelayRoute, RelayTrack } from "@peebee/shared";
+import { ArrowLeft, ArrowRight, Bus, ChevronDown, ChevronRight, Clock, Package, QrCode, RotateCcw } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { QrCodeImage } from "../../components/QrCodeImage";
 import { QrScanner } from "../../components/QrScanner";
+import { RelayTimeline } from "../../components/RelayTimeline";
 import { api, errorMessage } from "../../lib/api";
 
 const ugx = (n: number) => `UGX ${Number(n).toLocaleString("en-UG")}`;
@@ -376,7 +377,7 @@ function CarryingCard({ leg, onChange }: { leg: RelayOperatorParcels["carrying"]
         <span className="text-[11px] font-bold uppercase tracking-wider text-ink-500">Handoff code</span>
         <span className="font-mono text-4xl font-black tracking-widest text-ink">{spaced}</span>
         <QrCodeImage value={leg.handoff_code} size={168} label="Handoff QR code" />
-        <span className="text-xs text-ink-500">The last rider scans this to collect.</span>
+        <span className="text-xs text-ink-500">Show this code to the rider or pump attendant at {leg.to_name}.</span>
       </div>
       {error && <p className={errorBox}>{error}</p>}
       {arrived ? (
@@ -386,7 +387,53 @@ function CarryingCard({ leg, onChange }: { leg: RelayOperatorParcels["carrying"]
           {busy ? "Please wait…" : `Arrived at ${leg.to_name}`}
         </button>
       )}
+      <FollowParcel orderId={leg.order_id} />
     </article>
+  );
+}
+
+/** Expands to the parcel's whole journey: every leg, the station stop and the event log. */
+function FollowParcel({ orderId }: { orderId: string }) {
+  const [open, setOpen] = useState(false);
+  const [track, setTrack] = useState<RelayTrack | null>(null);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!open) return;
+    let stopped = false;
+    const load = () =>
+      api
+        .trackRelayOrder(orderId)
+        .then((res) => {
+          if (stopped) return;
+          setTrack(res);
+          setError("");
+        })
+        .catch((err) => {
+          if (!stopped) setError(errorMessage(err));
+        });
+    void load();
+    const timer = window.setInterval(load, REFRESH_MS);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+    };
+  }, [open, orderId]);
+
+  return (
+    <div className="border-t border-[var(--border-faint)] pt-3">
+      <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} className="flex w-full items-center justify-between text-sm font-bold text-gold">
+        Follow
+        {open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+      </button>
+      {open && (
+        <div className="pt-3">
+          {error && <p className={errorBox}>{error}</p>}
+          {!track && !error && <p className="text-sm text-ink-500">Loading…</p>}
+          {track && <RelayTimeline track={track} />}
+        </div>
+      )}
+    </div>
   );
 }
 
