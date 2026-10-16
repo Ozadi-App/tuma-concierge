@@ -805,7 +805,7 @@ function ItemDetailPage({
 function RestaurantCartSwitchDialog({ cartCount, combine, onCombine, onKeep, onDiscard, onCancel }: {
   cartCount: number;
   /** Set when exactly one other restaurant cart exists: explains what a shared delivery means. */
-  combine?: { otherName: string; thisName: string; km: number | null; ratePerKm: number | null } | null;
+  combine?: { otherName: string; thisName: string; extraFee: number | null } | null;
   onCombine?: () => void;
   onKeep: () => void;
   onDiscard: () => void;
@@ -858,7 +858,7 @@ function RestaurantCartSwitchDialog({ cartCount, combine, onCombine, onKeep, onD
         </h2>
         <p id="restaurant-cart-switch-copy" className="restaurant-cart-switch-dialog__copy">
           {combine
-            ? `One rider collects from ${combine.otherName} and ${combine.thisName}. The extra distance${combine.km != null && combine.km >= 0.1 ? ` (about ${combine.km.toFixed(1)} km)` : ""} is added to your delivery fee${combine.ratePerKm != null ? ` at ${formatUgx(combine.ratePerKm)} per km` : ""}.`
+            ? `One rider collects from ${combine.otherName} and ${combine.thisName}.${combine.extraFee != null ? ` About ${formatUgx(combine.extraFee)} extra delivery for the added distance; the exact amount is shown at checkout.` : ""}`
             : t(plural ? "restaurant_switch_cart_copy_plural" : "restaurant_switch_cart_copy")}
         </p>
         <div className="restaurant-cart-switch-dialog__actions">
@@ -1185,8 +1185,11 @@ export default function RestaurantPage() {
             combine={pendingRestaurantCartSwitch.otherCartKeys.length === 1 && switchOther ? {
               otherName: switchOther.name,
               thisName: restaurant?.name ?? "this restaurant",
-              km: switchOther.lat != null && switchOther.lng != null && restaurant?.lat != null && restaurant?.lng != null ? haversineKm(switchOther.lat, switchOther.lng, restaurant.lat, restaurant.lng) : null,
-              ratePerKm: deliverySettings?.deliveryRatePerKm ?? null,
+              extraFee: (() => {
+                if (switchOther.lat == null || switchOther.lng == null || restaurant?.lat == null || restaurant?.lng == null || !deliverySettings) return null;
+                const km = haversineKm(switchOther.lat, switchOther.lng, restaurant.lat, restaurant.lng);
+                return km < 0.1 ? null : roundFare(km * deliverySettings.deliveryRatePerKm, deliverySettings.minimumDeliveryFee);
+              })(),
             } : null}
             onCombine={combineOtherCartAndAdd}
             onKeep={keepOtherCartsAndAdd}
