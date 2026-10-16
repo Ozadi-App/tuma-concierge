@@ -3,7 +3,7 @@
 import { Select } from "@peebee/shared/select";
 
 import type { CarDriverActive, CarOwnerRides } from "@peebee/shared";
-import { ChevronRight, Fuel } from "lucide-react";
+import { Bus, ChevronRight, Fuel } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { ActiveRide } from "../components/ActiveRide";
@@ -124,6 +124,22 @@ function DriverHome() {
             <p className="truncate text-[11px] text-ink-500">
               Pump fuel for your car at partner stations with 6-digit PIN
             </p>
+          </div>
+        </div>
+        <ChevronRight className="h-4 w-4 shrink-0 text-ink-500" />
+      </Link>
+
+      <Link
+        href="/relay"
+        className="home-card flex items-center justify-between !py-3 !px-4 hover:border-gold/50"
+      >
+        <div className="flex items-center gap-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gold/15 text-gold">
+            <Bus className="h-5 w-5" />
+          </div>
+          <div className="min-w-0">
+            <span className="text-xs font-black text-ink">Relay parcels</span>
+            <p className="truncate text-[11px] text-ink-500">Carry parcels on your matatu route</p>
           </div>
         </div>
         <ChevronRight className="h-4 w-4 shrink-0 text-ink-500" />

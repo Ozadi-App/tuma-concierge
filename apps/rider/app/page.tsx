@@ -4,9 +4,9 @@ import { Select } from "@peebee/shared/select";
 
 import { observeNotificationSnapshot } from "@peebee/shared";
 
-import type { AvailableJob, OrderRow, Rider } from "@peebee/shared";
+import type { AvailableJob, OrderRow, RelayOpenLeg, Rider } from "@peebee/shared";
 import { isRiderProfileComplete } from "@peebee/shared";
-import { Bike, ChevronRight, Fuel, MapPin, Package, ShoppingCart, TriangleAlert, Utensils } from "lucide-react";
+import { Bike, Bus, ChevronRight, Fuel, MapPin, Package, ShoppingCart, TriangleAlert, Utensils } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -58,6 +58,7 @@ export default function JobsHomePage() {
   const [loaded, setLoaded] = useState(false);
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [availableJobs, setAvailableJobs] = useState<AvailableJob[]>([]);
+  const [relayLegs, setRelayLegs] = useState<RelayOpenLeg[]>([]);
   const [busy, setBusy] = useState(false);
   const [claimingId, setClaimingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -79,6 +80,11 @@ export default function JobsHomePage() {
         setLoaded(true);
       })
       .catch((err) => setError(errorMessage(err)));
+    // Relay pickups are optional: a failure here never blocks the feed.
+    api
+      .listOpenRelayLegs()
+      .then((res) => setRelayLegs(res.legs))
+      .catch(() => setRelayLegs([]));
   }, []);
 
   useLivePolling(load, 6000, [load]);
@@ -113,6 +119,20 @@ export default function JobsHomePage() {
     try {
       await api.claimOrder(id);
       router.push(`/jobs/${id}`);
+    } catch (err) {
+      setError(errorMessage(err));
+      load();
+    } finally {
+      setClaimingId(null);
+    }
+  }
+
+  async function claimRelay(leg: RelayOpenLeg) {
+    setClaimingId(leg.id);
+    setError(null);
+    try {
+      const res = await api.claimRelayLeg(leg.id);
+      router.push(`/jobs/${res.orderId ?? leg.order_id}`);
     } catch (err) {
       setError(errorMessage(err));
       load();
@@ -268,10 +288,50 @@ export default function JobsHomePage() {
           </div>
         )}
 
+        {rider?.is_online && relayLegs.length > 0 && (
+          <ul className="space-y-5">
+            {relayLegs.map((leg) => (
+              <li key={leg.id} className="home-card space-y-3 !rounded-2xl !p-3.5">
+                <div className="flex items-center gap-3">
+                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gold/10 text-ink">
+                    <Bus className="h-6 w-6" strokeWidth={1.75} aria-hidden />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-base font-semibold leading-snug text-ink">Relay pickup</span>
+                    <span className="mt-0.5 block text-sm text-ink-500">
+                      Meet matatu{leg.vehicle_plate ? ` ${leg.vehicle_plate}` : ""} at {leg.from_name}
+                      {leg.matatu_status === "arrived" ? " · at stage now" : ""}
+                    </span>
+                  </span>
+                </div>
+                <dl className="grid grid-cols-2 border-t border-[var(--border-faint)] pt-3">
+                  <div className="min-w-0 pr-3">
+                    <dt className="text-sm text-ink-500">Deliver</dt>
+                    <dd className="mt-0.5 break-words text-lg font-semibold tabular-nums text-ink">{leg.distance_km} km</dd>
+                    <dd className="truncate text-xs text-ink-500">{leg.destination_area ?? leg.to_name}</dd>
+                  </div>
+                  <div className="min-w-0 border-l border-[var(--border-faint)] pl-3">
+                    <dt className="text-sm text-ink-500">{t("home_delivery_fee")}</dt>
+                    <dd className="mt-0.5 break-words text-lg font-semibold tabular-nums text-ink">{formatUgx(leg.fee)}</dd>
+                  </div>
+                </dl>
+                <button
+                  type="button"
+                  onClick={() => claimRelay(leg)}
+                  disabled={claimingId === leg.id || !online}
+                  className="min-h-12 w-full rounded-xl bg-gold px-3 py-2 text-sm font-semibold text-ink-gold disabled:opacity-60"
+                >
+                  {claimingId === leg.id ? t("home_claiming") : !online ? t("home_offline_btn") : t("home_claim_job")}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+
         {!rider?.is_online && (
           <p className="py-4 text-center text-sm text-ink-500">{t("home_go_online")}</p>
         )}
-        {rider?.is_online && availableJobs.length === 0 && (
+        {rider?.is_online && availableJobs.length === 0 && relayLegs.length === 0 && (
           <p className="py-4 text-center text-sm text-ink-500">{t("home_no_jobs")}</p>
         )}
         {rider?.is_online && availableJobs.length > 0 && visibleJobs.length === 0 && (

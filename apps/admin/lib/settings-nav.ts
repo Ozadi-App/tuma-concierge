@@ -1,6 +1,7 @@
 import { hasPermission } from "@peebee/shared";
 import {
   Banknote,
+  Bus,
   Car,
   Compass,
   CreditCard,
@@ -67,6 +68,13 @@ export const SETTINGS_LINKS: SettingsLink[] = [
     label: "Rider matching",
     description: "Service range, matching modes, assignment timing.",
     icon: Route,
+  },
+  {
+    href: "/settings/relay",
+    label: "Relay delivery",
+    description: "Long parcels boda → matatu → boda: switch, distances, matatu routes, operators and relayed orders.",
+    icon: Bus,
+    show: (role) => hasPermission(role, "settings.manage") || hasPermission(role, "riders.view") || hasPermission(role, "orders.view"),
   },
   {
     href: "/settings/car",

@@ -1,7 +1,7 @@
 "use client";
 
 import { useRegisterNavPrimaryAction } from "../../../lib/nav-primary-action";
-import type { OrderDetail, OrderRating } from "@peebee/shared";
+import type { OrderDetail, OrderRating, OrderRelay } from "@peebee/shared";
 import { MapPin, MessageCircle, TriangleAlert, User } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -19,7 +19,7 @@ import { CarRideNotice } from "../../../components/CarRideNotice";
 import { PassengerCard } from "../../../components/PassengerCard";
 import { markFeeProposalSeen } from "../../../lib/fee-proposal-seen";
 import { useTranslate } from "../../../lib/i18n";
-import { formatDateTime, formatDuration, formatUgx, orderTitle, stageLabel } from "../../../lib/order-display";
+import { formatDateTime, formatDuration, formatTime, formatUgx, orderTitle, stageLabel } from "../../../lib/order-display";
 import { useFreshness } from "../../../lib/use-freshness";
 import { useLivePolling } from "../../../lib/use-live-polling";
 
@@ -86,6 +86,55 @@ function RiderSummaryCard({
         <MessageCircle className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
         {t("order_chat")}
       </button>
+    </section>
+  );
+}
+
+type RelayLeg = OrderRelay["legs"][number];
+
+function relayLegTitle(leg: RelayLeg): string {
+  if (leg.leg === 3) return "Boda to your door";
+  if (leg.kind === "matatu") return `Matatu${leg.vehiclePlate ? ` ${leg.vehiclePlate}` : ""} to ${leg.toName ?? "stage"}`;
+  return `Boda to ${leg.toName ?? "stage"}`;
+}
+
+function relayLegStatus(leg: RelayLeg): string {
+  if (leg.status === "done") return leg.handedOverAt ? `Handed over ${formatTime(leg.handedOverAt)}` : "Handed over";
+  if (leg.status === "arrived") return "Arrived";
+  if (leg.status === "in_transit") return "On the way";
+  return "Waiting";
+}
+
+/** Boda -> matatu -> boda steps for a relayed parcel. */
+function RelayTimeline({ relay }: { relay: OrderRelay }) {
+  const legs = [...relay.legs].sort((a, b) => a.leg - b.leg);
+  return (
+    <section className="home-card space-y-3">
+      <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-500">Relay</h2>
+      <ol className="space-y-3">
+        {legs.map((leg) => {
+          const done = leg.status === "done";
+          const active = leg.status === "in_transit" || leg.status === "arrived";
+          return (
+            <li key={leg.id} className="flex items-start gap-3">
+              <span
+                className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
+                  done ? "bg-green text-white" : active ? "bg-gold text-ink" : "bg-[rgb(var(--surface-muted))] text-ink-500"
+                }`}
+              >
+                {leg.leg}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-semibold text-ink">{relayLegTitle(leg)}</span>
+                <span className={`block text-xs ${active ? "font-semibold text-ink" : "text-ink-500"}`}>
+                  {relayLegStatus(leg)}
+                  {leg.providerName ? ` · ${leg.providerName}` : ""}
+                </span>
+              </span>
+            </li>
+          );
+        })}
+      </ol>
     </section>
   );
 }
@@ -276,6 +325,9 @@ export default function OrderDetailPage() {
   // (surfaced via the normal error banner) rather than a button here.
   const canCancel = timeFees?.canCancel ?? (!order.rider_id && ["Create", "Match"].includes(order.stage));
   const canDelete = !order.rider_id && ["Create", "Match"].includes(order.stage);
+  // While a relayed parcel rides the matatu, rider_id is empty and rider_lat/lng is the matatu.
+  const matatuLeg = detail.relay?.legs.find((l) => l.kind === "matatu");
+  const onMatatu = !order.rider_id && (matatuLeg?.status === "in_transit" || matatuLeg?.status === "arrived");
 
   return (
     <div className="space-y-6 px-4 pt-4">
@@ -373,8 +425,15 @@ export default function OrderDetailPage() {
 
       <OrderTimeline order={order} events={detail.events} statusLabel={stageLabel(order.stage, order.type)} />
 
-      {order.rider_id && !["Settle", "Handover"].includes(order.stage) && (
-        <LiveTrackingMap order={order} events={detail.events} />
+      {detail.relay && detail.relay.legs.length > 0 && <RelayTimeline relay={detail.relay} />}
+
+      {(order.rider_id || onMatatu) && !["Settle", "Handover"].includes(order.stage) && (
+        <LiveTrackingMap
+          order={order}
+          events={detail.events}
+          vehicleLabel={onMatatu ? "Matatu" : undefined}
+          target={onMatatu && matatuLeg?.toLat != null && matatuLeg.toLng != null ? { lat: matatuLeg.toLat, lng: matatuLeg.toLng } : null}
+        />
       )}
 
       {order.rider_id && (

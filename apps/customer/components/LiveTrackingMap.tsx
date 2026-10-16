@@ -4,7 +4,7 @@ import { DEFAULT_RIDE_TRACKING_SETTINGS, isFreshLocation, rideIsEnRoute, travelM
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { Loader2, Navigation } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { MapContainer, Marker, Polyline, TileLayer, useMap } from "react-leaflet";
 import { api } from "../lib/api";
 import { jawgTileUrl, useJawgStyle } from "../lib/mapStyle";
@@ -31,6 +31,23 @@ const destinationIcon = L.divIcon({
   iconAnchor: [15, 28],
 });
 
+/** The rider dot with a small name tag, for when the parcel is on another vehicle (a relay matatu). */
+function labelledIcon(label: string) {
+  const safe = label.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+  return L.divIcon({
+    html: `<div style="display:flex;flex-direction:column;align-items:center;gap:2px">
+      <span style="background:#0A0A0A;color:#FDFBF7;font:700 11px/1 system-ui,sans-serif;padding:3px 6px;border-radius:999px;white-space:nowrap">${safe}</span>
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="12" cy="12" r="9" fill="#0A0A0A" fill-opacity="0.15"/>
+        <circle cx="12" cy="12" r="7" fill="#C9A227" stroke="#FDFBF7" stroke-width="2.5"/>
+      </svg>
+    </div>`,
+    className: "peebee-rider-dot",
+    iconSize: [80, 44],
+    iconAnchor: [40, 31],
+  });
+}
+
 function FitToMarkers({ points }: { points: [number, number][] }) {
   const map = useMap();
   const lastTarget = useRef("");
@@ -45,7 +62,7 @@ function FitToMarkers({ points }: { points: [number, number][] }) {
   return null;
 }
 
-function MovingRider({ lat, lng, live }: { lat: number; lng: number; live: boolean }) {
+function MovingRider({ lat, lng, live, icon = riderIcon }: { lat: number; lng: number; live: boolean; icon?: L.DivIcon }) {
   const marker = useRef<L.Marker | null>(null);
   useEffect(() => {
     const current = marker.current;
@@ -63,7 +80,7 @@ function MovingRider({ lat, lng, live }: { lat: number; lng: number; live: boole
     return () => cancelAnimationFrame(frame);
   }, [lat, lng, live]);
   const initial = useRef<[number, number]>([lat, lng]);
-  return <Marker ref={marker} position={initial.current} icon={riderIcon} />;
+  return <Marker ref={marker} position={initial.current} icon={icon} />;
 }
 
 function elapsedLabel(sinceIso: string, nowMs: number): string {
@@ -78,7 +95,19 @@ function elapsedLabel(sinceIso: string, nowMs: number): string {
 }
 
 /** Assigned journey GPS, with separate pickup and destination estimates. */
-export function LiveTrackingMap({ order, events }: { order: OrderRow; events: OrderEvent[] }) {
+export function LiveTrackingMap({
+  order,
+  events,
+  vehicleLabel,
+  target,
+}: {
+  order: OrderRow;
+  events: OrderEvent[];
+  /** Names the moving marker (e.g. "Matatu") when it isn't the rider. */
+  vehicleLabel?: string;
+  /** Where the moving marker is heading, when not the order's own pickup/destination. */
+  target?: { lat: number; lng: number } | null;
+}) {
   const [tiles, setTiles] = useState<NavTiles | null>(null);
   const jawgStyle = useJawgStyle(tiles?.jawg?.adminLightStyle ?? "normal");
   const [settings, setSettings] = useState<RideTrackingSettings | null>(null);
@@ -107,8 +136,9 @@ export function LiveTrackingMap({ order, events }: { order: OrderRow; events: Or
   // the pickup point beforehand (rides only — parcels/shopping have no
   // "go collect the passenger" leg for the customer to watch).
   const enRoute = rideIsEnRoute(order.stage);
-  const targetLat = enRoute ? order.destination_lat : order.pickup_lat ?? order.destination_lat;
-  const targetLng = enRoute ? order.destination_lng : order.pickup_lng ?? order.destination_lng;
+  const targetLat = target ? target.lat : enRoute ? order.destination_lat : order.pickup_lat ?? order.destination_lat;
+  const targetLng = target ? target.lng : enRoute ? order.destination_lng : order.pickup_lng ?? order.destination_lng;
+  const markerIcon = useMemo(() => (vehicleLabel ? labelledIcon(vehicleLabel) : riderIcon), [vehicleLabel]);
   const currentLeg = useRoadRoute(settings?.enabled && isRecent ? riderLat : null, settings?.enabled && isRecent ? riderLng : null, targetLat, targetLng, settings?.routeRefreshSeconds);
   const trip = useRoadRoute(settings?.showEstimates && order.is_ride ? order.pickup_lat : null, order.pickup_lng, order.destination_lat, order.destination_lng);
   const route = currentLeg?.route;
@@ -118,7 +148,7 @@ export function LiveTrackingMap({ order, events }: { order: OrderRow; events: Or
   const arrivalTime = arrivalSeconds != null && currentLeg ? new Date(currentLeg.updatedAt + arrivalSeconds * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : null;
 
   if (!settings?.enabled) return null;
-  if (riderLat == null || riderLng == null) return <section className="home-card space-y-2"><h2 className="text-sm font-semibold">Waiting for your rider’s location</h2><p className="text-xs text-ink-500">Pickup arrival time will appear when your rider shares a fresh location.</p>{settings.showEstimates && order.is_ride && tripMinutes && <p className="text-sm font-semibold">Approximately {tripMinutes} min from pickup to destination</p>}</section>;
+  if (riderLat == null || riderLng == null) return <section className="home-card space-y-2"><h2 className="text-sm font-semibold">{vehicleLabel ? `Waiting for the ${vehicleLabel.toLowerCase()}’s location` : "Waiting for your rider’s location"}</h2>{!vehicleLabel && <p className="text-xs text-ink-500">Pickup arrival time will appear when your rider shares a fresh location.</p>}{settings.showEstimates && order.is_ride && tripMinutes && <p className="text-sm font-semibold">Approximately {tripMinutes} min from pickup to destination</p>}</section>;
 
   const dispatchEvent = events.find((e) => e.stage === "Match");
   const enRouteEvent = events.find((e) => e.stage === "Deliver" || e.stage === "PickedUp");
@@ -161,7 +191,7 @@ export function LiveTrackingMap({ order, events }: { order: OrderRow; events: Or
               <Polyline positions={route.coordinates} pathOptions={{ color: "#C9A227", weight: 4, opacity: 0.85 }} />
             )}
             {targetLat != null && targetLng != null && <Marker position={[targetLat, targetLng]} icon={destinationIcon} />}
-            <MovingRider lat={riderLat} lng={riderLng} live={isRecent} />
+            <MovingRider lat={riderLat} lng={riderLng} live={isRecent} icon={markerIcon} />
             <FitToMarkers points={points} />
             <div className="peebee-map-tint" aria-hidden />
           </MapContainer>

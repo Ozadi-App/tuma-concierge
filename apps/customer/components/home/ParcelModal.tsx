@@ -1,6 +1,6 @@
 "use client";
 
-import { roundFare } from "@peebee/shared";
+import { roundFare, type RelayQuote } from "@peebee/shared";
 import { Route } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -49,13 +49,42 @@ export function ParcelModal({ onClose }: { onClose: () => void }) {
   const distanceKm = p?.lat != null && p.lng != null && d?.lat != null && d.lng != null ? haversineKm(p.lat, p.lng, d.lat, d.lng) : null;
   const liveEstimate = distanceKm != null && pricing != null ? roundFare(distanceKm * pricing.ratePerKm, pricing.minimum) : null;
 
+  // Long parcels are relayed boda -> matatu -> boda. The quote's total is
+  // exactly what the order will charge, so submit waits for it.
+  const quoteKey = p?.lat != null && p.lng != null && d?.lat != null && d.lng != null ? `${p.lat},${p.lng}|${d.lat},${d.lng}` : null;
+  const [relayQuote, setRelayQuote] = useState<{ key: string; relay: RelayQuote | null; failed?: boolean } | null>(null);
+  const [quoteRetry, setQuoteRetry] = useState(0);
+  useEffect(() => {
+    if (!quoteKey || !p || !d) return;
+    let cancelled = false;
+    api
+      .getRelayQuote({
+        pickupLat: p.lat as number,
+        pickupLng: p.lng as number,
+        destinationLat: d.lat as number,
+        destinationLng: d.lng as number,
+        pickupName: p.area ?? undefined,
+        destinationName: d.area ?? undefined,
+      })
+      .then((res) => !cancelled && setRelayQuote({ key: quoteKey, relay: res.relay }))
+      .catch(() => !cancelled && setRelayQuote({ key: quoteKey, relay: null, failed: true }));
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quoteKey, quoteRetry]);
+  const quoteFailed = quoteKey != null && relayQuote?.key === quoteKey && relayQuote.failed === true;
+  const quoteLoading = quoteKey != null && (relayQuote?.key !== quoteKey || quoteFailed);
+  const relay = !quoteLoading && relayQuote ? relayQuote.relay : null;
+  const fare = relay ? relay.total : liveEstimate;
+
   // "Next: payment" is the bottom nav's right capsule (intermediate step).
-  const navFare = liveEstimate ?? (estimatedTotal ? Number(estimatedTotal) : null);
+  const navFare = quoteLoading ? null : fare ?? (estimatedTotal ? Number(estimatedTotal) : null);
   useRegisterNavPrimaryAction(!choosing && route ? {
     tone: "step",
-    label: busy ? "Please wait…" : "Next: payment",
+    label: busy || quoteLoading ? "Please wait…" : "Next: payment",
     detail: navFare != null && Number.isFinite(navFare) && navFare > 0 ? `UGX ${navFare.toLocaleString("en-UG")}` : undefined,
-    disabled: busy,
+    disabled: busy || quoteLoading,
     busy,
     onClick: () => void submit(),
   } : null);
@@ -78,7 +107,7 @@ export function ParcelModal({ onClose }: { onClose: () => void }) {
   }
 
   async function submit() {
-    if (!route) return;
+    if (!route || quoteLoading) return;
     const pf = placeFields(route.pickup);
     const df = placeFields(route.destination);
     setBusy(true);
@@ -97,7 +126,7 @@ export function ParcelModal({ onClose }: { onClose: () => void }) {
         destinationLat: df.lat,
         destinationLng: df.lng,
         paymentRail: "escrow",
-        estimatedTotal: liveEstimate ?? (estimatedTotal ? roundFare(Number(estimatedTotal), pricing?.minimum) : undefined),
+        estimatedTotal: fare ?? (estimatedTotal ? roundFare(Number(estimatedTotal), pricing?.minimum) : undefined),
       });
       if (voiceNote) {
         api.uploadOrderVoiceNote(order.id, voiceNote).catch(() => {});
@@ -122,7 +151,43 @@ export function ParcelModal({ onClose }: { onClose: () => void }) {
           className="w-full rounded-xl border border-[var(--border-faint)] px-3 py-2.5 text-[15px] outline-none focus:border-gold"
         />
 
-        {liveEstimate != null ? (
+        {quoteFailed ? (
+          <div className="flex items-center gap-2 rounded-xl border border-gold bg-gold/10 p-3">
+            <p className="flex-1 text-sm text-ink-500">Couldn&apos;t get the price.</p>
+            <button
+              type="button"
+              onClick={() => { setRelayQuote(null); setQuoteRetry((n) => n + 1); }}
+              className="text-sm font-bold text-gold"
+            >
+              Retry
+            </button>
+          </div>
+        ) : quoteLoading ? (
+          <div className="flex items-center gap-2 rounded-xl border border-gold bg-gold/10 p-3">
+            <span className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-gold border-t-transparent" aria-hidden />
+            <p className="text-sm text-ink-500">Getting price…</p>
+          </div>
+        ) : relay ? (
+          <div className="space-y-2 rounded-xl border border-gold bg-gold/10 p-3">
+            <div className="flex items-center gap-2">
+              <Route className="h-4 w-4 shrink-0 text-gold" strokeWidth={2.25} aria-hidden />
+              <p className="flex-1 text-sm font-bold text-ink">Delivery</p>
+              <p className="text-sm font-bold text-ink">Total UGX {relay.total.toLocaleString("en-UG")}</p>
+            </div>
+            <p className="text-xs text-ink-500">Long trip: relayed by boda and matatu.</p>
+            <ul className="space-y-1 border-t border-[var(--border-faint)] pt-2">
+              {relay.legs.map((leg) => (
+                <li key={leg.leg} className="flex justify-between gap-3 text-xs text-ink">
+                  <span className="min-w-0">
+                    <span className="font-semibold">{leg.kind === "matatu" ? "Matatu" : "Boda"}:</span> {leg.fromName} to{" "}
+                    {leg.leg === 3 ? "door" : leg.toName}
+                  </span>
+                  <span className="shrink-0 font-semibold">{leg.fee.toLocaleString("en-UG")}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : liveEstimate != null ? (
           <div className="flex items-center gap-2 rounded-xl border border-gold bg-gold/10 p-3">
             <Route className="h-4 w-4 shrink-0 text-gold" strokeWidth={2.25} aria-hidden />
             <p className="text-sm text-ink">
