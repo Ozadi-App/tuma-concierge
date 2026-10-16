@@ -1178,6 +1178,23 @@ export default function RestaurantPage() {
   const restaurantRating=restaurantTrustStatus==="loading"?"…":restaurantTrustStatus==="unavailable"?"—":restaurantTrust?.averageMenuRating==null?"New":`${restaurantTrust.averageMenuRating.toFixed(1)}/5`;
   const restaurantRatingDetail=restaurantTrustStatus==="loading"?"Loading":restaurantTrustStatus==="unavailable"?"Unavailable":restaurantTrust?.menuReviewCount?`${restaurantTrust.menuReviewCount.toLocaleString()} dish ratings`:"No dish ratings yet";
   const completedOrderCount=restaurantTrustStatus==="ready"&&restaurantTrust?restaurantTrust.completedOrderCount.toLocaleString():restaurantTrustStatus==="loading"?"…":"—";
+  // Shown on both the menu and a dish page: adding the first item while another restaurant has a saved cart asks how to deliver.
+  const cartSwitchDialog = pendingRestaurantCartSwitch && (
+          <RestaurantCartSwitchDialog
+            cartCount={pendingRestaurantCartSwitch.otherCartKeys.length}
+            combine={pendingRestaurantCartSwitch.otherCartKeys.length === 1 && switchOther ? {
+              otherName: switchOther.name,
+              thisName: restaurant?.name ?? "this restaurant",
+              km: switchOther.lat != null && switchOther.lng != null && restaurant?.lat != null && restaurant?.lng != null ? haversineKm(switchOther.lat, switchOther.lng, restaurant.lat, restaurant.lng) : null,
+              ratePerKm: deliverySettings?.deliveryRatePerKm ?? null,
+            } : null}
+            onCombine={combineOtherCartAndAdd}
+            onKeep={keepOtherCartsAndAdd}
+            onDiscard={discardOtherCartsAndAdd}
+            onCancel={() => setPendingRestaurantCartSwitch(null)}
+          />
+        );
+
   if (itemId) {
     const item = allItems.find((row) => row.id === itemId);
     if (!item) {
@@ -1202,21 +1219,7 @@ export default function RestaurantPage() {
           onViewCart={openCheckout}
           onAdd={requestAddToCart}
         />
-        {pendingRestaurantCartSwitch && (
-          <RestaurantCartSwitchDialog
-            cartCount={pendingRestaurantCartSwitch.otherCartKeys.length}
-            combine={pendingRestaurantCartSwitch.otherCartKeys.length === 1 && switchOther ? {
-              otherName: switchOther.name,
-              thisName: restaurant?.name ?? "this restaurant",
-              km: switchOther.lat != null && switchOther.lng != null && restaurant?.lat != null && restaurant?.lng != null ? haversineKm(switchOther.lat, switchOther.lng, restaurant.lat, restaurant.lng) : null,
-              ratePerKm: deliverySettings?.deliveryRatePerKm ?? null,
-            } : null}
-            onCombine={combineOtherCartAndAdd}
-            onKeep={keepOtherCartsAndAdd}
-            onDiscard={discardOtherCartsAndAdd}
-            onCancel={() => setPendingRestaurantCartSwitch(null)}
-          />
-        )}
+        {cartSwitchDialog}
       </>
     );
   }
@@ -1356,6 +1359,7 @@ export default function RestaurantPage() {
           </ul>
         </section>
       )}
+      {cartSwitchDialog}
       </div>
     </div>
   );
