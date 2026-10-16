@@ -1559,6 +1559,8 @@ export type OrderDetail = {
   rating: OrderRating | null;
   feeProposals: FeeProposal[];
   bundleStops?: Array<{ id: string; stage: string; pickup_address: string | null; pickup_lat: number | null; pickup_lng: number | null; restaurant_name: string | null; outlet_name: string | null }>;
+  /** Set when the parcel is relayed boda -> matatu -> boda. */
+  relay?: import("./relay.js").OrderRelay | null;
 };
 
 /** A rider's mobile-money cash-out of their wallet balance. */
