@@ -30,7 +30,7 @@ export function RideStopsPanel({ order, stops }: { order: OrderRow; stops: RideS
       label: t("stop_destination"),
       place: order.destination_area ?? order.destination_address,
       done: order.stage === "Handover" || order.stage === "Settle",
-      current: aboard && nextIndex === -1,
+      current: order.stage === "PickedUp" && nextIndex === -1,
       lat: order.destination_lat,
       lng: order.destination_lng,
     },

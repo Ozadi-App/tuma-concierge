@@ -245,6 +245,8 @@ type PracticeState = {
   offerExpiresAt?: number | null;
   counters?: PracticeCounter[];
   countersSeeded?: number;
+  /** The rider whose counter the customer accepted (Name your fare). */
+  acceptedRiderName?: string | null;
   /** Rider side: a practice boda ride with a customer offer and two stops. */
   rideJob?: PracticeRideJob;
 };
@@ -395,19 +397,21 @@ function nowIso(offsetMs = 0) {
 
 function orderFor(state: PracticeState) {
   const riderAssigned = state.riderClaimed;
+  // A Name-your-fare boda ride is matched to the rider whose counter was accepted, not a demo car.
+  const car = state.isRide && !state.acceptedRiderName;
   return {
     id: PRACTICE_ORDER_ID,
     list_id: PRACTICE_LIST_ID,
     customer_id: "practice-customer",
     customer_name: state.isRide ? "Grace N." : "Amina",
-    rider_id: riderAssigned ? (state.isRide ? (state.demoCarRiderId ?? PRACTICE_CAR_RIDERS[0].id) : "practice-rider") : null,
-    rider_name: riderAssigned ? (state.isRide ? practiceCar(state.demoCarRiderId).driver : "Daniel") : null,
-    car_category_name: state.isRide ? practiceCar(state.demoCarRiderId).name : null,
-    car_make: state.isRide ? practiceCar(state.demoCarRiderId).make : null,
-    car_model: state.isRide ? practiceCar(state.demoCarRiderId).model : null,
-    car_plate: state.isRide ? practiceCar(state.demoCarRiderId).plate : null,
-    car_driver_name: riderAssigned && state.isRide ? practiceCar(state.demoCarRiderId).driver : null,
-    car_owner_name: state.isRide ? practiceCar(state.demoCarRiderId).owner : null,
+    rider_id: riderAssigned ? (car ? (state.demoCarRiderId ?? PRACTICE_CAR_RIDERS[0].id) : "practice-rider") : null,
+    rider_name: riderAssigned ? (car ? practiceCar(state.demoCarRiderId).driver : state.acceptedRiderName ?? "Daniel") : null,
+    car_category_name: car ? practiceCar(state.demoCarRiderId).name : null,
+    car_make: car ? practiceCar(state.demoCarRiderId).make : null,
+    car_model: car ? practiceCar(state.demoCarRiderId).model : null,
+    car_plate: car ? practiceCar(state.demoCarRiderId).plate : null,
+    car_driver_name: riderAssigned && car ? practiceCar(state.demoCarRiderId).driver : null,
+    car_owner_name: car ? practiceCar(state.demoCarRiderId).owner : null,
     matching_mode: "first_to_claim",
     stage: state.stage,
     type: state.orderType,
@@ -842,7 +846,7 @@ function handlePracticeRequest(role: PracticeRole, path: string, method: string,
       total = offer;
     }
     save({
-      hasOrder: true, riderClaimed: false, stage: "Create", orderType: "parcel", isRide: true, paymentRail: "escrow", total, deliveryFee: total,
+      hasOrder: true, riderClaimed: false, acceptedRiderName: null, stage: "Create", orderType: "parcel", isRide: true, paymentRail: "escrow", total, deliveryFee: total,
       destinationArea: String(body.destinationArea ?? "Destination"), destinationAddress: String(body.destinationAddress ?? ""),
       pickupAddress: typeof body.pickupAddress === "string" ? body.pickupAddress : null, pickupLat: pickup.lat, pickupLng: pickup.lng, destinationLat: destination.lat, destinationLng: destination.lng,
       merchantPaymentStatus: "none", autoAdvanceAt: null, stops,
@@ -873,7 +877,7 @@ function handlePracticeRequest(role: PracticeRole, path: string, method: string,
     if (!counter) return jsonResponse({ error: "not_found" }, 404);
     if (counter.expiresAt <= Date.now()) return jsonResponse({ error: "counter_expired", message: "That counter has expired. Pick another or raise your offer." }, 410);
     if (body.approve === true) {
-      save({ riderClaimed: true, stage: "Match", total: counter.amount, deliveryFee: counter.amount, fareOffer: counter.amount, counters: (state.counters ?? []).map((c) => ({ ...c, status: c.id === counter.id ? "approved" as const : "rejected" as const })) });
+      save({ riderClaimed: true, acceptedRiderName: counter.riderName, stage: "Match", total: counter.amount, deliveryFee: counter.amount, fareOffer: counter.amount, counters: (state.counters ?? []).map((c) => ({ ...c, status: c.id === counter.id ? "approved" as const : "rejected" as const })) });
     } else {
       save({ counters: (state.counters ?? []).map((c) => (c.id === counter.id ? { ...c, status: "rejected" as const } : c)) });
     }
@@ -940,7 +944,7 @@ function handlePracticeRequest(role: PracticeRole, path: string, method: string,
   }
   if (method === "GET" && path.startsWith("/v1/lists/recent")) {
     const driver = state.isRide ? practiceCar(state.demoCarRiderId) : null;
-    return jsonResponse({ lists: state.hasOrder ? [{ id: PRACTICE_LIST_ID, listId: PRACTICE_LIST_ID, title: state.isRide ? "Practice car ride" : "Practice shopping list", status: state.stage === "Settle" ? "delivered" : "active", itemCount: state.items.length, updatedAt: nowIso(), riderFirstName: state.riderClaimed || role === "customer" ? driver?.driver ?? "Daniel" : null, riderId: state.riderClaimed || role === "customer" ? state.demoCarRiderId ?? "practice-rider" : null, riderHasPhoto: false, area: state.destinationArea, orderId: PRACTICE_ORDER_ID }] : [] });
+    return jsonResponse({ lists: state.hasOrder ? [{ id: PRACTICE_LIST_ID, listId: PRACTICE_LIST_ID, title: state.isRide ? "Practice car ride" : "Practice shopping list", status: state.stage === "Settle" ? "delivered" : "active", itemCount: state.items.length, updatedAt: nowIso(), riderFirstName: state.riderClaimed || role === "customer" ? state.acceptedRiderName ?? driver?.driver ?? "Daniel" : null, riderId: state.riderClaimed || role === "customer" ? state.demoCarRiderId ?? "practice-rider" : null, riderHasPhoto: false, area: state.destinationArea, orderId: PRACTICE_ORDER_ID }] : [] });
   }
   if (method === "POST" && path === "/v1/lists") {
     const rawItems = Array.isArray(body.items) ? body.items as Array<Record<string, unknown>> : [];
@@ -952,7 +956,7 @@ function handlePracticeRequest(role: PracticeRole, path: string, method: string,
     const type = body.type === "parcel" ? "parcel" : "shopping";
     const estimated = Number(body.estimatedTotal ?? 30_000);
     const deliveryFee = type === "parcel" ? roundFare(estimated, 3_000) : 5_000;
-    save({ hasOrder: true, riderClaimed: false, stage: "Create", orderType: type, isRide: body.isRide === true, paymentRail: body.paymentRail === "float" ? "float" : "escrow", total: type === "shopping" ? estimated + deliveryFee : deliveryFee, deliveryFee, destinationArea: String(body.destinationArea ?? "Entebbe City"), destinationAddress: String(body.destinationAddress ?? "Kitoro Road"), merchantPaymentStatus: "none", autoAdvanceAt: null });
+    save({ hasOrder: true, riderClaimed: false, fareOffer: null, fareQuote: null, counters: [], stops: [], acceptedRiderName: null, stage: "Create", orderType: type, isRide: body.isRide === true, paymentRail: body.paymentRail === "float" ? "float" : "escrow", total: type === "shopping" ? estimated + deliveryFee : deliveryFee, deliveryFee, destinationArea: String(body.destinationArea ?? "Entebbe City"), destinationAddress: String(body.destinationAddress ?? "Kitoro Road"), merchantPaymentStatus: "none", autoAdvanceAt: null });
     return jsonResponse({ order: orderFor(state) });
   }
   if (role === "customer" && method === "POST" && path === "/v1/marketplace/checkout") {
@@ -1006,7 +1010,7 @@ function handlePracticeRequest(role: PracticeRole, path: string, method: string,
     const category = practiceSpecialCategory(body.categoryId)!;
     const km = practiceDistanceKm(Number(body.pickupLat), Number(body.pickupLng), Number(body.destinationLat), Number(body.destinationLng));
     const fare = practiceSpecialFare(category, km, body.hireHours);
-    save({ hasOrder: true, riderClaimed: true, stage: "Match", orderType: "parcel", isRide: true, carCategoryId: category.id, carVehicleSize: "normal", carServiceTier: "comfort", demoCarRiderId: category.rider, paymentRail: "escrow", total: fare, deliveryFee: fare, destinationArea: String(body.destinationArea ?? "Entebbe City"), destinationAddress: String(body.destinationAddress ?? "Kitoro Road"), autoAdvanceAt: null });
+    save({ hasOrder: true, riderClaimed: true, fareOffer: null, fareQuote: null, counters: [], stops: [], acceptedRiderName: null, stage: "Match", orderType: "parcel", isRide: true, carCategoryId: category.id, carVehicleSize: "normal", carServiceTier: "comfort", demoCarRiderId: category.rider, paymentRail: "escrow", total: fare, deliveryFee: fare, destinationArea: String(body.destinationArea ?? "Entebbe City"), destinationAddress: String(body.destinationAddress ?? "Kitoro Road"), autoAdvanceAt: null });
     return jsonResponse({ order: orderFor(state) }, 201);
   }
   if (role === "customer" && method === "POST" && path === "/v1/car/bookings") {
@@ -1019,7 +1023,7 @@ function handlePracticeRequest(role: PracticeRole, path: string, method: string,
     const fare = roundFare(baseFare * (vehicleSize === "large" ? 1.5 : 1) * (serviceTier === "comfort" ? 1.3 : 1), 0);
     const eligible = PRACTICE_CAR_RIDERS.filter((rider) => rider.size === vehicleSize && rider.tier === serviceTier);
     const demoRider = eligible[Math.floor(Math.random() * eligible.length)] ?? PRACTICE_CAR_RIDERS[0];
-    save({ hasOrder: true, riderClaimed: true, stage: "Match", orderType: "parcel", isRide: true, carCategoryId: vehicleSize === "large" ? "practice-car-large" : PRACTICE_CAR_CATEGORY_ID, carVehicleSize: vehicleSize, carServiceTier: serviceTier, demoCarRiderId: demoRider.id, paymentRail: "escrow", total: fare, deliveryFee: fare, destinationArea: String(body.destinationArea ?? "Entebbe City"), destinationAddress: String(body.destinationAddress ?? "Kitoro Road"), autoAdvanceAt: null });
+    save({ hasOrder: true, riderClaimed: true, fareOffer: null, fareQuote: null, counters: [], stops: [], acceptedRiderName: null, stage: "Match", orderType: "parcel", isRide: true, carCategoryId: vehicleSize === "large" ? "practice-car-large" : PRACTICE_CAR_CATEGORY_ID, carVehicleSize: vehicleSize, carServiceTier: serviceTier, demoCarRiderId: demoRider.id, paymentRail: "escrow", total: fare, deliveryFee: fare, destinationArea: String(body.destinationArea ?? "Entebbe City"), destinationAddress: String(body.destinationAddress ?? "Kitoro Road"), autoAdvanceAt: null });
     return jsonResponse({ order: orderFor(state) }, 201);
   }
   const rideshareBooking = path.match(/^\/v1\/car\/carpool\/trips\/(practice-rideshare-[^/]+)\/seats$/);
@@ -1027,7 +1031,7 @@ function handlePracticeRequest(role: PracticeRole, path: string, method: string,
     const trip = practiceRideshareTrip(rideshareBooking[1]);
     const seats = Number(body.seats);
     if (!trip || !Number.isInteger(seats) || seats < 1 || seats > 3) return practiceError("Choose an available demo trip and one to three seats.");
-    save({ hasOrder: true, riderClaimed: true, stage: "Match", orderType: "parcel", isRide: true, carCategoryId: PRACTICE_CAR_CATEGORY_ID,
+    save({ hasOrder: true, riderClaimed: true, fareOffer: null, fareQuote: null, counters: [], stops: [], acceptedRiderName: null, stage: "Match", orderType: "parcel", isRide: true, carCategoryId: PRACTICE_CAR_CATEGORY_ID,
       carVehicleSize: trip.driver.size === "large" ? "large" : "normal", carServiceTier: "convenient", demoCarRiderId: trip.driver.id,
       paymentRail: "escrow", total: trip.price * seats, deliveryFee: trip.price * seats, pickupAddress: trip.from[0], pickupLat: trip.from[1], pickupLng: trip.from[2],
       destinationArea: trip.to[0], destinationAddress: trip.to[0], destinationLat: trip.to[1], destinationLng: trip.to[2], autoAdvanceAt: null });
@@ -1036,6 +1040,8 @@ function handlePracticeRequest(role: PracticeRole, path: string, method: string,
   if (method === "GET" && path === `/v1/orders/${PRACTICE_ORDER_ID}`) return jsonResponse(orderDetail(state));
   if (method === "GET" && path === `/v1/orders/${PRACTICE_ORDER_ID}/checkout`) return jsonResponse({ baseAmount: state.total, mobileMoney: state.total, wallet: state.total, cash: state.total });
   if (method === "GET" && path === `/v1/car/bookings/${PRACTICE_ORDER_ID}/info`) {
+    // A Name-your-fare ride is a boda, not a car booking (the live API answers 404 too).
+    if (state.acceptedRiderName || state.fareOffer != null) return jsonResponse({ error: "not_found" }, 404);
     const car = practiceCar(state.demoCarRiderId);
     return jsonResponse({ car: true, scheduledFor: null, categoryName: car.name, vehicleName: `${car.make} ${car.model}`, plate: car.plate, ownerName: car.owner, driverName: car.driver });
   }

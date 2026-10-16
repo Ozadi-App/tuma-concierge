@@ -388,7 +388,7 @@ export async function createOrderFromInput(
     }
     const available = await rideExtrasAvailable();
     if ((stops.length > 0 && !available.stops) || (d.fareOffer != null && !available.offers)) {
-      return c.json({ error: "feature_unavailable", message: "This option isn't available yet. Book at the standard fare instead." }, 503);
+      return c.json({ error: "feature_unavailable", code: "feature_unavailable", message: "This option isn't available yet. Book at the standard fare instead." }, 503);
     }
     const pickupPoint = d.pickupLat != null && d.pickupLng != null ? { lat: d.pickupLat, lng: d.pickupLng } : null;
     const destinationPoint = d.destinationLat != null && d.destinationLng != null ? { lat: d.destinationLat, lng: d.destinationLng } : null;
@@ -2212,6 +2212,11 @@ orderRoutes.post("/orders/:id/fee-proposals/:proposalId/decision", async (c) => 
 const OFFER_RATE_LIMIT = { count: 12, windowSeconds: 10 * 60 };
 const COUNTER_RATE_LIMIT = { count: 30, windowSeconds: 10 * 60 };
 
+/** The new ride options need migration 0104; until it is applied they answer this instead of failing. */
+function featureUnavailable(c: Context) {
+  return c.json({ error: "feature_unavailable", code: "feature_unavailable", message: "This option isn't available yet. Book at the standard fare instead." }, 503);
+}
+
 function idempotencyKey(c: Context): string | undefined {
   const key = c.req.header("Idempotency-Key")?.trim();
   return key ? key.slice(0, 120) : undefined;
@@ -2277,7 +2282,7 @@ orderRoutes.post("/orders/:id/fare-offer", requireRole("customer"), async (c) =>
   if (replay) return c.json(replay.body as Record<string, unknown>, replay.status as 200);
   const parsed = fareOfferSchema.safeParse(await c.req.json().catch(() => ({})));
   if (!parsed.success) return c.json({ error: "invalid_body", issues: parsed.error.issues }, 400);
-  if (!(await rideExtrasAvailable()).offers) return c.json({ error: "feature_unavailable" }, 503);
+  if (!(await rideExtrasAvailable()).offers) return featureUnavailable(c);
   const order = await getOrder(id);
   if (!order) return c.json({ error: "not_found" }, 404);
   if (order.customer_id !== user.sub) return c.json({ error: "forbidden" }, 403);
@@ -2346,7 +2351,7 @@ orderRoutes.post("/orders/:id/fare-counters", requireRole("rider"), async (c) =>
   if (replay) return c.json(replay.body as Record<string, unknown>, replay.status as 201);
   const parsed = counterSchema.safeParse(await c.req.json().catch(() => ({})));
   if (!parsed.success) return c.json({ error: "invalid_body", issues: parsed.error.issues }, 400);
-  if (!(await rideExtrasAvailable()).offers) return c.json({ error: "feature_unavailable" }, 503);
+  if (!(await rideExtrasAvailable()).offers) return featureUnavailable(c);
   const order = await getOrder(id);
   if (!order) return c.json({ error: "not_found" }, 404);
   if (order.fare_offer == null || order.fare_offer_quote == null) return c.json({ error: "no_offer", message: "This ride is at a fixed fare." }, 409);
@@ -2457,6 +2462,7 @@ orderRoutes.get("/orders/:id/stops", async (c) => {
 
 /** Rider progress through a multi-stop ride: arrive at the next stop, then continue. Only while the passenger is aboard. */
 async function progressStop(c: Context, action: "arrived" | "continue") {
+  if (!(await rideExtrasAvailable()).stops) return featureUnavailable(c);
   const id = c.req.param("id") as string;
   const position = Number(c.req.param("position"));
   const user = c.get("user");
