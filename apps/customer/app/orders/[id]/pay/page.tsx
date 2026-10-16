@@ -38,7 +38,6 @@ export default function PaymentPage() {
   const [walletError, setWalletError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [canAddPickup, setCanAddPickup] = useState(false);
   const paying = useRef(false);
   const polling = useRef(false);
   const load = useCallback(async () => {
@@ -51,11 +50,16 @@ export default function PaymentPage() {
         try {
           const candidates = await api.getDeliveryBundleCandidates();
           bundleWindowOpen = candidates.orders.some((candidate) => candidate.id === id);
-          setCanAddPickup(bundleWindowOpen);
+          // Adding another restaurant happens while ordering, not at payment: a lone order simply
+          // continues here, so its pickup-choice hold is closed automatically.
+          if (bundleWindowOpen) {
+            await api.closeDeliveryBundleWindow(id);
+            bundleWindowOpen = false;
+          }
         } catch {
-          setCanAddPickup(false);
+          bundleWindowOpen = false;
         }
-      } else setCanAddPickup(false);
+      }
       if (!bundleWindowOpen && !current.order.rider_id && ["Create", "Match"].includes(current.order.stage)) {
         await api.matchOrder(id).catch(() => {});
         current = await api.getOrder(id);
@@ -101,19 +105,6 @@ export default function PaymentPage() {
   const disabled = busy || !online || !ready || amount == null ||
     (method === "mobile_money" && !network) ||
     (method === "wallet" && (!selectedWallet || selectedWallet.balance == null || insufficient));
-
-  async function continueWithOnePickup() {
-    setBusy(true);
-    setError(null);
-    try {
-      await api.closeDeliveryBundleWindow(id);
-      await load();
-    } catch (err) {
-      setError(errorMessage(err));
-    } finally {
-      setBusy(false);
-    }
-  }
 
   async function pay() {
     if (disabled || paying.current || amount == null) return;
@@ -167,7 +158,7 @@ export default function PaymentPage() {
         ))}
       </fieldset>
       <section className="home-card space-y-4">
-        {canAddPickup && <div className="rounded-2xl border border-gold/30 bg-gold/10 p-4"><h2 className="font-bold text-ink">Add another pickup?</h2><p className="mt-1 text-sm text-ink-500">Your rider has not been assigned yet. Add one food or shopping pickup and we’ll calculate the extra route fee. This choice stays open for 30 minutes.</p><div className="mt-3 flex flex-wrap gap-2"><Link href="/restaurants" className="inline-flex min-h-11 items-center rounded-full bg-gold px-5 text-sm font-bold text-ink-gold">Add another restaurant</Link><button type="button" onClick={continueWithOnePickup} disabled={busy} className="min-h-11 rounded-full border border-[var(--border-faint)] px-4 text-sm font-bold text-ink">Keep this order only</button></div></div>}
+        {(detail?.bundleStops?.length ?? 0) > 1 && <p className="rounded-2xl border border-gold/30 bg-gold/10 px-4 py-3 text-sm text-ink">Combined delivery: one rider collects from {detail!.bundleStops!.map((stop) => stop.restaurant_name ?? "your pickup").join(" and ")}. Each pickup is paid in turn (pickup {Math.max(1, detail!.bundleStops!.findIndex((stop) => stop.id === id) + 1)} of {detail!.bundleStops!.length}).</p>}
         <fieldset disabled={busy || pending} hidden={method !== "mobile_money"} className="min-w-0">
           <MobileNumberPicker purpose="payment" value={phone} onChange={setPhone} prominent autoSave />
           <p className="mt-3 text-sm text-ink-500">Enter your MTN MoMo or Airtel Money number. We detect the network automatically.</p>
