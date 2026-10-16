@@ -43,7 +43,8 @@
     "deploy:pharmacy:preview": "pnpm --filter pharmacy deploy:preview",
     "deploy:work:preview": "pnpm --filter work deploy:preview",
     "deploy:preview-hub:preview": "pnpm --filter preview-hub deploy:preview",
-    "deploy:preview-hub": "pnpm --filter preview-hub deploy"
+    "deploy:preview-hub": "pnpm --filter preview-hub deploy",
+    "build:customer-mobile": "pnpm --filter customer-mobile build"
   },
   "engines": {
     "node": ">=22"

@@ -1,6 +1,6 @@
 "use client";
 
-// Aliased over `next/navigation` in the mobile build only (see next.config.ts).
+// Aliased over `next/navigation` in the mobile build only (see ../next.config.ts).
 // Re-exports everything, overriding the hooks that see dynamic-route URLs.
 import {
   usePathname as useRealPathname,

@@ -9,7 +9,7 @@
 //
 // `toNative` rewrites hrefs on the way out, `fromNative` restores the real
 // pathname/params for the pages that read them. Both are only wired in by the
-// mobile build (see next.config.ts); the web build never imports this file.
+// mobile build (see apps/customer-mobile/next.config.ts).
 
 export const PLACEHOLDER = "_";
 const PARAM_PREFIX = "_p_";

@@ -44,5 +44,7 @@ local.db-wal
 # ide
 .idea
 .vscode
-.mobile-parked-*
-apps/customer/www
+
+# apps/customer-mobile build output
+apps/customer-mobile/.stage
+apps/customer-mobile/www

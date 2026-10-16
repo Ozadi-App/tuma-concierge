@@ -1,7 +1,6 @@
 import '@peebee/shared/auth.css';
 import type { Metadata, Viewport } from "next";
 import Script from "next/script";
-import { Fragment, Suspense } from "react";
 import "./globals.css";
 import "./food-theme.css";
 import "./pharmacy-theme.css";
@@ -15,10 +14,6 @@ import { ServiceWorkerRegister } from "../components/ServiceWorkerRegister";
 import { AuthProvider } from "../lib/auth-context";
 import { CallsProvider } from "../lib/calls-context";
 import { LanguageProvider } from "../lib/i18n";
-
-// The bundled mobile build reads dynamic-route params from the query string,
-// which a static export can only do behind a Suspense boundary.
-const NativeBoundary = process.env.NEXT_PUBLIC_NATIVE === "1" ? Suspense : Fragment;
 
 // Runs before paint so there's no flash of the wrong theme — reads the
 // user's saved choice, falling back to their OS preference.
@@ -73,20 +68,18 @@ export default function RootLayout({
         <Script id="theme-init" strategy="beforeInteractive">
           {THEME_INIT_SCRIPT}
         </Script>
-        <NativeBoundary>
-          <ServiceWorkerRegister />
-          <OfflineBanner />
-          <AuthProvider>
-            <LanguageProvider>
-              <CallsProvider>
-                <AppShell>{children}</AppShell>
-                <PushNotifications />
-                <CallOverlay />
-              </CallsProvider>
-            </LanguageProvider>
-          </AuthProvider>
-          <InstallPrompt />
-        </NativeBoundary>
+        <ServiceWorkerRegister />
+        <OfflineBanner />
+        <AuthProvider>
+          <LanguageProvider>
+            <CallsProvider>
+              <AppShell>{children}</AppShell>
+              <PushNotifications />
+              <CallOverlay />
+            </CallsProvider>
+          </LanguageProvider>
+        </AuthProvider>
+        <InstallPrompt />
       </body>
     </html>
   );

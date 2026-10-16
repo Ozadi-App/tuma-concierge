@@ -1,6 +1,6 @@
 "use client";
 
-// Aliased over `next/link` in the mobile build only (see next.config.ts).
+// Aliased over `next/link` in the mobile build only (see ../next.config.ts).
 import NextLink from "next/dist/client/app-dir/link";
 import type { ComponentProps } from "react";
 import { toNative } from "./routes";
