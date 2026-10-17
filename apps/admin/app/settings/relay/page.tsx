@@ -728,6 +728,14 @@ function StagesEditor({ route, onClose }: { route: RelayRoute; onClose: () => vo
   );
 }
 
+type StationMode = "off" | "sandbox" | "live";
+const STATION_MODES: Array<{ mode: StationMode; label: string }> = [
+  { mode: "off", label: "Off" },
+  { mode: "sandbox", label: "Sandbox" },
+  { mode: "live", label: "Live" },
+];
+const stationMode = (s: RelayStation): StationMode => (s.relay_drop === 1 ? "live" : s.relay_drop === 2 ? "sandbox" : "off");
+
 function StationsTab() {
   const [stations, setStations] = useState<RelayStation[]>([]);
   const [ready, setReady] = useState(true);
@@ -749,11 +757,12 @@ function StationsTab() {
   }, []);
   useEffect(() => void refresh(), [refresh]);
 
-  async function toggle(s: RelayStation) {
+  async function setMode(s: RelayStation, mode: StationMode) {
+    if (stationMode(s) === mode) return;
     setBusyId(s.id);
     setError(null);
     try {
-      await api.adminSetRelayStation(s.id, s.relay_drop !== 1);
+      await api.adminSetRelayStation(s.id, mode);
       await refresh();
     } catch (err) {
       setError(`${s.name}: ${relayError(err)}`);
@@ -767,14 +776,17 @@ function StationsTab() {
   return (
     <div className="space-y-2">
       {!ready && <StationsNotice />}
-      <p className="text-xs text-ink-500">Stations that accept relay parcels. A station-drop route leaves each parcel at the nearest open one.</p>
+      <p className="text-xs text-ink-500">
+        Stations that accept relay parcels. A station-drop route leaves each parcel at the nearest open one. &ldquo;Sandbox&rdquo; stations only take
+        parcels while the platform is in sandbox (and in practice), for trialling a station before it goes live.
+      </p>
       <ErrorNote message={error} />
       {ready && stations.length === 0 && <p className="text-sm text-ink-500">No Peebee Gas stations yet.</p>}
       <ul className="space-y-2">
         {stations.map((s) => {
-          const on = s.relay_drop === 1;
+          const current = stationMode(s);
           return (
-            <li key={s.id} className="home-card flex items-center justify-between gap-3">
+            <li key={s.id} className="home-card flex flex-wrap items-center justify-between gap-3">
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold text-ink">
                   {s.station_name} · {s.name}
@@ -784,15 +796,20 @@ function StationsTab() {
                   {s.lat == null || s.lng == null ? " · no map location" : ""} · holding {s.holding} parcel{s.holding === 1 ? "" : "s"}
                 </p>
               </div>
-              <button
-                type="button"
-                disabled={busyId === s.id}
-                onClick={() => toggle(s)}
-                aria-pressed={on}
-                className={`${smallBtn} shrink-0 disabled:opacity-50 ${on ? "bg-gold text-ink-gold" : "bg-gold/15 text-ink"}`}
-              >
-                {on ? "Accepting" : "Off"}
-              </button>
+              <div className="flex shrink-0 gap-1" role="group" aria-label={`${s.name} relay parcels`}>
+                {STATION_MODES.map(({ mode, label }) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    disabled={busyId === s.id}
+                    onClick={() => setMode(s, mode)}
+                    aria-pressed={current === mode}
+                    className={`${smallBtn} disabled:opacity-50 ${current === mode ? "bg-gold text-ink-gold" : "bg-gold/15 text-ink"}`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
             </li>
           );
         })}

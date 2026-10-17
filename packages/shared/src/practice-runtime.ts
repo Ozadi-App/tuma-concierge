@@ -249,6 +249,8 @@ type PracticeState = {
   acceptedRiderName?: string | null;
   /** Rider side: a practice boda ride with a customer offer and two stops. */
   rideJob?: PracticeRideJob;
+  /** Fuel attendant: a sample relay parcel arriving by matatu, then collected. */
+  relayParcel?: { status: "incoming" | "held" | "collected"; heldAt: string | null; releasedAt: string | null };
 };
 
 type PracticeStop = { area: string | null; address: string | null; lat: number; lng: number };
@@ -1205,10 +1207,73 @@ function handlePracticeRequest(role: PracticeRole, path: string, method: string,
     }
   }
 
+  if (role === "gas" && path.startsWith("/v1/gas/relay/")) return practiceRelayParcel(path, method, body, state, save);
+
   if (method === "GET" && path === "/v1/chat/threads") return jsonResponse({ threads: [] });
   if (method === "GET" && path === "/v1/restaurants/me/chat") return jsonResponse({ threads: [] });
   if (method === "GET" && path.startsWith("/v1/calls/incoming")) return jsonResponse({ call: null });
 
+  return practiceError();
+}
+
+// Relay parcels at the station: the attendant receives a sample parcel with the
+// matatu's code and hands it over with the customer's. The codes are shown on
+// the sample parcel so the journey can be completed without anyone else.
+const PRACTICE_PARCEL_ID = "ord_practice_relay_parcel";
+const PRACTICE_MATATU_CODE = "246810";
+const PRACTICE_COLLECT_CODE = "135790";
+
+function practiceRelayParcel(path: string, method: string, body: Record<string, unknown>, state: PracticeState, save: (patch: Partial<PracticeState>) => void): Response {
+  const parcel = state.relayParcel ?? { status: "incoming" as const, heldAt: null, releasedAt: null };
+  const code = String(body.code ?? "");
+  if (method === "POST" && path === "/v1/gas/relay/receive") {
+    if (parcel.status !== "incoming" || code !== PRACTICE_MATATU_CODE) return jsonResponse({ error: "not_found", message: `No parcel with that code. In practice, the matatu's code is ${PRACTICE_MATATU_CODE}.` }, 404);
+    save({ relayParcel: { ...parcel, status: "held", heldAt: nowIso() } });
+    return jsonResponse({ orderId: PRACTICE_PARCEL_ID });
+  }
+  if (method === "POST" && path === "/v1/gas/relay/release") {
+    if (parcel.status !== "held" || code !== PRACTICE_COLLECT_CODE) return jsonResponse({ error: "not_found", message: parcel.status === "incoming" ? "Receive the parcel from the matatu first." : `No parcel with that code. In practice, the customer's code is ${PRACTICE_COLLECT_CODE}.` }, 404);
+    save({ relayParcel: { ...parcel, status: "collected", releasedAt: nowIso() } });
+    return jsonResponse({ orderId: PRACTICE_PARCEL_ID });
+  }
+  const customerName = `Amina (practice) · code ${PRACTICE_COLLECT_CODE}`;
+  if (method === "GET" && path === "/v1/gas/relay/parcels") {
+    return jsonResponse({
+      incoming: parcel.status === "incoming"
+        ? [{ order_id: PRACTICE_PARCEL_ID, from_name: "Kampala Old Taxi Park", matatu_status: "arrived", vehicle_plate: "PRACTICE 14", operator_name: `Practice matatu · code ${PRACTICE_MATATU_CODE}`, started_at: nowIso(-40 * 60_000) }]
+        : [],
+      held: parcel.status === "held"
+        ? [{ order_id: PRACTICE_PARCEL_ID, last_mile: "collect", held_at: parcel.heldAt ?? nowIso(), customer_name: customerName, customer_phone: "0700000000", rider_status: null, rider_name: null, release_code: null }]
+        : [],
+      recent: parcel.status === "collected"
+        ? [{ order_id: PRACTICE_PARCEL_ID, released_to: "customer", released_at: parcel.releasedAt ?? nowIso(), customer_name: "Amina (practice)" }]
+        : [],
+    });
+  }
+  if (method === "GET" && path === `/v1/gas/relay/parcels/${PRACTICE_PARCEL_ID}`) {
+    const leg = (n: 1 | 2, kind: "boda" | "matatu", fromName: string, toName: string, providerName: string, vehiclePlate: string, startedMin: number, handedMin: number | null) => ({
+      id: `practice-relay-leg-${n}`, leg: n, kind, fromName, fromLat: null, fromLng: null, toName, toLat: null, toLng: null, distanceKm: null, fee: 0,
+      status: handedMin == null ? "arrived" : "done", providerName, vehiclePlate, startedAt: nowIso(-startedMin * 60_000), handedOverAt: handedMin == null ? null : nowIso(-handedMin * 60_000),
+    });
+    return jsonResponse({
+      order: { id: PRACTICE_PARCEL_ID, stage: parcel.status === "collected" ? "Settle" : "Deliver", destinationArea: "Entebbe" },
+      relay: {
+        routeName: "Kampala - Entebbe (practice)", dropMode: "station", lastMile: "collect",
+        station: { name: "Peebee Practice Station", address: null, lat: null, lng: null, phone: null },
+        heldAt: parcel.heldAt, releasedAt: parcel.releasedAt, releasedTo: parcel.status === "collected" ? "customer" : null,
+        legs: [
+          leg(1, "boda", "Nakasero", "Kampala Old Taxi Park", "Daniel", "PRACTICE 02", 75, 60),
+          leg(2, "matatu", "Kampala Old Taxi Park", "Peebee Practice Station", "Practice matatu", "PRACTICE 14", 60, parcel.status === "incoming" ? null : 1),
+        ],
+      },
+      events: [
+        { stage: "Deliver", note: "Picked up from the sender", created_at: nowIso(-75 * 60_000) },
+        { stage: "Deliver", note: "On the matatu to Entebbe", created_at: nowIso(-60 * 60_000) },
+        ...(parcel.heldAt ? [{ stage: "Deliver", note: "Received at the station", created_at: parcel.heldAt }] : []),
+        ...(parcel.releasedAt ? [{ stage: "Settle", note: "Collected by the customer", created_at: parcel.releasedAt }] : []),
+      ],
+    });
+  }
   return practiceError();
 }
 

@@ -20,6 +20,29 @@ test("Food practice order tabs stay local and follow the sample settlement", asy
   assert.equal(history.orders.length, 1); assert.equal(history.orders[0].stage, "Settle"); assert.deepEqual(history.counts, { active: 0, history: 1 });
 });
 
+test("Fuel attendant practice: receive a relay parcel from the matatu, then the customer collects it", async () => {
+  installStorage();
+  const fetcher = createPracticeFetch("gas", (async () => { throw new Error("Must not access live parcels"); }) as typeof fetch);
+  startPracticeMode("gas");
+  type Parcels = { incoming: { order_id: string; operator_name: string }[]; held: { customer_name: string }[]; recent: unknown[] };
+  const parcels = async () => (await (await fetcher("https://api.test/v1/gas/relay/parcels")).json()) as Parcels;
+  const post = (path: string, code: string) => fetcher(`https://api.test/v1/gas/relay/${path}`, { method: "POST", body: JSON.stringify({ code }) });
+  const first = await parcels();
+  assert.equal(first.incoming.length, 1);
+  const matatuCode = first.incoming[0].operator_name.match(/\d{6}/)![0];
+  assert.equal((await post("release", "135790")).status, 404, "nothing to hand over before it arrives");
+  assert.equal((await post("receive", "000000")).status, 404);
+  assert.equal((await post("receive", matatuCode)).status, 200);
+  const held = await parcels();
+  assert.equal(held.incoming.length, 0);
+  const customerCode = held.held[0].customer_name.match(/\d{6}/)![0];
+  assert.equal((await post("release", customerCode)).status, 200);
+  const done = await parcels();
+  assert.deepEqual([done.held.length, done.recent.length], [0, 1]);
+  const journey = (await (await fetcher(`https://api.test/v1/gas/relay/parcels/${first.incoming[0].order_id}`)).json()) as { relay: { releasedTo: string } };
+  assert.equal(journey.relay.releasedTo, "customer");
+});
+
 function installStorage() {
   const values = new Map<string, string>();
   const localStorage = {
