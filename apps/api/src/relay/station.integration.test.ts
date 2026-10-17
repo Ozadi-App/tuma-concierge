@@ -115,6 +115,19 @@ test("relay to a petrol station: collect in person, door delivery, or send a rid
       assert.equal(quote.relay.choiceAtOrder, true);
     });
 
+    await t.test("a sandbox-only station takes parcels in sandbox but not live", async () => {
+      const quote = () => json<{ relay: { dropMode: string } }>(
+        call("customer", `relay/quote?pickupLat=${PICKUP.lat}&pickupLng=${PICKUP.lng}&destinationLat=${DOOR.lat}&destinationLng=${DOOR.lng}`));
+      assert.equal((await call("staff", "admin/relay/stations/out", { mode: "sandbox" })).status, 200);
+      assert.equal((await client.execute("SELECT relay_drop FROM fuel_station_outlets WHERE id = 'out'")).rows[0].relay_drop, 2);
+      assert.equal((await quote()).relay.dropMode, "stage", "live orders don't use a trial station");
+      await client.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('platform_environment', 'sandbox')");
+      assert.equal((await quote()).relay.dropMode, "station");
+      await client.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('platform_environment', 'live')");
+      assert.equal((await call("staff", "admin/relay/stations/out", { relayDrop: true })).status, 200, "older admin builds still work");
+      assert.equal((await quote()).relay.dropMode, "station");
+    });
+
     await t.test("collect in person: the attendant enters the customer's code and the order is done", async () => {
       const { id, total } = await toStation("collect");
       const view = await json<{ relay: { collectCode: string; sendRiderFee: number; heldAt: string } }>(call("customer", `orders/${id}`));

@@ -171,6 +171,7 @@ export type RelayStationParcels = {
 
 export type RelayStation = {
   id: string; name: string; address: string | null; lat: number | null; lng: number | null; status: string;
+  /** 0 off, 1 live, 2 sandbox & practice only. */
   relay_drop: number; station_name: string; holding: number;
 };
 

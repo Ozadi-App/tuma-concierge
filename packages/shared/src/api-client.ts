@@ -642,8 +642,9 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
     async adminListRelayStations() {
       return request<{ stations: RelayStation[]; ready: boolean }>("/v1/admin/relay/stations");
     },
-    async adminSetRelayStation(outletId: string, relayDrop: boolean) {
-      return request<{ ok: boolean }>(`/v1/admin/relay/stations/${encodeURIComponent(outletId)}`, { method: "POST", body: JSON.stringify({ relayDrop }) });
+    /** off, sandbox (sandbox & practice only, for trial stations) or live. */
+    async adminSetRelayStation(outletId: string, mode: "off" | "sandbox" | "live") {
+      return request<{ ok: boolean }>(`/v1/admin/relay/stations/${encodeURIComponent(outletId)}`, { method: "POST", body: JSON.stringify({ mode }) });
     },
     async listOpenRelayLegs() {
       return request<{ legs: RelayOpenLeg[] }>("/v1/relay/legs/open");

@@ -5,7 +5,7 @@ import { newId } from "../lib/ids.js";
 import { riderPayout } from "../lib/monetization.js";
 import { randomInt } from "../lib/random.js";
 import { hasColumn, hasTable } from "../lib/schema.js";
-import { getDeliverySettings } from "../lib/settings.js";
+import { getDeliverySettings, getPlatformEnvironment } from "../lib/settings.js";
 import { notifyUser } from "../lib/webpush.js";
 import { creditWallet } from "../wallet/service.js";
 import { ledgerBalance, postLedgerTransaction } from "../ledger/service.js";
@@ -168,11 +168,23 @@ export async function relayStationsReady(): Promise<boolean> {
   return (await hasTable("order_relay")) && (await hasColumn("relay_routes", "drop_mode")) && (await hasColumn("fuel_station_outlets", "relay_drop"));
 }
 
+/**
+ * How a station takes relay parcels, as staff set it: 0 not at all, 1 always,
+ * 2 only in sandbox (and practice), for stations still being trialled.
+ */
+export const RELAY_DROP_OFF = 0;
+export const RELAY_DROP_LIVE = 1;
+export const RELAY_DROP_SANDBOX = 2;
+
 /** The active station that accepts relay parcels nearest the customer, within the admin's limit. */
 async function nearestDropStation(destination: Point, maxKm: number): Promise<RelayPlan["station"] | null> {
-  const outlets = (await db.execute(`SELECT o.id, o.name, o.address, o.lat, o.lng, s.brand_name AS station_name
-                                     FROM fuel_station_outlets o JOIN fuel_stations s ON s.id = o.station_id
-                                     WHERE o.relay_drop = 1 AND o.status = 'active' AND o.lat IS NOT NULL AND o.lng IS NOT NULL`)).rows as Row[];
+  const modes = (await getPlatformEnvironment()) === "sandbox" ? [RELAY_DROP_LIVE, RELAY_DROP_SANDBOX] : [RELAY_DROP_LIVE];
+  const outlets = (await db.execute({
+    sql: `SELECT o.id, o.name, o.address, o.lat, o.lng, s.brand_name AS station_name
+          FROM fuel_station_outlets o JOIN fuel_stations s ON s.id = o.station_id
+          WHERE o.relay_drop IN (${modes.map(() => "?").join(",")}) AND o.status = 'active' AND o.lat IS NOT NULL AND o.lng IS NOT NULL`,
+    args: modes,
+  })).rows as Row[];
   let best: { row: Row; km: number } | null = null;
   for (const row of outlets) {
     const km = haversineKm(Number(row.lat), Number(row.lng), destination.lat, destination.lng);

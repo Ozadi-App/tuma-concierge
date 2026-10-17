@@ -26,6 +26,9 @@ import {
   relayStationsReady,
   relayView,
   RelayError,
+  RELAY_DROP_LIVE,
+  RELAY_DROP_OFF,
+  RELAY_DROP_SANDBOX,
   sendRiderFromStation,
 } from "./service.js";
 import { getRelaySettings, setRelaySettings } from "./settings.js";
@@ -498,17 +501,23 @@ relayRoutes.get("/admin/relay/stations", requirePermission("settings.manage"), a
 relayRoutes.post("/admin/relay/stations/:outletId", requirePermission("settings.manage"), async (c) => {
   if (!(await relayStationsReady())) return c.json({ error: "stations_unavailable", message: "Apply migration 0105 first." }, 503);
   const outletId = c.req.param("outletId") as string;
-  const parsed = z.object({ relayDrop: z.boolean() }).safeParse(await c.req.json().catch(() => ({})));
+  // `relayDrop: true/false` is kept for older admin builds; `mode` adds sandbox-only stations.
+  const parsed = z.object({ relayDrop: z.boolean().optional(), mode: z.enum(["off", "sandbox", "live"]).optional() })
+    .refine((b) => b.mode != null || b.relayDrop != null)
+    .safeParse(await c.req.json().catch(() => ({})));
   if (!parsed.success) return c.json({ error: "invalid_body" }, 400);
+  const mode = parsed.data.mode ?? (parsed.data.relayDrop ? "live" : "off");
+  const value = mode === "live" ? RELAY_DROP_LIVE : mode === "sandbox" ? RELAY_DROP_SANDBOX : RELAY_DROP_OFF;
   const before = (await db.execute({ sql: "SELECT id, name, relay_drop, lat, lng FROM fuel_station_outlets WHERE id = ?", args: [outletId] })).rows[0] as Row | undefined;
   if (!before) return c.json({ error: "not_found" }, 404);
-  if (parsed.data.relayDrop && (before.lat == null || before.lng == null)) {
+  if (value !== RELAY_DROP_OFF && (before.lat == null || before.lng == null)) {
     return c.json({ error: "location_required", message: "Set this station's map location first." }, 400);
   }
-  await db.execute({ sql: "UPDATE fuel_station_outlets SET relay_drop = ?, updated_at = datetime('now') WHERE id = ?", args: [parsed.data.relayDrop ? 1 : 0, outletId] });
+  await db.execute({ sql: "UPDATE fuel_station_outlets SET relay_drop = ?, updated_at = datetime('now') WHERE id = ?", args: [value, outletId] });
+  const label = { off: "Closed", sandbox: "Opened (sandbox & practice only)", live: "Opened" }[mode];
   await logActivity({
-    actor: c.get("user"), action: "relay.station", summary: `${parsed.data.relayDrop ? "Opened" : "Closed"} ${before.name} for relay parcels`,
-    entityType: "fuel_station_outlet", entityId: outletId, before: { relayDrop: before.relay_drop }, after: parsed.data, ip: ip(c),
+    actor: c.get("user"), action: "relay.station", summary: `${label} ${before.name} for relay parcels`,
+    entityType: "fuel_station_outlet", entityId: outletId, before: { relayDrop: before.relay_drop }, after: { relayDrop: value, mode }, ip: ip(c),
   });
   return c.json({ ok: true });
 });
