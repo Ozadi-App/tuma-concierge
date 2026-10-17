@@ -112,6 +112,8 @@ export type RelayOperatorParcels = {
     last_mile_status: RelayLegStatus | null; last_rider_name: string | null;
     /** Set when the customer meets the matatu at this stage: hand it to them with their code. */
     meet_stage_name?: string | null; customer_name?: string | null; customer_phone?: string | null;
+    /** For an in-app call to the customer meeting the matatu. */
+    customer_id?: string | null;
   }>;
   incoming: Array<{ order_id: string; stage_name: string; stage: string; rider_name: string | null }>;
   recent: Array<{ id: string; order_id: string; from_name: string; to_name: string; handed_over_at: string; paid_amount: number | null }>;

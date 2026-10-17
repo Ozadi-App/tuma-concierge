@@ -238,7 +238,8 @@ relayRoutes.get("/relay/operator/parcels", async (c) => {
   const meetColumns = meetReady
     ? `, CASE WHEN r.meet_stage_id IS NOT NULL AND r.missed_at IS NULL THEN r.meet_stage_name END AS meet_stage_name,
          CASE WHEN r.meet_stage_id IS NOT NULL AND r.missed_at IS NULL THEN cu.name END AS customer_name,
-         CASE WHEN r.meet_stage_id IS NOT NULL AND r.missed_at IS NULL THEN cu.phone END AS customer_phone`
+         CASE WHEN r.meet_stage_id IS NOT NULL AND r.missed_at IS NULL THEN cu.phone END AS customer_phone,
+         CASE WHEN r.meet_stage_id IS NOT NULL AND r.missed_at IS NULL THEN cu.id END AS customer_id`
     : "";
   const meetJoin = meetReady ? "LEFT JOIN order_relay r ON r.order_id = l.order_id LEFT JOIN orders mo ON mo.id = l.order_id LEFT JOIN users cu ON cu.id = mo.customer_id" : "";
   const [carrying, incoming, recent] = await Promise.all([

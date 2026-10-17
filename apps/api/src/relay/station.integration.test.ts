@@ -208,6 +208,7 @@ test("relay to a petrol station: collect in person, door delivery, or send a rid
       const { id, total } = await toMatatu(stageId);
       const carrying = (await json<{ carrying: { id: string; order_id: string; meet_stage_name: string | null; to_name: string }[] }>(call("op", "relay/operator/parcels"))).carrying.find((p) => p.order_id === id)!;
       assert.equal(carrying.meet_stage_name, "Abayita Ababiri");
+      assert.equal((carrying as unknown as { customer_id: string }).customer_id, "customer", "the conductor can call the customer in the app");
       assert.equal(carrying.to_name, "Abayita Ababiri");
       // The matatu is a few minutes away: the customer is told once.
       assert.equal((await call("op", `relay/operator/legs/${carrying.id}/location`, { lat: 0.075, lng: 32.485 })).status, 200);
