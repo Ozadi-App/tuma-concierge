@@ -44,6 +44,7 @@ import { gasRoutes } from "./gas/routes.js";
 import { marketplaceRoutes } from "./marketplace/routes.js";
 import { workRoutes } from "./work/routes.js";
 import { pharmacyRoutes } from "./pharmacy/routes.js";
+import { educationRoutes } from "./education/routes.js";
 
 /** Hono app shared by the Node entry (local dev) and the Cloudflare Worker entry. */
 const app = new Hono();
@@ -235,6 +236,7 @@ app.route("/v1", publicShareRoutes);
 app.route("/v1", marketplaceRoutes);
 app.route("/v1/work", workRoutes);
 app.route("/v1/pharmacy", pharmacyRoutes);
+app.route("/v1/education", educationRoutes);
 app.route("/v1", orderRoutes);
 app.route("/v1", relayRoutes);
 app.route("/v1", paymentRoutes);

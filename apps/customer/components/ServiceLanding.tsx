@@ -51,7 +51,7 @@ const landingContent: Record<LandingGroup, { eyebrow: string; title: string; des
       { title: "Laundry", description: "Arrange laundry pickup and care.", icon: WashingMachine, href: "/services/laundry" },
       { title: "Fix", description: "Find help for repairs and maintenance.", icon: Wrench, href: "/services/fix" },
       { title: "Jobs", description: "Find a skilled person or take up gig work.", icon: Briefcase, href: "/service" },
-      { title: "Learn", description: "Discover lessons and learning support.", icon: BookOpen, href: "/services/learn" },
+      { title: "Learn", description: "Sprouts, Foundations, Academy, Campus & Skills.", icon: BookOpen, href: "/learn" },
     ],
   },
   services: {
@@ -64,7 +64,7 @@ const landingContent: Record<LandingGroup, { eyebrow: string; title: string; des
       { title: "Fix", description: "Home repairs, plumbing, electrical & handyman help.", icon: Wrench, href: "/services/fix" },
       { title: "My jobs", description: "Track your bookings, quotes and offers.", icon: ClipboardList, href: "/services/work" },
       { title: "Jobs", description: "Post everyday gigs or hire skilled local pros.", icon: Briefcase, href: "/service" },
-      { title: "Learn", description: "Tutors, driving instructors, skills & personalized lessons.", icon: BookOpen, href: "/services/learn" },
+      { title: "Learn", description: "Early learning, K-12 schooling, campus degrees & vocational trades.", icon: BookOpen, href: "/learn" },
     ],
   },
 };
