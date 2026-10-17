@@ -705,6 +705,11 @@ export default function JobDetailPage() {
           <RelayCollectFromMatatu
             leg={relayLeg3}
             matatu={relayMatatu}
+            station={
+              detail.relay?.dropMode === "station"
+                ? (detail.relay.station ?? { name: relayLeg3.fromName ?? "the station", address: null, lat: null, lng: null, phone: null })
+                : undefined
+            }
             busy={busy}
             onCollect={(code) => run(() => api.collectRelayLeg(relayLeg3.id, code))}
           />

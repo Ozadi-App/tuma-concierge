@@ -6,9 +6,13 @@ import { useEffect, useRef, useState } from "react";
 type QrScannerProps = {
   onScan: (code: string) => void;
   onClose: () => void;
+  /** Header text; defaults to the fuel QR. */
+  title?: string;
+  /** Hide the fuel test-code shortcut (e.g. when scanning parcel codes). */
+  hideSample?: boolean;
 };
 
-export function QrScanner({ onScan, onClose }: { onScan: (code: string) => void; onClose: () => void }) {
+export function QrScanner({ onScan, onClose, title = "Scan Rider Fuel QR", hideSample = false }: QrScannerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [hasCamera, setHasCamera] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -77,7 +81,7 @@ export function QrScanner({ onScan, onClose }: { onScan: (code: string) => void;
       <div className="flex items-center justify-between pb-3">
         <div className="flex items-center gap-2">
           <Camera className="h-5 w-5 text-gold" />
-          <h2 className="text-base font-bold">Scan Rider Fuel QR</h2>
+          <h2 className="text-base font-bold">{title}</h2>
         </div>
         <button
           type="button"
@@ -108,7 +112,7 @@ export function QrScanner({ onScan, onClose }: { onScan: (code: string) => void;
           <div className="space-y-3 p-6 text-center">
             <Camera className="mx-auto h-12 w-12 text-zinc-500" />
             <p className="text-sm text-zinc-300">
-              Camera preview unavailable. You can enter or paste the rider's 6-digit code below.
+              Camera preview unavailable. You can enter or paste the 6-digit code below.
             </p>
             {error && <p className="text-xs text-amber-400">{error}</p>}
           </div>
@@ -134,7 +138,7 @@ export function QrScanner({ onScan, onClose }: { onScan: (code: string) => void;
         </form>
 
         {/* Demo Code Quick Buttons for testing */}
-        <div className="flex items-center justify-between text-xs text-zinc-400">
+        {!hideSample && <div className="flex items-center justify-between text-xs text-zinc-400">
           <span>Test rider sample:</span>
           <button
             type="button"
@@ -143,7 +147,7 @@ export function QrScanner({ onScan, onClose }: { onScan: (code: string) => void;
           >
             Use Code 738291
           </button>
-        </div>
+        </div>}
       </div>
     </div>
   );

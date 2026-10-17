@@ -65,7 +65,7 @@ import { appBaseUrl } from "../verify/service.js";
 import { payFromWallet } from "../wallet/service.js";
 import { bundleCheckoutQuote, fundBundle, notifyRiderOfCombinedDelivery, unfundedBundleGroup } from "./bundle-funding.js";
 import { isSubscriptionCurrent } from "../riders/subscription.js";
-import { insertRelayLegs, planRelay, relayAwaitingCollection, relayBlocksFinalSteps, relayView, settleRelayPayouts, type RelayPlan } from "../relay/service.js";
+import { insertRelayLegs, planRelay, relayChargeFor, resolveLastMile, type RelayLastMile, type RelayMeet, relayAwaitingCollection, relayBlocksFinalSteps, relayView, settleRelayPayouts, type RelayPlan } from "../relay/service.js";
 import {
   activateMerchantAllocationsForFundedOrder,
   refundUnusedOrderPrincipal,
@@ -326,6 +326,10 @@ const createOrderSchema = z.object({
   stops: z.array(rideStopSchema).max(MAX_STOPS_HARD).optional(),
   /** Boda rides only: Name your fare — the customer's own price, within the band around the app's quote. */
   fareOffer: z.number().int().positive().max(100_000_000).optional(),
+  /** A long parcel dropped at a petrol station: bring it to the door, or the customer collects it. */
+  relayLastMile: z.enum(["door", "collect", "meet"]).optional(),
+  /** With relayLastMile "meet": the stage on the route where the customer meets the matatu. */
+  relayMeetStageId: z.string().max(80).optional(),
 });
 
 orderRoutes.post("/orders", async (c) => {
@@ -379,6 +383,8 @@ export async function createOrderFromInput(
   // A goods parcel too far for one boda is relayed boda -> matatu -> boda,
   // each leg priced at its own rate (see ../relay/service.ts).
   let relayPlan: RelayPlan | null = null;
+  let relayLastMile: RelayLastMile = "door";
+  let relayMeet: RelayMeet | null = null;
   const stops = d.stops ?? [];
   const wantsExtras = stops.length > 0 || d.fareOffer != null;
   const extras = wantsExtras ? await getRideExtrasSettings() : null;
@@ -425,7 +431,8 @@ export async function createOrderFromInput(
         if (d.paymentRail === "float") {
           return c.json({ error: "relay_requires_prepay", message: "Long-distance parcels are paid in the app, not in cash." }, 409);
         }
-        estimatedTotal = relayPlan.total;
+        ({ lastMile: relayLastMile, meet: relayMeet } = await resolveLastMile(relayPlan, d.relayLastMile, d.relayMeetStageId));
+        estimatedTotal = relayChargeFor(relayPlan, relayLastMile);
       }
     }
     if (isRide && extras && stops.length > 0) {
@@ -545,8 +552,17 @@ export async function createOrderFromInput(
   });
   await logEvent(orderId, "Create", "Order created", user.sub);
   if (relayPlan) {
-    await insertRelayLegs(orderId, relayPlan);
-    await logEvent(orderId, "Create", `Relay delivery by boda, matatu (${relayPlan.routeName}) and boda`, user.sub);
+    await insertRelayLegs(orderId, relayPlan, relayLastMile, relayMeet);
+    await logEvent(
+      orderId,
+      "Create",
+      relayPlan.dropMode === "station"
+        ? relayMeet
+          ? `Relay delivery by boda and matatu (${relayPlan.routeName}); customer meets the matatu at ${relayMeet.name}`
+          : `Relay delivery by boda and matatu (${relayPlan.routeName}) to ${relayPlan.station?.name}${relayLastMile === "door" ? ", then boda to the door" : ""}`
+        : `Relay delivery by boda, matatu (${relayPlan.routeName}) and boda`,
+      user.sub,
+    );
   }
   await snapshotTimeFees(orderId, deliveryFee ?? estimatedTotal ?? 0);
 
@@ -728,7 +744,7 @@ orderRoutes.get("/orders/:id", async (c) => {
       args: [id],
     }),
     bundlesAvailable && order.delivery_bundle_id
-      ? db.execute({ sql: `SELECT o.id,o.stage,o.pickup_address,o.pickup_lat,o.pickup_lng,r.name AS restaurant_name,mo.name AS outlet_name
+      ? db.execute({ sql: `SELECT o.id,o.stage,o.pickup_address,o.pickup_lat,o.pickup_lng,COALESCE(r.name,o.pickup_area) AS restaurant_name,mo.name AS outlet_name
                           FROM orders o LEFT JOIN restaurants r ON r.id=o.restaurant_id LEFT JOIN merchant_outlets mo ON mo.id=r.outlet_id
                           WHERE o.delivery_bundle_id=? ORDER BY CASE WHEN o.id=? THEN 0 ELSE 1 END,o.created_at,o.id`, args: [String(order.delivery_bundle_id), id] })
       : Promise.resolve({ rows: [] }),
@@ -2850,7 +2866,12 @@ orderRoutes.post("/orders/:id/settle", async (c) => {
       const riderProcessing = Number(feesRow?.processing_fee_rider ?? 0);
       payout = Math.max(0, deliveryFee - deliveryCommission - riderProcessing);
       const refunded = await refundUnusedOrderPrincipal(id, user.sub);
-      await settleMerchantOrderFinancials({ orderId: id, actorId: user.sub, riderPayout: payout });
+      // A relayed store order shares the payout between its riders and the matatu.
+      if (await settleRelayPayouts(order, payout, user.sub)) {
+        await logEvent(id, "Settle", "Relay payout shared between the riders and the matatu operator", user.sub);
+      } else {
+        await settleMerchantOrderFinancials({ orderId: id, actorId: user.sub, riderPayout: payout });
+      }
       if (refunded > 0) {
         await logEvent(id, "Settle", `${formatAmount(refunded)} unused shopping principal returned to the customer wallet`, user.sub);
       }

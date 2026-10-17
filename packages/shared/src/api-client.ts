@@ -1,4 +1,4 @@
-import type { RelayAdminOrder, RelayOpenLeg, RelayOperator, RelayOperatorParcels, RelayQuote, RelayRoute, RelaySettings } from "./relay.js";
+import type { RelayAdminOrder, RelayRouteStage, RelayMerchantOrder, RelayOpenLeg, RelayOperator, RelayOperatorParcels, RelayQuote, RelayRoute, RelaySettings, RelayStation, RelayStationParcels, RelayTrack } from "./relay.js";
 import type { AdminRole } from "./permissions.js";
 import { workMethods } from "./work-client.js";
 import { workAdminMethods } from "./work-admin-client.js";
@@ -492,6 +492,10 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
       stops?: RideStopInput[];
       /** Boda rides: Name your fare — the customer's own price, within the quote's band. */
       fareOffer?: number;
+      /** A long parcel dropped at a petrol station: bring it to the door, or collect it there. */
+      relayLastMile?: "door" | "collect" | "meet";
+      /** With relayLastMile "meet": the stage where the customer meets the matatu. */
+      relayMeetStageId?: string;
     }) {
       return request<{ order: OrderRow }>("/v1/orders", { method: "POST", body: JSON.stringify(input) });
     },
@@ -597,6 +601,50 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
       for (const [key, value] of Object.entries(input)) if (value != null && value !== "") params.set(key, String(value));
       return request<{ relay: RelayQuote | null }>(`/v1/relay/quote?${params}`);
     },
+    async trackRelayOrder(orderId: string) {
+      return request<RelayTrack>(`/v1/relay/orders/${encodeURIComponent(orderId)}/track`);
+    },
+    /** Waiting at the petrol station: send a rider to the door, paying the last leg from the wallet. */
+    async sendRelayRider(orderId: string) {
+      return request<{ orderId: string; charged: number }>(`/v1/relay/orders/${encodeURIComponent(orderId)}/send-rider`, { method: "POST", body: "{}" });
+    },
+    async listMerchantRelayOrders() {
+      return request<{ orders: RelayMerchantOrder[] }>("/v1/relay/merchant/orders");
+    },
+    // Peebee Gas (pump attendant / station manager session)
+    async gasRelayParcels() {
+      return request<RelayStationParcels>("/v1/gas/relay/parcels");
+    },
+    async gasRelayParcel(orderId: string) {
+      return request<Omit<RelayTrack, "order"> & { order: { id: string; stage: string; destinationArea: string | null } }>(`/v1/gas/relay/parcels/${encodeURIComponent(orderId)}`);
+    },
+    async gasRelayReceive(code: string) {
+      return request<{ orderId: string }>("/v1/gas/relay/receive", { method: "POST", body: JSON.stringify({ code }) });
+    },
+    async gasRelayRelease(code: string) {
+      return request<{ orderId: string }>("/v1/gas/relay/release", { method: "POST", body: JSON.stringify({ code }) });
+    },
+    async relayOperatorHandover(code: string) {
+      return request<{ orderId: string }>("/v1/relay/operator/handover", { method: "POST", body: JSON.stringify({ code }) });
+    },
+    async relayOperatorMissed(legId: string) {
+      return request<{ orderId: string; station: string }>(`/v1/relay/operator/legs/${encodeURIComponent(legId)}/missed`, { method: "POST", body: "{}" });
+    },
+    async adminListRelayRouteStages(routeId: string) {
+      return request<{ stages: RelayRouteStage[]; ready: boolean }>(`/v1/admin/relay/routes/${encodeURIComponent(routeId)}/stages`);
+    },
+    async adminCreateRelayRouteStage(routeId: string, input: { name?: string; seq?: number; lat?: number; lng?: number; outletId?: string | null; active?: boolean }) {
+      return request<{ id: string }>(`/v1/admin/relay/routes/${encodeURIComponent(routeId)}/stages`, { method: "POST", body: JSON.stringify(input) });
+    },
+    async adminUpdateRelayRouteStage(stageId: string, input: Partial<{ name: string; seq: number; lat: number; lng: number; outletId: string | null; active: boolean }>) {
+      return request<{ ok: boolean }>(`/v1/admin/relay/stages/${encodeURIComponent(stageId)}`, { method: "PATCH", body: JSON.stringify(input) });
+    },
+    async adminListRelayStations() {
+      return request<{ stations: RelayStation[]; ready: boolean }>("/v1/admin/relay/stations");
+    },
+    async adminSetRelayStation(outletId: string, relayDrop: boolean) {
+      return request<{ ok: boolean }>(`/v1/admin/relay/stations/${encodeURIComponent(outletId)}`, { method: "POST", body: JSON.stringify({ relayDrop }) });
+    },
     async listOpenRelayLegs() {
       return request<{ legs: RelayOpenLeg[] }>("/v1/relay/legs/open");
     },
@@ -625,7 +673,7 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
       return request<{ ok: boolean }>(`/v1/relay/operator/legs/${encodeURIComponent(legId)}/location`, { method: "POST", body: JSON.stringify({ lat, lng }) });
     },
     async adminGetRelaySettings() {
-      return request<{ settings: RelaySettings; ready: boolean }>("/v1/admin/relay/settings");
+      return request<{ settings: RelaySettings; ready: boolean; stationsReady?: boolean; stagesReady?: boolean }>("/v1/admin/relay/settings");
     },
     async adminUpdateRelaySettings(input: Partial<RelaySettings>) {
       return request<{ settings: RelaySettings }>("/v1/admin/relay/settings", { method: "PUT", body: JSON.stringify(input) });
@@ -633,10 +681,10 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
     async adminListRelayRoutes() {
       return request<{ routes: RelayRoute[]; ready: boolean }>("/v1/admin/relay/routes");
     },
-    async adminCreateRelayRoute(input: { name: string; stageAName: string; stageALat: number; stageALng: number; stageBName: string; stageBLat: number; stageBLng: number; parcelFare: number; active?: boolean }) {
+    async adminCreateRelayRoute(input: { name: string; stageAName: string; stageALat: number; stageALng: number; stageBName: string; stageBLat: number; stageBLng: number; parcelFare: number; active?: boolean; dropMode?: "stage" | "station" }) {
       return request<{ id: string }>("/v1/admin/relay/routes", { method: "POST", body: JSON.stringify(input) });
     },
-    async adminUpdateRelayRoute(id: string, input: Partial<{ name: string; stageAName: string; stageALat: number; stageALng: number; stageBName: string; stageBLat: number; stageBLng: number; parcelFare: number; active: boolean }>) {
+    async adminUpdateRelayRoute(id: string, input: Partial<{ name: string; stageAName: string; stageALat: number; stageALng: number; stageBName: string; stageBLat: number; stageBLng: number; parcelFare: number; active: boolean; dropMode: "stage" | "station" }>) {
       return request<{ ok: boolean }>(`/v1/admin/relay/routes/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(input) });
     },
     async adminListRelayOperators() {
@@ -1809,11 +1857,36 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
       destinationArea?: string;
       destinationLat?: number;
       destinationLng?: number;
+      relayLastMile?: "door" | "collect" | "meet";
+      relayMeetStageId?: string;
     }) {
       return request<{ ok: boolean; orders: OrderRow[]; order: OrderRow }>("/v1/marketplace/checkout", {
         method: "POST",
         body: JSON.stringify(input),
       });
+    },
+    /** The exact delivery fee for a bag: one rider trip through every store, split by store. */
+    async quoteMarketplaceCheckout(input: {
+      items: Array<{ productId: string; storeId: string; title: string; price: number; quantity: number; variantId?: string; variantTitle?: string }>;
+      destinationLat?: number;
+      destinationLng?: number;
+      relayLastMile?: "door" | "collect" | "meet";
+      relayMeetStageId?: string;
+    }) {
+      return request<{
+        itemsTotal: number;
+        deliveryFee: number;
+        total: number;
+        stores: Array<{ storeId: string; storeName: string; itemsTotal: number; deliveryFee: number }>;
+        /** A long delivery from one store, relayed by matatu. */
+        relay?: {
+          routeName: string; dropMode: "stage" | "station"; station: string | null; lastMile: "door" | "collect" | "pending";
+          doorTotal: number; collectTotal: number | null; choiceAtOrder: boolean;
+          meetStages?: Array<{ id: string; name: string; distanceKm: number; isStation: boolean }>;
+          meetStage?: string | null;
+          legs: Array<{ leg: number; kind: "boda" | "matatu"; fromName: string; toName: string; fee: number }>;
+        } | null;
+      }>("/v1/marketplace/checkout/quote", { method: "POST", body: JSON.stringify(input) });
     },
 
     // Pharmacy & Prescription Endpoints

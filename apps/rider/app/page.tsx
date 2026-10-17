@@ -300,8 +300,8 @@ export default function JobsHomePage() {
                   <span className="min-w-0 flex-1">
                     <span className="block text-base font-semibold leading-snug text-ink">Relay pickup</span>
                     <span className="mt-0.5 block text-sm text-ink-500">
-                      Meet matatu{leg.vehicle_plate ? ` ${leg.vehicle_plate}` : ""} at {leg.from_name}
-                      {leg.matatu_status === "arrived" ? " · at stage now" : ""}
+                      {leg.vehicle_plate ? `Meet matatu ${leg.vehicle_plate} at ${leg.from_name}` : `Pick up at ${leg.from_name}`}
+                      {leg.matatu_status === "arrived" ? " · arrived" : ""}
                     </span>
                   </span>
                 </div>

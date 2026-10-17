@@ -292,7 +292,7 @@ riderRoutes.get("/riders/me", requireAuth, requireRole("rider"), async (c) => {
 
 /** The restaurants of a combined delivery in pickup order, e.g. "Kitchen A → Kitchen B" (NULL for a single order). */
 const BUNDLE_PICKUPS_SQL = `(SELECT GROUP_CONCAT(name, ' → ') FROM (
-  SELECT COALESCE(br.name, 'Pickup') AS name FROM orders b LEFT JOIN restaurants br ON br.id = b.restaurant_id
+  SELECT COALESCE(br.name, b.pickup_area, 'Pickup') AS name FROM orders b LEFT JOIN restaurants br ON br.id = b.restaurant_id
   WHERE b.delivery_bundle_id = o.delivery_bundle_id ORDER BY CASE WHEN b.id = b.delivery_bundle_id THEN 0 ELSE 1 END, b.created_at, b.id))`;
 
 /** Rider's own assigned orders (any stage before Settle). */

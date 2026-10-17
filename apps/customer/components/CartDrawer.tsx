@@ -23,6 +23,9 @@ import { useCart, CartItem } from "../lib/cart";
 import { ProductImage } from "./ProductImage";
 import { api, errorMessage } from "../lib/api";
 import { getCachedCustomerCoordinates } from "../lib/location";
+import { useBagQuote } from "../lib/bag-quote";
+import { BagRelayDetails, bagRelayLastMileInput } from "./BagRelayDetails";
+import type { LastMileChoiceValue } from "./LastMileChoice";
 
 export interface CartDrawerProps {
   isOpen: boolean;
@@ -43,8 +46,6 @@ export function CartDrawer({
     selectedItems,
     selectedCount,
     subtotal,
-    deliveryFee,
-    total,
     updateQuantity,
     removeItem,
     clearCart,
@@ -55,6 +56,14 @@ export function CartDrawer({
   const [deliveryAddress, setDeliveryAddress] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  // The delivery fee is the server's: one rider trip through every store. Checkout waits for it.
+  const [relayLastMile, setRelayLastMile] = useState<LastMileChoiceValue>("door");
+  const [relayMeetStageId, setRelayMeetStageId] = useState<string | null>(null);
+  const bagQuote = useBagQuote(selectedItems, isOpen, relayLastMile, relayMeetStageId ?? undefined);
+  const deliveryFee = bagQuote.quote?.deliveryFee ?? null;
+  const total = deliveryFee == null ? null : subtotal + deliveryFee;
+  const totalLabel = total == null ? undefined : `UGX ${total.toLocaleString()}`;
+  const priceReady = total != null;
 
   useEffect(() => {
     setPortalReady(true);
@@ -87,7 +96,7 @@ export function CartDrawer({
   }, [isOpen, onClose]);
 
   const handleCheckoutSubmit = async () => {
-    if (selectedItems.length === 0) return;
+    if (selectedItems.length === 0 || !priceReady) return;
     setIsSubmitting(true);
     setCheckoutError(null);
 
@@ -110,6 +119,7 @@ export function CartDrawer({
         destinationArea: "Kampala",
         destinationLat: cached.lat || 0.3353,
         destinationLng: cached.lng || 32.5857,
+        ...bagRelayLastMileInput(bagQuote.relay, relayLastMile, relayMeetStageId),
       });
 
       const firstOrder = res.order ?? res.orders?.[0];
@@ -137,12 +147,12 @@ export function CartDrawer({
   useRegisterNavPrimaryAction(
     isOpen && navPresent && items.length > 0
       ? viewMode === "items"
-        ? { tone: "step", label: "Next: delivery", detail: `UGX ${total.toLocaleString()}`, onClick: () => setViewMode("checkout") }
+        ? { tone: "step", label: "Next: delivery", detail: totalLabel, onClick: () => setViewMode("checkout") }
         : {
             tone: "step",
-            label: isSubmitting ? "Creating order…" : "Next: payment",
-            detail: `UGX ${total.toLocaleString()}`,
-            disabled: isSubmitting || selectedItems.length === 0,
+            label: isSubmitting ? "Creating order…" : priceReady ? "Next: payment" : "Please wait…",
+            detail: totalLabel,
+            disabled: isSubmitting || selectedItems.length === 0 || !priceReady,
             busy: isSubmitting,
             onClick: () => void handleCheckoutSubmit(),
           }
@@ -255,25 +265,6 @@ export function CartDrawer({
           ) : viewMode === "items" ? (
             /* Items List View */
             <div className="space-y-4">
-              {/* Free delivery progress banner */}
-              <div className="rounded-2xl bg-gold/10 border border-gold/20 p-3 text-xs flex items-center justify-between">
-                <span className="font-semibold text-ink flex items-center gap-1.5">
-                  <Truck className="h-4 w-4 text-gold shrink-0" />
-                  {subtotal >= 50000 ? (
-                    <span className="text-emerald-700 dark:text-emerald-400 font-bold">
-                      🎉 Free Delivery unlocked!
-                    </span>
-                  ) : (
-                    <span>
-                      Add <strong>UGX {(50000 - subtotal).toLocaleString()}</strong> for Free Delivery
-                    </span>
-                  )}
-                </span>
-                <span className="text-[10px] font-black uppercase text-gold">
-                  {subtotal >= 50000 ? "FREE" : "UGX 3,500"}
-                </span>
-              </div>
-
               {/* Items List */}
               <ul className="space-y-3">
                 {items.map((line) => (
@@ -382,12 +373,36 @@ export function CartDrawer({
                   <span>UGX {subtotal.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between text-ink-500">
-                  <span>Delivery Fee</span>
-                  <span>{deliveryFee === 0 ? "FREE" : `UGX ${deliveryFee.toLocaleString()}`}</span>
+                  <span>Delivery</span>
+                  <span>{bagQuote.failed ? (
+                    <button type="button" onClick={bagQuote.retry} className="font-bold text-gold">Retry</button>
+                  ) : deliveryFee == null ? "Calculating…" : `UGX ${deliveryFee.toLocaleString()}`}</span>
                 </div>
+                {bagQuote.relay && (
+                  <BagRelayDetails
+                    relay={bagQuote.relay}
+                    lastMile={relayLastMile}
+                    onLastMileChange={setRelayLastMile}
+                    meetStageId={relayMeetStageId}
+                    onMeetStageChange={setRelayMeetStageId}
+                    disabled={isSubmitting}
+                    className="pl-3"
+                  />
+                )}
+                {bagQuote.quote && bagQuote.quote.stores.length > 1 && (
+                  <div className="space-y-1 pl-3 text-[11px] text-ink-500">
+                    <p>One rider collects from every store:</p>
+                    {bagQuote.quote.stores.map((store) => (
+                      <div key={store.storeId} className="flex justify-between">
+                        <span>{store.storeName}</span>
+                        <span>UGX {store.deliveryFee.toLocaleString()}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 <div className="border-t border-[var(--border-faint)] pt-2 flex justify-between font-bold text-sm text-ink">
                   <span>Total Due</span>
-                  <span className="text-gold font-mono">UGX {total.toLocaleString()}</span>
+                  <span className="text-gold font-mono">{total == null ? "—" : `UGX ${total.toLocaleString()}`}</span>
                 </div>
               </div>
             </div>
@@ -408,19 +423,17 @@ export function CartDrawer({
                   </span>
                 </div>
                 <div className="flex items-center justify-between text-xs text-ink-500">
-                  <span>Delivery Estimate</span>
+                  <span>Delivery</span>
                   <span className="font-bold text-ink">
-                    {deliveryFee === 0 ? (
-                      <span className="text-emerald-600 font-extrabold">FREE</span>
-                    ) : (
-                      `UGX ${deliveryFee.toLocaleString()}`
-                    )}
+                    {bagQuote.failed ? (
+                    <button type="button" onClick={bagQuote.retry} className="font-bold text-gold">Retry</button>
+                  ) : deliveryFee == null ? "Calculating…" : `UGX ${deliveryFee.toLocaleString()}`}
                   </span>
                 </div>
                 <div className="border-t border-[var(--border-faint)] pt-2 flex items-center justify-between text-sm font-black text-ink">
                   <span>Total</span>
                   <span className="font-mono text-base text-gold">
-                    UGX {total.toLocaleString()}
+                    {total == null ? "—" : `UGX ${total.toLocaleString()}`}
                   </span>
                 </div>
 
@@ -451,13 +464,13 @@ export function CartDrawer({
                 {!navPresent && (
                 <button
                   type="button"
-                  disabled={isSubmitting || selectedItems.length === 0}
+                  disabled={isSubmitting || selectedItems.length === 0 || !priceReady}
                   onClick={handleCheckoutSubmit}
                   className="w-full py-4 px-5 rounded-full bg-gold text-ink-gold font-black text-sm shadow-lg hover:brightness-105 active:scale-98 transition flex items-center justify-between disabled:opacity-50"
                 >
                   <span>{isSubmitting ? "Creating Order…" : "Next: Payment"}</span>
                   <span className="font-mono font-extrabold">
-                    UGX {total.toLocaleString()}
+                    {total == null ? "" : `UGX ${total.toLocaleString()}`}
                   </span>
                 </button>
                 )}

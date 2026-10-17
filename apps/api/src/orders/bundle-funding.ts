@@ -49,7 +49,7 @@ export async function unfundedBundleGroup(order: Row): Promise<BundleGroup | nul
   if (!order.delivery_bundle_id || !(await hasColumn("orders", "delivery_bundle_id"))) return null;
   const bundleId = String(order.delivery_bundle_id);
   const res = await db.execute({
-    sql: `SELECT o.*, r.name AS restaurant_name FROM orders o LEFT JOIN restaurants r ON r.id = o.restaurant_id
+    sql: `SELECT o.*, COALESCE(r.name, o.pickup_area) AS restaurant_name FROM orders o LEFT JOIN restaurants r ON r.id = o.restaurant_id
           WHERE o.delivery_bundle_id = ? AND o.customer_id = ? AND o.environment = ? AND o.stage != 'Cancelled'
           ORDER BY CASE WHEN o.id = ? THEN 0 ELSE 1 END, o.created_at, o.id`,
     args: [bundleId, String(order.customer_id), String(order.environment), bundleId],
@@ -350,14 +350,14 @@ export async function notifyRiderOfCombinedDelivery(orderId: string): Promise<vo
     const order = (await db.execute({ sql: "SELECT id, rider_id, delivery_bundle_id FROM orders WHERE id = ?", args: [orderId] })).rows[0] as Row | undefined;
     if (!order?.rider_id || !order.delivery_bundle_id) return;
     const stops = (await db.execute({
-      sql: `SELECT COALESCE(r.name, 'Pickup') AS name FROM orders o LEFT JOIN restaurants r ON r.id = o.restaurant_id
+      sql: `SELECT COALESCE(r.name, o.pickup_area, 'Pickup') AS name FROM orders o LEFT JOIN restaurants r ON r.id = o.restaurant_id
             WHERE o.delivery_bundle_id = ? AND o.stage != 'Cancelled'
             ORDER BY CASE WHEN o.id = o.delivery_bundle_id THEN 0 ELSE 1 END, o.created_at, o.id`,
       args: [String(order.delivery_bundle_id)],
     })).rows as Row[];
     if (stops.length < 2) return;
     await notifyUser(String(order.rider_id), {
-      title: `Combined delivery: ${stops.length} restaurants`,
+      title: `Combined delivery: ${stops.length} pickups`,
       body: `Collect from ${stops.map((stop) => String(stop.name)).join(", then ")}, and deliver everything together.`,
       url: `/jobs/${String(order.delivery_bundle_id)}`,
       tag: `bundle-${String(order.delivery_bundle_id)}`,

@@ -18,6 +18,7 @@ import { tripRoutes } from "./passengers/trips.js";
 import { merchantRoutes } from "./merchants/routes.js";
 import { orderRoutes } from "./orders/routes.js";
 import { relayRoutes } from "./relay/routes.js";
+import { relayStationRoutes } from "./relay/station-routes.js";
 import { paymentRoutes } from "./payments/routes.js";
 import { pushRoutes } from "./push/routes.js";
 import { restaurantChatRoutes } from "./restaurants/chat.js";
@@ -226,6 +227,7 @@ app.route("/v1/auth", verifyRoutes);
 // Public (token-gated) trip page for rides booked for someone else — mounted
 // before the authenticated /v1 routers on purpose.
 app.route("/v1/trips", tripRoutes);
+app.route("/v1/gas", relayStationRoutes);
 app.route("/v1/gas", gasRoutes);
 app.route("/v1", marketplaceRoutes);
 app.route("/v1/work", workRoutes);

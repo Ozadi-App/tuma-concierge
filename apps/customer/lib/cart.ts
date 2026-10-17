@@ -136,8 +136,8 @@ export function useCart() {
   const selectedCount = selectedItems.reduce((sum, item) => sum + item.quantity, 0);
 
   const subtotal = selectedItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  const deliveryFee = subtotal > 0 ? (subtotal >= 50000 ? 0 : 3500) : 0;
-  const total = subtotal + deliveryFee;
+  // Items only. The delivery fee comes from the server at checkout (see lib/bag-quote.ts).
+  const total = subtotal;
 
   return {
     items,
@@ -146,7 +146,6 @@ export function useCart() {
     selectedItems,
     selectedCount,
     subtotal,
-    deliveryFee,
     total,
     addToCart,
     updateQuantity,
