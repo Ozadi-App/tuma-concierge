@@ -20,6 +20,10 @@ import type {
   TuitionInvoice,
   SubscriptionPass,
   GuardianAlertMessage,
+  EducationLiveMeeting,
+  LiveParticipant,
+  TutorContact,
+  LiveChatMessage,
 } from "./education/types.js";
 
 type RequestFn = <T>(path: string, options?: RequestInit) => Promise<T>;
@@ -203,6 +207,58 @@ export function educationMethods(request: RequestFn) {
       phoneNumber?: string;
     }) {
       return request<{ ok: true; receiptId: string; newBalanceUgx: number }>("/v1/education/tuition/pay", {
+        method: "POST",
+        body: JSON.stringify(data),
+      });
+    },
+
+    // ----------------------------------------------------
+    // Live Meetings & Classroom Video (Zoom-Style)
+    // ----------------------------------------------------
+    async getEducationLiveMeetings(stream?: EducationStream) {
+      const q = stream ? `?stream=${encodeURIComponent(stream)}` : "";
+      return request<{
+        ok: true;
+        meetings: EducationLiveMeeting[];
+        activeMeeting?: EducationLiveMeeting;
+      }>(`/v1/education/live/meetings${q}`);
+    },
+    async getEducationLiveMeetingById(meetingId: string) {
+      return request<{
+        ok: true;
+        meeting: EducationLiveMeeting;
+        participants: LiveParticipant[];
+        messages: LiveChatMessage[];
+      }>(`/v1/education/live/meetings/${encodeURIComponent(meetingId)}`);
+    },
+
+    // ----------------------------------------------------
+    // Live Chat with Tutors & Classroom Channels
+    // ----------------------------------------------------
+    async getEducationTutors(stream?: EducationStream) {
+      const q = stream ? `?stream=${encodeURIComponent(stream)}` : "";
+      return request<{
+        ok: true;
+        tutors: TutorContact[];
+      }>(`/v1/education/chat/tutors${q}`);
+    },
+    async getEducationChatMessages(roomIdOrContactId: string) {
+      return request<{
+        ok: true;
+        messages: LiveChatMessage[];
+      }>(`/v1/education/chat/messages?id=${encodeURIComponent(roomIdOrContactId)}`);
+    },
+    async sendEducationChatMessage(data: {
+      roomId?: string;
+      channelId?: string;
+      recipientId?: string;
+      text: string;
+      senderRole: "tutor" | "student" | "parent";
+      isQuestion?: boolean;
+      attachmentUrl?: string;
+      voiceDurationSecs?: number;
+    }) {
+      return request<{ ok: true; message: LiveChatMessage }>("/v1/education/chat/send", {
         method: "POST",
         body: JSON.stringify(data),
       });

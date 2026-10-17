@@ -4,7 +4,7 @@ import type { NextConfig } from "next";
 import { securityHeaderRules } from "../../packages/shared/security-headers.mjs";
 
 const nextConfig: NextConfig = {
-  output: "standalone",
+  ...(process.env.STANDALONE ? { output: "standalone" } : {}),
   transpilePackages: ["@peebee/shared"],
   images: {
     unoptimized: true,

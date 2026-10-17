@@ -35,6 +35,11 @@ import {
   Wrench,
   HelpCircle,
   Share2,
+  Video,
+  Radio,
+  Send,
+  Paperclip,
+  Mic,
 } from "lucide-react";
 import {
   EDUCATION_STREAMS,
@@ -58,6 +63,9 @@ import {
   DEMO_TUITION_INVOICE,
   DEMO_SUBSCRIPTION_PASSES,
   DEMO_GUARDIAN_ALERTS,
+  DEMO_LIVE_MEETINGS,
+  DEMO_TUTOR_CONTACTS,
+  DEMO_LIVE_CHAT_MESSAGES,
 } from "@peebee/shared";
 
 const ugx = (amount: number) => `UGX ${Math.round(amount).toLocaleString()}`;
@@ -124,6 +132,45 @@ export default function EducationHubPage() {
   const [tuitionInvoice, setTuitionInvoice] = useState(DEMO_TUITION_INVOICE);
   const [payAmountInput, setPayAmountInput] = useState("350000");
   const [tuitionPaymentSuccess, setTuitionPaymentSuccess] = useState(false);
+
+  // Live Meetings & Tutor Chat State
+  const [showTutorChatDrawer, setShowTutorChatDrawer] = useState(false);
+  const [customerActiveTutor, setCustomerActiveTutor] = useState(DEMO_TUTOR_CONTACTS[0]);
+  const [customerChatInput, setCustomerChatInput] = useState("");
+  const [customerChatMessages, setCustomerChatMessages] = useState(DEMO_LIVE_CHAT_MESSAGES);
+  const [customerIsQuestion, setCustomerIsQuestion] = useState(false);
+
+  const handleCustomerSendMessage = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!customerChatInput.trim()) return;
+
+    const newMsg = {
+      id: `c_msg_${Date.now()}`,
+      senderId: "customer_user",
+      senderName: userRole === "parent" ? "Grace Mukasa (Parent)" : "Denis Kigozi (Student)",
+      senderRole: userRole === "parent" ? ("parent" as const) : ("student" as const),
+      text: customerChatInput.trim(),
+      timestamp: "Just now",
+      isQuestion: customerIsQuestion,
+      upvotes: 0,
+    };
+
+    setCustomerChatMessages((prev) => [...prev, newMsg]);
+    setCustomerChatInput("");
+    setCustomerIsQuestion(false);
+
+    setTimeout(() => {
+      const replyMsg = {
+        id: `c_reply_${Date.now()}`,
+        senderId: customerActiveTutor.id,
+        senderName: customerActiveTutor.name,
+        senderRole: "tutor" as const,
+        text: `Hello ${userRole === "parent" ? "Mrs. Mukasa" : "Denis"}, I received your message. I am actively reviewing your academic inquiry right now!`,
+        timestamp: "Just now",
+      };
+      setCustomerChatMessages((prev) => [...prev, replyMsg]);
+    }, 1200);
+  };
 
   // Focus integrity listener for Academy Exam simulator
   useEffect(() => {
@@ -336,6 +383,55 @@ export default function EducationHubPage() {
           </div>
         </div>
       </header>
+
+      {/* Live Classroom Streaming Now Banner (Zoom-Style Integration) */}
+      <div className="relative overflow-hidden rounded-3xl border-2 border-red-500/30 bg-gradient-to-r from-red-500/10 via-[rgb(var(--surface-card))] to-[rgb(var(--surface-card))] p-5 shadow-sm">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="relative flex h-3 w-3">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75"></span>
+              <span className="relative inline-flex h-3 w-3 rounded-full bg-red-500"></span>
+            </span>
+            <span className="text-xs font-black uppercase tracking-wider text-red-600 dark:text-red-400">
+              Live Classroom Streaming Now
+            </span>
+          </div>
+          <span className="flex items-center gap-1 rounded-full bg-red-500/15 px-2.5 py-0.5 text-[11px] font-black text-red-600 dark:text-red-400">
+            <Users className="h-3 w-3" />
+            {DEMO_LIVE_MEETINGS[0].participantCount} in Room
+          </span>
+        </div>
+
+        <div className="mt-2.5">
+          <h2 className="text-base font-black text-ink">{DEMO_LIVE_MEETINGS[0].title}</h2>
+          <p className="mt-0.5 text-xs text-ink-500">
+            {DEMO_LIVE_MEETINGS[0].subject} • Hosted by{" "}
+            <span className="font-bold text-ink">{DEMO_LIVE_MEETINGS[0].hostTutorName}</span> (
+            {DEMO_LIVE_MEETINGS[0].hostTutorTitle})
+          </p>
+        </div>
+
+        <div className="mt-4 flex flex-wrap items-center gap-2.5">
+          <a
+            href="http://localhost:3011/live/live_fintech_101"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2 rounded-2xl bg-gold px-4 py-2.5 text-xs font-black text-ink-gold shadow-sm transition hover:opacity-95 active:scale-95"
+          >
+            <Video className="h-4 w-4" />
+            Join Live Class (Zoom-Style)
+          </a>
+
+          <button
+            type="button"
+            onClick={() => setShowTutorChatDrawer(true)}
+            className="flex items-center gap-1.5 rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] px-4 py-2.5 text-xs font-bold text-ink transition hover:border-gold hover:text-gold"
+          >
+            <MessageSquare className="h-4 w-4 text-gold" />
+            Live Chat with Tutor
+          </button>
+        </div>
+      </div>
 
       {/* ========================================================================= */}
       {/* 1. SPROUTS STREAM (AGES 3-6: Non-text, tablet-first, audio guide, stickers) */}
@@ -1641,6 +1737,148 @@ export default function EducationHubPage() {
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Floating Quick Action: Live Tutor Chat Launcher */}
+      <div className="fixed bottom-24 right-4 z-40">
+        <button
+          type="button"
+          onClick={() => setShowTutorChatDrawer(true)}
+          className="flex items-center gap-2 rounded-full bg-gold px-4 py-2.5 text-xs font-black text-ink-gold shadow-lg transition hover:scale-105 active:scale-95"
+        >
+          <span className="relative flex h-2 w-2">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-black opacity-75"></span>
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-black"></span>
+          </span>
+          <MessageSquare className="h-4 w-4" />
+          <span>Live Tutor Chat</span>
+        </button>
+      </div>
+
+      {/* Live Tutor Chat Slide-Up Drawer / Modal */}
+      {showTutorChatDrawer && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-0 sm:p-4 animate-in fade-in">
+          <div className="relative flex h-[85vh] sm:h-[620px] w-full max-w-lg flex-col rounded-t-[28px] sm:rounded-[28px] border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] shadow-2xl overflow-hidden">
+            {/* Drawer Header */}
+            <div className="flex items-center justify-between border-b border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] px-4 py-3">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <img
+                  src={customerActiveTutor.avatarUrl}
+                  alt={customerActiveTutor.name}
+                  className="h-9 w-9 rounded-full object-cover shrink-0"
+                />
+                <div className="min-w-0">
+                  <h3 className="truncate text-xs font-black text-ink">{customerActiveTutor.name}</h3>
+                  <p className="truncate text-[10px] text-ink-500">{customerActiveTutor.subject}</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <a
+                  href="http://localhost:3011/chat"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] px-2.5 py-1 text-[10px] font-bold text-gold hover:border-gold"
+                >
+                  Open in Learner App ↗
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setShowTutorChatDrawer(false)}
+                  className="rounded-full bg-[rgb(var(--surface-card))] p-1 text-ink-500 hover:text-ink"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Tutor Selector Pills */}
+            <div className="flex gap-1.5 border-b border-[var(--border-faint)] px-3 py-2 overflow-x-auto bg-[rgb(var(--surface-card))]">
+              {DEMO_TUTOR_CONTACTS.map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => setCustomerActiveTutor(t)}
+                  className={`shrink-0 rounded-xl px-2.5 py-1 text-[11px] font-bold transition ${
+                    customerActiveTutor.id === t.id
+                      ? "bg-gold text-ink-gold font-black shadow-sm"
+                      : "text-ink-500 hover:text-ink border border-[var(--border-faint)]"
+                  }`}
+                >
+                  {t.name.split(" ")[0]} ({t.stream})
+                </button>
+              ))}
+            </div>
+
+            {/* Safeguarding Alert */}
+            <div className="flex items-center gap-1.5 bg-green-500/10 px-3 py-1.5 text-[10px] font-medium text-green-700 dark:text-green-400">
+              <ShieldCheck className="h-3.5 w-3.5 shrink-0" />
+              <span>Safe Environment: Monitored for student protection & academic auditing.</span>
+            </div>
+
+            {/* Message Thread */}
+            <div className="flex-1 space-y-2.5 p-3.5 overflow-y-auto bg-[rgb(var(--surface-muted))]/30">
+              {customerChatMessages.map((msg) => {
+                const isUser = msg.senderRole === "student" || msg.senderRole === "parent";
+                return (
+                  <div
+                    key={msg.id}
+                    className={`flex flex-col ${isUser ? "items-end" : "items-start"}`}
+                  >
+                    <span className="text-[9px] text-ink-500 mb-0.5">
+                      {msg.senderName} • {msg.timestamp}
+                    </span>
+                    <div
+                      className={`max-w-[85%] rounded-2xl p-2.5 text-xs ${
+                        isUser
+                          ? "bg-ink text-cream font-medium dark:bg-gold dark:text-black"
+                          : "border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] text-ink"
+                      }`}
+                    >
+                      {msg.isQuestion && (
+                        <div className="mb-0.5 text-[9px] font-black uppercase text-gold">
+                          Academic Question
+                        </div>
+                      )}
+                      <p>{msg.text}</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Composer */}
+            <form onSubmit={handleCustomerSendMessage} className="border-t border-[var(--border-faint)] p-3 bg-[rgb(var(--surface-card))] space-y-2">
+              <div className="flex items-center justify-between text-[11px]">
+                <label className="flex items-center gap-1.5 cursor-pointer text-ink-500">
+                  <input
+                    type="checkbox"
+                    checked={customerIsQuestion}
+                    onChange={(e) => setCustomerIsQuestion(e.target.checked)}
+                    className="rounded text-gold focus:ring-0"
+                  />
+                  <span>Tag as question for tutor</span>
+                </label>
+              </div>
+
+              <div className="field-box px-3 py-1.5">
+                <input
+                  type="text"
+                  placeholder={`Message ${customerActiveTutor.name.split(" ")[0]}...`}
+                  value={customerChatInput}
+                  onChange={(e) => setCustomerChatInput(e.target.value)}
+                  className="w-full text-xs text-ink placeholder:text-ink-500/50"
+                />
+                <button
+                  type="submit"
+                  disabled={!customerChatInput.trim()}
+                  className="ml-2 rounded-xl bg-gold px-3 py-1.5 text-xs font-black text-ink-gold disabled:opacity-40 transition hover:opacity-90"
+                >
+                  <Send className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

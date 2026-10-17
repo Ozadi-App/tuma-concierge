@@ -465,3 +465,70 @@ export interface GuardianAlertMessage {
   sentAt: string;
   status: "delivered" | "sent" | "failed";
 }
+
+// ==========================================
+// Live Meetings (Zoom-Style) & Tutor Chat
+// ==========================================
+
+export interface EducationLiveMeeting {
+  id: string;
+  roomCode: string;
+  title: string;
+  subject: string;
+  stream: EducationStream;
+  hostTutorName: string;
+  hostTutorAvatar: string;
+  hostTutorTitle: string;
+  isLiveNow: boolean;
+  scheduledFor: string;
+  startedAt?: string;
+  durationMinutes: number;
+  participantCount: number;
+  maxParticipants: number;
+  whiteboardEnabled: boolean;
+  screenShareActive: boolean;
+  activeWhiteboardSlideUrl?: string;
+  recordingAvailable: boolean;
+}
+
+export interface LiveParticipant {
+  id: string;
+  name: string;
+  role: "host" | "tutor" | "ta" | "student" | "parent";
+  avatarUrl: string;
+  isMuted: boolean;
+  isVideoOn: boolean;
+  hasHandRaised: boolean;
+  isScreenSharing?: boolean;
+}
+
+export interface TutorContact {
+  id: string;
+  name: string;
+  title: string;
+  subject: string;
+  stream: EducationStream;
+  avatarUrl: string;
+  isOnline: boolean;
+  lastMessage: string;
+  lastMessageTime: string;
+  unreadCount: number;
+}
+
+export interface LiveChatMessage {
+  id: string;
+  roomId?: string;
+  channelId?: string;
+  senderId: string;
+  senderName: string;
+  senderRole: "tutor" | "student" | "parent" | "system";
+  senderAvatar?: string;
+  text: string;
+  timestamp: string;
+  isQuestion?: boolean;
+  upvotes?: number;
+  isVoiceNote?: boolean;
+  voiceDurationSecs?: number;
+  attachmentUrl?: string;
+}
+

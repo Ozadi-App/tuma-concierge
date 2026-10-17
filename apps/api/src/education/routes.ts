@@ -20,6 +20,10 @@ import {
   DEMO_TUITION_INVOICE,
   DEMO_SUBSCRIPTION_PASSES,
   DEMO_GUARDIAN_ALERTS,
+  DEMO_LIVE_MEETINGS,
+  DEMO_LIVE_PARTICIPANTS,
+  DEMO_TUTOR_CONTACTS,
+  DEMO_LIVE_CHAT_MESSAGES,
 } from "@peebee/shared";
 
 export const educationRoutes = new Hono();
@@ -30,6 +34,9 @@ const inMemorySkillsSubmissions: any[] = [{ ...DEMO_SKILLS_SUBMISSION }];
 const inMemoryCritiques: any[] = [...DEMO_SKILLS_SUBMISSION.critiques];
 const inMemoryLogbook: any[] = [...DEMO_SKILLS_LOGBOOK];
 let inMemoryTuition = { ...DEMO_TUITION_INVOICE };
+const inMemoryLiveMeetings: any[] = [...DEMO_LIVE_MEETINGS];
+const inMemoryChatMessages: any[] = [...DEMO_LIVE_CHAT_MESSAGES];
+const inMemoryTutors: any[] = [...DEMO_TUTOR_CONTACTS];
 
 // ----------------------------------------------------
 // Streams & Institutions
@@ -256,5 +263,82 @@ educationRoutes.post("/tuition/pay", async (c) => {
     receiptId: `REC_PB_${Date.now()}`,
     newBalanceUgx: newBalance,
     status: inMemoryTuition.status,
+  });
+});
+
+// ----------------------------------------------------
+// Live Meetings (Zoom-Style)
+// ----------------------------------------------------
+educationRoutes.get("/live/meetings", (c) => {
+  const stream = c.req.query("stream");
+  const filtered = stream
+    ? inMemoryLiveMeetings.filter((m) => m.stream === stream)
+    : inMemoryLiveMeetings;
+  const activeMeeting = inMemoryLiveMeetings.find((m) => m.isLiveNow) || inMemoryLiveMeetings[0];
+  return c.json({
+    ok: true,
+    meetings: filtered,
+    activeMeeting,
+  });
+});
+
+educationRoutes.get("/live/meetings/:id", (c) => {
+  const id = c.req.param("id");
+  const meeting = inMemoryLiveMeetings.find((m) => m.id === id || m.roomCode === id) || inMemoryLiveMeetings[0];
+  const messages = inMemoryChatMessages.filter((msg) => msg.roomId === meeting.id || !msg.roomId);
+  return c.json({
+    ok: true,
+    meeting,
+    participants: DEMO_LIVE_PARTICIPANTS,
+    messages,
+  });
+});
+
+// ----------------------------------------------------
+// Live Chat with Tutors & Classroom Channels
+// ----------------------------------------------------
+educationRoutes.get("/chat/tutors", (c) => {
+  const stream = c.req.query("stream");
+  const filtered = stream
+    ? inMemoryTutors.filter((t) => t.stream === stream)
+    : inMemoryTutors;
+  return c.json({
+    ok: true,
+    tutors: filtered,
+  });
+});
+
+educationRoutes.get("/chat/messages", (c) => {
+  const id = c.req.query("id");
+  const filtered = id
+    ? inMemoryChatMessages.filter((m) => m.roomId === id || m.channelId === id || m.senderId === id)
+    : inMemoryChatMessages;
+  return c.json({
+    ok: true,
+    messages: filtered.length > 0 ? filtered : inMemoryChatMessages,
+  });
+});
+
+educationRoutes.post("/chat/send", async (c) => {
+  const body = await c.req.json().catch(() => ({}));
+  const newMessage = {
+    id: `msg_${Date.now()}`,
+    roomId: body.roomId,
+    channelId: body.channelId,
+    senderId: body.senderId || "part_student_current",
+    senderName: body.senderName || "Denis Kigozi",
+    senderRole: body.senderRole || "student",
+    text: body.text || "",
+    timestamp: "Just now",
+    isQuestion: Boolean(body.isQuestion),
+    upvotes: 0,
+    isVoiceNote: Boolean(body.isVoiceNote),
+    voiceDurationSecs: body.voiceDurationSecs,
+    attachmentUrl: body.attachmentUrl,
+  };
+  inMemoryChatMessages.push(newMessage);
+  return c.json({
+    ok: true,
+    message: newMessage,
   });
 });
