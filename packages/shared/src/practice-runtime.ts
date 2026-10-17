@@ -1258,7 +1258,7 @@ function practiceRelayParcel(path: string, method: string, body: Record<string, 
     return jsonResponse({
       order: { id: PRACTICE_PARCEL_ID, stage: parcel.status === "collected" ? "Settle" : "Deliver", destinationArea: "Entebbe" },
       relay: {
-        routeName: "Kampala - Entebbe (practice)", dropMode: "station", lastMile: "collect",
+        routeName: "Kampala - Entebbe (practice)", direction: "KLA - EBB", routeCode: "KLA ⇄ EBB", dropMode: "station", lastMile: "collect",
         station: { name: "Peebee Practice Station", address: null, lat: null, lng: null, phone: null },
         heldAt: parcel.heldAt, releasedAt: parcel.releasedAt, releasedTo: parcel.status === "collected" ? "customer" : null,
         legs: [

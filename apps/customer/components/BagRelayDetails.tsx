@@ -78,7 +78,7 @@ export function BagRelayDetails({
         return (
           <div key={leg.leg} className="flex justify-between gap-3">
             <span className="min-w-0">
-              {leg.kind === "matatu" ? "Matatu" : "Boda"}: {route}
+              {leg.kind === "matatu" ? `Matatu${relay.direction ? ` ${relay.direction}` : ""}` : "Boda"}: {route}
               {leg.distanceKm != null && Number.isFinite(leg.distanceKm) ? ` · ${leg.distanceKm.toFixed(1)} km` : ""}
             </span>
             <span className="shrink-0">UGX {leg.fee.toLocaleString()}</span>

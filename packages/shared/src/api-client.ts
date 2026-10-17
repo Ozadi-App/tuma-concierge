@@ -668,7 +668,7 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
       return request<{ orderId: string }>(`/v1/relay/legs/${encodeURIComponent(legId)}/collect`, { method: "POST", body: JSON.stringify({ code }) });
     },
     async getRelayOperatorMe() {
-      return request<{ operator: RelayOperator | null; routes: Array<Pick<RelayRoute, "id" | "name" | "stage_a_name" | "stage_b_name">>; enabled: boolean }>("/v1/relay/operator/me");
+      return request<{ operator: RelayOperator | null; routes: Array<Pick<RelayRoute, "id" | "name" | "stage_a_name" | "stage_b_name" | "route_code">>; enabled: boolean }>("/v1/relay/operator/me");
     },
     async applyRelayOperator(input: { routeId: string; vehiclePlate: string; phone?: string }) {
       return request<{ ok: boolean }>("/v1/relay/operator/apply", { method: "POST", body: JSON.stringify(input) });
@@ -692,12 +692,12 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
       return request<{ settings: RelaySettings }>("/v1/admin/relay/settings", { method: "PUT", body: JSON.stringify(input) });
     },
     async adminListRelayRoutes() {
-      return request<{ routes: RelayRoute[]; ready: boolean }>("/v1/admin/relay/routes");
+      return request<{ routes: RelayRoute[]; ready: boolean; /** Migration 0107: stage codes can be saved. */ codesReady?: boolean }>("/v1/admin/relay/routes");
     },
-    async adminCreateRelayRoute(input: { name: string; stageAName: string; stageALat: number; stageALng: number; stageBName: string; stageBLat: number; stageBLng: number; parcelFare: number; active?: boolean; dropMode?: "stage" | "station" }) {
+    async adminCreateRelayRoute(input: { name: string; stageAName: string; stageALat: number; stageALng: number; stageBName: string; stageBLat: number; stageBLng: number; parcelFare: number; active?: boolean; dropMode?: "stage" | "station"; stageACode?: string; stageBCode?: string }) {
       return request<{ id: string }>("/v1/admin/relay/routes", { method: "POST", body: JSON.stringify(input) });
     },
-    async adminUpdateRelayRoute(id: string, input: Partial<{ name: string; stageAName: string; stageALat: number; stageALng: number; stageBName: string; stageBLat: number; stageBLng: number; parcelFare: number; active: boolean; dropMode: "stage" | "station" }>) {
+    async adminUpdateRelayRoute(id: string, input: Partial<{ name: string; stageAName: string; stageALat: number; stageALng: number; stageBName: string; stageBLat: number; stageBLng: number; parcelFare: number; active: boolean; dropMode: "stage" | "station"; stageACode: string; stageBCode: string }>) {
       return request<{ ok: boolean }>(`/v1/admin/relay/routes/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(input) });
     },
     async adminListRelayOperators() {
@@ -1902,7 +1902,7 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
         trip?: BagTrip | null;
         /** A long trip by matatu relay: the rider collects from every store first. */
         relay?: {
-          routeName: string; dropMode: "stage" | "station"; station: string | null; lastMile: "door" | "collect" | "pending";
+          routeName: string; direction?: string; routeCode?: string; dropMode: "stage" | "station"; station: string | null; lastMile: "door" | "collect" | "pending";
           doorTotal: number; collectTotal: number | null; choiceAtOrder: boolean;
           meetStages?: Array<{ id: string; name: string; distanceKm: number; isStation: boolean }>;
           meetStage?: string | null;

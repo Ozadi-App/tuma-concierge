@@ -15,7 +15,7 @@ const ugx = (n: number) => `UGX ${Number(n).toLocaleString("en-UG")}`;
 const REFRESH_MS = 15_000;
 const LOCATION_MS = 30_000;
 
-type RouteOption = Pick<RelayRoute, "id" | "name" | "stage_a_name" | "stage_b_name">;
+type RouteOption = Pick<RelayRoute, "id" | "name" | "stage_a_name" | "stage_b_name" | "route_code">;
 
 const statusLabel: Record<RelayLegStatus, string> = {
   waiting: "Waiting",
@@ -66,7 +66,7 @@ export default function RelayPage() {
         <div className="min-w-0">
           <h1 className="text-2xl font-black text-ink">Relay parcels</h1>
           <p className="truncate text-sm text-ink-500">
-            {operator?.status === "approved" ? `${operator.vehicle_plate} · ${operator.route_name ?? "Your route"}` : "Carry parcels on your matatu"}
+            {operator?.status === "approved" ? `${operator.vehicle_plate} · ${operator.route_code ?? operator.route_name ?? "Your route"}` : "Carry parcels on your matatu"}
           </p>
         </div>
       </header>
@@ -81,7 +81,7 @@ export default function RelayPage() {
             <Clock className="h-4 w-4 text-gold" /> Waiting for approval
           </h2>
           <p className="text-sm text-ink-500">
-            {operator.vehicle_plate} · {operator.route_name ?? "Route"}. We&apos;ll notify you once you&apos;re approved.
+            {operator.vehicle_plate} · {operator.route_code ?? operator.route_name ?? "Route"}. We&apos;ll notify you once you&apos;re approved.
           </p>
         </section>
       ) : operator?.status === "suspended" ? (
@@ -145,7 +145,7 @@ function ApplyForm({ routes, onDone }: { routes: RouteOption[]; onDone: () => Pr
           <option value="">Choose your route…</option>
           {routes.map((r) => (
             <option key={r.id} value={r.id}>
-              {r.name} ({r.stage_a_name} – {r.stage_b_name})
+              {r.route_code ? `${r.route_code} · ` : ""}{r.stage_a_name} – {r.stage_b_name}
             </option>
           ))}
         </Select>
@@ -248,6 +248,7 @@ function OperatorBoard() {
             <div key={r.id} className="flex items-center justify-between gap-3 border-t border-[var(--border-faint)] pt-3 text-sm first:border-t-0 first:pt-0">
               <span className="min-w-0">
                 <span className="block truncate text-ink">
+                  {r.direction ? <strong className="mr-1.5">{r.direction}</strong> : null}
                   {r.from_name} → {r.to_name}
                 </span>
                 <span className="text-xs text-ink-500">{formatWhen(r.handed_over_at)}</span>
@@ -367,6 +368,7 @@ function CarryingCard({ leg, onChange }: { leg: RelayOperatorParcels["carrying"]
     <article className="home-card space-y-4">
       <div className="flex items-center gap-2 text-sm font-semibold text-ink">
         <Bus className="h-4 w-4 shrink-0 text-gold" />
+        {leg.direction && <span className="shrink-0 font-bold">{leg.direction}</span>}
         <span className="truncate">{leg.from_name}</span>
         <ArrowRight className="h-3.5 w-3.5 shrink-0 text-ink-500" />
         <span className="truncate">{leg.to_name}</span>

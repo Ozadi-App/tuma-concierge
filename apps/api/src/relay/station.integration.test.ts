@@ -63,8 +63,8 @@ test("relay to a petrol station: collect in person, door delivery, or send a rid
       [["customer", "customer"], ["first", "rider"], ["last", "rider"], ["op", "customer"], ["staff", "admin"], ["stranger", "customer"]].map(async ([sub, role]) => [sub, await signToken({ sub, role } as never)] as const),
     ));
     tokens.att = await signGasToken({ kind: "attendant", id: "att", outletId: "out" });
-    const call = (who: string, path: string, body?: object) => app.request(`/v1/${path}`, {
-      method: body ? "POST" : "GET",
+    const call = (who: string, path: string, body?: object, method?: string) => app.request(`/v1/${path}`, {
+      method: method ?? (body ? "POST" : "GET"),
       headers: { Authorization: `Bearer ${tokens[who]}`, "Content-Type": "application/json" },
       ...(body ? { body: JSON.stringify(body) } : {}),
     });
@@ -119,6 +119,11 @@ test("relay to a petrol station: collect in person, door delivery, or send a rid
       assert.equal(quote.relay.collectTotal, quote.relay.legs[0].fee + quote.relay.legs[1].fee);
       assert.equal(quote.relay.total, quote.relay.collectTotal + quote.relay.legs[2].fee);
       assert.equal(quote.relay.choiceAtOrder, true);
+      // Dropping at a station that is a stop: its place in the stop order gives the direction.
+      assert.equal((await call("staff", `admin/relay/routes/${routeId}`, { stageACode: "KLA", stageBCode: "EBB" }, "PATCH")).status, 200);
+      const coded = await json<{ relay: { direction: string; routeCode: string } }>(
+        call("customer", `relay/quote?pickupLat=${PICKUP.lat}&pickupLng=${PICKUP.lng}&destinationLat=${DOOR.lat}&destinationLng=${DOOR.lng}`));
+      assert.deepEqual([coded.relay.direction, coded.relay.routeCode], ["KLA - EBB", "KLA ⇄ EBB"]);
     });
 
     await t.test("a sandbox-only station takes parcels in sandbox but not live", async () => {

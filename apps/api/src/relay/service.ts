@@ -13,6 +13,7 @@ import { creditWallet } from "../wallet/service.js";
 import { ledgerBalance, postLedgerTransaction } from "../ledger/service.js";
 import { getRelaySettings } from "./settings.js";
 import { beyondRiderRange, riderRangeKm } from "../orders/matching.js";
+import { directionFrom, directionLabel, legDirections, routeCodeLabel, type RouteEnd } from "./direction.js";
 
 /**
  * Relay delivery: a parcel too far for one boda goes boda -> matatu -> boda.
@@ -54,7 +55,14 @@ export type RelayLastMile = "door" | "collect" | "pending";
 
 export type RelayPlan = {
   routeId: string;
+  /** The route's full name, kept for older clients; what people see is `direction`. */
   routeName: string;
+  /** This trip's direction, written like a ticket: "KLA - EBB" (stage A to B) or "EBB - KLA". */
+  direction: string;
+  /** The end the matatu leg starts from. */
+  directionFrom: RouteEnd;
+  /** The route both ways: "KLA ⇄ EBB". */
+  routeCode: string;
   legs: RelayLegPlan[];
   /** Every leg, to the door. */
   total: number;
@@ -114,6 +122,17 @@ export async function planRelay(
     const stageEnd = nearestStage(rest, destination);
     if (dropMode === "stage" && (!stageEnd || stageEnd.km > settings.maxAccessKm)) continue;
     const alight = dropMode === "station" ? station! : stageEnd!.stage;
+    // Which way the matatu runs: by stop order when both ends are known stops (a station that
+    // is a stop, or a sandbox demo station beside one, takes that stop's place), else by
+    // which end is nearer stage A.
+    const alightIndex = dropMode === "station"
+      ? stages.findIndex((stage) => stage.outletId === station!.outletId || (!stage.outletId && demoOutletId(route, stage) === station!.outletId))
+      : stages.indexOf(stageEnd!.stage);
+    const fromEnd = directionFrom(
+      stages[0],
+      { lat: board.stage.lat, lng: board.stage.lng, index: stages.indexOf(board.stage) },
+      { lat: alight.lat, lng: alight.lng, index: alightIndex },
+    );
     const firstKm = leadInKm + board.km * factor;
     const lastKm = road(alight, destination);
     // The matatu has to actually carry it most of the way.
@@ -145,6 +164,7 @@ export async function planRelay(
         : [];
       best = {
         routeId: String(route.id), routeName: String(route.name), legs, total, dropMode,
+        direction: directionLabel(route, fromEnd), directionFrom: fromEnd, routeCode: routeCodeLabel(route),
         ...(dropMode === "station" ? { station: station!, collectTotal: legs[0].fee + legs[1].fee, meetStages } : {}),
       };
     }
@@ -363,7 +383,10 @@ export async function relayAwaitingCollection(orderId: string): Promise<boolean>
 export async function relayView(order: Row, viewerId: string): Promise<Row | null> {
   const legs = await relayLegs(String(order.id));
   if (!legs.length) return null;
-  const route = (await db.execute({ sql: "SELECT name FROM relay_routes WHERE id = ?", args: [String(legs[0].route_id)] })).rows[0] as Row | undefined;
+  const route = (await db.execute({ sql: "SELECT * FROM relay_routes WHERE id = ?", args: [String(legs[0].route_id)] })).rows[0] as Row | undefined;
+  // The direction comes from the matatu leg's ends against the route's stops (not stored).
+  const matatuLeg = legs.find((leg) => Number(leg.leg) === 2);
+  const direction = matatuLeg ? (await legDirections([matatuLeg])).get(String(matatuLeg.id)) ?? null : null;
   const providers = legs.map((leg) => leg.provider_id).filter(Boolean) as string[];
   const names = new Map<string, Row>();
   if (providers.length) {
@@ -388,6 +411,8 @@ export async function relayView(order: Row, viewerId: string): Promise<Row | nul
   const stillHeld = atStation && !relay?.released_at;
   return {
     routeName: route?.name ?? null,
+    direction,
+    routeCode: route ? routeCodeLabel(route) : null,
     dropMode: relay?.drop_mode ?? "stage",
     lastMile: relay?.last_mile ?? "door",
     station: station

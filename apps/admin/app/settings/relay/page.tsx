@@ -12,6 +12,7 @@ import { useAuth } from "../../../lib/auth-context";
 type Tab = "settings" | "routes" | "stations" | "operators" | "orders";
 const digits = (v: string) => v.replace(/[^\d]/g, "");
 const decimal = (v: string) => v.replace(/[^\d.]/g, "").replace(/(\..*)\./g, "$1");
+const stageCode = (v: string) => v.replace(/[^A-Za-z]/g, "").toUpperCase().slice(0, 4);
 const coord = (v: string) => v.replace(/[^\d.-]/g, "").replace(/(?!^)-/g, "").replace(/(\..*)\./g, "$1");
 const smallBtn = "min-h-9 rounded-full px-3 text-xs font-bold";
 
@@ -20,6 +21,7 @@ function relayError(err: unknown) {
   if (err instanceof ApiError && err.code === "stations_unavailable") return "Petrol-station drops need database migration 0105.";
   if (err instanceof ApiError && err.code === "relay_unavailable") return "Relay delivery needs database migration 0102.";
   if (err instanceof ApiError && err.code === "stages_unavailable") return "Route stages need database migration 0106.";
+  if (err instanceof ApiError && err.code === "codes_unavailable") return "Stage codes need database migration 0107. Apply it first, or leave the codes empty.";
   if (err instanceof ApiError && err.code === "location_required") return "Set this station's map location first.";
   return errorMessage(err);
 }
@@ -302,12 +304,22 @@ type RouteForm = {
   stageBName: string;
   stageBLat: string;
   stageBLng: string;
+  /** Short ticket-style codes for the two ends ("KLA", "EBB"). */
+  stageACode: string;
+  stageBCode: string;
   parcelFare: string;
   active: boolean;
   dropMode: RelayDropMode;
 };
 
-const EMPTY_ROUTE: RouteForm = { name: "", stageAName: "", stageALat: "", stageALng: "", stageBName: "", stageBLat: "", stageBLng: "", parcelFare: "", active: true, dropMode: "station" };
+const EMPTY_ROUTE: RouteForm = { name: "", stageAName: "", stageALat: "", stageALng: "", stageBName: "", stageBLat: "", stageBLng: "", stageACode: "", stageBCode: "", parcelFare: "", active: true, dropMode: "station" };
+
+/** The route both ways, and each direction: "KLA ⇄ EBB", "KLA - EBB" and "EBB - KLA". */
+function routeLabels(r: RelayRoute) {
+  const a = r.codes?.a ?? r.stage_a_code ?? "A";
+  const b = r.codes?.b ?? r.stage_b_code ?? "B";
+  return { a, b, both: r.route_code ?? `${a} ⇄ ${b}`, there: r.directions?.[0] ?? `${a} - ${b}`, back: r.directions?.[1] ?? `${b} - ${a}` };
+}
 
 function toForm(r: RelayRoute): RouteForm {
   return {
@@ -318,6 +330,8 @@ function toForm(r: RelayRoute): RouteForm {
     stageBName: r.stage_b_name,
     stageBLat: String(r.stage_b_lat),
     stageBLng: String(r.stage_b_lng),
+    stageACode: r.stage_a_code ?? "",
+    stageBCode: r.stage_b_code ?? "",
     parcelFare: String(r.parcel_fare),
     active: r.active === 1,
     dropMode: r.drop_mode ?? "stage",
@@ -327,6 +341,7 @@ function toForm(r: RelayRoute): RouteForm {
 function RoutesTab() {
   const [routes, setRoutes] = useState<RelayRoute[]>([]);
   const [ready, setReady] = useState(true);
+  const [codesReady, setCodesReady] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | "new" | null>(null);
@@ -340,6 +355,7 @@ function RoutesTab() {
       const res = await api.adminListRelayRoutes();
       setRoutes(res.routes);
       setReady(res.ready);
+      setCodesReady(res.codesReady !== false);
       setError(null);
     } catch (err) {
       setError(errorMessage(err));
@@ -363,6 +379,10 @@ function RoutesTab() {
       setError("Enter a valid latitude and longitude for both stages.");
       return;
     }
+    if ([form.stageACode, form.stageBCode].some((code) => code !== "" && !/^[A-Z]{2,4}$/.test(code))) {
+      setError("Each stage code is 2 to 4 letters, like KLA or EBB.");
+      return;
+    }
     const input = {
       name: form.name.trim(),
       stageAName: form.stageAName.trim(),
@@ -374,6 +394,8 @@ function RoutesTab() {
       parcelFare: Number(form.parcelFare),
       active: form.active,
       dropMode: form.dropMode,
+      // Codes are saved once migration 0107 is applied; until then they're left out.
+      ...(codesReady ? { stageACode: form.stageACode, stageBCode: form.stageBCode } : {}),
     };
     setBusy(true);
     setError(null);
@@ -418,9 +440,23 @@ function RoutesTab() {
           </Field>
           {(["A", "B"] as const).map((s) => (
             <div key={s} className="space-y-2 border-t border-[var(--border-faint)] pt-3">
-              <Field label={`Stage ${s} name`}>
-                <input required value={form[`stage${s}Name`]} onChange={(e) => set(`stage${s}Name`, e.target.value)} className={inputCls} />
-              </Field>
+              <div className="grid grid-cols-[1fr_6rem] gap-3">
+                <Field label={`Stage ${s} name`}>
+                  <input required value={form[`stage${s}Name`]} onChange={(e) => set(`stage${s}Name`, e.target.value)} placeholder={s === "A" ? "Kampala Old Taxi Park" : "Entebbe Kitoro"} className={inputCls} />
+                </Field>
+                <Field label="Code">
+                  <input
+                    value={form[`stage${s}Code`]}
+                    onChange={(e) => set(`stage${s}Code`, stageCode(e.target.value))}
+                    placeholder={s === "A" ? "KLA" : "EBB"}
+                    maxLength={4}
+                    autoCapitalize="characters"
+                    disabled={!codesReady}
+                    aria-label={`Stage ${s} code`}
+                    className={`${inputCls} uppercase disabled:opacity-50`}
+                  />
+                </Field>
+              </div>
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Latitude">
                   <input required inputMode="decimal" value={form[`stage${s}Lat`]} onChange={(e) => set(`stage${s}Lat`, coord(e.target.value))} placeholder="0.3136" className={inputCls} />
@@ -431,6 +467,11 @@ function RoutesTab() {
               </div>
             </div>
           ))}
+          <p className="text-xs text-ink-500">
+            {codesReady
+              ? `Codes are 2 to 4 letters, written like a ticket. The route runs both ways: ${form.stageACode || "KLA"} - ${form.stageBCode || "EBB"} and ${form.stageBCode || "EBB"} - ${form.stageACode || "KLA"}. Left empty, a code is the first three letters of the stage name.`
+              : "Stage codes need database migration 0107. Until it is applied, each code is the first three letters of the stage name."}
+          </p>
           <div className="border-t border-[var(--border-faint)] pt-3">
             <Field label="Parcel fare (UGX)" hint="What the matatu operator is paid to carry one parcel between the two stages.">
               <input required inputMode="numeric" value={form.parcelFare} onChange={(e) => set("parcelFare", digits(e.target.value))} className={inputCls} />
@@ -488,10 +529,19 @@ function RoutesTab() {
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--border-faint)]">
-              {routes.map((r) => (
+              {routes.map((r) => {
+                const labels = routeLabels(r);
+                return (
                 <tr key={r.id} className="text-ink">
-                  <td className="px-3 py-2 font-semibold">{r.name}</td>
-                  <td className="px-3 py-2 text-xs text-ink-500">{r.stage_a_name} ↔ {r.stage_b_name}</td>
+                  <td className="px-3 py-2">
+                    <span className="block whitespace-nowrap font-bold">{labels.both}</span>
+                    <span className="block whitespace-nowrap text-xs text-ink-500">{labels.there} · {labels.back}</span>
+                    <span className="block text-xs text-ink-500">{r.name}</span>
+                  </td>
+                  <td className="px-3 py-2 text-xs text-ink-500">
+                    <span className="block">{labels.a}: {r.stage_a_name}</span>
+                    <span className="block">{labels.b}: {r.stage_b_name}</span>
+                  </td>
                   <td className="whitespace-nowrap px-3 py-2 text-xs">{r.drop_mode === "station" ? "Petrol station" : "Stage"}</td>
                   <td className="whitespace-nowrap px-3 py-2">{ugx(r.parcel_fare)}</td>
                   <td className="px-3 py-2">{r.operators ?? 0}</td>
@@ -517,7 +567,8 @@ function RoutesTab() {
                     </button>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -610,6 +661,7 @@ function StagesEditor({ route, onClose }: { route: RelayRoute; onClose: () => vo
     }
   }
 
+  const labels = routeLabels(route);
   const ends = (name: string, tag: string) => (
     <li className="flex items-center justify-between gap-2 rounded-xl bg-[rgb(var(--surface-muted))] px-3 py-2 text-sm">
       <span className="truncate font-semibold text-ink">{name}</span>
@@ -620,19 +672,22 @@ function StagesEditor({ route, onClose }: { route: RelayRoute; onClose: () => vo
   return (
     <section className="home-card space-y-3">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-sm font-bold text-ink">Stages · {route.name}</p>
+        <p className="text-sm font-bold text-ink">Stages · {labels.both}</p>
         <button type="button" onClick={onClose} className={`${smallBtn} bg-gold/15 text-ink`}>
           Close
         </button>
       </div>
-      <p className="text-xs text-ink-500">Stops where a customer can meet the matatu, in the order it passes them.</p>
+      <p className="text-xs text-ink-500">
+        Stops where a customer can meet the matatu, in the order it passes them going {labels.there}. Going {labels.back} the matatu uses the
+        same stops in reverse.
+      </p>
       {!ready && <StagesNotice />}
       <ErrorNote message={error} />
       {loading ? (
         <p className="text-sm text-ink-500">Loading…</p>
       ) : (
         <ol className="space-y-2">
-          {ends(route.stage_a_name, "Stage A")}
+          {ends(route.stage_a_name, `Stage A · ${labels.a}`)}
           {stages.map((st) => {
             const d = drafts[st.id] ?? { name: st.name, seq: String(st.seq) };
             const changed = d.name.trim() !== st.name || Number(d.seq) !== st.seq;
@@ -683,7 +738,7 @@ function StagesEditor({ route, onClose }: { route: RelayRoute; onClose: () => vo
               </li>
             );
           })}
-          {ends(route.stage_b_name, "Stage B")}
+          {ends(route.stage_b_name, `Stage B · ${labels.b}`)}
         </ol>
       )}
 
@@ -886,7 +941,7 @@ function OperatorsTab({ canVerify }: { canVerify: boolean }) {
               <Badge>{o.status}</Badge>
             </div>
             <p className="text-xs text-ink-500">
-              {o.route_name ?? "No route"} · {o.phone ?? o.account_phone ?? "no phone"} · {o.parcels ?? 0} parcels · applied {when(o.created_at)}
+              {o.route_code ? `${o.route_code} (${o.route_name ?? "route"})` : o.route_name ?? "No route"} · {o.phone ?? o.account_phone ?? "no phone"} · {o.parcels ?? 0} parcels · applied {when(o.created_at)}
             </p>
             {canVerify && (
               <div className="flex gap-2">
