@@ -47,6 +47,24 @@ export function getCachedCustomerCoordinates(): CustomerCoordinates {
   return KAMPALA_DEFAULT_COORDINATES;
 }
 
+/**
+ * Where the phone really last put the customer, or null when nothing is known.
+ * Unlike getCachedCustomerCoordinates there is no Kololo fallback, so a price
+ * can never be worked out for a place the customer isn't.
+ */
+export function getStoredCustomerCoordinates(): { lat: number; lng: number } | null {
+  if (typeof window === "undefined") return null;
+  for (const key of [LOCATION_LABEL_CACHE, CACHE_KEY]) {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(key) ?? "null");
+      if (typeof parsed?.lat === "number" && typeof parsed?.lng === "number" && Number.isFinite(parsed.lat) && Number.isFinite(parsed.lng)) {
+        return { lat: parsed.lat, lng: parsed.lng };
+      }
+    } catch {}
+  }
+  return null;
+}
+
 export function setCachedCustomerCoordinates(coords: CustomerCoordinates): void {
   if (typeof window === "undefined") return;
   try {

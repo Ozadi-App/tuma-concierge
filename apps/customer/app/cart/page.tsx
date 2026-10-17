@@ -21,9 +21,11 @@ import { useCart, CartItem } from "../../lib/cart";
 import { ProductImage } from "../../components/ProductImage";
 import { RoundCheck } from "../../components/marketplace/MarketplaceUI";
 import { api, errorMessage } from "../../lib/api";
-import { getCachedCustomerCoordinates } from "../../lib/location";
-import { useBagQuote } from "../../lib/bag-quote";
-import { BagRelayDetails, bagRelayLastMileInput } from "../../components/BagRelayDetails";
+import { useBagQuote, type BagDeliveryMode } from "../../lib/bag-quote";
+import { bagDestinationFields, useBagDeliveryPlace } from "../../lib/bag-place";
+import { bagRelayLastMileInput } from "../../components/BagRelayDetails";
+import { BagDeliveryBreakdown, BagDestinationCard } from "../../components/BagDeliveryBreakdown";
+import { PlaceFlow } from "../../components/PlaceFlow";
 import type { LastMileChoiceValue } from "../../components/LastMileChoice";
 import { useRegisterNavPrimaryAction, useRegisterNavBack, goBackOr } from "../../lib/nav-primary-action";
 
@@ -45,19 +47,30 @@ export default function CartPage() {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
-  // The delivery fee is the server's: one rider trip through every store. Checkout waits for it.
+  // Where the bag goes: chosen on the map and remembered on this device. Never a default place.
+  const delivery = useBagDeliveryPlace();
+  const [choosingPlace, setChoosingPlace] = useState(false);
+  // The delivery fee is the server's, for this place and the chosen way. Checkout waits for it.
+  const [deliveryMode, setDeliveryMode] = useState<BagDeliveryMode | undefined>(undefined);
   const [relayLastMile, setRelayLastMile] = useState<LastMileChoiceValue>("door");
   const [relayMeetStageId, setRelayMeetStageId] = useState<string | null>(null);
-  const bagQuote = useBagQuote(selectedItems, mounted, relayLastMile, relayMeetStageId ?? undefined);
-  const deliveryFee = bagQuote.quote?.deliveryFee ?? null;
-  const total = deliveryFee == null ? null : subtotal + deliveryFee;
+  const destination =
+    delivery.place?.lat != null && delivery.place.lng != null ? { lat: delivery.place.lat, lng: delivery.place.lng } : null;
+  const bagQuote = useBagQuote(selectedItems, {
+    enabled: mounted && delivery.ready,
+    destination,
+    deliveryMode,
+    relayLastMile,
+    relayMeetStageId: relayMeetStageId ?? undefined,
+  });
+  const total = bagQuote.quote?.total ?? null;
+  const storeCount = new Set(selectedItems.map((it) => it.storeId)).size;
 
   const handleCheckout = async () => {
-    if (selectedItems.length === 0 || isSubmitting || total == null) return;
+    const quote = bagQuote.quote;
+    if (selectedItems.length === 0 || isSubmitting || total == null || !quote || !delivery.place) return;
     setIsSubmitting(true);
     setCheckoutError(null);
-
-    const cached = getCachedCustomerCoordinates();
 
     try {
       const res = await api.checkoutMarketplace({
@@ -72,11 +85,10 @@ export default function CartPage() {
           imageUrl: it.imageUrl,
         })),
         paymentRail: "escrow",
-        destinationAddress: cached.label || "Kampala",
-        destinationArea: "Kampala",
-        destinationLat: cached.lat || 0.3353,
-        destinationLng: cached.lng || 32.5857,
-        ...bagRelayLastMileInput(bagQuote.relay, relayLastMile, relayMeetStageId),
+        ...bagDestinationFields(delivery.place),
+        // The way this quote priced, so the order is charged what was shown.
+        deliveryMode: quote.deliveryMode,
+        ...(quote.deliveryMode === "relay" ? bagRelayLastMileInput(quote.relay, relayLastMile, relayMeetStageId) : {}),
       });
 
       const firstOrder = res.order ?? res.orders?.[0];
@@ -101,7 +113,9 @@ export default function CartPage() {
   // On /cart the nav's Home is Back: return to the shopping screen they came from.
   useRegisterNavBack(true, () => goBackOr(router, "/shopping"));
   useRegisterNavPrimaryAction(
-    mounted && items.length > 0
+    mounted && items.length > 0 && bagQuote.needsDestination
+      ? { label: "Choose location", disabled: selectedCount === 0, onClick: () => setChoosingPlace(true) }
+      : mounted && items.length > 0
       ? {
           label: isSubmitting ? "Creating order…" : total == null ? "Please wait…" : "Checkout",
           detail: total == null ? undefined : `UGX ${total.toLocaleString()}`,
@@ -300,44 +314,42 @@ export default function CartPage() {
                 <span className="font-bold text-ink">UGX {subtotal.toLocaleString()}</span>
               </div>
 
-              <div className="flex justify-between text-xs text-ink-500">
-                <span className="flex items-center gap-1">
-                  <Truck className="w-3.5 h-3.5 text-gold" />
-                  <span>Delivery Fee</span>
-                </span>
-                <span className="font-bold text-ink">
-                  {subtotal === 0 ? "UGX 0" : bagQuote.failed ? (
-                    <button type="button" onClick={bagQuote.retry} className="font-bold text-gold">Retry</button>
-                  ) : deliveryFee == null ? "Calculating…" : `UGX ${deliveryFee.toLocaleString()}`}
-                </span>
-              </div>
-
-              {subtotal > 0 && bagQuote.relay && (
-                <BagRelayDetails
-                  relay={bagQuote.relay}
-                  lastMile={relayLastMile}
-                  onLastMileChange={setRelayLastMile}
-                  meetStageId={relayMeetStageId}
-                  onMeetStageChange={setRelayMeetStageId}
-                  disabled={isSubmitting}
-                  className="pl-5"
-                />
-              )}
-              {bagQuote.quote && bagQuote.quote.stores.length > 1 && (
-                <div className="space-y-1 pl-5 text-[11px] text-ink-500">
-                  <p>One rider collects from every store:</p>
-                  {bagQuote.quote.stores.map((store) => (
-                    <div key={store.storeId} className="flex justify-between">
-                      <span>{store.storeName}</span>
-                      <span>UGX {store.deliveryFee.toLocaleString()}</span>
-                    </div>
-                  ))}
+              {subtotal === 0 ? (
+                <div className="flex justify-between text-xs text-ink-500">
+                  <span className="flex items-center gap-1">
+                    <Truck className="w-3.5 h-3.5 text-gold" />
+                    <span>Delivery Fee</span>
+                  </span>
+                  <span className="font-bold text-ink">UGX 0</span>
                 </div>
+              ) : (
+                <>
+                  <BagDestinationCard
+                    place={delivery.place}
+                    ready={delivery.ready}
+                    onChange={() => setChoosingPlace(true)}
+                    disabled={isSubmitting}
+                  />
+                  <div className="text-xs">
+                    <BagDeliveryBreakdown
+                      bag={bagQuote}
+                      storeCount={storeCount}
+                      onModeChange={setDeliveryMode}
+                      lastMile={relayLastMile}
+                      onLastMileChange={setRelayLastMile}
+                      meetStageId={relayMeetStageId}
+                      onMeetStageChange={setRelayMeetStageId}
+                      onChooseLocation={() => setChoosingPlace(true)}
+                      disabled={isSubmitting}
+                      indent="pl-5"
+                    />
+                  </div>
+                </>
               )}
 
               <div className="pt-3 border-t border-[var(--border-faint)] flex justify-between items-baseline">
                 <span className="font-bold text-sm text-ink">Total</span>
-                <span className="font-bold text-lg text-ink">{total == null ? "—" : `UGX ${total.toLocaleString()}`}</span>
+                <span className="font-bold text-lg text-ink">{subtotal === 0 ? "UGX 0" : total == null ? "—" : `UGX ${total.toLocaleString()}`}</span>
               </div>
             </div>
 
@@ -354,6 +366,17 @@ export default function CartPage() {
         )}
 
       </div>
+      {choosingPlace && (
+        <PlaceFlow
+          concept="shopping"
+          initial={{ destination: delivery.place }}
+          onClose={() => setChoosingPlace(false)}
+          onDone={(r) => {
+            delivery.choose(r.destination);
+            setChoosingPlace(false);
+          }}
+        />
+      )}
     </div>
   );
 }

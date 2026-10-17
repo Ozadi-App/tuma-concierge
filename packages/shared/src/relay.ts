@@ -179,3 +179,15 @@ export type RelayStation = {
 };
 
 export type RelayMerchantOrder = { id: string; stage: string; created_at: string; destination_area: string | null; store_name: string; customer_name: string | null };
+
+/** One rider's whole bag trip along the road: store to store in the shortest order, then to the customer. */
+export type BagTrip = {
+  legs: Array<{ fromName: string; toName: string; km: number }>;
+  totalKm: number;
+  /** The first store straight to the customer, and what the other stops add to it. */
+  directKm: number;
+  directFee: number;
+  addedKm: number;
+  addedFee: number;
+  fee: number;
+};

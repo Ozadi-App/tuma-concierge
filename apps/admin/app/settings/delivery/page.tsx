@@ -15,6 +15,8 @@ export default function DeliveryPricingPage() {
   const [rideMinimumFare, setRideMinimumFare] = useState("");
   const [rideForOtherEnabled, setRideForOtherEnabled] = useState(true);
   const [rideForOtherDistanceM, setRideForOtherDistanceM] = useState("");
+  const [roadDistanceFactor, setRoadDistanceFactor] = useState("1.3");
+  const [routingServerUrl, setRoutingServerUrl] = useState("");
   const [timeFees, setTimeFees] = useState<TimeFeeSettings | null>(null);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -32,6 +34,8 @@ export default function DeliveryPricingPage() {
         setRideMinimumFare(String(settings.rideMinimumFare));
         setRideForOtherEnabled(settings.rideForOtherEnabled);
         setRideForOtherDistanceM(String(settings.rideForOtherDistanceM));
+        setRoadDistanceFactor(String(settings.roadDistanceFactor ?? 1.3));
+        setRoutingServerUrl(settings.routingServerUrl ?? "");
         setTimeFees(settings.timeFees);
       })
       .catch((err) => setError(errorMessage(err)))
@@ -40,6 +44,18 @@ export default function DeliveryPricingPage() {
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
+    const factor = Number(roadDistanceFactor);
+    if (!roadDistanceFactor.trim() || !Number.isFinite(factor) || factor < 1 || factor > 3) {
+      setSaved(false);
+      setError("Road distance factor must be between 1.0 and 3.0.");
+      return;
+    }
+    const routingUrl = routingServerUrl.trim();
+    if (routingUrl && !/^https?:\/\/\S+$/i.test(routingUrl)) {
+      setSaved(false);
+      setError("Routing server must be empty or start with http:// or https://.");
+      return;
+    }
     setBusy(true);
     setError(null);
     setSaved(false);
@@ -52,6 +68,8 @@ export default function DeliveryPricingPage() {
         rideMinimumFare: Number(rideMinimumFare),
         rideForOtherEnabled,
         rideForOtherDistanceM: Number(rideForOtherDistanceM),
+        roadDistanceFactor: factor,
+        routingServerUrl: routingUrl,
         ...(timeFees ? { timeFees } : {}),
       });
       setDeliveryRatePerKm(String(res.settings.deliveryRatePerKm));
@@ -61,6 +79,8 @@ export default function DeliveryPricingPage() {
       setRideMinimumFare(String(res.settings.rideMinimumFare));
       setRideForOtherEnabled(res.settings.rideForOtherEnabled);
       setRideForOtherDistanceM(String(res.settings.rideForOtherDistanceM));
+      setRoadDistanceFactor(String(res.settings.roadDistanceFactor ?? factor));
+      setRoutingServerUrl(res.settings.routingServerUrl ?? routingUrl);
       setTimeFees(res.settings.timeFees);
       setSaved(true);
     } catch (err) {
@@ -89,6 +109,43 @@ export default function DeliveryPricingPage() {
             <p className="text-xs text-ink-500">
               A parcel&apos;s cost is distance (pickup → drop-off) × this rate, calculated automatically when both
               points are pinned on the map.
+            </p>
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-ink-500" htmlFor="road-distance-factor">
+              Road distance factor
+            </label>
+            <input
+              id="road-distance-factor"
+              inputMode="decimal"
+              value={roadDistanceFactor}
+              onChange={(e) => setRoadDistanceFactor(e.target.value.replace(/[^\d.]/g, ""))}
+              placeholder="1.3"
+              className="w-full rounded-xl border border-[var(--border-faint)] px-3 py-2.5 text-[15px] outline-none focus:border-gold"
+            />
+            <p className="text-xs text-ink-500">
+              Delivery prices follow the road. Without a routing server, each straight line is multiplied by this (about
+              1.3 in town).
+            </p>
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-ink-500" htmlFor="routing-server-url">
+              Routing server (optional)
+            </label>
+            <input
+              id="routing-server-url"
+              inputMode="url"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              value={routingServerUrl}
+              onChange={(e) => setRoutingServerUrl(e.target.value)}
+              placeholder="https://router.example.com"
+              className="w-full rounded-xl border border-[var(--border-faint)] px-3 py-2.5 text-[15px] outline-none focus:border-gold"
+            />
+            <p className="text-xs text-ink-500">
+              An OSRM-compatible routing server for true road distances. Leave empty to use the road factor. Falls back
+              to the factor if the server is slow or down.
             </p>
           </div>
           {timeFees && (

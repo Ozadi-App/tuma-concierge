@@ -1,15 +1,24 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { BagTrip } from "@peebee/shared";
 import { api } from "./api";
 import type { CartItem } from "./cart";
-import { getCachedCustomerCoordinates } from "./location";
+
+export type BagDeliveryMode = "rider" | "relay";
 
 export type BagQuote = {
+  itemsTotal: number;
   deliveryFee: number;
   total: number;
+  /** The way this quote delivers. */
+  deliveryMode: BagDeliveryMode;
+  /** The delivery fee each way; `relay` is null when no relay is offered. */
+  options: { rider: number; relay: number | null };
   stores: Array<{ storeId: string; storeName: string; itemsTotal: number; deliveryFee: number }>;
-  /** A long delivery from one store, relayed by matatu. */
+  /** One rider's whole road trip, store to store and then to the customer. */
+  trip: BagTrip | null;
+  /** A long trip by matatu relay: the first rider collects from every store. */
   relay: BagRelay | null;
 };
 
@@ -23,32 +32,40 @@ export type BagRelay = {
   choiceAtOrder: boolean;
   /** Stages on the matatu's route where the customer may meet it instead (priced like collecting). */
   meetStages?: Array<{ id: string; name: string; distanceKm: number; isStation: boolean }>;
-  legs: Array<{ leg: number; kind: "boda" | "matatu"; fromName: string; toName: string; fee: number }>;
+  meetStage?: string | null;
+  legs: Array<{ leg: number; kind: "boda" | "matatu"; fromName: string; toName: string; distanceKm?: number; fee: number }>;
+};
+
+export type BagQuoteInput = {
+  enabled: boolean;
+  /** Where the bag goes. Nothing is quoted without it (never a default place). */
+  destination: { lat: number; lng: number } | null;
+  /** The customer's choice; undefined lets the server pick (relay when offered). */
+  deliveryMode?: BagDeliveryMode;
+  relayLastMile?: "door" | "collect" | "meet";
+  relayMeetStageId?: string;
 };
 
 /**
- * The exact delivery fee the server will charge for these items: one rider
- * trip through every store in the bag. Null while loading or after an error,
- * so checkout can stay off until the fee is known (never an estimate).
+ * The exact delivery fee the server will charge for these items, to this
+ * place, the chosen way. `quote` is null while loading or after an error, so
+ * checkout stays off until the fee for the current choices is known (never an estimate).
  */
-export function useBagQuote(
-  items: CartItem[],
-  enabled: boolean,
-  relayLastMile: "door" | "collect" | "meet" = "door",
-  relayMeetStageId?: string,
-) {
+export function useBagQuote(items: CartItem[], input: BagQuoteInput) {
+  const { enabled, destination, deliveryMode, relayLastMile = "door", relayMeetStageId } = input;
   const [quote, setQuote] = useState<{ key: string; base: string; value: BagQuote } | null>(null);
   const [failedKey, setFailedKey] = useState<string | null>(null);
   const [retry, setRetry] = useState(0);
-  const coords = getCachedCustomerCoordinates();
-  const lat = coords.lat || 0.3353;
-  const lng = coords.lng || 32.5857;
-  const base = `${lat},${lng}|${items.map((it) => `${it.storeId}:${it.productId}:${it.variantId ?? ""}:${it.price}x${it.quantity}`).join(",")}`;
+  const lat = destination?.lat;
+  const lng = destination?.lng;
+  const located = lat != null && lng != null && Number.isFinite(lat) && Number.isFinite(lng);
+  const base = `${located ? `${lat},${lng}` : "none"}|${items.map((it) => `${it.storeId}:${it.productId}:${it.variantId ?? ""}:${it.price}x${it.quantity}`).join(",")}`;
   const meetStageId = relayLastMile === "meet" ? relayMeetStageId : undefined;
-  const key = `${relayLastMile}:${meetStageId ?? ""}|${base}`;
+  const key = `${deliveryMode ?? "auto"}:${relayLastMile}:${meetStageId ?? ""}|${base}`;
+  const active = enabled && located && items.length > 0;
 
   useEffect(() => {
-    if (!enabled || items.length === 0) return;
+    if (!active) return;
     let cancelled = false;
     setFailedKey(null);
     api
@@ -61,9 +78,26 @@ export function useBagQuote(
         destinationLng: lng,
         relayLastMile,
         relayMeetStageId: meetStageId,
+        deliveryMode,
       })
       .then((res) => {
-        if (!cancelled) setQuote({ key, base, value: { deliveryFee: res.deliveryFee, total: res.total, stores: res.stores, relay: res.relay ?? null } });
+        if (cancelled) return;
+        const relay = res.relay ?? null;
+        const mode: BagDeliveryMode = res.deliveryMode ?? (relay && deliveryMode !== "rider" ? "relay" : "rider");
+        setQuote({
+          key,
+          base,
+          value: {
+            itemsTotal: res.itemsTotal,
+            deliveryFee: res.deliveryFee,
+            total: res.total,
+            deliveryMode: mode,
+            options: res.options ?? { rider: res.deliveryFee, relay: null },
+            stores: res.stores,
+            trip: res.trip ?? null,
+            relay,
+          },
+        });
       })
       .catch(() => {
         if (!cancelled) setFailedKey(key);
@@ -72,15 +106,23 @@ export function useBagQuote(
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, enabled, retry]);
+  }, [key, active, retry]);
 
-  const current = quote?.key === key ? quote.value : null;
+  const current = active && quote?.key === key ? quote.value : null;
+  // The latest quote for the same items and place, kept while a new choice loads so the choices don't flicker.
+  const previous = active && quote?.base === base ? quote.value : null;
   return {
     quote: current,
-    /** The latest relay plan, kept while a new door/collect quote loads so the choice doesn't flicker. */
-    relay: current ? current.relay : quote?.base === base ? quote.value.relay : null,
-    loading: enabled && items.length > 0 && !current && failedKey !== key,
-    failed: failedKey === key && !current,
+    relay: current ? current.relay : previous?.relay ?? null,
+    options: current ? current.options : previous?.options ?? null,
+    /** One rider's road trip for these items and this place (the same whichever way is chosen). */
+    trip: current ? current.trip : previous?.trip ?? null,
+    /** The way shown as chosen: the customer's pick, else what the server chose. */
+    mode: (deliveryMode ?? current?.deliveryMode ?? previous?.deliveryMode ?? null) as BagDeliveryMode | null,
+    /** No delivery place yet: the customer must choose one before anything is priced. */
+    needsDestination: enabled && items.length > 0 && !located,
+    loading: active && !current && failedKey !== key,
+    failed: active && failedKey === key && !current,
     retry: () => setRetry((n) => n + 1),
   };
 }

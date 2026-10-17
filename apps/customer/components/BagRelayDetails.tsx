@@ -33,9 +33,12 @@ export function BagRelayDetails({
   meetStageId,
   onMeetStageChange,
   disabled,
+  storeCount = 1,
   className = "",
 }: {
   relay: BagRelay;
+  /** Stores in the bag: with more than one, the first rider collects from each before the stage. */
+  storeCount?: number;
   lastMile: LastMileChoiceValue;
   onLastMileChange: (value: LastMileChoiceValue) => void;
   meetStageId?: string | null;
@@ -67,14 +70,21 @@ export function BagRelayDetails({
       ) : station && !toDoor ? (
         <p>Collect at {station}, or send a rider when it arrives.</p>
       ) : null}
-      {legs.map((leg) => (
-        <div key={leg.leg} className="flex justify-between gap-3">
-          <span className="min-w-0">
-            {leg.kind === "matatu" ? "Matatu" : "Boda"}: {leg.fromName} to {leg.leg === 3 ? "door" : leg.toName}
-          </span>
-          <span className="shrink-0">UGX {leg.fee.toLocaleString()}</span>
-        </div>
-      ))}
+      {legs.map((leg) => {
+        const to = leg.leg === 3 ? "your door" : leg.toName;
+        const route = leg.kind === "boda" && leg.leg === 1 && storeCount > 1
+          ? `collects from every store, then to ${to}`
+          : `${leg.fromName} → ${to}`;
+        return (
+          <div key={leg.leg} className="flex justify-between gap-3">
+            <span className="min-w-0">
+              {leg.kind === "matatu" ? "Matatu" : "Boda"}: {route}
+              {leg.distanceKm != null && Number.isFinite(leg.distanceKm) ? ` · ${leg.distanceKm.toFixed(1)} km` : ""}
+            </span>
+            <span className="shrink-0">UGX {leg.fee.toLocaleString()}</span>
+          </div>
+        );
+      })}
     </div>
   );
 }
