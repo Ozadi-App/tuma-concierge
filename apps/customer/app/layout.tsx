@@ -14,6 +14,7 @@ import { ServiceWorkerRegister } from "../components/ServiceWorkerRegister";
 import { AuthProvider } from "../lib/auth-context";
 import { CallsProvider } from "../lib/calls-context";
 import { LanguageProvider } from "../lib/i18n";
+import { SITE_URL } from "../lib/public-share";
 
 // Runs before paint so there's no flash of the wrong theme — reads the
 // user's saved choice, falling back to their OS preference.
@@ -35,8 +36,19 @@ const THEME_INIT_SCRIPT = `
 `;
 
 export const metadata: Metadata = {
+  // Absolute URLs for every page's canonical link and preview image.
+  metadataBase: new URL(SITE_URL),
   title: "Peebee Customer",
   description: "Peebee Concierge — customer app",
+  openGraph: {
+    type: "website",
+    siteName: "Peebee",
+    locale: "en_UG",
+    title: "Peebee: food, shopping and deliveries in Uganda",
+    description: "Order food, shop from local stores and send parcels. A Peebee rider brings it to your door, paid safely in the app.",
+    images: [{ url: "/icons/icon-512.png", width: 512, height: 512, alt: "Peebee" }],
+  },
+  twitter: { card: "summary" },
   manifest: "/manifest.json",
   icons: {
     icon: [
