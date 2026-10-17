@@ -6,6 +6,7 @@ import type { AuthUser } from "@peebee/shared";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { api, TOKEN_KEY, USER_KEY } from "./api";
 import { unsubscribeFromPush } from "./push";
+import { AUTH_CHANGE_EVENT } from "./cart";
 
 type AuthState = {
   user: AuthUser | null;
@@ -35,6 +36,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setReady(true);
     }
   }, []);
+
+  // Per-user state on this device (the marketplace bag, lib/cart.ts) re-reads when the account changes.
+  const userId = user?.id ?? null;
+  useEffect(() => {
+    if (ready) window.dispatchEvent(new Event(AUTH_CHANGE_EVENT));
+  }, [ready, userId]);
 
   const persist = useCallback((token: string, nextUser: AuthUser) => {
     resetNotificationSnapshots();

@@ -28,6 +28,7 @@ export default function MarketplaceSettingsPage() {
   const [liveMaxDurationMins, setLiveMaxDurationMins] = useState(180);
   const [adMinBudgetUgx, setAdMinBudgetUgx] = useState(10000);
   const [adFeePercent, setAdFeePercent] = useState(5);
+  const [cartExpiryHours, setCartExpiryHours] = useState(12);
 
   const load = useCallback(async () => {
     const res = await api.adminGetMarketplaceSettings();
@@ -44,6 +45,7 @@ export default function MarketplaceSettingsPage() {
     setLiveMaxDurationMins(m.liveMaxDurationMins);
     setAdMinBudgetUgx(m.adMinBudgetUgx);
     setAdFeePercent(m.adFeePercent);
+    setCartExpiryHours(m.cartExpiryHours ?? 12);
   }, []);
 
   useEffect(() => {
@@ -55,6 +57,10 @@ export default function MarketplaceSettingsPage() {
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
     if (!canManage) return;
+    if (!Number.isInteger(cartExpiryHours) || cartExpiryHours < 1 || cartExpiryHours > 720) {
+      setError("Earlier carts after (hours) must be a whole number from 1 to 720.");
+      return;
+    }
 
     setSaving(true);
     setError(null);
@@ -74,6 +80,7 @@ export default function MarketplaceSettingsPage() {
         liveMaxDurationMins,
         adMinBudgetUgx,
         adFeePercent,
+        cartExpiryHours,
       };
 
       await api.adminUpdateMarketplaceSettings(payload);
@@ -302,6 +309,22 @@ export default function MarketplaceSettingsPage() {
                 className="w-full bg-transparent font-bold text-ink outline-none text-base"
               />
               <span className="text-[10px] text-ink-500 mt-1">Rider collection & dispatch floor</span>
+            </div>
+
+            <div className="field-box flex flex-col p-3 rounded-2xl bg-[rgb(var(--surface-muted))]">
+              <label className="text-xs font-bold text-ink-500 mb-1">Earlier carts after (hours)</label>
+              <input
+                type="number"
+                min={1}
+                max={720}
+                step={1}
+                value={cartExpiryHours}
+                onChange={(e) => setCartExpiryHours(Number(e.target.value))}
+                className="w-full bg-transparent font-bold text-ink outline-none text-base"
+              />
+              <span className="text-[10px] text-ink-500 mt-1">
+                A cart left this long is set aside as an earlier cart when the customer starts a new one. It stays retrievable.
+              </span>
             </div>
           </div>
         </section>

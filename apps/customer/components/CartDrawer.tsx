@@ -18,7 +18,8 @@ import {
   Wallet,
   X,
 } from "lucide-react";
-import { useCart, CartItem } from "../lib/cart";
+import { useCart, CartItem, dismissEarlierCartNotice } from "../lib/cart";
+import { EarlierCarts } from "./EarlierCarts";
 import { ProductImage } from "./ProductImage";
 import { api, errorMessage } from "../lib/api";
 import { useBagQuote, type BagDeliveryMode } from "../lib/bag-quote";
@@ -49,7 +50,7 @@ export function CartDrawer({
     subtotal,
     updateQuantity,
     removeItem,
-    clearCart,
+    completeCheckout,
   } = useCart();
 
   const [portalReady, setPortalReady] = useState(false);
@@ -82,6 +83,13 @@ export function CartDrawer({
     setPortalReady(true);
   }, []);
 
+  // The "saved under Earlier carts" notice shows the next time the bag opens; closing the bag clears it.
+  const wasOpenRef = useRef(false);
+  useEffect(() => {
+    if (wasOpenRef.current && !isOpen) dismissEarlierCartNotice();
+    wasOpenRef.current = isOpen;
+  }, [isOpen]);
+
   // Lock body scroll and listen for Escape key when open
   useEffect(() => {
     if (!isOpen) {
@@ -113,10 +121,12 @@ export function CartDrawer({
     if (selectedItems.length === 0 || !priceReady || !quote || !delivery.place) return;
     setIsSubmitting(true);
     setCheckoutError(null);
+    // Only the current bag's selected lines are ever submitted (earlier carts never are).
+    const submitted = selectedItems;
 
     try {
       const res = await api.checkoutMarketplace({
-        items: selectedItems.map((it) => ({
+        items: submitted.map((it) => ({
           productId: it.productId,
           storeId: it.storeId,
           title: it.title,
@@ -134,7 +144,8 @@ export function CartDrawer({
       });
 
       const firstOrder = res.order ?? res.orders?.[0];
-      clearCart();
+      // Checked-out lines leave the bag; unselected ones are kept under Earlier carts.
+      completeCheckout(submitted.map((it) => it.id));
       setIsSubmitting(false);
       onClose();
 
@@ -276,10 +287,12 @@ export function CartDrawer({
                 <span>Continue Shopping</span>
                 <ChevronRight className="h-3.5 w-3.5" />
               </button>
+              <EarlierCarts className="w-full pt-4 text-left" />
             </div>
           ) : viewMode === "items" ? (
             /* Items List View */
             <div className="space-y-4">
+              <EarlierCarts showList={false} />
               {/* Items List */}
               <ul className="space-y-3">
                 {items.map((line) => (
@@ -350,6 +363,7 @@ export function CartDrawer({
                   </li>
                 ))}
               </ul>
+              <EarlierCarts showNotice={false} />
             </div>
           ) : (
             /* Quick Checkout Form */
