@@ -21,6 +21,20 @@ import { useRegisterNavPrimaryAction, useRegisterNavBack } from "../../../lib/na
 import { useTranslate } from "../../../lib/i18n";
 import { formatUgx } from "../../../lib/order-display";
 import { menuItemPricing } from "../../../lib/product-pricing";
+import { formatCartDate, useCartExpiryHours } from "../../../lib/cart";
+import {
+  FOOD_EARLIER_EVENT,
+  deleteFoodEarlierCart,
+  foodEarlierCartDate,
+  isFoodCartFresh,
+  loadFoodEarlierCarts,
+  nameFoodEarlierCarts,
+  readFoodCart,
+  removeFoodCart,
+  setAsideFoodCart,
+  writeFoodCart,
+  type FoodEarlierCart,
+} from "../../../lib/food-carts";
 
 /** Matches the server's own haversine — see apps/api/src/lib/geo.ts. Used
  * here only for a live estimate before checkout; the actual delivery fee
@@ -254,14 +268,7 @@ function otherRestaurantCartKeys(storagePrefix: string, currentCartKey: string):
   try {
     const keys = Array.from({ length: sessionStorage.length }, (_, index) => sessionStorage.key(index))
       .filter((key): key is string => !!key && key.startsWith(storagePrefix) && key !== currentCartKey);
-    return keys.filter((key) => {
-      try {
-        const saved = JSON.parse(sessionStorage.getItem(key) ?? "null");
-        return Array.isArray(saved) && saved.some(isCartLine);
-      } catch {
-        return false;
-      }
-    });
+    return keys.filter((key) => readFoodCart(key, isCartLine).lines.length > 0);
   } catch {
     return [];
   }
@@ -958,6 +965,9 @@ export default function RestaurantPage() {
   const {user}=useAuth();
   const cartStoragePrefix=`peebee-food-cart:${user?.id??"guest"}:`;
   const cartKey=`${cartStoragePrefix}${id}`;
+  const cartOwner=user?.id??"guest";
+  // Admin setting: a restaurant cart left longer than this is set aside as an earlier cart, never pulled into a new checkout.
+  const expiryHours=useCartExpiryHours();
   const router = useRouter();
   const searchParams = useSearchParams();
   const checkoutRequested = searchParams.get("checkout") === "1";
@@ -974,20 +984,38 @@ export default function RestaurantPage() {
   const [combineOtherId, setCombineOtherId] = useState<string | null>(null);
   const [combineOther, setCombineOther] = useState<{ id: string; name: string; lat: number | null; lng: number | null; lines: CartLine[] } | null>(null);
   const [switchOther, setSwitchOther] = useState<{ name: string; lat: number | null; lng: number | null } | null>(null);
-  useEffect(()=>{try{const rows=JSON.parse(sessionStorage.getItem(cartKey)??"[]");setCart(Array.isArray(rows)?rows.filter(isCartLine):[]);}catch{setCart([]);}setPendingRestaurantCartSwitch(null);try{setCombineOtherId(sessionStorage.getItem(combineStorageKey));}catch{setCombineOtherId(null);}},[cartKey,combineStorageKey]);
+  useEffect(()=>{setCart(readFoodCart(cartKey,isCartLine).lines);setPendingRestaurantCartSwitch(null);let saved:string|null=null;try{saved=sessionStorage.getItem(combineStorageKey);}catch{}setCombineOtherId(saved);},[cartKey,combineStorageKey]);
   function chooseCombine(otherId: string | null){setCombineOtherId(otherId);try{if(otherId)sessionStorage.setItem(combineStorageKey,otherId);else sessionStorage.removeItem(combineStorageKey);}catch{}}
+  /** Moves another restaurant's cart out of this session into the food earlier carts (it stays restorable there). */
+  function setAsideOtherCart(otherId: string){
+    const key=`${cartStoragePrefix}${otherId}`;
+    const saved=readFoodCart(key,isCartLine);
+    removeFoodCart(key);
+    if(!saved.lines.length)return;
+    setAsideFoodCart(cartOwner,otherId,"",saved);
+    api.getRestaurant(otherId).then(({restaurant:r})=>nameFoodEarlierCarts(cartOwner,otherId,r.name)).catch(()=>{});
+  }
+  // This restaurant's newest earlier cart: offered (Restore / Dismiss) while its current cart is empty.
+  const [earlierHere,setEarlierHere]=useState<FoodEarlierCart<CartLine>|null>(null);
+  useEffect(()=>{
+    const refresh=()=>setEarlierHere(loadFoodEarlierCarts(cartOwner,isCartLine).find(row=>row.restaurantId===id)??null);
+    refresh();
+    window.addEventListener(FOOD_EARLIER_EVENT,refresh);
+    return()=>window.removeEventListener(FOOD_EARLIER_EVENT,refresh);
+  },[cartOwner,id]);
   // The other restaurant's saved cart, loaded only while a shared delivery is chosen.
   useEffect(()=>{
     if(!combineOtherId){setCombineOther(null);return;}
     let live=true;
-    let lines:CartLine[]=[];
-    try{const rows=JSON.parse(sessionStorage.getItem(`${cartStoragePrefix}${combineOtherId}`)??"[]");lines=Array.isArray(rows)?rows.filter(isCartLine):[];}catch{}
-    if(!lines.length){chooseCombine(null);return;}
+    const saved=readFoodCart(`${cartStoragePrefix}${combineOtherId}`,isCartLine);
+    // The sticky combine choice never pulls in a stale (or empty) cart: drop it, and the old cart goes to earlier carts.
+    if(!isFoodCartFresh(saved,expiryHours)){setAsideOtherCart(combineOtherId);chooseCombine(null);return;}
+    const lines=saved.lines;
     api.getRestaurant(combineOtherId).then(({restaurant:r})=>{if(live)setCombineOther({id:combineOtherId,name:r.name,lat:r.lat??null,lng:r.lng??null,lines});}).catch(()=>{if(live)setCombineOther(null);});
     return()=>{live=false;};
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[combineOtherId,cartStoragePrefix]);
-  function updateCart(next:CartLine[]){setCart(next);try{sessionStorage.setItem(cartKey,JSON.stringify(next));}catch{}}
+  },[combineOtherId,cartStoragePrefix,expiryHours]);
+  function updateCart(next:CartLine[]){setCart(next);writeFoodCart(cartKey,next);}
   const [step, setStep] = useState<"menu" | "checkout">(checkoutRequested ? "checkout" : "menu");
 
   const [delivery, setDelivery] = useState<Place | null>(null);
@@ -1041,14 +1069,26 @@ export default function RestaurantPage() {
 
   function addToCart(item: MenuItem, line: { unitPrice: number; choiceIds: string[]; choiceNames: string[]; quantity: number }) {
     const key = `${item.id}:${[...line.choiceIds].sort().join(",")}`;
-    const existing=cart.find(l=>l.key===key);
-    const next=existing?cart.map(l=>l.key===key?{...l,name:item.name,choiceNames:line.choiceNames,photoKey:item.photo_key,photoRevision:item.updated_at,quantity:Math.min(50,l.quantity+line.quantity)}:l):[...cart,{key,menuItemId:item.id,name:item.name,choiceNames:line.choiceNames,photoKey:item.photo_key,photoRevision:item.updated_at,unitPrice:line.unitPrice,quantity:line.quantity,choiceIds:line.choiceIds}];
+    let base=cart;
+    // This restaurant's own cart, left longer than the expiry: set aside (restorable), and start fresh.
+    const saved=base.length?readFoodCart(cartKey,isCartLine):null;
+    if(saved&&saved.lines.length&&!isFoodCartFresh(saved,expiryHours)){setAsideFoodCart(cartOwner,id,restaurant?.name??"",saved);base=[];}
+    const existing=base.find(l=>l.key===key);
+    const next=existing?base.map(l=>l.key===key?{...l,name:item.name,choiceNames:line.choiceNames,photoKey:item.photo_key,photoRevision:item.updated_at,quantity:Math.min(50,l.quantity+line.quantity)}:l):[...base,{key,menuItemId:item.id,name:item.name,choiceNames:line.choiceNames,photoKey:item.photo_key,photoRevision:item.updated_at,unitPrice:line.unitPrice,quantity:line.quantity,choiceIds:line.choiceIds}];
     updateCart(next);
   }
 
   function requestAddToCart(item: MenuItem, line: CartAddLine): boolean {
     if (cart.length === 0) {
-      const otherCartKeys = otherRestaurantCartKeys(cartStoragePrefix, cartKey);
+      // Only fresh carts are offered; one left longer than the expiry goes to earlier carts instead.
+      const otherCartKeys = otherRestaurantCartKeys(cartStoragePrefix, cartKey).filter((key) => isFoodCartFresh(readFoodCart(key, isCartLine), expiryHours));
+      otherRestaurantCartKeys(cartStoragePrefix, cartKey)
+        .filter((key) => !otherCartKeys.includes(key))
+        .forEach((key) => {
+          const otherId = key.slice(cartStoragePrefix.length);
+          setAsideOtherCart(otherId);
+          if (combineOtherId === otherId) chooseCombine(null);
+        });
       if (otherCartKeys.length > 0) {
         setPendingRestaurantCartSwitch({ item, line, otherCartKeys });
         setSwitchOther(null);
@@ -1072,19 +1112,33 @@ export default function RestaurantPage() {
 
   function combineOtherCartAndAdd() {
     if (!pendingRestaurantCartSwitch || pendingRestaurantCartSwitch.otherCartKeys.length !== 1) return;
-    chooseCombine(pendingRestaurantCartSwitch.otherCartKeys[0].slice(cartStoragePrefix.length));
+    const otherKey = pendingRestaurantCartSwitch.otherCartKeys[0];
+    // Choosing to combine is using that cart: it counts as fresh from now.
+    const other = readFoodCart(otherKey, isCartLine);
+    if (other.lines.length) writeFoodCart(otherKey, other.lines);
+    chooseCombine(otherKey.slice(cartStoragePrefix.length));
     addToCart(pendingRestaurantCartSwitch.item, pendingRestaurantCartSwitch.line);
     setPendingRestaurantCartSwitch(null);
   }
 
   function discardOtherCartsAndAdd() {
     if (!pendingRestaurantCartSwitch) return;
-    try {
-      pendingRestaurantCartSwitch.otherCartKeys.forEach((key) => sessionStorage.removeItem(key));
-    } catch {}
+    // "Discard" keeps them under earlier carts (restorable from each restaurant's page), never deletes them.
+    pendingRestaurantCartSwitch.otherCartKeys.forEach((key) => setAsideOtherCart(key.slice(cartStoragePrefix.length)));
     chooseCombine(null);
     addToCart(pendingRestaurantCartSwitch.item, pendingRestaurantCartSwitch.line);
     setPendingRestaurantCartSwitch(null);
+  }
+
+  // An earlier cart set aside from another restaurant's page may not know this name yet.
+  useEffect(() => {
+    if (restaurant) nameFoodEarlierCarts(cartOwner, restaurant.id, restaurant.name);
+  }, [cartOwner, restaurant]);
+  const earlierHereCount = earlierHere ? earlierHere.lines.reduce((n, l) => n + l.quantity, 0) : 0;
+  function restoreEarlierHere() {
+    if (!earlierHere) return;
+    updateCart(earlierHere.lines);
+    deleteFoodEarlierCart(cartOwner, earlierHere.id);
   }
 
   function removeLine(key: string) {
@@ -1134,13 +1188,21 @@ export default function RestaurantPage() {
     setError(null);
     try {
       if (sharedDelivery && combineOther) {
+        // Only a fresh combined cart joins this checkout; re-checked here, at the moment of ordering.
+        if (!isFoodCartFresh(readFoodCart(`${cartStoragePrefix}${combineOther.id}`, isCartLine), expiryHours)) {
+          setAsideOtherCart(combineOther.id);
+          chooseCombine(null);
+          setError(`Your ${combineOther.name} cart was left too long, so it was saved as an earlier cart. Check the total and try again.`);
+          setBusy(false);
+          return;
+        }
         const shared = { destinationArea: d.area, destinationAddress: d.address, destinationLat: d.lat, destinationLng: d.lng, paymentRail: "escrow" as const };
         // First pickup (the other restaurant), then this restaurant joins it: one rider, one trip.
         const first = await api.orderFromRestaurant(combineOther.id, {
           items: combineOther.lines.map((l) => ({ menuItemId: l.menuItemId, quantity: l.quantity, choiceIds: l.choiceIds })),
           ...shared,
         });
-        try { sessionStorage.removeItem(`${cartStoragePrefix}${combineOther.id}`); } catch {}
+        removeFoodCart(`${cartStoragePrefix}${combineOther.id}`);
         chooseCombine(null);
         try {
           await api.orderFromRestaurant(id, {
@@ -1169,6 +1231,7 @@ export default function RestaurantPage() {
         ...(selectedBundleOrderId ? { bundleWithOrderId: selectedBundleOrderId } : {}),
       });
       updateCart([]);
+      chooseCombine(null);
       router.push(`/orders/${selectedBundleOrderId ?? order.id}/pay`);
     } catch (err) {
       setError(errorMessage(err));
@@ -1403,6 +1466,17 @@ export default function RestaurantPage() {
           </div>
         </div>
         {error && <p className="mb-6 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+        {earlierHere && cart.length === 0 && (
+          <div role="status" className="mb-6 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] px-3.5 py-3">
+            <p className="min-w-0 flex-1 text-sm text-ink">
+              You have an earlier cart here from {formatCartDate(foodEarlierCartDate(earlierHere))} · {earlierHereCount} item{earlierHereCount === 1 ? "" : "s"}
+            </p>
+            <div className="flex shrink-0 items-center gap-2">
+              <button type="button" onClick={restoreEarlierHere} className="rounded-full bg-gold px-3.5 py-1.5 text-xs font-bold text-ink-gold transition active:scale-95">Restore</button>
+              <button type="button" onClick={() => deleteFoodEarlierCart(cartOwner, earlierHere.id)} className="px-1 text-xs font-semibold text-ink-500 hover:text-ink">Dismiss</button>
+            </div>
+          </div>
+        )}
 
         {featuredItems.length>0&&<section className="mb-7 space-y-3"><div className="flex items-baseline justify-between"><h2 className="text-2xl font-bold tracking-tight text-ink">Featured</h2><span className="text-xs text-ink-500">Selected by the kitchen</span></div><DishRail label="Featured dishes">{featuredItems.map(item=><FeaturedDishCard key={item.id} {...dishProps(item)}/>)}</DishRail></section>}
         {menuSections.length>0&&<section className="mb-6 space-y-3" aria-label="Menu"><h2 className="text-2xl font-bold tracking-tight text-ink">Menu</h2>{menuSections.map(section=><div key={section.key} className="fc-section"><h3 className="fc-section__title">{section.name}</h3><div className="fc-grid">{section.items.map(item=><GeneralDishCard key={item.id} {...dishProps(item)}/>)}</div></div>)}</section>}

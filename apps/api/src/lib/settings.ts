@@ -28,6 +28,8 @@ const DEFAULTS = {
   service_range_km: "7",
   // Furthest a rider can see or take an order, in km. 0 = no limit. A rider can have their own.
   rider_visibility_range_km: "20",
+  /** Hours a cart is left before a new one sets it aside as an earlier (retrievable) cart. */
+  cart_expiry_hours: "12",
   /** Delivery distances follow the road: straight line x this factor, unless a routing server answers. */
   road_distance_factor: "1.3",
   /** An OSRM-compatible routing server for true road distances; empty uses the road factor. */
@@ -1489,6 +1491,8 @@ export type MarketplaceSettings = {
   minOrderAmountUgx: number;
   liveMaxDurationMins: number;
   deliveryBaseFeeUgx: number;
+  /** A cart left this many hours is set aside as an earlier cart when the customer starts a new one. */
+  cartExpiryHours: number;
 };
 
 export async function getMarketplaceSettings(): Promise<MarketplaceSettings> {
@@ -1505,6 +1509,7 @@ export async function getMarketplaceSettings(): Promise<MarketplaceSettings> {
     minOrderStr,
     liveDurationStr,
     deliveryBaseFeeStr,
+    cartExpiryStr,
   ] = await Promise.all([
     getSetting("marketplace_enabled"),
     getSetting("marketplace_live_enabled"),
@@ -1518,6 +1523,7 @@ export async function getMarketplaceSettings(): Promise<MarketplaceSettings> {
     getSetting("marketplace_min_order_amount"),
     getSetting("marketplace_live_max_duration_mins"),
     getSetting("marketplace_delivery_base_fee"),
+    getSetting("cart_expiry_hours"),
   ]);
 
   return {
@@ -1533,6 +1539,7 @@ export async function getMarketplaceSettings(): Promise<MarketplaceSettings> {
     minOrderAmountUgx: Math.max(0, Number(minOrderStr) || 5000),
     liveMaxDurationMins: Math.max(15, Number(liveDurationStr) || 180),
     deliveryBaseFeeUgx: Math.max(0, Number(deliveryBaseFeeStr) || 3000),
+    cartExpiryHours: Math.max(1, Math.min(720, Number(cartExpiryStr) || 12)),
   };
 }
 
@@ -1550,6 +1557,7 @@ export async function setMarketplaceSettings(next: Partial<MarketplaceSettings>)
   if (next.minOrderAmountUgx != null) writes.push(setSetting("marketplace_min_order_amount", String(Math.max(0, Math.round(next.minOrderAmountUgx)))));
   if (next.liveMaxDurationMins != null) writes.push(setSetting("marketplace_live_max_duration_mins", String(Math.max(15, Math.round(next.liveMaxDurationMins)))));
   if (next.deliveryBaseFeeUgx != null) writes.push(setSetting("marketplace_delivery_base_fee", String(Math.max(0, Math.round(next.deliveryBaseFeeUgx)))));
+  if (next.cartExpiryHours != null) writes.push(setSetting("cart_expiry_hours", String(Math.max(1, Math.min(720, Math.round(next.cartExpiryHours))))));
   await Promise.all(writes);
 }
 

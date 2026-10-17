@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -17,7 +17,8 @@ import {
   Truck,
   Wallet,
 } from "lucide-react";
-import { useCart, CartItem } from "../../lib/cart";
+import { useCart, CartItem, dismissEarlierCartNotice } from "../../lib/cart";
+import { EarlierCarts } from "../../components/EarlierCarts";
 import { ProductImage } from "../../components/ProductImage";
 import { RoundCheck } from "../../components/marketplace/MarketplaceUI";
 import { api, errorMessage } from "../../lib/api";
@@ -28,6 +29,8 @@ import { BagDeliveryBreakdown, BagDestinationCard } from "../../components/BagDe
 import { PlaceFlow } from "../../components/PlaceFlow";
 import type { LastMileChoiceValue } from "../../components/LastMileChoice";
 import { useRegisterNavPrimaryAction, useRegisterNavBack, goBackOr } from "../../lib/nav-primary-action";
+
+let pendingNoticeDismiss: ReturnType<typeof setTimeout> | undefined;
 
 export default function CartPage() {
   const router = useRouter();
@@ -43,7 +46,16 @@ export default function CartPage() {
     toggleItemSelection,
     selectAll,
     clearCart,
+    completeCheckout,
   } = useCart();
+  // The "saved under Earlier carts" notice is shown once: leaving this screen clears it
+  // (deferred, so a dev-mode remount does not clear it while it is still on screen).
+  useEffect(() => {
+    clearTimeout(pendingNoticeDismiss);
+    return () => {
+      pendingNoticeDismiss = setTimeout(dismissEarlierCartNotice, 0);
+    };
+  }, []);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
@@ -71,10 +83,12 @@ export default function CartPage() {
     if (selectedItems.length === 0 || isSubmitting || total == null || !quote || !delivery.place) return;
     setIsSubmitting(true);
     setCheckoutError(null);
+    // Only the current bag's selected lines are ever submitted (earlier carts never are).
+    const submitted = selectedItems;
 
     try {
       const res = await api.checkoutMarketplace({
-        items: selectedItems.map((it) => ({
+        items: submitted.map((it) => ({
           productId: it.productId,
           storeId: it.storeId,
           title: it.title,
@@ -92,7 +106,8 @@ export default function CartPage() {
       });
 
       const firstOrder = res.order ?? res.orders?.[0];
-      clearCart();
+      // Checked-out lines leave the bag; unselected ones are kept under Earlier carts.
+      completeCheckout(submitted.map((it) => it.id));
       setIsSubmitting(false);
 
       if (firstOrder?.id) {
@@ -166,6 +181,8 @@ export default function CartPage() {
             )}
           </div>
         </header>
+
+        <EarlierCarts showList={false} />
 
         {/* Empty State */}
         {items.length === 0 ? (
@@ -365,6 +382,7 @@ export default function CartPage() {
           </>
         )}
 
+        <EarlierCarts showNotice={false} />
       </div>
       {choosingPlace && (
         <PlaceFlow

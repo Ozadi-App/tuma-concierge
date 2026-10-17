@@ -473,6 +473,7 @@ const updateSchema = z.object({
       minOrderAmountUgx: z.number().int().min(0).max(10_000_000),
       liveMaxDurationMins: z.number().int().min(15).max(1440),
       deliveryBaseFeeUgx: z.number().int().min(0).max(1_000_000),
+      cartExpiryHours: z.number().int().min(1).max(720),
     })
     .partial()
     .optional(),
@@ -1223,6 +1224,7 @@ const patchMarketplaceSettingsSchema = z
     minOrderAmountUgx: z.number().int().min(0).max(10_000_000),
     liveMaxDurationMins: z.number().int().min(15).max(1440),
     deliveryBaseFeeUgx: z.number().int().min(0).max(1_000_000),
+    cartExpiryHours: z.number().int().min(1).max(720),
   })
   .partial();
 

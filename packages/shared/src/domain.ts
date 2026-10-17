@@ -384,6 +384,8 @@ export type MarketplaceSettings = {
   minOrderAmountUgx: number;
   liveMaxDurationMins: number;
   deliveryBaseFeeUgx: number;
+  /** A cart left this many hours is set aside as an earlier (retrievable) cart when a new one starts. */
+  cartExpiryHours?: number;
 };
 
 /** Admin-tunable delivery pricing/matching numbers (packages/shared/src/api-client.ts: getSettings/adminUpdateSettings). */
