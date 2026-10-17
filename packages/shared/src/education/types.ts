@@ -90,6 +90,92 @@ export interface AcademicTerm {
   isCurrent: boolean;
 }
 
+export interface QuizQuestion {
+  id: string;
+  questionText: string;
+  options: string[];
+  correctOptionIndex: number;
+  explanation: string;
+  points: number;
+}
+
+export interface CourseQuiz {
+  id: string;
+  title: string;
+  instructions: string;
+  timeLimitMinutes: number;
+  passingScorePercent: number;
+  questions: QuizQuestion[];
+}
+
+export interface CourseLesson {
+  id: string;
+  title: string;
+  durationMinutes: number;
+  contentType: "video" | "audio_story" | "reading" | "interactive_h5p" | "practical_demo";
+  summary: string;
+  contentUrl?: string;
+  downloadableResources?: { name: string; url: string; size: string }[];
+  quiz?: CourseQuiz;
+  worksheetPrompt?: string;
+  practicalChecklist?: string[];
+}
+
+export interface CourseModule {
+  id: string;
+  title: string;
+  description: string;
+  order: number;
+  lessons: CourseLesson[];
+  moduleQuiz?: CourseQuiz;
+}
+
+export interface CreatorCourse {
+  id: string;
+  creatorId: string;
+  creatorName: string;
+  creatorAvatar: string;
+  creatorRoleTitle: string;
+  institutionName: string;
+  title: string;
+  stream: EducationStream;
+  category: string;
+  level: string; // "Kindergarten" | "P.4 Primary" | "S.4 O-Level" | "Collegiate" | "Vocational Apprentice"
+  summary: string;
+  thumbnailUrl: string;
+  priceUgx: number; // 0 for term-tuition or free intro
+  enrolledStudentsCount: number;
+  rating: number;
+  reviewCount: number;
+  modules: CourseModule[];
+}
+
+export interface CreatorProfile {
+  id: string;
+  name: string;
+  handle: string;
+  type: "school" | "academy" | "vocational_guild" | "independent_tutor" | "early_childhood_center";
+  leadInstructor: string;
+  leadInstructorTitle: string;
+  avatarUrl: string;
+  bannerUrl?: string;
+  tagline: string;
+  bio: string;
+  location: string;
+  badge?: string; // e.g. "UNEB Center No. U0842", "DIT & UVQF Certified", "MoES Registered"
+  stream: EducationStream;
+  supportedStreams: EducationStream[];
+  enrolledStudents: number;
+  rating: number;
+  reviewCount: number;
+  courses: CreatorCourse[];
+  tuitionFeeUgx?: number;
+  tuitionCadence?: "term" | "course" | "monthly";
+  payoutBalanceUgx: number;
+  totalEarningsUgx: number;
+  isVerified: boolean;
+}
+
 export interface InstitutionProfile {
   id: string;
   name: string;
@@ -104,6 +190,7 @@ export interface InstitutionProfile {
   academicCalendar?: AcademicTerm[];
   contactEmail: string;
   contactPhone: string;
+  creatorId?: string;
 }
 
 // ==========================================

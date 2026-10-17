@@ -69,12 +69,17 @@ export default function StreamsPage() {
     <div className="space-y-5">
       {/* Page Header */}
       <div>
-        <p className="text-[10px] font-black uppercase tracking-wider text-gold">
-          Curriculum & Pedagogical Tracks
-        </p>
-        <h1 className="text-xl font-black text-ink">5-Tier Education Streams</h1>
-        <p className="mt-1 text-xs text-ink-500">
-          Tailored learning mechanics from Kindergarten tablet-first games to vocational apprentice logbooks.
+        <div className="flex items-center gap-2">
+          <p className="text-[10px] font-black uppercase tracking-wider text-gold">
+            Creator Pedagogical Frameworks
+          </p>
+          <span className="rounded-full bg-gold/15 px-2 py-0.2 text-[10px] font-black text-gold">
+            Platform Modules
+          </span>
+        </div>
+        <h1 className="text-xl font-black text-ink">5-Tier Education Engines</h1>
+        <p className="mt-1 text-xs text-ink-500 max-w-xl leading-relaxed">
+          Peebee provides these 5 specialized teaching frameworks for creators and schools to adopt based on their student age groups and teaching models.
         </p>
       </div>
 

@@ -67,6 +67,8 @@ import {
   DEMO_LIVE_MEETINGS,
   DEMO_TUTOR_CONTACTS,
   DEMO_LIVE_CHAT_MESSAGES,
+  DEMO_CREATORS,
+  DEMO_CREATOR_COURSES,
   isPracticeMode,
   startPracticeMode,
   exitPracticeMode,
@@ -317,9 +319,12 @@ export default function EducationHubPage() {
           <div>
             <div className="flex items-center gap-1.5 text-xs font-bold text-gold uppercase tracking-wider">
               <GraduationCap className="h-4 w-4 text-gold" />
-              <span>Peebee Education Platform</span>
+              <span>Education Marketplace & Infrastructure</span>
             </div>
-            <h1 className="mt-1 text-2xl font-black text-ink">Learning Streams</h1>
+            <h1 className="mt-1 text-2xl font-black text-ink">Schools & Creator Academies</h1>
+            <p className="text-xs text-ink-500 mt-0.5">
+              Explore courses, live classes and quizzes provided by independent partner schools and educators.
+            </p>
           </div>
 
           <div className="flex items-center gap-2">
