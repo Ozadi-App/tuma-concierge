@@ -9,6 +9,7 @@ import { setD1Binding, type D1Database } from "../db/client.js";
 import { splitSqlStatements } from "../db/split-sql.js";
 import { orderRoutes } from "../orders/routes.js";
 import { relayRoutes } from "./routes.js";
+import { resetSchemaCache } from "../lib/schema.js";
 
 function bindDatabase(client: Client) {
   const prepare = (sql: string) => ({
@@ -82,6 +83,55 @@ test("relay delivery: boda -> matatu -> boda with coded handoffs and split payou
       assert.equal((await call("staff", "admin/relay/operators/op/status", { status: "approved" })).status, 200);
     });
 
+    type Quote = { relay: { direction: string; routeCode: string; routeName: string; legs: { fromName: string; toName: string; kind: string }[] } | null };
+    const quoteFor = async (from: typeof PICKUP, to: typeof DOOR) =>
+      (await (await call("customer", `relay/quote?pickupLat=${from.lat}&pickupLng=${from.lng}&destinationLat=${to.lat}&destinationLng=${to.lng}`)).json()) as Quote;
+
+    await t.test("without stage codes, the route is written with the stage names' first letters", async () => {
+      const there = await quoteFor(PICKUP, DOOR);
+      assert.equal(there.relay?.direction, "KAM - ENT");
+      assert.equal(there.relay?.routeCode, "KAM ⇄ ENT");
+      assert.equal(there.relay?.routeName, "Kampala - Entebbe", "the full name is kept for older clients");
+      assert.equal((await quoteFor(DOOR, PICKUP)).relay?.direction, "ENT - KAM");
+    });
+
+    await t.test("staff set ticket codes; the route runs both ways, KLA - EBB and EBB - KLA", async () => {
+      assert.equal((await call("staff", `admin/relay/routes/${routeId}`, { stageACode: "K1" }, "PATCH")).status, 400);
+      assert.equal((await call("staff", `admin/relay/routes/${routeId}`, { stageACode: "TOOLONG" }, "PATCH")).status, 400);
+      assert.equal((await call("staff", `admin/relay/routes/${routeId}`, { stageACode: "kla", stageBCode: " ebb " }, "PATCH")).status, 200);
+      const stored = (await client.execute({ sql: "SELECT stage_a_code, stage_b_code FROM relay_routes WHERE id = ?", args: [routeId] })).rows[0];
+      assert.deepEqual([stored.stage_a_code, stored.stage_b_code], ["KLA", "EBB"]);
+      const logged = (await client.execute({ sql: "SELECT COUNT(*) AS n FROM admin_activity_log WHERE entity_id = ? AND action = 'relay.route.update'", args: [routeId] })).rows[0];
+      assert.ok(Number(logged.n) >= 1, "the change is in the activity log");
+
+      const list = (await (await call("staff", "admin/relay/routes")).json()) as { codesReady: boolean; routes: { id: string; route_code: string; directions: string[] }[] };
+      assert.equal(list.codesReady, true);
+      const listed = list.routes.find((r) => r.id === routeId)!;
+      assert.equal(listed.route_code, "KLA ⇄ EBB");
+      assert.deepEqual(listed.directions, ["KLA - EBB", "EBB - KLA"]);
+
+      const there = await quoteFor(PICKUP, DOOR);
+      assert.equal(there.relay?.direction, "KLA - EBB");
+      assert.equal(there.relay?.routeCode, "KLA ⇄ EBB");
+      assert.deepEqual([there.relay?.legs[1].fromName, there.relay?.legs[1].toName], ["Kampala taxi park", "Entebbe stage"]);
+
+      // Entebbe to Kampala: the same route the other way, boarding near Entebbe and alighting near Kampala.
+      const back = await quoteFor(DOOR, PICKUP);
+      assert.equal(back.relay?.direction, "EBB - KLA");
+      assert.equal(back.relay?.routeCode, "KLA ⇄ EBB");
+      assert.deepEqual(back.relay?.legs.map((leg) => leg.kind), ["boda", "matatu", "boda"]);
+      assert.deepEqual([back.relay?.legs[1].fromName, back.relay?.legs[1].toName], ["Entebbe stage", "Kampala taxi park"]);
+
+      const me = (await (await call("op", "relay/operator/me")).json()) as { operator: { route_code: string }; routes: { route_code: string }[] };
+      assert.equal(me.operator.route_code, "KLA ⇄ EBB");
+      assert.equal(me.routes[0].route_code, "KLA ⇄ EBB");
+
+      // Clearing a code falls back to the stage name again.
+      assert.equal((await call("staff", `admin/relay/routes/${routeId}`, { stageBCode: "" }, "PATCH")).status, 200);
+      assert.equal((await quoteFor(PICKUP, DOOR)).relay?.direction, "KLA - ENT");
+      assert.equal((await call("staff", `admin/relay/routes/${routeId}`, { stageBCode: "EBB" }, "PATCH")).status, 200);
+    });
+
     let orderId = "";
     let total = 0;
     await t.test("a long parcel is relayed and priced as the sum of its legs", async () => {
@@ -99,6 +149,10 @@ test("relay delivery: boda -> matatu -> boda with coded handoffs and split payou
       assert.equal(order.delivery_fee, total);
       const legs = (await client.execute({ sql: "SELECT leg, status FROM order_relay_legs WHERE order_id = ? ORDER BY leg", args: [orderId] })).rows;
       assert.deepEqual(legs.map((l) => [l.leg, l.status]), [[1, "waiting"], [2, "waiting"], [3, "waiting"]]);
+      const event = (await client.execute({ sql: "SELECT note FROM order_events WHERE order_id = ? AND note LIKE 'Relay delivery%'", args: [orderId] })).rows[0];
+      assert.match(String(event.note), /\(KLA - EBB\)/);
+      const view = (await (await call("customer", `orders/${orderId}`)).json()) as { relay: { direction: string; routeCode: string } };
+      assert.deepEqual([view.relay.direction, view.relay.routeCode], ["KLA - EBB", "KLA ⇄ EBB"]);
     });
 
     await t.test("short parcels go on one boda and relays can't be paid in cash", async () => {
@@ -142,8 +196,9 @@ test("relay delivery: boda -> matatu -> boda with coded handoffs and split payou
       assert.equal((await call("last", `orders/${orderId}/arrived`, {})).status, 409);
       assert.equal((await call("customer", `orders/${orderId}/handover`, { pin: "4321" })).status, 409);
 
-      const parcels = (await (await call("op", "relay/operator/parcels")).json()) as { carrying: { id: string; handoff_code: string }[] };
+      const parcels = (await (await call("op", "relay/operator/parcels")).json()) as { carrying: { id: string; handoff_code: string; direction: string }[] };
       assert.equal(parcels.carrying.length, 1);
+      assert.equal(parcels.carrying[0].direction, "KLA - EBB");
       assert.equal((await call("op", `relay/operator/legs/${parcels.carrying[0].id}/arrived`, {})).status, 200);
       assert.equal((await call("last", `relay/legs/${legId}/collect`, { code: "999999" })).status, 400);
       assert.equal((await call("last", `relay/legs/${legId}/collect`, { code: parcels.carrying[0].handoff_code })).status, 200);
@@ -159,6 +214,23 @@ test("relay delivery: boda -> matatu -> boda with coded handoffs and split payou
       assert.deepEqual(legs.map((l) => l.status), ["done", "done", "done"]);
       const view = (await (await call("customer", `orders/${orderId}`)).json()) as { relay: { legs: { handedOverAt: string | null }[] } };
       assert.ok(view.relay.legs.every((leg) => leg.handedOverAt), "every handoff is timestamped");
+    });
+
+    await t.test("before migration 0107: codes come from the stage names and saving codes asks for the migration", async () => {
+      await client.execute("ALTER TABLE relay_routes DROP COLUMN stage_a_code");
+      await client.execute("ALTER TABLE relay_routes DROP COLUMN stage_b_code");
+      resetSchemaCache();
+      try {
+        const res = await call("staff", `admin/relay/routes/${routeId}`, { stageACode: "KLA" }, "PATCH");
+        assert.equal(res.status, 503);
+        assert.match(((await res.json()) as { message: string }).message, /0107/);
+        assert.equal((await call("staff", `admin/relay/routes/${routeId}`, { parcelFare: 5000 }, "PATCH")).status, 200, "other edits still save");
+        assert.equal(((await (await call("staff", "admin/relay/routes")).json()) as { codesReady: boolean }).codesReady, false);
+        assert.equal((await quoteFor(PICKUP, DOOR)).relay?.direction, "KAM - ENT");
+        assert.equal((await quoteFor(DOOR, PICKUP)).relay?.direction, "ENT - KAM");
+      } finally {
+        resetSchemaCache();
+      }
     });
   } finally {
     process.env.JWT_SECRET = previousSecret;

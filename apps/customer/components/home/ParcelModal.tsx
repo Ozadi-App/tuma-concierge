@@ -239,7 +239,7 @@ export function ParcelModal({ onClose }: { onClose: () => void }) {
                   {relayLegs.map((leg) => (
                     <li key={leg.leg} className="flex justify-between gap-3 text-xs text-ink">
                       <span className="min-w-0">
-                        <span className="font-semibold">{leg.kind === "matatu" ? "Matatu" : "Boda"}:</span> {leg.fromName} to{" "}
+                        <span className="font-semibold">{leg.kind === "matatu" ? `Matatu${relay.direction ? ` ${relay.direction}` : ""}` : "Boda"}:</span> {leg.fromName} to{" "}
                         {leg.leg === 3 ? "door" : leg.toName}
                       </span>
                       <span className="shrink-0 font-semibold">{leg.fee.toLocaleString("en-UG")}</span>

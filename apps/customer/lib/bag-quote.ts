@@ -24,6 +24,10 @@ export type BagQuote = {
 
 export type BagRelay = {
   routeName: string;
+  /** This trip's way along the route, like a ticket: "KLA - EBB". */
+  direction?: string;
+  /** The route both ways: "KLA ⇄ EBB". */
+  routeCode?: string;
   dropMode: "stage" | "station";
   station: string | null;
   lastMile: "door" | "collect" | "pending";

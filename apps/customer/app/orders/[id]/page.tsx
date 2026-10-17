@@ -186,7 +186,7 @@ function RelayTimeline({ relay }: { relay: OrderRelay }) {
   }
   return (
     <section className="home-card space-y-3">
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-500">Relay</h2>
+      <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-500">Relay{relay.direction ? ` · ${relay.direction}` : ""}</h2>
       <ol className="space-y-3">
         {steps.map((step, i) => (
           <li key={step.key} className="flex items-start gap-3">

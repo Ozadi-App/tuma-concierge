@@ -59,7 +59,7 @@ export default function ApplyStationPage() {
               className="mt-1 min-h-11 w-full rounded-xl border border-[var(--border-faint)] px-3 text-sm text-ink outline-none"
             >
               <option value="TotalEnergies">TotalEnergies</option>
-              <option value="Shell">Shell (Vivo Energy)</option>
+              <option value="Shell">Shell</option>
               <option value="Rubis">Rubis Energy</option>
               <option value="Stabex">Stabex International</option>
               <option value="Hass">Hass Petroleum</option>

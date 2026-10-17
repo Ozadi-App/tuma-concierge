@@ -63,8 +63,8 @@ test("relay to a petrol station: collect in person, door delivery, or send a rid
       [["customer", "customer"], ["first", "rider"], ["last", "rider"], ["op", "customer"], ["staff", "admin"], ["stranger", "customer"]].map(async ([sub, role]) => [sub, await signToken({ sub, role } as never)] as const),
     ));
     tokens.att = await signGasToken({ kind: "attendant", id: "att", outletId: "out" });
-    const call = (who: string, path: string, body?: object) => app.request(`/v1/${path}`, {
-      method: body ? "POST" : "GET",
+    const call = (who: string, path: string, body?: object, method?: string) => app.request(`/v1/${path}`, {
+      method: method ?? (body ? "POST" : "GET"),
       headers: { Authorization: `Bearer ${tokens[who]}`, "Content-Type": "application/json" },
       ...(body ? { body: JSON.stringify(body) } : {}),
     });
@@ -77,6 +77,12 @@ test("relay to a petrol station: collect in person, door delivery, or send a rid
     });
     assert.equal(route.status, 201);
     const routeId = (await json<{ id: string }>(route)).id;
+    // A station serves a route only once it is one of the route's stages.
+    const quoteDrop = async () => (await json<{ relay: { dropMode: string } }>(
+      call("customer", `relay/quote?pickupLat=${PICKUP.lat}&pickupLng=${PICKUP.lng}&destinationLat=${DOOR.lat}&destinationLng=${DOOR.lng}`))).relay.dropMode;
+    assert.equal(await quoteDrop(), "stage", "a station not on the route is not used");
+    assert.equal((await call("staff", `admin/relay/routes/${routeId}/stages`, { outletId: "out", seq: 2 })).status, 201, "a petrol station can be a stage");
+    assert.equal(await quoteDrop(), "station");
     await call("op", "relay/operator/apply", { routeId, vehiclePlate: "UAZ 123K" });
     await call("staff", "admin/relay/operators/op/status", { status: "approved" });
 
@@ -113,6 +119,11 @@ test("relay to a petrol station: collect in person, door delivery, or send a rid
       assert.equal(quote.relay.collectTotal, quote.relay.legs[0].fee + quote.relay.legs[1].fee);
       assert.equal(quote.relay.total, quote.relay.collectTotal + quote.relay.legs[2].fee);
       assert.equal(quote.relay.choiceAtOrder, true);
+      // Dropping at a station that is a stop: its place in the stop order gives the direction.
+      assert.equal((await call("staff", `admin/relay/routes/${routeId}`, { stageACode: "KLA", stageBCode: "EBB" }, "PATCH")).status, 200);
+      const coded = await json<{ relay: { direction: string; routeCode: string } }>(
+        call("customer", `relay/quote?pickupLat=${PICKUP.lat}&pickupLng=${PICKUP.lng}&destinationLat=${DOOR.lat}&destinationLng=${DOOR.lng}`));
+      assert.deepEqual([coded.relay.direction, coded.relay.routeCode], ["KLA - EBB", "KLA ⇄ EBB"]);
     });
 
     await t.test("a sandbox-only station takes parcels in sandbox but not live", async () => {
@@ -204,7 +215,7 @@ test("relay to a petrol station: collect in person, door delivery, or send a rid
 
     await t.test("admin defines stages; the customer can choose to meet the matatu at one", async () => {
       assert.equal((await call("staff", `admin/relay/routes/${routeId}/stages`, { name: "Abayita Ababiri", seq: 1, lat: ABAYITA.lat, lng: ABAYITA.lng })).status, 201);
-      assert.equal((await call("staff", `admin/relay/routes/${routeId}/stages`, { outletId: "out", seq: 2 })).status, 201, "a petrol station can be a stage");
+      // The station became a stage when it joined the route (above).
       const stages = await json<{ stages: { id: string; name: string }[] }>(call("staff", `admin/relay/routes/${routeId}/stages`));
       assert.deepEqual(stages.stages.map((stage) => stage.name), ["Abayita Ababiri", "Shell Kitoro"]);
       stageId = stages.stages[0].id;

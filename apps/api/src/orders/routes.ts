@@ -568,9 +568,9 @@ export async function createOrderFromInput(
       "Create",
       relayPlan.dropMode === "station"
         ? relayMeet
-          ? `Relay delivery by boda and matatu (${relayPlan.routeName}); customer meets the matatu at ${relayMeet.name}`
-          : `Relay delivery by boda and matatu (${relayPlan.routeName}) to ${relayPlan.station?.name}${relayLastMile === "door" ? ", then boda to the door" : ""}`
-        : `Relay delivery by boda, matatu (${relayPlan.routeName}) and boda`,
+          ? `Relay delivery by boda and matatu (${relayPlan.direction}); customer meets the matatu at ${relayMeet.name}`
+          : `Relay delivery by boda and matatu (${relayPlan.direction}) to ${relayPlan.station?.name}${relayLastMile === "door" ? ", then boda to the door" : ""}`
+        : `Relay delivery by boda, matatu (${relayPlan.direction}) and boda`,
       user.sub,
     );
   }

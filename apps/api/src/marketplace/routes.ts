@@ -1836,7 +1836,7 @@ marketplaceRoutes.post("/marketplace/checkout", requireAuth, async (c) => {
       await insertRelayLegs(orderId, plan, relay.lastMile, relay.meet);
       await db.execute({
         sql: "INSERT INTO order_events (id, order_id, stage, note, actor_id) VALUES (?, ?, ?, ?, ?)",
-        args: [newId("evt"), orderId, stage, `Relay delivery by boda and matatu (${relay.plan.routeName})`, user.sub],
+        args: [newId("evt"), orderId, stage, `Relay delivery by boda and matatu (${relay.plan.direction})`, user.sub],
       });
     }
     createdOrders.push({ id: orderId });
@@ -1909,6 +1909,8 @@ marketplaceRoutes.post("/marketplace/checkout/quote", requireAuth, async (c) => 
     relay: relayed
       ? {
           routeName: relayed.plan.routeName,
+          direction: relayed.plan.direction,
+          routeCode: relayed.plan.routeCode,
           dropMode: relayed.plan.dropMode,
           station: relayed.plan.station?.name ?? null,
           lastMile: relayed.lastMile,

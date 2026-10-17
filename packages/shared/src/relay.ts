@@ -8,7 +8,12 @@ export type RelayDropMode = "stage" | "station";
 export type RelayLastMile = "door" | "collect" | "pending";
 
 export type RelayQuote = {
+  /** The route's full name (older clients); show `direction` instead. */
   routeName: string;
+  /** This trip's way along the route, written like a ticket: "KLA - EBB" or "EBB - KLA". */
+  direction?: string;
+  /** The route both ways: "KLA ⇄ EBB". */
+  routeCode?: string;
   /** Every leg, to the door. */
   total: number;
   dropMode?: RelayDropMode;
@@ -25,6 +30,10 @@ export type RelayQuote = {
 /** The relay as the order page shows it. handoffCode is only sent to whoever is handing the parcel over. */
 export type OrderRelay = {
   routeName: string | null;
+  /** The matatu leg's way along the route: "KLA - EBB" or "EBB - KLA". */
+  direction?: string | null;
+  /** The route both ways: "KLA ⇄ EBB". */
+  routeCode?: string | null;
   dropMode?: RelayDropMode;
   lastMile?: RelayLastMile;
   station?: { name: string; address: string | null; lat: number | null; lng: number | null; phone: string | null } | null;
@@ -90,12 +99,23 @@ export type RelayRoute = {
   parcel_fare: number;
   active: number;
   operators?: number;
+  /** Stored short codes for the two ends (migration 0107); null when not set. */
+  stage_a_code?: string | null;
+  stage_b_code?: string | null;
+  /** The codes shown: stored, or made from the stage names. */
+  codes?: { a: string; b: string };
+  /** "KLA ⇄ EBB". */
+  route_code?: string;
+  /** Both directions: ["KLA - EBB", "EBB - KLA"]. */
+  directions?: [string, string];
 };
 
 export type RelayOperator = {
   user_id: string;
   route_id: string | null;
   route_name: string | null;
+  /** The route both ways: "KLA ⇄ EBB". */
+  route_code?: string | null;
   vehicle_plate: string;
   phone: string | null;
   status: "pending" | "approved" | "suspended";
@@ -109,6 +129,8 @@ export type RelayOperator = {
 export type RelayOperatorParcels = {
   carrying: Array<{
     id: string; order_id: string; from_name: string; to_name: string; status: RelayLegStatus; handoff_code: string; started_at: string;
+    /** This parcel's way along the route: "KLA - EBB". */
+    direction?: string | null;
     last_mile_status: RelayLegStatus | null; last_rider_name: string | null;
     /** Set when the customer meets the matatu at this stage: hand it to them with their code. */
     meet_stage_name?: string | null; customer_name?: string | null; customer_phone?: string | null;
@@ -116,7 +138,7 @@ export type RelayOperatorParcels = {
     customer_id?: string | null;
   }>;
   incoming: Array<{ order_id: string; stage_name: string; stage: string; rider_name: string | null }>;
-  recent: Array<{ id: string; order_id: string; from_name: string; to_name: string; handed_over_at: string; paid_amount: number | null }>;
+  recent: Array<{ id: string; order_id: string; from_name: string; to_name: string; handed_over_at: string; paid_amount: number | null; direction?: string | null }>;
 };
 
 export type RelaySettings = {
@@ -176,6 +198,8 @@ export type RelayStation = {
   id: string; name: string; address: string | null; lat: number | null; lng: number | null; status: string;
   /** 0 off, 1 live, 2 sandbox & practice only. */
   relay_drop: number; station_name: string; holding: number;
+  /** The routes this station is a stage of (it serves only those). */
+  routes?: string | null;
 };
 
 export type RelayMerchantOrder = { id: string; stage: string; created_at: string; destination_area: string | null; store_name: string; customer_name: string | null };

@@ -43,7 +43,7 @@ const FALLBACK_OUTLETS = [
   {
     id: "fout_shell_bugolobi",
     station_id: "station_shell",
-    station_name: "Shell (Vivo Energy)",
+    station_name: "Shell",
     name: "Shell Bugolobi",
     code: "GAS-SHL-02",
     address: "Spring Road, Bugolobi, Kampala",
@@ -240,7 +240,7 @@ async function ensureGasSchema() {
     await db.execute(`
       INSERT OR IGNORE INTO fuel_stations (id, brand_name, company_name, status) VALUES
         ('station_total', 'TotalEnergies', 'TotalEnergies Marketing Uganda Ltd', 'active'),
-        ('station_shell', 'Shell (Vivo Energy)', 'Vivo Energy Uganda Ltd', 'active'),
+        ('station_shell', 'Shell', 'Vivo Energy Uganda Ltd', 'active'),
         ('station_rubis', 'Rubis Energy', 'Rubis Energy Uganda Ltd', 'active'),
         ('station_stabex', 'Stabex International', 'Stabex International Ltd', 'active'),
         ('station_hass', 'Hass Petroleum', 'Hass Petroleum Uganda Ltd', 'active'),
