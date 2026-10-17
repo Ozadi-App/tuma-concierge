@@ -60,11 +60,16 @@ async function setup() {
   const mkUser = async (id: string, role: "customer" | "rider" | "admin", wallet = 0) => {
     await client.execute({
       sql: `INSERT INTO users (id, phone, name, role, password_hash, wallet_balance, admin_role) VALUES (?, ?, ?, ?, 'x', ?, ?)`,
-      args: [id, `+2567${Math.floor(10000000 + Math.random() * 89999999)}`, `User ${id}`, role, wallet, role === "admin" ? "super_admin" : null],
+      args: [id, `+2567${Math.floor(10000000 + Math.random() * 89999999)}`, `User ${id}`, role, role === "rider" ? 0 : wallet, role === "admin" ? "super_admin" : null],
     });
+    // A rider's money is in their rider wallet (top-ups and earnings), as in the rider app.
+    if (role === "rider") await client.execute({ sql: "INSERT INTO riders (user_id, wallet_balance) VALUES (?, ?)", args: [id, wallet] });
     return signToken({ sub: id, role });
   };
-  const wallet = async (id: string) => Number((await client.execute({ sql: "SELECT wallet_balance AS b FROM users WHERE id = ?", args: [id] })).rows[0].b);
+  const wallet = async (id: string) => {
+    const rider = (await client.execute({ sql: "SELECT wallet_balance AS b FROM riders WHERE user_id = ?", args: [id] })).rows[0];
+    return Number((rider ?? (await client.execute({ sql: "SELECT wallet_balance AS b FROM users WHERE id = ?", args: [id] })).rows[0]).b);
+  };
 
   const devPin = await hashPin("2468");
   await client.execute({ sql: "UPDATE fuel_station_managers SET pin = ? WHERE id = 'fmgr_tot_01'", args: [devPin] });
@@ -272,6 +277,8 @@ test("gas: vouchers — wallet, replacement, cancel, expiry and limits", async (
   const second = await call("/rider/generate-code", { token: rider, body: { vehiclePlate: "UFE 2B", amountUgx: 10000 } });
   assert.equal(second.status, 200);
   assert.equal(await wallet("rider_f"), 90000, "the first hold is released when it is replaced");
+  const customerWallet = (await client.execute("SELECT wallet_balance AS b FROM users WHERE id = 'rider_f'")).rows[0].b;
+  assert.equal(Number(customerWallet), 0, "a rider pays from the rider wallet, not a customer wallet");
   const active = await call("/rider/active-code", { token: rider });
   assert.equal(active.json.code.code, second.json.code.code);
 

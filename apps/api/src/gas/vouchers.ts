@@ -1,7 +1,7 @@
 import { db } from "../db/client.js";
 import { hasColumn } from "../lib/schema.js";
 import { getPlatformEnvironment, type PlatformEnvironment } from "../lib/settings.js";
-import { creditWallet } from "../wallet/service.js";
+import { creditWallet, debitWallet } from "../wallet/service.js";
 
 type Row = Record<string, any>;
 
@@ -24,11 +24,47 @@ export async function findVoucher(code: string): Promise<Row | null> {
   return (res.rows[0] as Row | undefined) ?? null;
 }
 
-/** Gives money back to the rider's wallet; failures are logged with the voucher id so they can be reconciled. */
+const riderBalanceColumn = (environment: PlatformEnvironment) => (environment === "sandbox" ? "wallet_balance_sandbox" : "wallet_balance");
+
+/**
+ * A rider pays for fuel from their rider wallet, the one their top-ups and
+ * delivery earnings go into (riders table). Anyone else pays from their
+ * customer wallet.
+ */
+async function hasRiderWallet(userId: string): Promise<boolean> {
+  return (await db.execute({ sql: "SELECT 1 FROM riders WHERE user_id = ?", args: [userId] })).rows.length > 0;
+}
+
+/** Holds a voucher's amount; returns false when the wallet doesn't cover it. */
+export async function holdForVoucher(userId: string, amountUgx: number, environment: PlatformEnvironment): Promise<boolean> {
+  if (await hasRiderWallet(userId)) {
+    const column = riderBalanceColumn(environment);
+    const res = await db.execute({
+      sql: `UPDATE riders SET ${column} = ${column} - ?, updated_at = datetime('now') WHERE user_id = ? AND ${column} >= ?`,
+      args: [amountUgx, userId, amountUgx],
+    });
+    return (res.rowsAffected ?? 0) === 1;
+  }
+  const held = await debitWallet(userId, amountUgx, {
+    type: "adjustment",
+    environment,
+    actorId: userId,
+    note: "Fuel voucher — amount held until the fuel is pumped",
+  });
+  return held !== null;
+}
+
+/** Gives money back to the wallet the voucher was paid from; failures are logged with the voucher id so they can be reconciled. */
 export async function refundToRider(row: Row, amountUgx: number, note: string): Promise<boolean> {
   if (amountUgx <= 0 || Number(row.held) !== 1) return true;
   try {
-    await creditWallet(String(row.rider_id), amountUgx, { type: "refund", environment: voucherEnvironment(row), note });
+    const riderId = String(row.rider_id);
+    if (await hasRiderWallet(riderId)) {
+      const column = riderBalanceColumn(voucherEnvironment(row));
+      await db.execute({ sql: `UPDATE riders SET ${column} = ${column} + ?, updated_at = datetime('now') WHERE user_id = ?`, args: [amountUgx, riderId] });
+      return true;
+    }
+    await creditWallet(riderId, amountUgx, { type: "refund", environment: voucherEnvironment(row), note });
     return true;
   } catch (err) {
     console.error(`[gas] refund of UGX ${amountUgx} for voucher ${row.id} failed:`, err);
