@@ -4,6 +4,32 @@ import { haversineKm } from "./geo.js";
 import { DEMO_FOOD_RESTAURANTS, demoFoodImage, demoFoodMenu, demoFoodRestaurant } from "./demo-food.js";
 import { DEMO_MARKETPLACE_STORES, DEMO_MARKETPLACE_PRODUCTS, DEMO_MARKETPLACE_SPOTLIGHT } from "./demo-marketplace.js";
 import { CAR_MODEL_CATALOG } from "./car-model-catalog.js";
+import { EDUCATION_STREAMS } from "./education/types.js";
+import {
+  DEMO_INSTITUTIONS,
+  DEMO_SPROUTS_ACTIVITIES,
+  DEMO_SPROUTS_TIMER,
+  DEMO_SPROUTS_COPLAY,
+  DEMO_FOUNDATIONS_WORKSHEETS,
+  DEMO_FOUNDATIONS_SUBMISSIONS,
+  DEMO_FOUNDATIONS_MERITS,
+  DEMO_ACADEMY_TIMETABLE,
+  DEMO_ACADEMY_EXAM,
+  DEMO_ACADEMY_REPORT_CARD,
+  DEMO_CAMPUS_COURSE,
+  DEMO_CAMPUS_PEER_REVIEW,
+  DEMO_CAMPUS_CREDENTIAL,
+  DEMO_SKILLS_COURSE,
+  DEMO_SKILLS_SUBMISSION,
+  DEMO_SKILLS_LOGBOOK,
+  DEMO_TUITION_INVOICE,
+  DEMO_SUBSCRIPTION_PASSES,
+  DEMO_GUARDIAN_ALERTS,
+  DEMO_LIVE_MEETINGS,
+  DEMO_LIVE_PARTICIPANTS,
+  DEMO_TUTOR_CONTACTS,
+  DEMO_LIVE_CHAT_MESSAGES,
+} from "./education/demo-data.js";
 
 const PRACTICE_STATE_VERSION = 4;
 const PRACTICE_ORDER_ID = "practice-order";
@@ -350,7 +376,7 @@ export function isPracticeMode(): boolean {
 }
 
 export function practiceStartPath(role: PracticeRole): string {
-  return role === "customer" || role === "rider" || role === "merchant" || role === "restaurant" || role === "gas" ? "/" : "/account";
+  return role === "customer" || role === "rider" || role === "merchant" || role === "restaurant" || role === "gas" || role === "learner" ? "/" : "/account";
 }
 
 export function startPracticeMode(role: PracticeRole): string {
@@ -1208,6 +1234,7 @@ function handlePracticeRequest(role: PracticeRole, path: string, method: string,
   }
 
   if (role === "gas" && path.startsWith("/v1/gas/relay/")) return practiceRelayParcel(path, method, body, state, save);
+  if (path.startsWith("/v1/education/")) return practiceEducationRequest(path, method, body, query);
 
   if (method === "GET" && path === "/v1/chat/threads") return jsonResponse({ threads: [] });
   if (method === "GET" && path === "/v1/restaurants/me/chat") return jsonResponse({ threads: [] });
@@ -1274,6 +1301,193 @@ function practiceRelayParcel(path: string, method: string, body: Record<string, 
       ],
     });
   }
+  return practiceError();
+}
+
+function practiceEducationRequest(path: string, method: string, body: Record<string, unknown>, searchParams: URLSearchParams): Response {
+  if (method === "GET" && path === "/v1/education/streams") return jsonResponse({ ok: true, streams: EDUCATION_STREAMS });
+  if (method === "GET" && path === "/v1/education/institutions") return jsonResponse({ ok: true, institutions: DEMO_INSTITUTIONS });
+  if (method === "GET" && path.startsWith("/v1/education/institutions/")) return jsonResponse({ ok: true, institution: DEMO_INSTITUTIONS[0] });
+
+  // 1. Sprouts
+  if (method === "GET" && path === "/v1/education/sprouts/activities") {
+    return jsonResponse({
+      ok: true,
+      activities: DEMO_SPROUTS_ACTIVITIES,
+      screenTimer: DEMO_SPROUTS_TIMER,
+      coPlayPrompt: DEMO_SPROUTS_COPLAY,
+    });
+  }
+  if (method === "POST" && path === "/v1/education/sprouts/timer/unlock") {
+    return jsonResponse({ ok: true, unlocked: true, message: "Screen timer unlocked by parent PIN." });
+  }
+
+  // 2. Foundations
+  if (method === "GET" && path === "/v1/education/foundations/worksheets") {
+    return jsonResponse({
+      ok: true,
+      worksheets: DEMO_FOUNDATIONS_WORKSHEETS,
+      submissions: DEMO_FOUNDATIONS_SUBMISSIONS,
+      meritWallet: DEMO_FOUNDATIONS_MERITS,
+    });
+  }
+  if (method === "POST" && path === "/v1/education/foundations/worksheets/submit") {
+    const newSubmission = {
+      id: `sub_practice_${Date.now()}`,
+      worksheetId: String(body.worksheetId ?? DEMO_FOUNDATIONS_WORKSHEETS[0].id),
+      worksheetTitle: DEMO_FOUNDATIONS_WORKSHEETS[0].title,
+      subject: DEMO_FOUNDATIONS_WORKSHEETS[0].subject,
+      studentId: "stud_timothy",
+      studentName: "Timothy Mukasa",
+      scannedPhotoUrls: ["/sample-homework-scan.jpg"],
+      parentSigned: true,
+      parentSignerName: String(body.parentSignerName ?? "Grace Mukasa"),
+      parentSignedAt: "Just now",
+      status: "graded",
+      meritPointsEarned: 25,
+      teacherRemarks: "Sample practice worksheet verified! Parent signature confirmed.",
+      submittedAt: "Just now",
+    };
+    return jsonResponse({ ok: true, submission: newSubmission });
+  }
+
+  // 3. Academy
+  if (method === "GET" && path === "/v1/education/academy/dashboard") {
+    return jsonResponse({
+      ok: true,
+      timetable: DEMO_ACADEMY_TIMETABLE,
+      activeExam: DEMO_ACADEMY_EXAM,
+      reportCard: DEMO_ACADEMY_REPORT_CARD,
+    });
+  }
+  if (method === "POST" && path === "/v1/education/academy/exam/submit") {
+    return jsonResponse({
+      ok: true,
+      scorePercent: 88,
+      passed: true,
+      message: "Practice UNEB examination graded successfully. Report card generated.",
+    });
+  }
+
+  // 4. Campus
+  if (method === "GET" && path === "/v1/education/campus/course") {
+    return jsonResponse({
+      ok: true,
+      course: DEMO_CAMPUS_COURSE,
+      peerReview: DEMO_CAMPUS_PEER_REVIEW,
+      credential: DEMO_CAMPUS_CREDENTIAL,
+    });
+  }
+  if (method === "POST" && path === "/v1/education/campus/notes") {
+    return jsonResponse({ ok: true, noteId: `note_practice_${Date.now()}` });
+  }
+  if (method === "POST" && path === "/v1/education/campus/peer-review/submit") {
+    return jsonResponse({ ok: true, isComplete: true });
+  }
+
+  // 5. Skills
+  if (method === "GET" && path === "/v1/education/skills/course") {
+    return jsonResponse({
+      ok: true,
+      course: DEMO_SKILLS_COURSE,
+      submission: DEMO_SKILLS_SUBMISSION,
+      logbook: DEMO_SKILLS_LOGBOOK,
+    });
+  }
+  if (method === "POST" && path === "/v1/education/skills/practical/submit") {
+    return jsonResponse({ ok: true, submission: DEMO_SKILLS_SUBMISSION });
+  }
+  if (method === "POST" && path === "/v1/education/skills/critiques") {
+    return jsonResponse({
+      ok: true,
+      critique: {
+        id: `crit_practice_${Date.now()}`,
+        timestampSeconds: Number(body.timestampSeconds) || 30,
+        instructorName: "Master Alex Mukasa",
+        critiqueText: String(body.critiqueText || "Practice technique correction."),
+        severity: "technique_correction",
+        resolved: true,
+      },
+    });
+  }
+  if (method === "POST" && path === "/v1/education/skills/logbook") {
+    return jsonResponse({
+      ok: true,
+      entry: {
+        id: `log_practice_${Date.now()}`,
+        studentId: "stud_denis",
+        studentName: "Denis Kigozi",
+        date: new Date().toISOString().slice(0, 10),
+        practicalHours: Number(body.practicalHours) || 4.0,
+        taskPerformed: String(body.taskPerformed || "Practice workshop haircut"),
+        workshopLocation: "Peebee Barber Studio",
+        supervisorName: "Master Alex Mukasa",
+        supervisorSignatureRecorded: true,
+        supervisorSignedAt: "Just now",
+      },
+    });
+  }
+
+  // Tuition & Billing
+  if (method === "GET" && path === "/v1/education/tuition") {
+    return jsonResponse({
+      ok: true,
+      invoice: DEMO_TUITION_INVOICE,
+      passes: DEMO_SUBSCRIPTION_PASSES,
+      guardianAlerts: DEMO_GUARDIAN_ALERTS,
+    });
+  }
+  if (method === "POST" && path === "/v1/education/tuition/pay") {
+    return jsonResponse({
+      ok: true,
+      receiptId: `REC_PRACTICE_${Date.now()}`,
+      newBalanceUgx: 0,
+      status: "paid",
+    });
+  }
+
+  // Live Meetings & Classroom Video
+  if (method === "GET" && path === "/v1/education/live/meetings") {
+    const stream = searchParams.get("stream");
+    const filtered = stream ? DEMO_LIVE_MEETINGS.filter((m) => m.stream === stream) : DEMO_LIVE_MEETINGS;
+    return jsonResponse({ ok: true, meetings: filtered, activeMeeting: DEMO_LIVE_MEETINGS[0] });
+  }
+  if (method === "GET" && path.startsWith("/v1/education/live/meetings/")) {
+    const id = path.split("/").pop();
+    const meeting = DEMO_LIVE_MEETINGS.find((m) => m.id === id || m.roomCode === id) || DEMO_LIVE_MEETINGS[0];
+    return jsonResponse({
+      ok: true,
+      meeting,
+      participants: DEMO_LIVE_PARTICIPANTS,
+      messages: DEMO_LIVE_CHAT_MESSAGES,
+    });
+  }
+
+  // Live Tutor Chat
+  if (method === "GET" && path === "/v1/education/chat/tutors") {
+    return jsonResponse({ ok: true, tutors: DEMO_TUTOR_CONTACTS });
+  }
+  if (method === "GET" && path === "/v1/education/chat/messages") {
+    return jsonResponse({ ok: true, messages: DEMO_LIVE_CHAT_MESSAGES });
+  }
+  if (method === "POST" && path === "/v1/education/chat/send") {
+    return jsonResponse({
+      ok: true,
+      message: {
+        id: `msg_practice_${Date.now()}`,
+        roomId: body.roomId,
+        channelId: body.channelId,
+        senderId: "part_denis",
+        senderName: "Denis Kigozi",
+        senderRole: "student",
+        text: String(body.text || ""),
+        timestamp: "Just now",
+        isQuestion: Boolean(body.isQuestion),
+        upvotes: 0,
+      },
+    });
+  }
+
   return practiceError();
 }
 

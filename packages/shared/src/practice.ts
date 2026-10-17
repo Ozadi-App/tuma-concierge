@@ -1,6 +1,6 @@
 export const PRACTICE_MODE_STORAGE_KEY = "peebee_practice_mode";
 
-export type PracticeRole = "customer" | "rider" | "restaurant" | "merchant" | "gas";
+export type PracticeRole = "customer" | "rider" | "restaurant" | "merchant" | "gas" | "learner";
 
 export type PracticeStep = {
   title: string;
@@ -89,6 +89,57 @@ export const PRACTICE_JOURNEYS: Record<PracticeRole, PracticeJourney> = {
       { title: "Select fuel & amount", description: "Choose Unleaded Petrol or Diesel and enter litres or whole UGX.", actionLabel: "Set 3.67 L / UGX 20,000", resultLabel: "Pump calculations confirmed" },
       { title: "Dispense and confirm", description: "Pump the fuel and tap dispense to generate the digital receipt.", actionLabel: "Complete dispense", resultLabel: "Receipt RCP-GAS generated" },
       { title: "Review shift summary", description: "Check your station's daily pump shift counter and litre tally.", actionLabel: "View shift report", resultLabel: "Shift total updated with 3.67 Litres" },
+    ],
+  },
+  learner: {
+    roleLabel: "Learner & Student",
+    heading: "Practise interactive learning across 5 streams",
+    introduction: "Explore live Zoom-style classrooms, parent homework sign-off, anti-cheat exam halls, tutor chat, and trade critique pins without affecting real school records.",
+    sampleAmount: "5 Streams · 1 Live Room · 4 Tutors",
+    completionMessage: "You completed the comprehensive learning module sandbox journey across all 5 streams.",
+    steps: [
+      {
+        title: "Early Play Phonics & Sticker Book (Sprouts)",
+        description: "Listen to Kigo the Crane's Luganda/English phonics narration and unlock digital animal stickers with safe screen timer controls.",
+        actionLabel: "Complete Sprouts phonics session",
+        resultLabel: "Golden Lion sticker unlocked in album",
+      },
+      {
+        title: "Homework Photo Scan & Parent PIN Sign-Off (Foundations)",
+        description: "Scan a handwritten exercise worksheet and verify the turn-in using parent digital signature PIN.",
+        actionLabel: "Simulate homework sign-off",
+        resultLabel: "Worksheet verified · +25 Merit Stars earned",
+      },
+      {
+        title: "Anti-Cheat UNEB Mock Exam Hall (Academy)",
+        description: "Experience proctored timed examination simulation with automated tab-switch violation detection and weighted terminal report cards.",
+        actionLabel: "Submit mock examination",
+        resultLabel: "Score 88% (D1) · Term report card published",
+      },
+      {
+        title: "Zoom-Style Live Classroom & Whiteboard",
+        description: "Join Dr. Kenneth's live interactive masterclass, test raise hand audio alerts, and review the double-entry reconciliation whiteboard diagram.",
+        actionLabel: "Enter live video classroom",
+        resultLabel: "Whiteboard diagram reviewed · Question upvoted",
+      },
+      {
+        title: "Direct Tutor Chat & Voice Note Simulator",
+        description: "Send questions to assigned tutors, listen to voice note explanations, and share homework attachments in a safeguarded channel.",
+        actionLabel: "Send tutor inquiry",
+        resultLabel: "Dr. Kenneth replied with voice note (0:24)",
+      },
+      {
+        title: "Capstone Peer Review & Verifiable Credential (Campus)",
+        description: "Score anonymized peer capstone projects against instructor rubrics and generate a cryptographically signed LinkedIn-ready certificate.",
+        actionLabel: "Verify credential certificate",
+        resultLabel: "SHA-256 certificate verified with QR code",
+      },
+      {
+        title: "Practical Video Critique & Apprentice Logbook (Skills)",
+        description: "Review second-mark instructor critique pins on barbering video submissions and record on-the-job training hours signed by the master artisan.",
+        actionLabel: "Record 4 apprentice hours",
+        resultLabel: "Master Alex Mukasa signed the digital logbook",
+      },
     ],
   },
 };

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import Link from "next/link";
 import {
   UserRound,
   CreditCard,
@@ -13,15 +14,27 @@ import {
   LogOut,
   Building,
   CheckCircle2,
+  FlaskConical,
 } from "lucide-react";
 import { useLearnAuth } from "@/lib/auth-context";
-import { DEMO_TUITION_INVOICE, DEMO_INSTITUTIONS } from "@peebee/shared";
+import {
+  DEMO_TUITION_INVOICE,
+  DEMO_INSTITUTIONS,
+  isPracticeMode,
+  startPracticeMode,
+  exitPracticeMode,
+} from "@peebee/shared";
 
 export default function LearnAccountPage() {
   const { user, activeStream, setActiveStream, logout } = useLearnAuth();
   const [theme, setTheme] = useState<"light" | "dark" | "auto">("auto");
   const [tuitionBalance, setTuitionBalance] = useState(DEMO_TUITION_INVOICE.balanceUgx);
   const [paySuccessNotice, setPaySuccessNotice] = useState<string | null>(null);
+  const [isPractice, setIsPractice] = useState(false);
+
+  useEffect(() => {
+    setIsPractice(isPracticeMode());
+  }, []);
 
   const handleThemeChange = (newTheme: "light" | "dark" | "auto") => {
     setTheme(newTheme);
@@ -124,6 +137,53 @@ export default function LearnAccountPage() {
             Pay Next Installment (UGX 100,000 via MoMo)
           </button>
         )}
+      </section>
+
+      {/* Practice / Sandbox Mode Card */}
+      <section className="home-card space-y-3 border-2 border-sky-300 bg-sky-50/70 p-5 dark:border-sky-800 dark:bg-sky-950/30">
+        <div className="flex items-start gap-3">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-sky-100 text-sky-700 dark:bg-sky-900/60 dark:text-sky-300">
+            <FlaskConical className="h-5 w-5" />
+          </span>
+          <div>
+            <h2 className="text-sm font-black text-ink">Interactive Sandbox & Practice Workstation</h2>
+            <p className="mt-1 text-xs text-ink-500">
+              Safe browser-local training mode across all 5 education streams (Sprouts to Skills), live Zoom meetings, and tutor chats.
+            </p>
+          </div>
+        </div>
+        <div className="flex flex-col sm:flex-row gap-2 pt-1">
+          <Link
+            href="/practice"
+            className="flex flex-1 items-center justify-center gap-2 rounded-full bg-sky-600 px-4 py-2.5 text-xs font-black text-white hover:bg-sky-700 transition"
+          >
+            <span>Open Practice Guide</span>
+            <ChevronRight className="h-3.5 w-3.5" />
+          </Link>
+          {isPractice ? (
+            <button
+              type="button"
+              onClick={() => {
+                exitPracticeMode("learner");
+                window.location.reload();
+              }}
+              className="rounded-full border border-sky-300 bg-white px-4 py-2.5 text-xs font-bold text-sky-900 hover:bg-sky-50 dark:border-sky-700 dark:bg-sky-950 dark:text-sky-200 transition"
+            >
+              Exit Practice
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                startPracticeMode("learner");
+                window.location.assign("/");
+              }}
+              className="rounded-full border border-sky-300 bg-white px-4 py-2.5 text-xs font-bold text-sky-900 hover:bg-sky-50 dark:border-sky-700 dark:bg-sky-950 dark:text-sky-200 transition"
+            >
+              Enable Sandbox
+            </button>
+          )}
+        </div>
       </section>
 
       {/* Appearance Theme Switcher */}
