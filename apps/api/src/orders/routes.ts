@@ -1,4 +1,5 @@
 import { Hono, type Context } from "hono";
+import { roadKm } from "../lib/road-distance.js";
 import { z } from "zod";
 import type { InArgs } from "@libsql/client";
 import { db, executeBatch } from "../db/client.js";
@@ -331,6 +332,8 @@ const createOrderSchema = z.object({
   relayLastMile: z.enum(["door", "collect", "meet"]).optional(),
   /** With relayLastMile "meet": the stage on the route where the customer meets the matatu. */
   relayMeetStageId: z.string().max(80).optional(),
+  /** A long goods parcel: by matatu relay (the default when one is offered) or one boda all the way. */
+  deliveryMode: z.enum(["rider", "relay"]).optional(),
 });
 
 orderRoutes.post("/orders", async (c) => {
@@ -414,7 +417,10 @@ export async function createOrderFromInput(
     deliveryFee = car.fare;
   } else if (d.type === "parcel") {
     if (d.pickupLat != null && d.pickupLng != null && d.destinationLat != null && d.destinationLng != null) {
-      distanceKm = haversineKm(d.pickupLat, d.pickupLng, d.destinationLat, d.destinationLng);
+      // A goods parcel is priced along the road (the quote uses the same); a ride keeps its own fare rules.
+      distanceKm = isRide
+        ? haversineKm(d.pickupLat, d.pickupLng, d.destinationLat, d.destinationLng)
+        : await roadKm({ lat: d.pickupLat, lng: d.pickupLng }, { lat: d.destinationLat, lng: d.destinationLng });
     }
     const { deliveryRatePerKm, minimumDeliveryFee, rideRatePerKm, rideMinimumFare } = await getDeliverySettings();
     const rate = isRide ? rideRatePerKm : deliveryRatePerKm;
@@ -427,7 +433,10 @@ export async function createOrderFromInput(
       relayPlan = await planRelay(
         { lat: d.pickupLat!, lng: d.pickupLng!, name: d.pickupArea ?? d.pickupAddress },
         { lat: d.destinationLat!, lng: d.destinationLng!, name: d.destinationArea ?? d.destinationAddress },
+        { tripKm: distanceKm },
       );
+      // The customer may keep one boda all the way instead of the relay offered.
+      if (relayPlan && d.deliveryMode === "rider") relayPlan = null;
       if (relayPlan) {
         if (d.paymentRail === "float") {
           return c.json({ error: "relay_requires_prepay", message: "Long-distance parcels are paid in the app, not in cash." }, 409);

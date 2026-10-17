@@ -6,6 +6,7 @@ import { newId } from "../lib/ids.js";
 import { getDeliverySettings, getMarketplaceSettings, getMatchingSettings, getPlatformEnvironment } from "../lib/settings.js";
 import { hasColumn, hasTable } from "../lib/schema.js";
 import { haversineKm } from "../lib/geo.js";
+import { round1, roadLegsKm, shortestPickupOrder } from "../lib/road-distance.js";
 import { roundFare, type MatchingMode } from "@peebee/shared";
 import { snapshotTimeFees } from "../orders/time-fees.js";
 import { notifyUser } from "../lib/webpush.js";
@@ -1732,6 +1733,8 @@ const marketplaceCheckoutSchema = z.object({
   /** A long delivery dropped at a petrol station: bring it to the door, or collect it there. */
   relayLastMile: z.enum(["door", "collect", "meet"]).optional(),
   relayMeetStageId: z.string().max(80).optional(),
+  /** A long trip: by matatu relay (the default when one is offered) or one rider all the way. */
+  deliveryMode: z.enum(["rider", "relay"]).optional(),
 });
 
 // Marketplace Cart Checkout -> Real Orders linked to Boda Delivery System
@@ -1758,14 +1761,16 @@ marketplaceRoutes.post("/marketplace/checkout", requireAuth, async (c) => {
   const paymentRail = d.paymentRail ?? (d.paymentMethod === "cod" ? "float" : "escrow");
   const stage = paymentRail === "float" ? "Match" : "Create";
 
-  const stops = await planMarketplaceDelivery(d.items, d, environment);
-  if (stops.some((stop) => stop.relay) && paymentRail === "float") {
+  const bag = await planMarketplaceDelivery(d.items, d, environment);
+  const stops = bag.stops;
+  const relay = bag.mode === "relay" ? bag.relay : null;
+  if (relay && paymentRail === "float") {
     return c.json({ error: "relay_requires_prepay", message: "Long-distance deliveries are paid in the app, not in cash." }, 409);
   }
   const createdOrders: Row[] = [];
   const supportsStoreId = (await hasColumn("orders", "store_id")) && (await hasTable("stores"));
 
-  for (const stop of stops) {
+  for (const [stopIndex, stop] of stops.entries()) {
     const listId = newId("list");
     await db.execute({
       sql: "INSERT INTO lists (id, customer_id, title, status, environment) VALUES (?, ?, ?, 'active', ?)",
@@ -1824,11 +1829,14 @@ marketplaceRoutes.post("/marketplace/checkout", requireAuth, async (c) => {
     });
 
     await snapshotTimeFees(orderId, stop.deliveryFee);
-    if (stop.relay) {
-      await insertRelayLegs(orderId, stop.relay.plan, stop.relay.lastMile, stop.relay.meet);
+    if (relay) {
+      // Every store's order rides the same relay; only the first pickup carries its fees (the
+      // others' legs are free and are handed over with it, one code for the whole bag).
+      const plan = stopIndex === 0 ? relay.plan : { ...relay.plan, legs: relay.plan.legs.map((leg) => ({ ...leg, fee: 0 })), total: 0, collectTotal: 0 };
+      await insertRelayLegs(orderId, plan, relay.lastMile, relay.meet);
       await db.execute({
         sql: "INSERT INTO order_events (id, order_id, stage, note, actor_id) VALUES (?, ?, ?, ?, ?)",
-        args: [newId("evt"), orderId, stage, `Relay delivery by boda and matatu (${stop.relay.plan.routeName})`, user.sub],
+        args: [newId("evt"), orderId, stage, `Relay delivery by boda and matatu (${relay.plan.routeName})`, user.sub],
       });
     }
     createdOrders.push({ id: orderId });
@@ -1875,22 +1883,29 @@ marketplaceRoutes.post("/marketplace/checkout", requireAuth, async (c) => {
   return c.json({ ok: true, orders, order: orders[0] }, 201);
 });
 
-const quoteSchema = marketplaceCheckoutSchema.pick({ items: true, destinationLat: true, destinationLng: true, relayLastMile: true, relayMeetStageId: true });
+const quoteSchema = marketplaceCheckoutSchema.pick({ items: true, destinationLat: true, destinationLng: true, relayLastMile: true, relayMeetStageId: true, deliveryMode: true });
 
 /** The exact delivery fee a bag will be charged, split by store. Checkout shows this, never an estimate. */
 marketplaceRoutes.post("/marketplace/checkout/quote", requireAuth, async (c) => {
   const parsed = quoteSchema.safeParse(await c.req.json().catch(() => ({})));
   if (!parsed.success) return c.json({ error: "invalid_body", issues: parsed.error.issues }, 400);
-  const stops = await planMarketplaceDelivery(parsed.data.items, parsed.data, await getPlatformEnvironment());
-  const relayed = stops.find((stop) => stop.relay)?.relay;
+  const bag = await planMarketplaceDelivery(parsed.data.items, parsed.data, await getPlatformEnvironment());
+  const { stops, trip } = bag;
+  const relayed = bag.relay;
   const itemsTotal = stops.reduce((sum, stop) => sum + stop.itemsTotal, 0);
   const deliveryFee = stops.reduce((sum, stop) => sum + stop.deliveryFee, 0);
   return c.json({
     itemsTotal,
     deliveryFee,
     total: itemsTotal + deliveryFee,
+    /** Which way this quote delivers; the customer can switch when a relay is offered. */
+    deliveryMode: bag.mode,
+    /** The delivery fee each way, so both choices show their price. */
+    options: { rider: trip?.fee ?? deliveryFee, relay: relayed?.fee ?? null },
     stores: stops.map((stop) => ({ storeId: stop.storeId, storeName: stop.storeName, itemsTotal: stop.itemsTotal, deliveryFee: stop.deliveryFee })),
-    // A long delivery from one store goes by matatu; the customer sees each leg.
+    // One rider's whole trip along the road: each leg, the direct trip and the distance the other stops add.
+    trip,
+    // A long trip by matatu relay: the rider collects from every store, then each leg as priced.
     relay: relayed
       ? {
           routeName: relayed.plan.routeName,
@@ -1902,7 +1917,7 @@ marketplaceRoutes.post("/marketplace/checkout/quote", requireAuth, async (c) => 
           choiceAtOrder: relayed.plan.dropMode === "station" && relayed.lastMile !== "pending",
           meetStages: (relayed.plan.meetStages ?? []).map((stage) => ({ id: stage.id, name: stage.name, distanceKm: stage.distanceKm, isStation: !!stage.outletId })),
           meetStage: relayed.meet?.name ?? null,
-          legs: relayed.plan.legs.map((leg) => ({ leg: leg.leg, kind: leg.kind, fromName: leg.fromName, toName: leg.toName, fee: leg.fee })),
+          legs: relayed.plan.legs.map((leg) => ({ leg: leg.leg, kind: leg.kind, fromName: leg.fromName, toName: leg.toName, distanceKm: leg.distanceKm, fee: leg.fee })),
         }
       : null,
   });
@@ -1912,25 +1927,37 @@ type CheckoutItem = z.infer<typeof checkoutItemSchema>;
 type DeliveryStop = {
   storeId: string; storeName: string; storeAddress: string | null; lat: number | null; lng: number | null;
   items: CheckoutItem[]; itemsTotal: number; distanceKm: number | null; deliveryFee: number;
-  relay?: { plan: RelayPlan; lastMile: RelayLastMile; meet: RelayMeet | null };
 };
+/** One rider's whole trip: store to store in the shortest order, then to the customer, along the road. */
+type BagTrip = {
+  legs: Array<{ fromName: string; toName: string; km: number }>;
+  totalKm: number;
+  /** The first store straight to the customer, and what the other stops add. */
+  directKm: number; directFee: number;
+  addedKm: number; addedFee: number;
+  fee: number;
+};
+type BagRelay = { plan: RelayPlan; lastMile: RelayLastMile; meet: RelayMeet | null; fee: number };
+type BagPlan = { stops: DeliveryStop[]; mode: "rider" | "relay"; trip: BagTrip | null; relay: BagRelay | null };
 
 /**
- * Groups a bag by store and prices the delivery as one rider trip: store 1,
- * then store 2, ... then the customer, at the admin's rate per km. Each stop
- * carries the extra the route costs because of it, so the stops add up
- * exactly to the whole trip's fee.
+ * Prices a bag's delivery. One rider collects from every store, in the order
+ * that makes the whole trip shortest, then rides to the customer; the fee is
+ * that trip's road distance at the admin's rate. When the trip is longer than
+ * the admin's relay distance a matatu relay is offered as well (and chosen by
+ * default): the rider collects from every store, then hands the bag to a matatu.
+ * Each store's order carries its share so the orders add up to the fee charged.
  */
 async function planMarketplaceDelivery(
   items: CheckoutItem[],
-  destination: { destinationLat?: number; destinationLng?: number; relayLastMile?: "door" | "collect" | "meet"; relayMeetStageId?: string },
+  destination: { destinationLat?: number; destinationLng?: number; relayLastMile?: "door" | "collect" | "meet"; relayMeetStageId?: string; deliveryMode?: "rider" | "relay" },
   environment: Awaited<ReturnType<typeof getPlatformEnvironment>>,
-): Promise<DeliveryStop[]> {
+): Promise<BagPlan> {
   const settings = await getDeliverySettings();
   const byStore = new Map<string, CheckoutItem[]>();
   for (const it of items) byStore.set(it.storeId, [...(byStore.get(it.storeId) ?? []), it]);
 
-  const stops: DeliveryStop[] = [];
+  let stops: DeliveryStop[] = [];
   for (const [storeId, storeItems] of byStore.entries()) {
     await ensureDemoStoreInDb(storeId, environment);
     let storeName = "Marketplace Store";
@@ -1967,34 +1994,56 @@ async function planMarketplaceDelivery(
   if (!located) {
     // Without coordinates there's no route: the admin's flat shopping fee, once for the whole bag.
     stops.forEach((stop, i) => { stop.deliveryFee = i === 0 ? roundFare(settings.shoppingDeliveryFee) : 0; });
-    return stops;
+    return { stops, mode: "rider", trip: null, relay: null };
   }
 
-  // One store far from the customer: relayed by matatu, each leg at its own rate.
-  if (stops.length === 1) {
-    const stop = stops[0];
-    const plan = await planRelay(
-      { lat: stop.lat!, lng: stop.lng!, name: stop.storeName },
-      { lat: destinationLat!, lng: destinationLng!, name: "Your door" },
-    );
-    if (plan) {
-      const { lastMile, meet } = await resolveLastMile(plan, destination.relayLastMile, destination.relayMeetStageId);
-      stop.relay = { plan, lastMile, meet };
-      stop.deliveryFee = relayChargeFor(plan, lastMile);
-      stop.distanceKm = Math.round(haversineKm(stop.lat!, stop.lng!, destinationLat!, destinationLng!) * 10) / 10;
-      return stops;
-    }
+  const door = { lat: destinationLat!, lng: destinationLng! };
+  const at = (stop: DeliveryStop) => ({ lat: stop.lat!, lng: stop.lng! });
+  stops = shortestPickupOrder(stops as Array<DeliveryStop & { lat: number; lng: number }>, door);
+  const legKm = await roadLegsKm([...stops.map(at), door]);
+  const directKm = stops.length > 1 ? (await roadLegsKm([at(stops[0]), door]))[0] : legKm[0];
+  const totalKm = legKm.reduce((sum, km) => sum + km, 0);
+  const fee = roundFare(totalKm * settings.deliveryRatePerKm, settings.minimumDeliveryFee);
+  const directFee = Math.min(fee, roundFare(directKm * settings.deliveryRatePerKm, settings.minimumDeliveryFee));
+  const trip: BagTrip = {
+    legs: legKm.map((km, i) => ({ fromName: stops[i].storeName, toName: stops[i + 1]?.storeName ?? "You", km: round1(km) })),
+    totalKm: round1(totalKm),
+    directKm: round1(directKm), directFee,
+    addedKm: round1(Math.max(0, totalKm - directKm)), addedFee: fee - directFee,
+    fee,
+  };
+  stops.forEach((stop, i) => { stop.distanceKm = round1(i === stops.length - 1 ? legKm[i] : legKm.slice(i).reduce((a, b) => a + b, 0)); });
+
+  // Long trips: a relay by matatu, the rider first collecting from every store.
+  let relay: BagRelay | null = null;
+  const between = legKm.slice(0, -1).reduce((sum, km) => sum + km, 0);
+  const last = stops[stops.length - 1];
+  const plan = await planRelay(
+    { lat: last.lat!, lng: last.lng!, name: last.storeName },
+    { ...door, name: "Your door" },
+    { start: { lat: stops[0].lat!, lng: stops[0].lng!, name: stops[0].storeName }, leadInKm: between, tripKm: totalKm },
+  );
+  if (plan) {
+    const { lastMile, meet } = await resolveLastMile(plan, destination.relayLastMile, destination.relayMeetStageId);
+    relay = { plan, lastMile, meet, fee: relayChargeFor(plan, lastMile) };
   }
 
-  let travelled = 0;
-  let charged = 0;
-  stops.forEach((stop, i) => {
-    if (i > 0) travelled += haversineKm(stops[i - 1].lat!, stops[i - 1].lng!, stop.lat!, stop.lng!);
-    const lastMile = haversineKm(stop.lat!, stop.lng!, destinationLat!, destinationLng!);
-    stop.distanceKm = Math.round(lastMile * 10) / 10;
-    const routeFee = roundFare((travelled + lastMile) * settings.deliveryRatePerKm, settings.minimumDeliveryFee);
-    stop.deliveryFee = Math.max(0, routeFee - charged);
-    charged += stop.deliveryFee;
-  });
-  return stops;
+  const mode = relay && destination.deliveryMode !== "rider" ? "relay" : "rider";
+  if (mode === "relay") {
+    // The whole relay is paid with the first pickup; the other stores ride along.
+    stops.forEach((stop, i) => { stop.deliveryFee = i === 0 ? relay!.fee : 0; });
+  } else {
+    // The first store carries the direct trip; each further store the extra road it adds.
+    const extraKm = legKm.slice(0, -1);
+    const extraTotal = extraKm.reduce((sum, km) => sum + km, 0);
+    let shared = 0;
+    stops.forEach((stop, i) => {
+      if (i === 0) { stop.deliveryFee = directFee; return; }
+      stop.deliveryFee = i === stops.length - 1
+        ? trip.addedFee - shared
+        : extraTotal > 0 ? Math.floor((trip.addedFee * extraKm[i - 1]) / extraTotal) : 0;
+      shared += stop.deliveryFee;
+    });
+  }
+  return { stops, mode, trip, relay };
 }

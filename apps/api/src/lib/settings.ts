@@ -28,6 +28,10 @@ const DEFAULTS = {
   service_range_km: "7",
   // Furthest a rider can see or take an order, in km. 0 = no limit. A rider can have their own.
   rider_visibility_range_km: "20",
+  /** Delivery distances follow the road: straight line x this factor, unless a routing server answers. */
+  road_distance_factor: "1.3",
+  /** An OSRM-compatible routing server for true road distances; empty uses the road factor. */
+  routing_server_url: "",
   /** Flat delivery fee (UGX) charged on top of a shopping order's item
    * costs. Unlike a parcel ride there's no pickup point to measure a
    * distance from at order-creation time (the "pickup" is wherever the
