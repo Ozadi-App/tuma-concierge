@@ -1973,6 +1973,11 @@ async function planMarketplaceDelivery(
         lng = (row.lng as number | null) ?? null;
       }
     }
+    // A demo store saved before it had a map pin still has its pin in the demo catalogue.
+    if (lat == null || lng == null) {
+      const demo = DEMO_MARKETPLACE_STORES.find((store) => store.id === storeId);
+      if (demo?.lat != null && demo.lng != null) { lat = demo.lat; lng = demo.lng; }
+    }
     if (storeName === "Marketplace Store") {
       const demo = DEMO_MARKETPLACE_STORES.find((store) => store.id === storeId);
       if (demo) {
@@ -2041,7 +2046,8 @@ async function planMarketplaceDelivery(
       if (i === 0) { stop.deliveryFee = directFee; return; }
       stop.deliveryFee = i === stops.length - 1
         ? trip.addedFee - shared
-        : extraTotal > 0 ? Math.floor((trip.addedFee * extraKm[i - 1]) / extraTotal) : 0;
+        // Whole fare steps (UGX 500), the last store taking what's left, so no store shows odd shillings.
+        : extraTotal > 0 ? Math.floor((trip.addedFee * extraKm[i - 1]) / extraTotal / 500) * 500 : 0;
       shared += stop.deliveryFee;
     });
   }

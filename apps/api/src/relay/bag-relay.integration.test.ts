@@ -84,6 +84,13 @@ test("a bag's delivery is the rider's whole road trip, and a long one offers a r
       assert.ok(trip.addedKm > 0 && trip.addedFee > 0, "the extra stops cost what they add");
       assert.equal(quote.stores.reduce((sum, store) => sum + store.deliveryFee, 0), quote.deliveryFee);
       assert.equal(quote.deliveryFee, trip.fee);
+      assert.ok(quote.stores.every((store) => store.deliveryFee % 500 === 0), "each store's share is in whole fare steps");
+    });
+
+    await t.test("a demo store saved without a map pin still gets its catalogue pin", async () => {
+      await client.execute("UPDATE stores SET lat = NULL, lng = NULL WHERE id LIKE 'store_demo_%'");
+      const quote = await json<Quote>(call("shopper", "/marketplace/checkout/quote", { items: ITEMS, ...ENTEBBE_DOOR }));
+      assert.ok(quote.trip && quote.trip.totalKm > 40, "priced as the real trip, not the flat fee");
     });
 
     let routeId = "";
