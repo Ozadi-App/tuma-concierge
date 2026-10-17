@@ -64,6 +64,7 @@ import { getR2Bucket, uploadResponseHeaders } from "../storage/r2.js";
 import { appBaseUrl } from "../verify/service.js";
 import { payFromWallet } from "../wallet/service.js";
 import { bundleCheckoutQuote, fundBundle, notifyRiderOfCombinedDelivery, unfundedBundleGroup, unpaidBundleGroup } from "./bundle-funding.js";
+import { stepSandboxRelay } from "../relay/sandbox-demo.js";
 import { isSubscriptionCurrent } from "../riders/subscription.js";
 import { insertRelayLegs, planRelay, relayChargeFor, resolveLastMile, type RelayLastMile, type RelayMeet, relayAwaitingCollection, relayBlocksFinalSteps, relayView, settleRelayPayouts, type RelayPlan } from "../relay/service.js";
 import {
@@ -726,10 +727,14 @@ orderRoutes.post("/orders/:id/bundle-window/close", async (c) => {
 orderRoutes.get("/orders/:id", async (c) => {
   const id = c.req.param("id");
   const user = c.get("user");
-  const order = await getOrder(id);
+  let order = await getOrder(id);
   if (!order) return c.json({ error: "not_found" }, 404);
   if (order.customer_id !== user.sub && order.rider_id !== user.sub && user.role !== "admin") {
     return c.json({ error: "forbidden" }, 403);
+  }
+  // A sandbox relay parcel: the demo riders, matatu and station take their next step as it's watched.
+  if (order.environment === "sandbox" && order.type === "parcel" && (await stepSandboxRelay(id).catch(() => null))) {
+    order = (await getOrder(id)) ?? order;
   }
 
   const bundlesAvailable = await hasColumn("orders", "delivery_bundle_id");
@@ -954,7 +959,8 @@ async function openCounters(orderId: string): Promise<Row[]> {
  * can end in an assignment: the first_to_claim auto-poll and claim button,
  * the nearest_window auto-resolve, and the customer_selects pick.
  */
-async function assignRider(
+/** Assigns a rider who passed the claim checks (also used by the sandbox relay demo for its own riders). */
+export async function assignRider(
   id: string,
   order: Row,
   riderId: string,

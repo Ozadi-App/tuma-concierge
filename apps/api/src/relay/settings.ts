@@ -27,6 +27,10 @@ export type RelaySettings = {
   matatuSpeedKmh: number;
   /** "Arriving in about N minutes" goes out at this many minutes away. */
   arrivalNoticeMinutes: number;
+  /** Sandbox only: demo riders, a demo matatu and demo petrol stations play every role a tester leaves. */
+  sandboxDemo: boolean;
+  /** How long each demo step waits for a real tester to act first. */
+  sandboxDemoStepSeconds: number;
 };
 
 const num = (value: string | null, fallback: number) => {
@@ -35,7 +39,7 @@ const num = (value: string | null, fallback: number) => {
 };
 
 export async function getRelaySettings(): Promise<RelaySettings> {
-  const [enabled, minKm, accessKm, radiusKm, perLeg, choice, stationKm, stagePickup, fallback, speed, notice] = await Promise.all([
+  const [enabled, minKm, accessKm, radiusKm, perLeg, choice, stationKm, stagePickup, fallback, speed, notice, demo, demoStep] = await Promise.all([
     getSetting("relay_enabled"),
     getSetting("relay_min_distance_km"),
     getSetting("relay_max_access_km"),
@@ -47,6 +51,8 @@ export async function getRelaySettings(): Promise<RelaySettings> {
     getSetting("relay_stage_fallback"),
     getSetting("relay_matatu_speed_kmh"),
     getSetting("relay_arrival_notice_minutes"),
+    getSetting("relay_sandbox_demo"),
+    getSetting("relay_sandbox_demo_step_seconds"),
   ]);
   return {
     enabled: enabled === "1",
@@ -60,6 +66,8 @@ export async function getRelaySettings(): Promise<RelaySettings> {
     stageFallback: fallback !== "0",
     matatuSpeedKmh: num(speed, 30),
     arrivalNoticeMinutes: num(notice, 10),
+    sandboxDemo: demo !== "0",
+    sandboxDemoStepSeconds: num(demoStep, 20),
   };
 }
 
@@ -74,5 +82,7 @@ export async function setRelaySettings(next: Partial<RelaySettings>): Promise<vo
   if (next.stageFallback != null) await setSetting("relay_stage_fallback", next.stageFallback ? "1" : "0");
   if (next.matatuSpeedKmh != null) await setSetting("relay_matatu_speed_kmh", String(next.matatuSpeedKmh));
   if (next.arrivalNoticeMinutes != null) await setSetting("relay_arrival_notice_minutes", String(next.arrivalNoticeMinutes));
+  if (next.sandboxDemo != null) await setSetting("relay_sandbox_demo", next.sandboxDemo ? "1" : "0");
+  if (next.sandboxDemoStepSeconds != null) await setSetting("relay_sandbox_demo_step_seconds", String(next.sandboxDemoStepSeconds));
   if (next.releasePerLeg != null) await setSetting("relay_release_per_leg", next.releasePerLeg ? "1" : "0");
 }

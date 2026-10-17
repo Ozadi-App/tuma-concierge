@@ -14,6 +14,7 @@ import { expireStaleVouchers } from "./gas/vouchers.js";
 import { sweepStageEscalations, sweepStageFines, sweepElectionSessions } from "./stages/escalation.js";
 import { sweepActivationMessages } from "./onboarding/service.js";
 import { sweepFoodHours } from "./restaurants/hours.js";
+import { sweepSandboxRelay } from "./relay/sandbox-demo.js";
 
 /** Minimal local stand-in so we don't need @cloudflare/workers-types (which
  * conflicts with @types/node's DOM-lib globals) just for one field. */
@@ -91,6 +92,11 @@ export default {
       sweepRentalRequests()
         .then((n) => console.log("Self-drive request sweep:", n))
         .catch((err) => console.error("Self-drive request sweep failed:", err)),
+    );
+    ctx.waitUntil(
+      sweepSandboxRelay()
+        .then((steps) => console.log("Sandbox relay demo sweep:", steps))
+        .catch((err) => console.error("Sandbox relay demo sweep failed:", err)),
     );
     ctx.waitUntil(
       sweepElectionSessions()
