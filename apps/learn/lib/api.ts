@@ -1,4 +1,4 @@
-import { createApiClient, friendlyErrorMessage } from "@peebee/shared";
+import { createApiClient, createPracticeFetch, friendlyErrorMessage } from "@peebee/shared";
 
 export const TOKEN_KEY = "peebee_learn_token";
 
@@ -12,6 +12,7 @@ export function getStoredToken() {
 
 export const api = createApiClient({
   baseUrl: process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:10000",
+  fetchImpl: createPracticeFetch("learner"),
   getToken: getStoredToken,
   onUnauthorized() {
     if (typeof window === "undefined") return;

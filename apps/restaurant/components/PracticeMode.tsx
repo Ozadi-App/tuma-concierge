@@ -14,7 +14,7 @@ import { PracticeModeFrame, PracticePromptDialog } from "@peebee/shared/practice
 import { api } from "../lib/api";
 
 const ROLE_LABELS: Record<PracticeRole, string> = {
-  customer: "customer", rider: "rider", restaurant: "Food", merchant: "merchant", gas: "fuel attendant",
+  customer: "customer", rider: "rider", restaurant: "Food", merchant: "merchant", gas: "fuel attendant", learner: "learner",
 };
 
 export function PracticeModeCard({ role }: { role: PracticeRole }) {

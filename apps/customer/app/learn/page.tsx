@@ -40,6 +40,7 @@ import {
   Send,
   Paperclip,
   Mic,
+  FlaskConical,
 } from "lucide-react";
 import {
   EDUCATION_STREAMS,
@@ -66,6 +67,9 @@ import {
   DEMO_LIVE_MEETINGS,
   DEMO_TUTOR_CONTACTS,
   DEMO_LIVE_CHAT_MESSAGES,
+  isPracticeMode,
+  startPracticeMode,
+  exitPracticeMode,
 } from "@peebee/shared";
 
 const ugx = (amount: number) => `UGX ${Math.round(amount).toLocaleString()}`;
@@ -73,6 +77,11 @@ const ugx = (amount: number) => `UGX ${Math.round(amount).toLocaleString()}`;
 export default function EducationHubPage() {
   const [activeStream, setActiveStream] = useState<EducationStream>("sprouts");
   const [userRole, setUserRole] = useState<"student" | "parent">("student");
+  const [isPractice, setIsPractice] = useState(false);
+
+  useEffect(() => {
+    setIsPractice(isPracticeMode());
+  }, []);
 
   // Sprouts State
   const [sproutsPlayingAudio, setSproutsPlayingAudio] = useState(false);
@@ -336,6 +345,31 @@ export default function EducationHubPage() {
               </button>
             </div>
 
+            {/* Sandbox / Practice Mode Button */}
+            <button
+              type="button"
+              onClick={() => {
+                if (isPractice) {
+                  exitPracticeMode("learner");
+                  setIsPractice(false);
+                  window.location.reload();
+                } else {
+                  startPracticeMode("learner");
+                  setIsPractice(true);
+                  window.location.reload();
+                }
+              }}
+              className={`relative flex h-10 items-center gap-1.5 rounded-2xl px-3 text-xs font-black shadow-sm transition ${
+                isPractice
+                  ? "bg-sky-600 text-white hover:bg-sky-700"
+                  : "border border-sky-400/40 bg-sky-500/10 text-sky-700 hover:bg-sky-500/20 dark:text-sky-300"
+              }`}
+              title="Toggle Interactive Sandbox / Practice Mode"
+            >
+              <FlaskConical className="h-4 w-4" />
+              <span className="hidden sm:inline">{isPractice ? "Sandbox On" : "Sandbox"}</span>
+            </button>
+
             {/* Tuition Balance Button */}
             <button
               type="button"
@@ -348,6 +382,44 @@ export default function EducationHubPage() {
             </button>
           </div>
         </div>
+
+        {/* Sandbox Active Banner */}
+        {isPractice && (
+          <aside
+            aria-label="Interactive Sandbox Notice"
+            className="flex items-center justify-between gap-3 rounded-2xl border border-sky-300/80 bg-sky-100/80 p-3.5 text-xs text-sky-950 dark:border-sky-800 dark:bg-sky-950/60 dark:text-sky-200"
+          >
+            <div className="flex min-w-0 items-center gap-2.5">
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-sky-200 text-sky-800 dark:bg-sky-900 dark:text-sky-300">
+                <FlaskConical className="h-4 w-4" />
+              </span>
+              <p className="truncate">
+                <strong className="font-black">Interactive Sandbox Active:</strong> All 5 learning tiers & live classrooms are loaded with simulated sample data.
+              </p>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <a
+                href="http://localhost:3011/practice"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="rounded-xl bg-sky-600 px-3 py-1 font-black text-white transition hover:bg-sky-700"
+              >
+                7-Step Guide
+              </a>
+              <button
+                type="button"
+                onClick={() => {
+                  exitPracticeMode("learner");
+                  setIsPractice(false);
+                  window.location.reload();
+                }}
+                className="text-[11px] font-bold text-sky-800 hover:underline dark:text-sky-300"
+              >
+                Exit
+              </button>
+            </div>
+          </aside>
+        )}
 
         {/* 5-Tier Education Stream Tabs */}
         <div className="no-scrollbar flex gap-2 overflow-x-auto pb-1">
