@@ -476,6 +476,10 @@ export default function OrderDetailPage() {
   const { order, items, substitutions, feeProposals } = detail;
   const pendingFeeProposal = feeProposals.find((f) => f.status === "pending");
   const currentItemsTotal = (order.final_total ?? order.estimated_total ?? 0) - (order.delivery_fee ?? 0);
+  // The other pickups sharing this delivery (one rider, one payment).
+  const sharedWith = order.delivery_bundle_id
+    ? (detail.bundleStops ?? []).filter((stop) => stop.id !== order.id).map((stop) => stop.restaurant_name ?? stop.outlet_name ?? "another pickup")
+    : [];
   const pendingPayment = detail.payments.find((p) => p.status === "pending");
   const awaitingRiderOrPayment = ["Create", "Match", "Fund"].includes(order.stage);
   const pendingSubs = substitutions.filter((s) => s.status === "pending");
@@ -680,9 +684,14 @@ export default function OrderDetailPage() {
               <span>{formatUgx((order.final_total ?? order.estimated_total ?? 0) - (order.delivery_fee ?? 0))}</span>
             </div>
             <div className="flex justify-between text-ink-500">
-              <span>{t("order_delivery_fee")}</span>
+              <span>{sharedWith.length === 0 ? t("order_delivery_fee") : order.delivery_bundle_id === order.id ? "Delivery to you" : "Added stop on the way"}</span>
               <span>{formatUgx(order.delivery_fee ?? 0)}</span>
             </div>
+            {sharedWith.length > 0 && (
+              <p className="pt-1 text-xs font-normal text-ink-500">
+                One rider also collects from {sharedWith.join(" and ")}. Both orders are paid together.
+              </p>
+            )}
           </div>
         </section>
       )}

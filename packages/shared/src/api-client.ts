@@ -554,12 +554,22 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
     async listRestaurants() {
       return request<{ restaurants: Restaurant[]; /** Food ordering is switched off by an admin. */ paused?: boolean }>("/v1/restaurants");
     },
-    /** The exact delivery fee for an order from a food business to a location (the whole route when `alsoFrom` is another business combined into the same delivery). */
-    async getRestaurantDeliveryQuote(id: string, input: { lat?: number | null; lng?: number | null; alsoFrom?: string | null }) {
+    /**
+     * The exact delivery fee for an order from a food business to a location. For one delivery
+     * shared with another business (`alsoFrom`, its cart ordered together with this one) or with an
+     * unpaid order (`bundleWith`), `shared` splits it into what each order is charged: the first
+     * pickup's own delivery, and what this extra stop adds.
+     */
+    async getRestaurantDeliveryQuote(id: string, input: { lat?: number | null; lng?: number | null; alsoFrom?: string | null; bundleWith?: string | null }) {
       const params = new URLSearchParams();
       if (input.lat != null && input.lng != null) { params.set("lat", String(input.lat)); params.set("lng", String(input.lng)); }
       if (input.alsoFrom) params.set("alsoFrom", input.alsoFrom);
-      return request<{ deliveryFee: number; distanceKm: number | null; legs?: { betweenPickups: number; lastMile: number } }>(`/v1/restaurants/${encodeURIComponent(id)}/delivery-quote?${params}`);
+      if (input.bundleWith) params.set("bundleWith", input.bundleWith);
+      return request<{
+        deliveryFee: number;
+        distanceKm: number | null;
+        shared?: { firstPickup: { name: string; fee: number }; addedStop: { name: string; fee: number } };
+      }>(`/v1/restaurants/${encodeURIComponent(id)}/delivery-quote?${params}`);
     },
     async getRestaurant(id: string) {
       return request<{ restaurant: Restaurant }>(`/v1/restaurants/${id}`);
@@ -587,7 +597,7 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
       });
     },
     async getDeliveryBundleCandidates() {
-      return request<{ orders: Array<{ id: string; restaurant_id: string | null; restaurant_name: string | null; pickup_address: string | null; pickup_lat: number; pickup_lng: number; destination_lat: number; destination_lng: number; delivery_fee: number | null }> }>("/v1/orders/bundle-candidates");
+      return request<{ orders: Array<{ id: string; restaurant_id: string | null; restaurant_name: string | null; pickup_address: string | null; pickup_lat: number; pickup_lng: number; destination_lat: number; destination_lng: number; delivery_fee: number | null; estimated_total: number | null }> }>("/v1/orders/bundle-candidates");
     },
     async closeDeliveryBundleWindow(orderId: string) {
       return request<{ ok: boolean }>(`/v1/orders/${orderId}/bundle-window/close`, { method: "POST" });

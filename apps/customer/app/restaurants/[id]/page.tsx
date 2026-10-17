@@ -2,12 +2,12 @@
 import { FoodCover } from "@peebee/shared/food-cover";
 
 import type { FoodItemInsight, FoodRestaurantTrust, MenuCategory, MenuItem, MenuItemBadge, MenuItemOption, Restaurant, RestaurantMenu } from "@peebee/shared";
-import { foodBusinessLabel, roundFare } from "@peebee/shared";
+import { foodBusinessLabel } from "@peebee/shared";
 import { demoFoodPhotoPath, demoRestaurantPhotoPath } from "@peebee/shared/demo-food";
 import { ArrowUpRight, BadgeCheck, ChevronLeft, ChevronDown, ChevronRight, Clock, Star, MessageCircle, Minus, Plus, ShoppingBag, ShoppingCart, Store, Trash2, UtensilsCrossed, X } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { PlaceFlow } from "../../../components/PlaceFlow";
 import { RouteSummary } from "../../../components/home/RouteSummary";
@@ -829,10 +829,39 @@ function ItemDetailPage({
   );
 }
 
+type SharedDelivery = { firstPickup: { name: string; fee: number }; addedStop: { name: string; fee: number } };
+
+/**
+ * One delivery from two food businesses, shown as what each order is charged: the first
+ * restaurant's items and delivery to you, then the second's items and what its stop adds.
+ * The same amounts appear on the pay screen and on each order.
+ */
+function SharedDeliveryBreakdown({ first, second }: {
+  first: { name: string; items: number; delivery: number };
+  second: { name: string; items: number; delivery: number };
+}) {
+  const part = (p: typeof first, deliveryLabel: string) => (
+    <div className="space-y-1">
+      <p className="text-sm font-bold text-ink">{p.name}</p>
+      <div className="flex justify-between gap-3 text-sm text-ink-500"><span>Items</span><span>{formatUgx(p.items)}</span></div>
+      <div className="flex justify-between gap-3 text-sm text-ink-500"><span>{deliveryLabel}</span><span>{formatUgx(p.delivery)}</span></div>
+    </div>
+  );
+  return (
+    <div className="space-y-3">
+      {part(first, "Delivery to you")}
+      {part(second, "Added stop on the way")}
+      <div className="flex justify-between gap-3 border-t border-[var(--border-faint)] pt-1.5 text-sm text-ink-500">
+        <span>Delivery (one rider)</span><span>{formatUgx(first.delivery + second.delivery)}</span>
+      </div>
+    </div>
+  );
+}
+
 function RestaurantCartSwitchDialog({ cartCount, combine, onCombine, onKeep, onDiscard, onCancel }: {
   cartCount: number;
   /** Set when exactly one other restaurant cart exists: explains what a shared delivery means. */
-  combine?: { otherName: string; thisName: string; extraFee: number | null } | null;
+  combine?: { otherName: string; thisName: string } | null;
   onCombine?: () => void;
   onKeep: () => void;
   onDiscard: () => void;
@@ -885,7 +914,7 @@ function RestaurantCartSwitchDialog({ cartCount, combine, onCombine, onKeep, onD
         </h2>
         <p id="restaurant-cart-switch-copy" className="restaurant-cart-switch-dialog__copy">
           {combine
-            ? `One rider collects from ${combine.otherName.replace(/\.+$/, "")} and ${combine.thisName.replace(/\.+$/, "")}.${combine.extraFee != null ? ` About ${formatUgx(combine.extraFee)} extra delivery for the added distance; the exact amount is shown at checkout.` : ""}`
+            ? `One rider collects from ${combine.otherName.replace(/\.+$/, "")} and ${combine.thisName.replace(/\.+$/, "")} and delivers both together. You pay once; checkout shows each restaurant's items and delivery.`
             : t(plural ? "restaurant_switch_cart_copy_plural" : "restaurant_switch_cart_copy")}
         </p>
         <div className="restaurant-cart-switch-dialog__actions">
@@ -952,13 +981,8 @@ export default function RestaurantPage() {
   const [delivery, setDelivery] = useState<Place | null>(null);
   const [choosing, setChoosing] = useState(checkoutRequested);
   const [busy, setBusy] = useState(false);
-  const [bundleCandidates, setBundleCandidates] = useState<Array<{id:string;restaurant_name:string|null;pickup_address:string|null;pickup_lat:number;pickup_lng:number;destination_lat:number;destination_lng:number;delivery_fee:number|null}>>([]);
+  const [bundleCandidates, setBundleCandidates] = useState<Array<{id:string;restaurant_name:string|null;pickup_address:string|null;pickup_lat:number;pickup_lng:number;destination_lat:number;destination_lng:number;delivery_fee:number|null;estimated_total:number|null}>>([]);
   const [selectedBundleOrderId, setSelectedBundleOrderId] = useState<string | null>(null);
-  const [deliverySettings, setDeliverySettings] = useState<{
-    deliveryRatePerKm: number;
-    minimumDeliveryFee: number;
-    shoppingDeliveryFee: number;
-  } | null>(null);
 
   useEffect(() => {
     if (checkoutRequested) {
@@ -993,16 +1017,6 @@ export default function RestaurantPage() {
         api.foodRestaurantTrust(id).then(result=>{if(!disposed){setRestaurantTrust(result);setRestaurantTrustStatus("ready");}}).catch(()=>{if(!disposed)setRestaurantTrustStatus("unavailable");});
       })
       .catch((err) => setError(errorMessage(err)));
-    api
-      .getSettings()
-      .then((res) =>
-        setDeliverySettings({
-          deliveryRatePerKm: res.settings.deliveryRatePerKm,
-          minimumDeliveryFee: res.settings.minimumDeliveryFee,
-          shoppingDeliveryFee: res.settings.shoppingDeliveryFee,
-        }),
-      )
-      .catch(() => {});
     return()=>{disposed=true;};
   }, [id]);
 
@@ -1071,8 +1085,9 @@ export default function RestaurantPage() {
   // The delivery fee is asked of the server (the same distance price the order is charged with), so what
   // checkout shows is final. Checkout stays off until it arrives.
   const placeForFee = placeFields(delivery);
-  const feeKey = delivery ? `${id}|${combineOther?.id ?? ""}|${placeForFee.lat ?? ""},${placeForFee.lng ?? ""}` : null;
-  const [feeQuote, setFeeQuote] = useState<{ key: string; fee: number; legs: { betweenPickups: number; lastMile: number } | null } | null>(null);
+  const joinOrderId = combineOther ? null : selectedBundleOrderId;
+  const feeKey = delivery ? `${id}|${combineOther?.id ?? ""}|${joinOrderId ?? ""}|${placeForFee.lat ?? ""},${placeForFee.lng ?? ""}` : null;
+  const [feeQuote, setFeeQuote] = useState<{ key: string; fee: number; shared: SharedDelivery | null } | null>(null);
   const [feeQuoteError, setFeeQuoteError] = useState<string | null>(null);
   const [feeRetry, setFeeRetry] = useState(0);
   useEffect(() => {
@@ -1080,24 +1095,16 @@ export default function RestaurantPage() {
     if (combineOtherId && !combineOther) return;
     let live = true;
     setFeeQuoteError(null);
-    api.getRestaurantDeliveryQuote(id, { lat: placeForFee.lat, lng: placeForFee.lng, alsoFrom: combineOther?.id ?? null })
-      .then((r) => { if (live) setFeeQuote({ key: feeKey, fee: r.deliveryFee, legs: r.legs ?? null }); })
+    api.getRestaurantDeliveryQuote(id, { lat: placeForFee.lat, lng: placeForFee.lng, alsoFrom: combineOther?.id ?? null, bundleWith: joinOrderId })
+      .then((r) => { if (live) setFeeQuote({ key: feeKey, fee: r.deliveryFee, shared: r.shared ?? null }); })
       .catch((err) => { if (live) setFeeQuoteError(errorMessage(err)); });
     return () => { live = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [feeKey, combineOtherId, combineOther?.id, checkoutRequested, step, feeRetry, cart.length]);
   const confirmedFee = feeQuote && feeQuote.key === feeKey ? feeQuote.fee : null;
-  const confirmedLegs = feeQuote && feeQuote.key === feeKey ? feeQuote.legs : null;
+  const confirmedShared = feeQuote && feeQuote.key === feeKey ? feeQuote.shared : null;
 
-  const selectedBundle = bundleCandidates.find((candidate) => candidate.id === selectedBundleOrderId) ?? null;
-  const bundleExtraDeliveryFee = useMemo(() => {
-    const d = placeFields(delivery);
-    if (!selectedBundle || !restaurant || !deliverySettings || restaurant.lat == null || restaurant.lng == null || d.lat == null || d.lng == null) return null;
-    const sameDestination = haversineKm(selectedBundle.destination_lat, selectedBundle.destination_lng, d.lat, d.lng) <= 0.2;
-    if (!sameDestination) return null;
-    const routeKm = haversineKm(selectedBundle.pickup_lat, selectedBundle.pickup_lng, restaurant.lat, restaurant.lng) + haversineKm(restaurant.lat, restaurant.lng, d.lat, d.lng);
-    return Math.max(0, roundFare(routeKm * deliverySettings.deliveryRatePerKm, deliverySettings.minimumDeliveryFee) - Number(selectedBundle.delivery_fee ?? 0));
-  }, [selectedBundle, restaurant, delivery, deliverySettings]);
+  const selectedBundle = combineOther ? null : bundleCandidates.find((candidate) => candidate.id === selectedBundleOrderId) ?? null;
 
   const combineOtherItemsTotal = combineOther ? combineOther.lines.reduce((sum, l) => sum + l.unitPrice * l.quantity, 0) : 0;
   const sharedDelivery = combineOther != null && confirmedFee != null;
@@ -1163,10 +1170,13 @@ export default function RestaurantPage() {
   // gold "Checkout" button wired to checkout() with the same guards.
   const onCheckoutStep = checkoutRequested || step === "checkout";
   const orderingUnavailable = !!restaurant && !!restaurant.is_demo && !restaurant.demo_checkout_enabled;
-  const estimatedFee = selectedBundle ? bundleExtraDeliveryFee : confirmedFee;
+  // The whole delivery for everything paid together: for a shared delivery, both orders' parts.
+  const estimatedFee = confirmedFee;
   // Checkout stays off until the delivery fee is worked out, so the customer never pays an unconfirmed amount.
-  const deliveryFeeKnown = !!delivery && estimatedFee != null && Number.isFinite(estimatedFee);
-  const checkoutItemsTotal = itemsTotal + (combineOther ? combineOtherItemsTotal : 0);
+  const deliveryFeeKnown = !!delivery && estimatedFee != null && Number.isFinite(estimatedFee) && (!selectedBundle || !!confirmedShared);
+  // Joining an unpaid order: it is paid together with this one, so its items are in the total too.
+  const joinedItemsTotal = selectedBundle ? Math.max(0, Number(selectedBundle.estimated_total ?? 0) - Number(selectedBundle.delivery_fee ?? 0)) : 0;
+  const checkoutItemsTotal = itemsTotal + (combineOther ? combineOtherItemsTotal : 0) + joinedItemsTotal;
   const orderItemCount = cart.reduce((n, l) => n + l.quantity, 0) + (combineOther ? combineOther.lines.reduce((n, l) => n + l.quantity, 0) : 0);
   // Checkout step: nav Back returns to the menu (the place picker has its own Back).
   useRegisterNavBack(!!restaurant && (checkoutRequested || step === "checkout"), backToMenu);
@@ -1214,11 +1224,6 @@ export default function RestaurantPage() {
             combine={pendingRestaurantCartSwitch.otherCartKeys.length === 1 && switchOther ? {
               otherName: switchOther.name,
               thisName: restaurant?.name ?? "this restaurant",
-              extraFee: (() => {
-                if (switchOther.lat == null || switchOther.lng == null || restaurant?.lat == null || restaurant?.lng == null || !deliverySettings) return null;
-                const km = haversineKm(switchOther.lat, switchOther.lng, restaurant.lat, restaurant.lng);
-                return km < 0.1 ? null : roundFare(km * deliverySettings.deliveryRatePerKm, deliverySettings.minimumDeliveryFee);
-              })(),
             } : null}
             onCombine={combineOtherCartAndAdd}
             onKeep={keepOtherCartsAndAdd}
@@ -1293,14 +1298,8 @@ export default function RestaurantPage() {
               const d = placeFields(delivery);
               const sameDestination = d.lat != null && d.lng != null && haversineKm(candidate.destination_lat,candidate.destination_lng,d.lat,d.lng) <= 0.2;
               const chosen = selectedBundleOrderId === candidate.id;
-              const routeKm = restaurant.lat != null && restaurant.lng != null && d.lat != null && d.lng != null
-                ? haversineKm(candidate.pickup_lat,candidate.pickup_lng,restaurant.lat,restaurant.lng) + haversineKm(restaurant.lat,restaurant.lng,d.lat,d.lng)
-                : null;
-              const addedFee = sameDestination && routeKm != null && deliverySettings
-                ? Math.max(0,roundFare(routeKm*deliverySettings.deliveryRatePerKm,deliverySettings.minimumDeliveryFee)-Number(candidate.delivery_fee??0))
-                : null;
               return <button type="button" key={candidate.id} disabled={!sameDestination || restaurant.lat == null || restaurant.lng == null} onClick={() => setSelectedBundleOrderId(chosen ? null : candidate.id)} className={`w-full rounded-2xl border p-3 text-left ${chosen ? "border-gold bg-gold/10" : "border-[var(--border-faint)]"} disabled:opacity-50`}>
-                <span className="flex items-center justify-between gap-3"><span className="font-semibold">{chosen ? "✓ " : "＋ "}{candidate.restaurant_name ?? "Your existing pickup"}</span><span className="shrink-0 text-sm font-bold text-gold">{sameDestination ? `${chosen ? "Added · " : "Add · "}+${addedFee != null ? formatUgx(addedFee) : "…"}` : "Choose same address"}</span></span>
+                <span className="flex items-center justify-between gap-3"><span className="font-semibold">{chosen ? "✓ " : "＋ "}{candidate.restaurant_name ?? "Your existing pickup"}</span><span className="shrink-0 text-sm font-bold text-gold">{sameDestination ? (chosen ? "Added" : "Add") : "Choose same address"}</span></span>
                 <span className="mt-1 block text-xs text-ink-500">{candidate.pickup_address ?? "Pickup location saved"}</span>
               </button>;
             })}
@@ -1321,24 +1320,28 @@ export default function RestaurantPage() {
 
 
         {orderItemCount > 0 && <div className="food-menu-card space-y-3 px-4 py-5">
-          <div className="flex items-center justify-between text-sm text-ink-500">
-            <span>{t("restaurant_items_total")}</span>
-            <span>{formatUgx(checkoutItemsTotal)}</span>
-          </div>
-          <div className="flex items-center justify-between text-sm text-ink-500">
-            <span>{t("restaurant_delivery_fee")}</span>
-            <span>{selectedBundle ? (bundleExtraDeliveryFee != null ? `+${formatUgx(bundleExtraDeliveryFee)}` : "—") : confirmedFee != null ? formatUgx(confirmedFee) : feeQuoteError ? "Couldn't confirm" : !delivery ? "Choose location" : "Calculating…"}</span>
-          </div>
-          {combineOther && confirmedLegs && (
-            <div className="space-y-1 border-l border-[var(--border-faint)] pl-3 text-xs text-ink-500">
-              <div className="flex justify-between gap-3"><span>{combineOther.name} to {restaurant.name}</span><span>{formatUgx(confirmedLegs.betweenPickups)}</span></div>
-              <div className="flex justify-between gap-3"><span>Last-mile delivery</span><span>{formatUgx(confirmedLegs.lastMile)}</span></div>
-            </div>
+          {(combineOther || selectedBundle) && confirmedShared ? (
+            <SharedDeliveryBreakdown
+              first={{ name: confirmedShared.firstPickup.name, items: combineOther ? combineOtherItemsTotal : joinedItemsTotal, delivery: confirmedShared.firstPickup.fee }}
+              second={{ name: restaurant.name, items: itemsTotal, delivery: confirmedShared.addedStop.fee }}
+            />
+          ) : (
+            <>
+              <div className="flex items-center justify-between text-sm text-ink-500">
+                <span>{t("restaurant_items_total")}</span>
+                <span>{formatUgx(checkoutItemsTotal)}</span>
+              </div>
+              <div className="flex items-center justify-between text-sm text-ink-500">
+                <span>{t("restaurant_delivery_fee")}</span>
+                <span>{confirmedFee != null ? formatUgx(confirmedFee) : feeQuoteError ? "Couldn't confirm" : !delivery ? "Choose location" : "Calculating…"}</span>
+              </div>
+            </>
           )}
           <div className="flex items-center justify-between border-t border-[var(--border-faint)] pt-1.5 text-sm font-bold text-ink">
             <span>Total</span>
-            <span>{estimatedFee != null ? formatUgx(checkoutItemsTotal + estimatedFee) : "—"}</span>
+            <span>{deliveryFeeKnown ? formatUgx(checkoutItemsTotal + estimatedFee!) : "—"}</span>
           </div>
+          {(combineOther || selectedBundle) && <p className="text-xs text-ink-500">One rider collects from both and delivers together. You pay this total once.</p>}
         </div>}
 
         {feeQuoteError && delivery && <button type="button" onClick={() => setFeeRetry((n) => n + 1)} className="min-h-11 w-full rounded-full border border-[var(--border-faint)] px-4 text-sm font-bold text-ink">Couldn&apos;t confirm the delivery fee. Try again</button>}

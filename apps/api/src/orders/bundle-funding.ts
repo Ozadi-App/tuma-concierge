@@ -46,6 +46,27 @@ type Deps = {
  * one-payment-per-pickup flow — returns null and is paid on its own.
  */
 export async function unfundedBundleGroup(order: Row): Promise<BundleGroup | null> {
+  const members = await bundleMembers(order);
+  if (!members) return null;
+  const riderId = members[0].rider_id;
+  if (!riderId || !members.every((member) => member.stage === "Match" && member.rider_id === riderId)) return null;
+  return { lead: members[0], members };
+}
+
+/**
+ * A combined delivery that isn't paid yet, whether or not a rider has taken it:
+ * what the first pickup's pay screen quotes, so the total the customer is shown
+ * is the same before and after a rider accepts. Paying still needs
+ * unfundedBundleGroup (every pickup matched to the same rider).
+ */
+export async function unpaidBundleGroup(order: Row): Promise<BundleGroup | null> {
+  const members = await bundleMembers(order);
+  if (!members || !members.every((member) => member.stage === "Create" || member.stage === "Match")) return null;
+  return { lead: members[0], members };
+}
+
+/** Every live order in `order`'s combined delivery, first pickup first; null unless there are two or more. */
+async function bundleMembers(order: Row): Promise<Row[] | null> {
   if (!order.delivery_bundle_id || !(await hasColumn("orders", "delivery_bundle_id"))) return null;
   const bundleId = String(order.delivery_bundle_id);
   const res = await db.execute({
@@ -55,10 +76,7 @@ export async function unfundedBundleGroup(order: Row): Promise<BundleGroup | nul
     args: [bundleId, String(order.customer_id), String(order.environment), bundleId],
   });
   const members = res.rows as Row[];
-  if (members.length < 2 || String(members[0].id) !== bundleId) return null;
-  const riderId = members[0].rider_id;
-  if (!riderId || !members.every((member) => member.stage === "Match" && member.rider_id === riderId)) return null;
-  return { lead: members[0], members };
+  return members.length >= 2 && String(members[0].id) === bundleId ? members : null;
 }
 
 type Part = { order: Row; base: number; deliveryFee: number; mobile: number; wallet: number };

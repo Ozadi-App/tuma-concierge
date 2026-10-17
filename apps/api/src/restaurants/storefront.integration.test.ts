@@ -69,7 +69,14 @@ const bundledOrder=(await bundledResponse.json() as {order:{id:string;delivery_f
 const linked=await client.execute({sql:'SELECT id,delivery_fee,delivery_bundle_id FROM orders WHERE id IN (?,?) ORDER BY id',args:[order.id,bundledOrder.id]});assert.equal(linked.rows.length,2);assert.equal(linked.rows[0]?.delivery_bundle_id,bundledOrder.delivery_bundle_id);assert.ok(Number(linked.rows.find(row=>row.id===bundledOrder.id)?.delivery_fee)>0);
 const leadFee=Number(linked.rows.find(row=>row.id===order.id)?.delivery_fee),extraFee=Number(linked.rows.find(row=>row.id===bundledOrder.id)?.delivery_fee);
 const singleQuote=await (await call('/restaurants/food/delivery-quote?lat=0.4&lng=32.5')).json() as {deliveryFee:number};assert.equal(singleQuote.deliveryFee,leadFee,'the quoted fee is the fee the order is charged');
-const routeQuote=await (await call('/restaurants/food2/delivery-quote?lat=0.4&lng=32.5&alsoFrom=food')).json() as {deliveryFee:number;legs:{betweenPickups:number;lastMile:number}};assert.equal(routeQuote.deliveryFee,leadFee+extraFee,'a combined delivery quotes the whole route');assert.equal(routeQuote.legs.betweenPickups+routeQuote.legs.lastMile,routeQuote.deliveryFee,'the breakdown adds up to the fee');assert.ok(routeQuote.legs.betweenPickups>0&&routeQuote.legs.lastMile>0);
+type SharedQuote={deliveryFee:number;shared:{firstPickup:{fee:number};addedStop:{fee:number}}};
+const routeQuote=await (await call('/restaurants/food2/delivery-quote?lat=0.4&lng=32.5&alsoFrom=food')).json() as SharedQuote;assert.equal(routeQuote.deliveryFee,leadFee+extraFee,'a combined delivery quotes the whole route');
+assert.deepEqual([routeQuote.shared.firstPickup.fee,routeQuote.shared.addedStop.fee],[leadFee,extraFee],'checkout shows exactly what each order is charged');
+const joinQuote=await (await call(`/restaurants/food2/delivery-quote?lat=0.4&lng=32.5&bundleWith=${order.id}`)).json() as SharedQuote;assert.deepEqual([joinQuote.shared.firstPickup.fee,joinQuote.shared.addedStop.fee],[leadFee,extraFee],'joining an unpaid order is quoted the same way');
+const payBeforeRider=await (await call(`/orders/${order.id}/checkout`)).json() as {baseAmount:number;bundle?:{deliveryFee:number;orders:Array<{deliveryFee:number}>}};
+const bothTotals=await client.execute({sql:'SELECT SUM(estimated_total) AS t FROM orders WHERE id IN (?,?)',args:[order.id,bundledOrder.id]});
+assert.equal(payBeforeRider.baseAmount,Number(bothTotals.rows[0].t),'before a rider accepts, the pay screen already asks for both orders');
+assert.equal(payBeforeRider.bundle?.deliveryFee,leadFee+extraFee);assert.deepEqual(payBeforeRider.bundle?.orders.map(o=>o.deliveryFee),[leadFee,extraFee]);
 assert.equal((await call('/restaurants/food2/delivery-quote?alsoFrom=food')).status,409,'a combined route needs the delivery location');
 const stops=await call(`/orders/${bundledOrder.id}`);assert.equal(stops.status,200);assert.equal(((await stops.json()) as {bundleStops:Array<unknown>}).bundleStops.length,2);
 await client.execute("UPDATE users SET default_matching_mode='first_to_claim' WHERE id='buyer'");
