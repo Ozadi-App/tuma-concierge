@@ -90,17 +90,36 @@ customerRestaurantRoutes.get("/restaurants/:id/delivery-quote", requireAuth, asy
   const { deliveryRatePerKm, minimumDeliveryFee, shoppingDeliveryFee } = await getDeliverySettings();
   const restaurantLat = restaurant.lat as number | null;
   const restaurantLng = restaurant.lng as number | null;
-  if (alsoFromId) {
-    const other = await activeRestaurantRow(alsoFromId, environment);
-    if (!other || other.lat == null || other.lng == null || restaurantLat == null || restaurantLng == null || !hasDestination) {
+  // A shared delivery: another restaurant whose cart is ordered with this one (alsoFrom), or an
+  // unpaid order this one joins (bundleWith). The first pickup is charged its own delivery as if
+  // alone; this pickup adds what the extra stop costs. The two lines are exactly what each order
+  // is charged, so checkout, the pay screen and both orders show the same breakdown.
+  const bundleWithId = c.req.query("bundleWith");
+  if (alsoFromId || bundleWithId) {
+    let first: { lat: number; lng: number; name: string; fee: number | null } | null = null;
+    if (bundleWithId) {
+      const prior = (await db.execute({
+        sql: `SELECT o.pickup_lat, o.pickup_lng, o.delivery_fee, COALESCE(r.name, o.pickup_area) AS name FROM orders o LEFT JOIN restaurants r ON r.id = o.restaurant_id
+              WHERE o.id = ? AND o.customer_id = ? AND o.environment = ? AND o.stage = 'Create'`,
+        args: [bundleWithId, c.get("user").sub, environment],
+      })).rows[0] as Row | undefined;
+      if (prior?.pickup_lat != null && prior.pickup_lng != null) first = { lat: Number(prior.pickup_lat), lng: Number(prior.pickup_lng), name: String(prior.name ?? "Your first order"), fee: Number(prior.delivery_fee ?? 0) };
+    } else {
+      const other = await activeRestaurantRow(alsoFromId!, environment);
+      if (other?.lat != null && other.lng != null) first = { lat: Number(other.lat), lng: Number(other.lng), name: String(other.name), fee: null };
+    }
+    if (!first || restaurantLat == null || restaurantLng == null || !hasDestination) {
       return c.json({ error: "route_unavailable", message: "Both pickups and your delivery location need map coordinates to work out the delivery fee." }, 409);
     }
-    const lastMileKm = haversineKm(restaurantLat, restaurantLng, lat, lng);
-    const distanceKm = haversineKm(Number(other.lat), Number(other.lng), restaurantLat, restaurantLng) + lastMileKm;
-    const deliveryFee = roundFare(distanceKm * deliveryRatePerKm, minimumDeliveryFee);
-    // Shown to the customer as two lines that add up exactly to the fee charged.
-    const lastMile = Math.min(deliveryFee, roundFare(lastMileKm * deliveryRatePerKm, minimumDeliveryFee));
-    return c.json({ deliveryFee, distanceKm: Math.round(distanceKm * 10) / 10, legs: { betweenPickups: deliveryFee - lastMile, lastMile } });
+    const distanceKm = haversineKm(first.lat, first.lng, restaurantLat, restaurantLng) + haversineKm(restaurantLat, restaurantLng, lat, lng);
+    const routeFee = roundFare(distanceKm * deliveryRatePerKm, minimumDeliveryFee);
+    const firstFee = first.fee ?? roundFare(haversineKm(first.lat, first.lng, lat, lng) * deliveryRatePerKm, minimumDeliveryFee);
+    const addedStop = Math.max(0, routeFee - firstFee);
+    return c.json({
+      deliveryFee: firstFee + addedStop,
+      distanceKm: Math.round(distanceKm * 10) / 10,
+      shared: { firstPickup: { name: first.name, fee: firstFee }, addedStop: { name: String(restaurant.name), fee: addedStop } },
+    });
   }
   if (restaurantLat != null && restaurantLng != null && hasDestination) {
     const distanceKm = haversineKm(restaurantLat, restaurantLng, lat, lng);

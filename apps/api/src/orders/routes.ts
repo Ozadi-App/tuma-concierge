@@ -63,7 +63,7 @@ import {
 import { getR2Bucket, uploadResponseHeaders } from "../storage/r2.js";
 import { appBaseUrl } from "../verify/service.js";
 import { payFromWallet } from "../wallet/service.js";
-import { bundleCheckoutQuote, fundBundle, notifyRiderOfCombinedDelivery, unfundedBundleGroup } from "./bundle-funding.js";
+import { bundleCheckoutQuote, fundBundle, notifyRiderOfCombinedDelivery, unfundedBundleGroup, unpaidBundleGroup } from "./bundle-funding.js";
 import { isSubscriptionCurrent } from "../riders/subscription.js";
 import { insertRelayLegs, planRelay, relayChargeFor, resolveLastMile, type RelayLastMile, type RelayMeet, relayAwaitingCollection, relayBlocksFinalSteps, relayView, settleRelayPayouts, type RelayPlan } from "../relay/service.js";
 import {
@@ -697,7 +697,7 @@ orderRoutes.get("/orders/bundle-candidates", requireRole("customer"), async (c) 
   if (!await hasColumn("orders", "delivery_bundle_id") || !await hasColumn("orders", "delivery_bundle_hold")) return c.json({ orders: [] });
   const res = await db.execute({
     sql: `SELECT o.id,o.restaurant_id,o.pickup_lat,o.pickup_lng,o.pickup_address,o.destination_lat,o.destination_lng,
-                 o.delivery_fee,o.delivery_bundle_id,r.name AS restaurant_name
+                 o.delivery_fee,o.estimated_total,o.delivery_bundle_id,r.name AS restaurant_name
           FROM orders o LEFT JOIN restaurants r ON r.id=o.restaurant_id
           WHERE o.customer_id=? AND o.environment=? AND o.type='shopping' AND o.stage='Create'
             AND o.rider_id IS NULL AND o.delivery_bundle_id IS NULL AND o.delivery_bundle_hold=1 AND o.created_at>datetime('now','-30 minutes')
@@ -1701,8 +1701,9 @@ orderRoutes.get("/orders/:id/checkout", async (c) => {
   const order = await getOrder(c.req.param("id"));
   if (!order) return c.json({ error: "not_found" }, 404);
   if (order.customer_id !== c.get("user").sub) return c.json({ error: "forbidden" }, 403);
-  // A combined delivery is paid once, from its first pickup: the quote is the total for every pickup.
-  const bundleGroup = await unfundedBundleGroup(order);
+  // A combined delivery is paid once, from its first pickup: the quote is the total for every pickup,
+  // from the moment it's ordered (before a rider accepts it too).
+  const bundleGroup = await unpaidBundleGroup(order);
   if (bundleGroup && String(bundleGroup.lead.id) === String(order.id)) return c.json(await bundleCheckoutQuote(bundleGroup));
   const baseAmount = Number(order.final_total ?? order.estimated_total ?? 0);
   const settings = await getMonetizationSettings();

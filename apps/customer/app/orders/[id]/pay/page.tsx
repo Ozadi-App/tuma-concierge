@@ -204,6 +204,19 @@ export default function PaymentPage() {
         {method !== "cash" && <p className="rounded-xl bg-gold/10 p-3 text-sm leading-6 text-ink">Your money is held safely in the app. Your rider receives it only after your delivery or ride is completed.</p>}
       </section>
       <section className="home-card space-y-2" aria-live="polite">
+        {quote?.bundle && (
+          // A shared delivery: the same lines checkout showed, one block per pickup.
+          <div className="space-y-3 border-b border-[var(--border-faint)] pb-3">
+            {quote.bundle.orders.map((part, index) => (
+              <div key={part.id} className="space-y-1">
+                <p className="text-sm font-bold text-ink">{part.restaurantName ?? `Pickup ${index + 1}`}</p>
+                <div className="flex justify-between text-sm text-ink-500"><span>Items</span><span>{formatUgx(part.itemsAndDelivery - part.deliveryFee)}</span></div>
+                <div className="flex justify-between text-sm text-ink-500"><span>{index === 0 ? "Delivery to you" : "Added stop on the way"}</span><span>{formatUgx(part.deliveryFee)}</span></div>
+              </div>
+            ))}
+            <div className="flex justify-between text-sm text-ink-500"><span>Delivery (one rider)</span><span>{formatUgx(quote.bundle.deliveryFee)}</span></div>
+          </div>
+        )}
         {quote && amount != null && amount > quote.baseAmount && <>
           <div className="flex justify-between text-sm text-ink-500"><span>Order amount</span><span>{formatUgx(quote.baseAmount)}</span></div>
           <div className="flex justify-between text-sm text-ink-500"><span>Payment and service fees</span><span>{formatUgx(amount - quote.baseAmount)}</span></div>
