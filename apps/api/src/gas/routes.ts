@@ -10,10 +10,9 @@ import { executeBatch } from "../db/client.js";
 import { consume } from "../lib/ratelimit.js";
 import { randomInt } from "../lib/random.js";
 import { getPlatformEnvironment } from "../lib/settings.js";
-import { debitWallet } from "../wallet/service.js";
 import { generatePin, hashPin, pinAttemptGuard, pinMatches, requireAttendant, requireManager, signGasToken, validatePinFormat } from "./auth.js";
 import { burnPinCheck } from "./auth.js";
-import { closeVoucher, expireStaleVouchers, findVoucher, normalizeVoucherCode, refundToRider, vouchersReady, voucherEnvironment } from "./vouchers.js";
+import { closeVoucher, expireStaleVouchers, findVoucher, holdForVoucher, normalizeVoucherCode, refundToRider, vouchersReady, voucherEnvironment } from "./vouchers.js";
 
 export const gasRoutes = new Hono();
 
@@ -969,13 +968,7 @@ gasRoutes.post("/rider/generate-code", requireAuth, async (c) => {
     }
   }
 
-  const held = await debitWallet(user.sub, amountUgx, {
-    type: "adjustment",
-    environment,
-    actorId: user.sub,
-    note: "Fuel voucher — amount held until the fuel is pumped",
-  });
-  if (held === null) {
+  if (!(await holdForVoucher(user.sub, amountUgx, environment))) {
     return c.json({ error: "insufficient_wallet", message: `You need UGX ${amountUgx.toLocaleString()} in your wallet for this voucher. Top up and try again.` }, 402);
   }
 
