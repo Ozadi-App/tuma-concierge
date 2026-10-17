@@ -175,15 +175,24 @@ export async function relayStationsReady(): Promise<boolean> {
 export const RELAY_DROP_OFF = 0;
 export const RELAY_DROP_LIVE = 1;
 export const RELAY_DROP_SANDBOX = 2;
+/**
+ * Sandbox demo petrol stations are stored 'closed' (so no live list shows them) under ids
+ * with this prefix; sandbox relay planning recognises them by it.
+ */
+export const DEMO_OUTLET_PREFIX = "demo-relay-out-";
 
 /** The active station that accepts relay parcels nearest the customer, within the admin's limit. */
 async function nearestDropStation(destination: Point, maxKm: number): Promise<RelayPlan["station"] | null> {
-  const modes = (await getPlatformEnvironment()) === "sandbox" ? [RELAY_DROP_LIVE, RELAY_DROP_SANDBOX] : [RELAY_DROP_LIVE];
+  const sandbox = (await getPlatformEnvironment()) === "sandbox";
+  const modes = sandbox ? [RELAY_DROP_LIVE, RELAY_DROP_SANDBOX] : [RELAY_DROP_LIVE];
+  // Sandbox also uses the demo stations, which are stored closed so no live list shows them.
   const outlets = (await db.execute({
     sql: `SELECT o.id, o.name, o.address, o.lat, o.lng, s.brand_name AS station_name
           FROM fuel_station_outlets o JOIN fuel_stations s ON s.id = o.station_id
-          WHERE o.relay_drop IN (${modes.map(() => "?").join(",")}) AND o.status = 'active' AND o.lat IS NOT NULL AND o.lng IS NOT NULL`,
-    args: modes,
+          WHERE o.relay_drop IN (${modes.map(() => "?").join(",")})
+            AND (o.status = 'active'${sandbox ? " OR o.id LIKE ? || '%'" : ""})
+            AND o.lat IS NOT NULL AND o.lng IS NOT NULL`,
+    args: sandbox ? [...modes, DEMO_OUTLET_PREFIX] : modes,
   })).rows as Row[];
   let best: { row: Row; km: number } | null = null;
   for (const row of outlets) {
@@ -631,7 +640,7 @@ async function notifyRidersOfLastMile(orderId: string): Promise<void> {
 
 /** A rider takes the last-mile leg. They become the order's rider straight away
  * but can't arrive or take the PIN until they've collected the parcel. */
-export async function claimLastMile(riderId: string, legId: string): Promise<{ orderId: string }> {
+export async function claimLastMile(riderId: string, legId: string, opts: { demo?: boolean } = {}): Promise<{ orderId: string }> {
   const leg = (await db.execute({
     sql: "SELECT l.*, o.environment FROM order_relay_legs l JOIN orders o ON o.id = l.order_id WHERE l.id = ? AND l.leg = 3",
     args: [legId],
@@ -640,8 +649,9 @@ export async function claimLastMile(riderId: string, legId: string): Promise<{ o
   if (leg.status !== "open") throw new RelayError(409, "already_claimed", "Another rider already took this pickup.");
   const rider = (await db.execute({ sql: "SELECT verified, is_online, stage_lat, stage_lng FROM riders WHERE user_id = ?", args: [riderId] })).rows[0] as Row | undefined;
   if (!rider?.verified) throw new RelayError(403, "not_verified", "Only verified riders can take relay pickups.");
-  if (!rider.is_online) throw new RelayError(409, "not_online", "Go online to take jobs.");
-  if (rider.stage_lat != null && rider.stage_lng != null) {
+  // A sandbox demo rider stays offline (so live matching never sees it) and has no range.
+  if (!opts.demo && !rider.is_online) throw new RelayError(409, "not_online", "Go online to take jobs.");
+  if (!opts.demo && rider.stage_lat != null && rider.stage_lng != null) {
     const distanceKm = haversineKm(Number(rider.stage_lat), Number(rider.stage_lng), Number(leg.from_lat), Number(leg.from_lng));
     if (beyondRiderRange(distanceKm, await riderRangeKm(riderId))) throw new RelayError(403, "out_of_range", "This pickup is outside your range.");
   }

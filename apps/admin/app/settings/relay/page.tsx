@@ -116,6 +116,8 @@ function SettingsTab() {
   const [stageFallback, setStageFallback] = useState(true);
   const [speed, setSpeed] = useState("");
   const [noticeMin, setNoticeMin] = useState("");
+  const [sandboxDemo, setSandboxDemo] = useState(true);
+  const [demoStep, setDemoStep] = useState("");
   const [ready, setReady] = useState(true);
   const [stationsReady, setStationsReady] = useState(true);
   const [stagesReady, setStagesReady] = useState(true);
@@ -136,6 +138,8 @@ function SettingsTab() {
     setStageFallback(s.stageFallback ?? true);
     setSpeed(String(s.matatuSpeedKmh ?? 30));
     setNoticeMin(String(s.arrivalNoticeMinutes ?? 10));
+    setSandboxDemo(s.sandboxDemo ?? true);
+    setDemoStep(String(s.sandboxDemoStepSeconds ?? 20));
   }
 
   useEffect(() => {
@@ -169,6 +173,8 @@ function SettingsTab() {
         stageFallback,
         matatuSpeedKmh: Number(speed),
         arrivalNoticeMinutes: Number(noticeMin),
+        sandboxDemo,
+        sandboxDemoStepSeconds: Number(demoStep),
       });
       load(res.settings);
       setSaved(true);
@@ -269,6 +275,19 @@ function SettingsTab() {
             <input inputMode="numeric" required value={noticeMin} onChange={(e) => setNoticeMin(digits(e.target.value))} className={inputCls} />
           </Field>
         </div>
+      </section>
+      <section className="home-card space-y-3">
+        <p className="text-sm font-bold text-ink">Sandbox demo</p>
+        <label className="flex items-center gap-2 text-sm font-bold text-ink">
+          <input type="checkbox" checked={sandboxDemo} onChange={(e) => setSandboxDemo(e.target.checked)} className="h-4 w-4 accent-gold" />
+          Demo riders, matatu and petrol stations run sandbox parcels
+        </label>
+        <p className="text-xs text-ink-500">
+          Sandbox only. Each step waits so a real tester can take any role first; whatever is left, the demo does. Live orders are never touched.
+        </p>
+        <Field label="Each demo step waits (seconds)">
+          <input inputMode="numeric" required value={demoStep} onChange={(e) => setDemoStep(digits(e.target.value))} className={inputCls} />
+        </Field>
       </section>
       <SettingsSaveBar busy={busy} error={error} saved={saved} />
     </form>

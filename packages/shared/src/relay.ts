@@ -131,6 +131,9 @@ export type RelaySettings = {
   stageFallback?: boolean;
   matatuSpeedKmh?: number;
   arrivalNoticeMinutes?: number;
+  /** Sandbox only: demo riders, matatu and petrol stations play the roles a tester leaves. */
+  sandboxDemo?: boolean;
+  sandboxDemoStepSeconds?: number;
 };
 
 export type RelayRouteStage = {

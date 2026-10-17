@@ -445,6 +445,10 @@ const DEFAULTS = {
   // For arrival times from the matatu's position, and when to say "arriving in N minutes".
   relay_matatu_speed_kmh: "30",
   relay_arrival_notice_minutes: "10",
+  /** Sandbox only: demo riders, a demo matatu and demo petrol stations move relay parcels along by themselves. */
+  relay_sandbox_demo: "1",
+  /** Seconds each demo step waits, so a real tester can act first. */
+  relay_sandbox_demo_step_seconds: "20",
 } as const;
 
 export type SettingKey = keyof typeof DEFAULTS;

@@ -367,6 +367,8 @@ const settingsSchema = z.object({
   stageFallback: z.boolean(),
   matatuSpeedKmh: z.number().min(5).max(120),
   arrivalNoticeMinutes: z.number().int().min(1).max(120),
+  sandboxDemo: z.boolean(),
+  sandboxDemoStepSeconds: z.number().int().min(5).max(600),
 }).partial();
 
 relayRoutes.put("/admin/relay/settings", requirePermission("settings.manage"), async (c) => {
