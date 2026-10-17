@@ -176,6 +176,8 @@ export type RelayStation = {
   id: string; name: string; address: string | null; lat: number | null; lng: number | null; status: string;
   /** 0 off, 1 live, 2 sandbox & practice only. */
   relay_drop: number; station_name: string; holding: number;
+  /** The routes this station is a stage of (it serves only those). */
+  routes?: string | null;
 };
 
 export type RelayMerchantOrder = { id: string; stage: string; created_at: string; destination_area: string | null; store_name: string; customer_name: string | null };

@@ -97,14 +97,15 @@ export async function planRelay(
   const routes = (await db.execute("SELECT * FROM relay_routes WHERE active = 1")).rows as Row[];
   const { deliveryRatePerKm, minimumDeliveryFee } = await getDeliverySettings();
   const stationsReady = await relayStationsReady();
-  const station = stationsReady ? await nearestDropStation(destination, settings.stationMaxKm) : null;
   const boda = (km: number) => roundFare(km * deliveryRatePerKm, minimumDeliveryFee);
   let best: RelayPlan | null = null;
   const stagePickup = settings.stagePickup && (await relayMeetReady());
   for (const route of routes) {
-    // A station route with no open station near the customer hands over at the stage instead.
-    const dropMode: RelayDropMode = stationsReady && route.drop_mode === "station" && station ? "station" : "stage";
     const stages = await routeStages(route);
+    // A route drops only at its own stations (its stops that are petrol stations). With none open
+    // near the customer, it hands over at the stage instead.
+    const station = stationsReady && route.drop_mode === "station" ? await nearestDropStation(route, stages, destination, settings.stationMaxKm) : null;
+    const dropMode: RelayDropMode = station ? "station" : "stage";
     // Board at the route's stage nearest the pickup.
     const board = nearestStage(stages, pickup);
     if (!board || board.km > settings.maxAccessKm) continue;
@@ -212,18 +213,43 @@ export const RELAY_DROP_SANDBOX = 2;
  */
 export const DEMO_OUTLET_PREFIX = "demo-relay-out-";
 
-/** The active station that accepts relay parcels nearest the customer, within the admin's limit. */
-async function nearestDropStation(destination: Point, maxKm: number): Promise<RelayPlan["station"] | null> {
+/**
+ * A station's display name: "Shell Kitoro" from brand "Shell" and outlet "Kitoro", but just
+ * "Shell Akright" when the outlet's own name already starts with the brand.
+ */
+export function stationDisplayName(brand: unknown, outlet: unknown): string {
+  const b = typeof brand === "string" ? brand.trim() : "";
+  const o = typeof outlet === "string" ? outlet.trim() : "";
+  const word = b.split(/[\s(]+/)[0]?.toLowerCase();
+  if (o && word && o.toLowerCase().startsWith(word)) return o;
+  return [b, o].filter(Boolean).join(" ");
+}
+
+/** The sandbox demo station the simulator keeps beside a route stop (see sandbox-demo.ts). */
+export function demoOutletId(route: Row, stage: RouteStage): string {
+  const end = stage.id === `${String(route.id)}:a` ? "a" : stage.id === `${String(route.id)}:b` ? "b" : null;
+  return `${DEMO_OUTLET_PREFIX}${end ? `${String(route.id)}-${end}` : stage.id}`;
+}
+
+/**
+ * The route's station that accepts relay parcels nearest the customer, within the admin's limit.
+ * Relay is rolled out route by route: a route only uses the stations that are its stops.
+ */
+async function nearestDropStation(route: Row, stages: RouteStage[], destination: Point, maxKm: number): Promise<RelayPlan["station"] | null> {
   const sandbox = (await getPlatformEnvironment()) === "sandbox";
   const modes = sandbox ? [RELAY_DROP_LIVE, RELAY_DROP_SANDBOX] : [RELAY_DROP_LIVE];
-  // Sandbox also uses the demo stations, which are stored closed so no live list shows them.
+  const ids = stages.map((stage) => stage.outletId).filter((id): id is string => !!id);
+  // Sandbox also uses the route's demo stations, which are stored closed so no live list shows them.
+  const demoIds = sandbox ? stages.filter((stage) => !stage.outletId).map((stage) => demoOutletId(route, stage)) : [];
+  if (!ids.length && !demoIds.length) return null;
   const outlets = (await db.execute({
     sql: `SELECT o.id, o.name, o.address, o.lat, o.lng, s.brand_name AS station_name
           FROM fuel_station_outlets o JOIN fuel_stations s ON s.id = o.station_id
           WHERE o.relay_drop IN (${modes.map(() => "?").join(",")})
-            AND (o.status = 'active'${sandbox ? " OR o.id LIKE ? || '%'" : ""})
+            AND ((o.status = 'active' AND o.id IN (${ids.map(() => "?").join(",") || "NULL"}))
+                 OR o.id IN (${demoIds.map(() => "?").join(",") || "NULL"}))
             AND o.lat IS NOT NULL AND o.lng IS NOT NULL`,
-    args: sandbox ? [...modes, DEMO_OUTLET_PREFIX] : modes,
+    args: [...modes, ...ids, ...demoIds],
   })).rows as Row[];
   let best: { row: Row; km: number } | null = null;
   for (const row of outlets) {
@@ -231,7 +257,7 @@ async function nearestDropStation(destination: Point, maxKm: number): Promise<Re
     if (km <= maxKm && (!best || km < best.km)) best = { row, km };
   }
   if (!best) return null;
-  const name = [best.row.station_name, best.row.name].filter(Boolean).join(" ") || "Petrol station";
+  const name = stationDisplayName(best.row.station_name, best.row.name) || "Petrol station";
   return { outletId: String(best.row.id), name, address: (best.row.address as string | null) ?? null, lat: Number(best.row.lat), lng: Number(best.row.lng) };
 }
 
@@ -366,7 +392,7 @@ export async function relayView(order: Row, viewerId: string): Promise<Row | nul
     lastMile: relay?.last_mile ?? "door",
     station: station
       ? {
-          name: [station.station_name, station.name].filter(Boolean).join(" "),
+          name: stationDisplayName(station.station_name, station.name),
           address: station.address ?? null, lat: station.lat ?? null, lng: station.lng ?? null, phone: station.phone ?? null,
         }
       : null,
@@ -1117,7 +1143,7 @@ async function customerMissedMatatuOne(operatorId: string, legId: string): Promi
       })).rows[0] as Row | undefined
     : undefined;
   if (!station) throw new RelayError(409, "no_station", "There's no petrol station set for this parcel. Call the customer.");
-  const stationName = [station.brand_name, station.name].filter(Boolean).join(" ");
+  const stationName = stationDisplayName(station.brand_name, station.name);
   await executeBatch([
     { sql: "UPDATE order_relay SET missed_at = datetime('now'), soon_notified_at = NULL WHERE order_id = ? AND missed_at IS NULL", args: [orderId] },
     // The matatu leg now ends at the station, where the attendant receives it with the usual code.

@@ -22,6 +22,7 @@ import {
   noticeMatatuApproach,
   noticeMatatuArrived,
   relayMeetReady,
+  stationDisplayName,
   collectFromMatatu,
   planRelay,
   receiveAtMatatu,
@@ -510,8 +511,12 @@ relayRoutes.get("/admin/relay/orders", requirePermission("orders.view"), async (
 /** Peebee Gas stations, and whether each accepts relay parcels. */
 relayRoutes.get("/admin/relay/stations", requirePermission("settings.manage"), async (c) => {
   if (!(await relayStationsReady())) return c.json({ stations: [], ready: false });
+  const routes = (await relayMeetReady())
+    ? `(SELECT GROUP_CONCAT(rr.name, ', ') FROM relay_route_stages st JOIN relay_routes rr ON rr.id = st.route_id WHERE st.outlet_id = o.id AND st.active = 1)`
+    : "NULL";
   const res = await db.execute(`SELECT o.id, o.name, o.address, o.lat, o.lng, o.status, o.relay_drop, s.brand_name AS station_name,
-                                       (SELECT COUNT(*) FROM order_relay r WHERE r.outlet_id = o.id AND r.held_at IS NOT NULL AND r.released_at IS NULL) AS holding
+                                       (SELECT COUNT(*) FROM order_relay r WHERE r.outlet_id = o.id AND r.held_at IS NOT NULL AND r.released_at IS NULL) AS holding,
+                                       ${routes} AS routes
                                 FROM fuel_station_outlets o JOIN fuel_stations s ON s.id = o.station_id
                                 ORDER BY o.relay_drop DESC, s.brand_name, o.name`);
   return c.json({ stations: res.rows, ready: true });
@@ -573,7 +578,7 @@ async function outletLocation(outletId: string): Promise<{ lat: number; lng: num
     args: [outletId],
   })).rows[0] as Row | undefined;
   if (!row || row.lat == null || row.lng == null) return null;
-  return { lat: Number(row.lat), lng: Number(row.lng), name: [row.brand_name, row.name].filter(Boolean).join(" ") };
+  return { lat: Number(row.lat), lng: Number(row.lng), name: stationDisplayName(row.brand_name, row.name) };
 }
 
 relayRoutes.post("/admin/relay/routes/:id/stages", requirePermission("settings.manage"), async (c) => {

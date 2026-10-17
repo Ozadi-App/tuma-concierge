@@ -796,7 +796,8 @@ function StationsTab() {
     <div className="space-y-2">
       {!ready && <StationsNotice />}
       <p className="text-xs text-ink-500">
-        Stations that accept relay parcels. A station-drop route leaves each parcel at the nearest open one. &ldquo;Sandbox&rdquo; stations only take
+        Stations that accept relay parcels. Relay is rolled out route by route: a station serves a route once it is one of that route&rsquo;s
+        stages (Routes tab), and a station-drop route leaves each parcel at its open station nearest the customer. &ldquo;Sandbox&rdquo; stations only take
         parcels while the platform is in sandbox (and in practice), for trialling a station before it goes live.
       </p>
       <ErrorNote message={error} />
@@ -814,6 +815,7 @@ function StationsTab() {
                   {s.address ?? "No address"}
                   {s.lat == null || s.lng == null ? " · no map location" : ""} · holding {s.holding} parcel{s.holding === 1 ? "" : "s"}
                 </p>
+                <p className="truncate text-xs text-ink-500">{s.routes ? `Route: ${s.routes}` : "Not on a route yet"}</p>
               </div>
               <div className="flex shrink-0 gap-1" role="group" aria-label={`${s.name} relay parcels`}>
                 {STATION_MODES.map(({ mode, label }) => (
