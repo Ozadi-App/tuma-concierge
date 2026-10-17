@@ -9,6 +9,7 @@ import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { ShareButton } from "../../../components/ShareButton";
 import { PlaceFlow } from "../../../components/PlaceFlow";
 import { RouteSummary } from "../../../components/home/RouteSummary";
 import { placeFields, type Place } from "../../../lib/places";
@@ -792,10 +793,21 @@ function ItemDetailPage({
           <button type="button" className="menu-item-back-trigger" aria-label={t("restaurant_back_to_menu")} onClick={onBack}>
             <ChevronLeft size={24} aria-hidden="true" />
           </button>
-          <button ref={cartTriggerRef} type="button" className="menu-item-cart-trigger" aria-label={`Open cart, ${cartCount} ${cartCount === 1 ? "item" : "items"}`} aria-expanded={cartOpen} onClick={() => setCartOpen(true)}>
-            <ShoppingCart size={21} strokeWidth={2} aria-hidden="true" />
-            <span className="menu-item-cart-trigger__count" aria-live="polite">{cartCount}</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <ShareButton
+              target={{
+                url: `/restaurants/${encodeURIComponent(restaurantId)}/items/${encodeURIComponent(activeItem.id)}`,
+                title: `${activeItem.name}${thisName ? ` from ${thisName}` : ""}`,
+                text: `${activeItem.name}${thisName ? ` from ${thisName}` : ""}, ${formatUgx(activeItem.price)} on Peebee Food`,
+              }}
+              label={`Share ${activeItem.name}`}
+              className="menu-item-back-trigger"
+            />
+            <button ref={cartTriggerRef} type="button" className="menu-item-cart-trigger" aria-label={`Open cart, ${cartCount} ${cartCount === 1 ? "item" : "items"}`} aria-expanded={cartOpen} onClick={() => setCartOpen(true)}>
+              <ShoppingCart size={21} strokeWidth={2} aria-hidden="true" />
+              <span className="menu-item-cart-trigger__count" aria-live="polite">{cartCount}</span>
+            </button>
+          </div>
         </div>
         <div
           key={activeItem.id}

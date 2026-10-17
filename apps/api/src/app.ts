@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { publicShareRoutes } from "./public/share-routes.js";
 import { onboardingRoutes } from "./onboarding/routes.js";
 import { cors } from "hono/cors";
 import { mobileNumberRoutes } from "./account/mobile-numbers.js";
@@ -229,6 +230,8 @@ app.route("/v1/auth", verifyRoutes);
 app.route("/v1/trips", tripRoutes);
 app.route("/v1/gas", relayStationRoutes);
 app.route("/v1/gas", gasRoutes);
+// Public, sign-in-free data for shared links; before the order routes' catch-all sign-in.
+app.route("/v1", publicShareRoutes);
 app.route("/v1", marketplaceRoutes);
 app.route("/v1/work", workRoutes);
 app.route("/v1/pharmacy", pharmacyRoutes);

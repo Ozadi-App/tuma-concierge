@@ -4,6 +4,7 @@ import { isUserVerified } from "@peebee/shared";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { useAuth } from "../lib/auth-context";
+import { takeReturnTo } from "../lib/return-to";
 
 const PUBLIC_PATHS = ["/login", "/forgot-password"];
 // Always reachable for a signed-in but not-yet-verified customer —
@@ -13,13 +14,15 @@ const ALWAYS_ALLOWED_PATHS = ["/verify"];
 // "Verify Email Address" link redirects to, and the person clicking it may
 // be signed out here (different device/browser than where they signed up).
 const UNGATED_PATHS = ["/verify/confirmed", "/activate"];
+// A shared product or dish link: signed out, the page shows a public preview itself.
+const SHARED_ITEM_PATH = /^\/(product\/[^/]+|restaurants\/[^/]+\/items\/[^/]+)\/?$/;
 
 export function AuthGate({ children }: { children: React.ReactNode }) {
   const { user, ready } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
   // A passenger opens their trip link without an account ("/trip/<token>").
-  const isUngated = UNGATED_PATHS.includes(pathname) || pathname.startsWith("/trip/");
+  const isUngated = UNGATED_PATHS.includes(pathname) || pathname.startsWith("/trip/") || SHARED_ITEM_PATH.test(pathname);
   const isPublic = PUBLIC_PATHS.includes(pathname);
   const needsVerification = !!user && !isUserVerified(user) && !ALWAYS_ALLOWED_PATHS.includes(pathname);
   const verifiedButOnVerifyPage = !!user && isUserVerified(user) && pathname === "/verify";
@@ -27,7 +30,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (isUngated || !ready) return;
     if (!user && !isPublic) router.replace("/login");
-    if (user && isPublic) router.replace("/");
+    if (user && isPublic) router.replace(takeReturnTo() ?? "/");
     if (user && needsVerification) router.replace("/verify");
     if (verifiedButOnVerifyPage) router.replace("/");
   }, [isUngated, ready, user, isPublic, needsVerification, verifiedButOnVerifyPage, router]);
