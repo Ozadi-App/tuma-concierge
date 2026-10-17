@@ -2,6 +2,7 @@ import type { RelayAdminOrder, RelayRouteStage, RelayMerchantOrder, RelayOpenLeg
 import type { AdminRole } from "./permissions.js";
 import { workMethods } from "./work-client.js";
 import { workAdminMethods } from "./work-admin-client.js";
+import { educationMethods } from "./education-client.js";
 import type { PracticeRole } from "./practice.js";
 import type {
   FareCounter,
@@ -2895,6 +2896,7 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
     },
     ...workMethods(request),
     ...workAdminMethods(request),
+    ...educationMethods(request),
     /** A job photo as a Blob (private: the request carries the sign-in header, so it can't be a plain image URL). */
     async workPhotoBlob(photoId: string): Promise<Blob> {
       const res = await f(`${root}/v1/work/photos/${encodeURIComponent(photoId)}`, { headers: authHeaders() });

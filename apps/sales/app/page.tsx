@@ -19,6 +19,7 @@ import {
   CheckCircle2,
   FileText,
   Fuel,
+  GraduationCap,
   LocateFixed,
   LogOut,
   Plus,
@@ -45,6 +46,7 @@ const labels: Record<OnboardingType, string> = {
   merchant: "Store & Merchant",
   gas: "Fuel Station",
   pharmacy: "Pharmacy & Health",
+  education: "School & Education",
 };
 
 const subtitles: Record<OnboardingType, string> = {
@@ -55,6 +57,7 @@ const subtitles: Record<OnboardingType, string> = {
   merchant: "Retail stores, shops & supermarkets",
   gas: "Petrol stations, dealers & pump attendants",
   pharmacy: "Licensed pharmacies, chemists & drug shops",
+  education: "Schools, academies, tutors & vocational institutes",
 };
 
 const icons = {
@@ -65,6 +68,7 @@ const icons = {
   merchant: Store,
   gas: Fuel,
   pharmacy: Pill,
+  education: GraduationCap,
 };
 
 type Draft = {
@@ -80,6 +84,7 @@ const emptyDrafts = (): Record<OnboardingType, Draft> => ({
   merchant: { profile: {}, files: {} },
   gas: { profile: { activePumps: 4, managerRole: "station_manager" }, files: {} },
   pharmacy: { profile: { ndaVerified: true }, files: {} },
+  education: { profile: { institutionType: "k12_school" }, files: {} },
 });
 
 const riderFields = [
@@ -930,6 +935,19 @@ export default function Sales() {
                   </div>
                 )}
 
+                {/* Education fields */}
+                {type === "education" && (
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    {field("institutionName", "School / Institution Name", true, "text", "e.g. Greenwood Academy")}
+                    {field("institutionType", "Institution Category", true, "text", "K-12 School, Vocational, University, Daycare")}
+                    {field("principalName", "Headteacher / Principal Name", true, "text", "e.g. Tr. Kenneth Ochieng")}
+                    {field("unebCenterNumber", "UNEB / DIT Center Number", false, "text", "e.g. U0842 or UVQF/019")}
+                    <div className="sm:col-span-2">
+                      {field("address", "School Physical Campus Address", true, "text", "Plot, Street, City")}
+                    </div>
+                  </div>
+                )}
+
                 <div className="flex items-center justify-between pt-4 border-t border-[var(--border-faint)]">
                   <button
                     type="button"
@@ -1030,6 +1048,12 @@ export default function Sales() {
                       <>
                         {upload("ndaLicenseDoc", "NDA Premises Certificate", false)}
                         {upload("pharmacistAplDoc", "Pharmacist Practicing License", false)}
+                      </>
+                    )}
+                    {type === "education" && (
+                      <>
+                        {upload("schoolRegistrationDoc", "Ministry / District School Registration Certificate", false)}
+                        {upload("principalId", "Headteacher / Principal ID Document", false)}
                       </>
                     )}
                   </div>
@@ -1208,6 +1232,23 @@ export default function Sales() {
                           <span className="font-semibold text-ink-500">NDA License</span>
                           <p className="font-bold text-ink mt-0.5">
                             {String(draft.profile.ndaLicense || "Pending")}
+                          </p>
+                        </div>
+                      </>
+                    )}
+
+                    {type === "education" && (
+                      <>
+                        <div>
+                          <span className="font-semibold text-ink-500">Institution</span>
+                          <p className="font-bold text-ink mt-0.5">
+                            {String(draft.profile.institutionName || "Not set")}
+                          </p>
+                        </div>
+                        <div>
+                          <span className="font-semibold text-ink-500">Category / Center</span>
+                          <p className="font-bold text-ink mt-0.5">
+                            {String(draft.profile.institutionType || "School")}
                           </p>
                         </div>
                       </>

@@ -89,7 +89,7 @@ const submenuItems: Record<Exclude<MenuGroup, "original">, MenuItem[]> = {
     { id: "laundry", label: "Laundry", icon: WashingMachine, href: "/services/laundry" },
     { id: "fix", label: "Fix", icon: Wrench, href: "/services/fix" },
     { id: "jobs", label: "Jobs", icon: Briefcase, href: "/service" },
-    { id: "learn", label: "Learn", icon: BookOpen, href: "/services/learn" },
+    { id: "learn", label: "Learn", icon: BookOpen, href: "/learn" },
   ],
 };
 
@@ -98,7 +98,7 @@ function groupForPath(pathname: string): MenuGroup {
   if (pathname === "/ride" || pathname === "/rent" || pathname === "/carpool" || pathname.startsWith("/ride/") || pathname === "/move") return "ride";
   if (["/shopping", "/shoplist", "/groceries", "/stores", "/store", "/pharmacy", "/spotlight"].some((path) => pathname === path || pathname.startsWith(`${path}/`)) || pathname.startsWith("/orders")) return "shopping";
   if (pathname === "/deliver" || pathname.startsWith("/deliver/")) return "deliver";
-  if (["/services", "/service"].some((path) => pathname === path || pathname.startsWith(`${path}/`))) return "services";
+  if (["/services", "/service", "/learn"].some((path) => pathname === path || pathname.startsWith(`${path}/`))) return "services";
   return "original";
 }
 
@@ -154,7 +154,7 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
     else if (pathname === "/services/laundry") setSelectedItem("laundry");
     else if (pathname === "/services/fix") setSelectedItem("fix");
     else if (pathname === "/service" || pathname === "/services/jobs") setSelectedItem("jobs");
-    else if (pathname === "/services/learn") setSelectedItem("learn");
+    else if (pathname === "/services/learn" || pathname === "/learn" || pathname.startsWith("/learn/")) setSelectedItem("learn");
     else if (pathname === "/deliver/parcel") setSelectedItem("parcel");
     else setSelectedItem(null);
   }, [pathname]);

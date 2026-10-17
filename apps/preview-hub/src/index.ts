@@ -12,6 +12,7 @@ const APPS = [
   { id: "partner", name: "Peebee Car App", icon: "🚗", desc: "Car owners and drivers: vehicles, rides, earnings" },
   { id: "restaurant", name: "Restaurant App", icon: "🍽️", desc: "Restaurant kitchen & menu dashboard" },
   { id: "admin", name: "Admin Dashboard", icon: "⚙️", desc: "Superadmin, operations, and cycle control" },
+  { id: "work", name: "Peebee Work", icon: "🧰", desc: "Clean, Fix & Laundry service provider jobs" },
   { id: "web", name: "Marketing Landing", icon: "🌐", desc: "Public landing page and downloads" },
   { id: "api", name: "API Service", icon: "🔌", desc: "Backend Hono API & D1 database health" },
 ] as const;
