@@ -1,6 +1,8 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { roundFare } from "@peebee/shared";
 import { db, executeBatch } from "../db/client.js";
 import { haversineKm } from "../lib/geo.js";
+import { getRoadSettings, roadLegsKm } from "../lib/road-distance.js";
 import { newId } from "../lib/ids.js";
 import { riderPayout } from "../lib/monetization.js";
 import { randomInt } from "../lib/random.js";
@@ -72,11 +74,24 @@ export async function relayReady(): Promise<boolean> {
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
 
-/** The cheapest relay for a parcel, or null when it should go on one boda as usual. */
-export async function planRelay(pickup: Point, destination: Point): Promise<RelayPlan | null> {
+/**
+ * The cheapest relay for a delivery, or null when it should go on one boda as usual.
+ * Distances follow the road. A rider collecting from several stores first starts at
+ * `opts.start` and rides `opts.leadInKm` before `pickup` (the last store); `opts.tripKm`
+ * is the whole one-rider trip, which decides whether a relay is worth offering.
+ */
+export async function planRelay(
+  pickup: Point,
+  destination: Point,
+  opts: { start?: Point; leadInKm?: number; tripKm?: number } = {},
+): Promise<RelayPlan | null> {
   const settings = await getRelaySettings();
   if (!settings.enabled || !(await relayReady())) return null;
-  const directKm = haversineKm(pickup.lat, pickup.lng, destination.lat, destination.lng);
+  const { factor } = await getRoadSettings();
+  const road = (a: Point, b: Point) => haversineKm(a.lat, a.lng, b.lat, b.lng) * factor;
+  const leadInKm = opts.leadInKm ?? 0;
+  const start = opts.start ?? pickup;
+  const directKm = opts.tripKm ?? road(pickup, destination);
   if (directKm < settings.minDistanceKm) return null;
 
   const routes = (await db.execute("SELECT * FROM relay_routes WHERE active = 1")).rows as Row[];
@@ -98,13 +113,13 @@ export async function planRelay(pickup: Point, destination: Point): Promise<Rela
     const stageEnd = nearestStage(rest, destination);
     if (dropMode === "stage" && (!stageEnd || stageEnd.km > settings.maxAccessKm)) continue;
     const alight = dropMode === "station" ? station! : stageEnd!.stage;
-    const firstKm = board.km;
-    const lastKm = haversineKm(alight.lat, alight.lng, destination.lat, destination.lng);
+    const firstKm = leadInKm + board.km * factor;
+    const lastKm = road(alight, destination);
     // The matatu has to actually carry it most of the way.
     if (firstKm + lastKm >= directKm) continue;
     const legs: RelayLegPlan[] = [
       {
-        leg: 1, kind: "boda", fromName: pickup.name || "Pickup", fromLat: pickup.lat, fromLng: pickup.lng,
+        leg: 1, kind: "boda", fromName: start.name || pickup.name || "Pickup", fromLat: start.lat, fromLng: start.lng,
         toName: board.stage.name, toLat: board.stage.lat, toLng: board.stage.lng, distanceKm: round1(firstKm), fee: boda(firstKm),
       },
       {
@@ -133,7 +148,23 @@ export async function planRelay(pickup: Point, destination: Point): Promise<Rela
       };
     }
   }
-  return best;
+  return best ? withRoadDistances(best, pickup, leadInKm) : null;
+}
+
+/** With a routing server, the chosen plan's boda legs get their true road distances and fees. */
+async function withRoadDistances(plan: RelayPlan, pickup: Point, leadInKm: number): Promise<RelayPlan> {
+  if (!(await getRoadSettings()).routingServerUrl) return plan;
+  const { deliveryRatePerKm, minimumDeliveryFee } = await getDeliverySettings();
+  const [first, , last] = plan.legs;
+  const [toBoard] = await roadLegsKm([pickup, { lat: first.toLat, lng: first.toLng }]);
+  const [toDoor] = await roadLegsKm([{ lat: last.fromLat, lng: last.fromLng }, { lat: last.toLat, lng: last.toLng }]);
+  first.distanceKm = round1(leadInKm + toBoard);
+  last.distanceKm = round1(toDoor);
+  first.fee = roundFare(first.distanceKm * deliveryRatePerKm, minimumDeliveryFee);
+  last.fee = roundFare(last.distanceKm * deliveryRatePerKm, minimumDeliveryFee);
+  plan.total = plan.legs.reduce((sum, leg) => sum + leg.fee, 0);
+  if (plan.dropMode === "station") plan.collectTotal = first.fee + plan.legs[1].fee;
+  return plan;
 }
 
 /** Migration 0106 adds defined route stages and meeting the matatu. */
@@ -538,6 +569,45 @@ export class RelayError extends Error {
   }
 }
 
+// ---------------------------------------------------------------------------
+// A multi-store bag on a relay: every store's order has its own legs, but they
+// travel together. A handoff made with any one of their codes moves all of them,
+// and the people involved hear about it once.
+// ---------------------------------------------------------------------------
+
+const alongForTheRide = new AsyncLocalStorage<true>();
+
+/** A notification, sent once per bag: orders that move along with another stay quiet. */
+function tell(userId: string, payload: Parameters<typeof notifyUser>[1]): Promise<void> {
+  return alongForTheRide.getStore() ? Promise.resolve() : notifyUser(userId, payload);
+}
+
+/** The other orders of the same bag riding this relay. */
+export async function relayMates(orderId: string): Promise<string[]> {
+  if (!(await hasColumn("orders", "delivery_bundle_id"))) return [];
+  const rows = (await db.execute({
+    sql: `SELECT o.id FROM orders o JOIN orders me ON me.id = ?
+          WHERE me.delivery_bundle_id IS NOT NULL AND o.delivery_bundle_id = me.delivery_bundle_id AND o.id != me.id
+            AND o.stage != 'Cancelled' AND EXISTS (SELECT 1 FROM order_relay_legs l WHERE l.order_id = o.id)
+          ORDER BY o.created_at, o.id`,
+    args: [orderId],
+  })).rows as Row[];
+  return rows.map((row) => String(row.id));
+}
+
+/** Repeats a handoff for the bag's other orders (only from the first call, never from theirs). */
+async function alongWithMates(orderId: string, step: (mateId: string) => Promise<unknown>): Promise<void> {
+  if (alongForTheRide.getStore()) return;
+  for (const mateId of await relayMates(orderId)) {
+    await alongForTheRide.run(true, () => step(mateId)).catch((err) => {
+      console.warn(`Relay bag order ${mateId} didn't follow ${orderId}:`, err instanceof Error ? err.message : err);
+    });
+  }
+}
+
+const legOf = async (orderId: string, leg: number) =>
+  (await db.execute({ sql: "SELECT * FROM order_relay_legs WHERE order_id = ? AND leg = ?", args: [orderId, leg] })).rows[0] as Row | undefined;
+
 async function logOrderEvent(orderId: string, note: string, actorId: string) {
   await db.execute({
     sql: "INSERT INTO order_events (id, order_id, stage, note, actor_id) VALUES (?, ?, 'Deliver', ?, ?)",
@@ -567,6 +637,15 @@ export async function receiveAtMatatu(operatorId: string, code: string): Promise
   }
   const orderId = String(leg1.order_id);
   const firstRider = String(leg1.rider_id);
+  // A bag from several stores goes on the matatu whole: the rider has collected from every store.
+  if (!alongForTheRide.getStore()) {
+    for (const mateId of await relayMates(orderId)) {
+      const mate = (await db.execute({ sql: "SELECT stage, rider_id FROM orders WHERE id = ?", args: [mateId] })).rows[0] as Row | undefined;
+      if (mate && (mate.stage !== "Deliver" || mate.rider_id !== leg1.rider_id)) {
+        throw new RelayError(409, "bag_not_complete", "The rider hasn't collected from every store in this bag yet.");
+      }
+    }
+  }
   const relay = await relayRow(orderId);
   const toStation = relay?.drop_mode === "station";
   const clearLocation = (await hasColumn("orders", "rider_location_updated_at"))
@@ -599,10 +678,10 @@ export async function receiveAtMatatu(operatorId: string, code: string): Promise
   await payLegAtHandoff(orderId, 1, operatorId);
 
   const notes: Promise<unknown>[] = [
-    notifyUser(firstRider, { title: "Handoff confirmed", body: `The matatu took the parcel at ${leg1.to_name}. You're free for your next job.`, url: "/", tag: `relay-${orderId}` }),
+    tell(firstRider, { title: "Handoff confirmed", body: `The matatu took the parcel at ${leg1.to_name}. You're free for your next job.`, url: "/", tag: `relay-${orderId}` }),
   ];
   if (leg1.customer_id) {
-    notes.push(notifyUser(String(leg1.customer_id), {
+    notes.push(tell(String(leg1.customer_id), {
       title: "Your parcel is on the matatu",
       body: toStation
         ? `It left ${leg1.to_name} for the petrol station near you.`
@@ -612,6 +691,10 @@ export async function receiveAtMatatu(operatorId: string, code: string): Promise
     }));
   }
   await Promise.allSettled([...notes, ...(toStation ? [] : [notifyRidersOfLastMile(orderId)])]);
+  await alongWithMates(orderId, async (mateId) => {
+    const mateLeg = await legOf(mateId, 1);
+    if (mateLeg?.handoff_code) await receiveAtMatatu(operatorId, String(mateLeg.handoff_code));
+  });
   return { orderId };
 }
 
@@ -628,7 +711,7 @@ async function notifyRidersOfLastMile(orderId: string): Promise<void> {
   const near = riders
     .filter((r) => haversineKm(Number(r.stage_lat), Number(r.stage_lng), Number(leg3.from_lat), Number(leg3.from_lng)) <= lastMileRadiusKm)
     .slice(0, 25);
-  await Promise.allSettled(near.map((r) => notifyUser(String(r.user_id), {
+  await Promise.allSettled(near.map((r) => tell(String(r.user_id), {
     title: "Relay pickup near you",
     body: atStation
       ? `Collect a parcel at ${leg3.from_name} and deliver ${leg3.distance_km} km.`
@@ -640,7 +723,7 @@ async function notifyRidersOfLastMile(orderId: string): Promise<void> {
 
 /** A rider takes the last-mile leg. They become the order's rider straight away
  * but can't arrive or take the PIN until they've collected the parcel. */
-export async function claimLastMile(riderId: string, legId: string, opts: { demo?: boolean } = {}): Promise<{ orderId: string }> {
+async function claimLastMileOne(riderId: string, legId: string, opts: { demo?: boolean } = {}): Promise<{ orderId: string }> {
   const leg = (await db.execute({
     sql: "SELECT l.*, o.environment FROM order_relay_legs l JOIN orders o ON o.id = l.order_id WHERE l.id = ? AND l.leg = 3",
     args: [legId],
@@ -650,8 +733,10 @@ export async function claimLastMile(riderId: string, legId: string, opts: { demo
   const rider = (await db.execute({ sql: "SELECT verified, is_online, stage_lat, stage_lng FROM riders WHERE user_id = ?", args: [riderId] })).rows[0] as Row | undefined;
   if (!rider?.verified) throw new RelayError(403, "not_verified", "Only verified riders can take relay pickups.");
   // A sandbox demo rider stays offline (so live matching never sees it) and has no range.
-  if (!opts.demo && !rider.is_online) throw new RelayError(409, "not_online", "Go online to take jobs.");
-  if (!opts.demo && rider.stage_lat != null && rider.stage_lng != null) {
+  // The bag's other orders follow the rider who took the first (who is now, of course, busy).
+  const following = !!alongForTheRide.getStore();
+  if (!opts.demo && !following && !rider.is_online) throw new RelayError(409, "not_online", "Go online to take jobs.");
+  if (!opts.demo && !following && rider.stage_lat != null && rider.stage_lng != null) {
     const distanceKm = haversineKm(Number(rider.stage_lat), Number(rider.stage_lng), Number(leg.from_lat), Number(leg.from_lng));
     if (beyondRiderRange(distanceKm, await riderRangeKm(riderId))) throw new RelayError(403, "out_of_range", "This pickup is outside your range.");
   }
@@ -661,8 +746,8 @@ export async function claimLastMile(riderId: string, legId: string, opts: { demo
     {
       sql: `UPDATE orders SET rider_id = ?, updated_at = datetime('now')
             WHERE id = ? AND rider_id IS NULL AND stage = 'Deliver'
-            AND NOT EXISTS (SELECT 1 FROM orders busy WHERE busy.rider_id = ? AND busy.environment = ? AND busy.stage NOT IN ('Settle', 'Cancelled'))`,
-      args: [riderId, orderId, riderId, environment],
+            AND (? OR NOT EXISTS (SELECT 1 FROM orders busy WHERE busy.rider_id = ? AND busy.environment = ? AND busy.stage NOT IN ('Settle', 'Cancelled')))`,
+      args: [riderId, orderId, following ? 1 : 0, riderId, environment],
     },
     {
       sql: `UPDATE order_relay_legs SET status = 'assigned', provider_id = ?
@@ -676,7 +761,7 @@ export async function claimLastMile(riderId: string, legId: string, opts: { demo
   await logOrderEvent(orderId, `Last-mile rider assigned to meet the matatu at ${leg.from_name}`, riderId);
   const operatorLeg = (await db.execute({ sql: "SELECT provider_id FROM order_relay_legs WHERE order_id = ? AND leg = 2", args: [orderId] })).rows[0] as Row | undefined;
   if (operatorLeg?.provider_id) {
-    await notifyUser(String(operatorLeg.provider_id), {
+    await tell(String(operatorLeg.provider_id), {
       title: "Rider coming for a parcel",
       body: `A rider will meet you at ${leg.from_name} to collect it.`,
       url: "/relay",
@@ -687,7 +772,7 @@ export async function claimLastMile(riderId: string, legId: string, opts: { demo
 }
 
 /** Handoff 2: the last rider enters the operator's code and takes the parcel. */
-export async function collectFromMatatu(riderId: string, legId: string, code: string): Promise<{ orderId: string }> {
+async function collectFromMatatuOne(riderId: string, legId: string, code: string): Promise<{ orderId: string }> {
   const leg3 = (await db.execute({ sql: "SELECT * FROM order_relay_legs WHERE id = ? AND leg = 3", args: [legId] })).rows[0] as Row | undefined;
   if (!leg3) throw new RelayError(404, "not_found", "This relay pickup no longer exists.");
   if (leg3.provider_id !== riderId || leg3.status !== "assigned") {
@@ -717,7 +802,7 @@ export async function collectFromMatatu(riderId: string, legId: string, code: st
   const order = (await db.execute({ sql: "SELECT * FROM orders WHERE id = ?", args: [orderId] })).rows[0] as Row;
   await payLegAtHandoff(orderId, 2, riderId);
   if (order.customer_id) {
-    await notifyUser(String(order.customer_id), {
+    await tell(String(order.customer_id), {
       title: "Your parcel is on the last stretch",
       body: "A rider collected it from the matatu and is bringing it to you.",
       url: `/orders/${orderId}`,
@@ -738,7 +823,7 @@ async function orderRow(orderId: string): Promise<Row> {
 }
 
 /** The matatu drops the parcel: the attendant enters the operator's code and keeps it in the shop. */
-export async function receiveAtStation(staff: StationStaff, code: string): Promise<{ orderId: string }> {
+async function receiveAtStationOne(staff: StationStaff, code: string): Promise<{ orderId: string }> {
   const leg2 = (await db.execute({
     sql: `SELECT l.*, r.last_mile, r.outlet_id FROM order_relay_legs l JOIN order_relay r ON r.order_id = l.order_id
           WHERE l.leg = 2 AND l.status IN ('in_transit', 'arrived') AND l.handoff_code = ? AND r.drop_mode = 'station' AND r.outlet_id = ?`,
@@ -768,14 +853,14 @@ export async function receiveAtStation(staff: StationStaff, code: string): Promi
   const relay = await relayRow(orderId);
   const notes: Promise<unknown>[] = [];
   if (order.customer_id) {
-    notes.push(notifyUser(String(order.customer_id), relay?.last_mile === "door"
+    notes.push(tell(String(order.customer_id), relay?.last_mile === "door"
       ? { title: "Your parcel is at the petrol station", body: `It's at ${leg2.to_name}. A rider is being called to bring it to you.`, url: `/orders/${orderId}`, tag: `order-${orderId}` }
       : relay?.last_mile === "collect"
         ? { title: "Ready to collect", body: `Collect it at ${leg2.to_name}. Show your code at the shop.`, url: `/orders/${orderId}`, tag: `order-${orderId}` }
         : { title: "Your parcel is at the petrol station", body: `It's at ${leg2.to_name}. Collect it, or send a rider to bring it to you.`, url: `/orders/${orderId}`, tag: `order-${orderId}` }));
   }
   if (leg2.provider_id) {
-    notes.push(notifyUser(String(leg2.provider_id), { title: "Drop confirmed", body: `The station took the parcel at ${leg2.to_name}.`, url: "/relay", tag: `relay-${orderId}` }));
+    notes.push(tell(String(leg2.provider_id), { title: "Drop confirmed", body: `The station took the parcel at ${leg2.to_name}.`, url: "/relay", tag: `relay-${orderId}` }));
   }
   if (relay?.last_mile === "door") notes.push(notifyRidersOfLastMile(orderId));
   await Promise.allSettled(notes);
@@ -802,7 +887,7 @@ async function collectFromStation(riderId: string, leg3: Row, relay: Row, code: 
   await logOrderEvent(orderId, `Rider collected the parcel at ${leg3.from_name}`, riderId);
   const order = await orderRow(orderId);
   if (order.customer_id) {
-    await notifyUser(String(order.customer_id), {
+    await tell(String(order.customer_id), {
       title: "Your parcel is on the last stretch",
       body: `A rider collected it at ${leg3.from_name} and is bringing it to you.`,
       url: `/orders/${orderId}`,
@@ -813,7 +898,7 @@ async function collectFromStation(riderId: string, leg3: Row, relay: Row, code: 
 }
 
 /** The customer collects in person: the attendant enters the customer's code. The order is done. */
-export async function releaseToCustomer(staff: StationStaff, code: string): Promise<{ orderId: string }> {
+async function releaseToCustomerOne(staff: StationStaff, code: string): Promise<{ orderId: string }> {
   const relay = (await db.execute({
     sql: `SELECT * FROM order_relay WHERE collect_code = ? AND outlet_id = ? AND drop_mode = 'station'
           AND held_at IS NOT NULL AND released_at IS NULL AND last_mile != 'door'`,
@@ -831,7 +916,7 @@ export async function releaseToCustomer(staff: StationStaff, code: string): Prom
   await finishCollectedOrder(orderId, holder);
   const order = await orderRow(orderId);
   if (order.customer_id) {
-    await notifyUser(String(order.customer_id), { title: "Collected — thank you!", body: "Your parcel was handed to you at the petrol station.", url: `/orders/${orderId}`, tag: `order-${orderId}` }).catch(() => {});
+    await tell(String(order.customer_id), { title: "Collected — thank you!", body: "Your parcel was handed to you at the petrol station.", url: `/orders/${orderId}`, tag: `order-${orderId}` }).catch(() => {});
   }
   return { orderId };
 }
@@ -856,7 +941,7 @@ async function finishCollectedOrder(orderId: string, actorId: string): Promise<v
 }
 
 /** The customer chose to collect (or hasn't chosen) and now wants a rider to bring it. They pay the last leg from their wallet. */
-export async function sendRiderFromStation(customerId: string, orderId: string): Promise<{ orderId: string; charged: number }> {
+async function sendRiderFromStationOne(customerId: string, orderId: string): Promise<{ orderId: string; charged: number }> {
   const order = await orderRow(orderId);
   if (!order || order.customer_id !== customerId) throw new RelayError(404, "not_found", "Order not found.");
   const relay = await relayRow(orderId);
@@ -962,7 +1047,7 @@ export async function noticeMatatuApproach(orderId: string): Promise<void> {
   if (!marked.rowsAffected) return;
   const target = await matatuTarget(orderId);
   const relay = await relayRow(orderId);
-  await notifyUser(String(order.customer_id), {
+  await tell(String(order.customer_id), {
     title: `Your parcel arrives in about ${eta} minutes`,
     body: target?.meeting
       ? `Head to ${target.name} now and have your code ready. The matatu can't wait long.`
@@ -980,7 +1065,7 @@ export async function noticeMatatuArrived(orderId: string): Promise<void> {
   if (!order?.customer_id) return;
   const target = await matatuTarget(orderId);
   if (!target?.meeting) return;
-  await notifyUser(String(order.customer_id), {
+  await tell(String(order.customer_id), {
     title: "The matatu is at your stage",
     body: `It's at ${target.name} now. Show your code to the conductor to collect your parcel.`,
     url: `/orders/${orderId}`,
@@ -989,7 +1074,7 @@ export async function noticeMatatuArrived(orderId: string): Promise<void> {
 }
 
 /** Handoff at the stage: the operator enters the customer's code and gives them the parcel. The order is done. */
-export async function handToCustomerAtStage(operatorId: string, code: string): Promise<{ orderId: string }> {
+async function handToCustomerAtStageOne(operatorId: string, code: string): Promise<{ orderId: string }> {
   const relay = (await db.execute({
     sql: `SELECT r.*, l.id AS leg2_id FROM order_relay r JOIN order_relay_legs l ON l.order_id = r.order_id AND l.leg = 2
           WHERE r.collect_code = ? AND r.meet_stage_id IS NOT NULL AND r.missed_at IS NULL AND r.released_at IS NULL
@@ -1007,13 +1092,13 @@ export async function handToCustomerAtStage(operatorId: string, code: string): P
   await finishCollectedOrder(orderId, operatorId);
   const order = await orderRow(orderId);
   if (order.customer_id) {
-    await notifyUser(String(order.customer_id), { title: "Collected — thank you!", body: `You collected your parcel at ${relay.meet_stage_name}.`, url: `/orders/${orderId}`, tag: `order-${orderId}` }).catch(() => {});
+    await tell(String(order.customer_id), { title: "Collected — thank you!", body: `You collected your parcel at ${relay.meet_stage_name}.`, url: `/orders/${orderId}`, tag: `order-${orderId}` }).catch(() => {});
   }
   return { orderId };
 }
 
 /** The customer wasn't at the stage. If admin allows it, the parcel goes on to the petrol station near them. */
-export async function customerMissedMatatu(operatorId: string, legId: string): Promise<{ orderId: string; station: string }> {
+async function customerMissedMatatuOne(operatorId: string, legId: string): Promise<{ orderId: string; station: string }> {
   const leg2 = (await db.execute({
     sql: "SELECT * FROM order_relay_legs WHERE id = ? AND leg = 2 AND provider_id = ? AND status IN ('in_transit', 'arrived')",
     args: [legId, operatorId],
@@ -1041,7 +1126,7 @@ export async function customerMissedMatatu(operatorId: string, legId: string): P
   await logOrderEvent(orderId, `Customer wasn't at ${relay.meet_stage_name}; parcel going on to ${stationName}`, operatorId);
   const order = await orderRow(orderId);
   if (order.customer_id) {
-    await notifyUser(String(order.customer_id), {
+    await tell(String(order.customer_id), {
       title: "You missed the matatu",
       body: `No problem — your parcel will be at ${stationName}. Collect it there or send a rider.`,
       url: `/orders/${orderId}`,
@@ -1049,4 +1134,90 @@ export async function customerMissedMatatu(operatorId: string, legId: string): P
     }).catch(() => {});
   }
   return { orderId, station: stationName };
+}
+
+// The handoffs, each moving a whole multi-store bag when its orders share the relay.
+
+export async function claimLastMile(riderId: string, legId: string, opts: { demo?: boolean } = {}): Promise<{ orderId: string }> {
+  const result = await claimLastMileOne(riderId, legId, opts);
+  await alongWithMates(result.orderId, async (mateId) => {
+    const leg = await legOf(mateId, 3);
+    if (leg?.status === "open") await claimLastMileOne(riderId, String(leg.id), opts);
+  });
+  return result;
+}
+
+export async function collectFromMatatu(riderId: string, legId: string, code: string): Promise<{ orderId: string }> {
+  const result = await collectFromMatatuOne(riderId, legId, code);
+  await alongWithMates(result.orderId, async (mateId) => {
+    const leg = await legOf(mateId, 3);
+    if (!leg || leg.status !== "assigned" || leg.provider_id !== riderId) return;
+    const relay = await relayRow(mateId);
+    const mateCode = relay?.drop_mode === "station" ? relay.release_code : (await legOf(mateId, 2))?.handoff_code;
+    if (mateCode) await collectFromMatatuOne(riderId, String(leg.id), String(mateCode));
+  });
+  return result;
+}
+
+export async function receiveAtStation(staff: StationStaff, code: string): Promise<{ orderId: string }> {
+  const result = await receiveAtStationOne(staff, code);
+  await alongWithMates(result.orderId, async (mateId) => {
+    const leg = await legOf(mateId, 2);
+    if (leg?.handoff_code) await receiveAtStationOne(staff, String(leg.handoff_code));
+  });
+  return result;
+}
+
+export async function releaseToCustomer(staff: StationStaff, code: string): Promise<{ orderId: string }> {
+  const result = await releaseToCustomerOne(staff, code);
+  await alongWithMates(result.orderId, async (mateId) => {
+    const relay = await relayRow(mateId);
+    if (relay?.collect_code) await releaseToCustomerOne(staff, String(relay.collect_code));
+  });
+  return result;
+}
+
+export async function sendRiderFromStation(customerId: string, orderId: string): Promise<{ orderId: string; charged: number }> {
+  const result = await sendRiderFromStationOne(customerId, orderId);
+  await alongWithMates(orderId, (mateId) => sendRiderFromStationOne(customerId, mateId));
+  return result;
+}
+
+export async function handToCustomerAtStage(operatorId: string, code: string): Promise<{ orderId: string }> {
+  const result = await handToCustomerAtStageOne(operatorId, code);
+  await alongWithMates(result.orderId, async (mateId) => {
+    const relay = await relayRow(mateId);
+    if (relay?.collect_code) await handToCustomerAtStageOne(operatorId, String(relay.collect_code));
+  });
+  return result;
+}
+
+export async function customerMissedMatatu(operatorId: string, legId: string): Promise<{ orderId: string; station: string }> {
+  const result = await customerMissedMatatuOne(operatorId, legId);
+  await alongWithMates(result.orderId, async (mateId) => {
+    const leg = await legOf(mateId, 2);
+    if (leg && leg.provider_id === operatorId && ["in_transit", "arrived"].includes(String(leg.status))) await customerMissedMatatuOne(operatorId, String(leg.id));
+  });
+  return result;
+}
+
+/** The matatu reached the drop: the bag's other orders arrive with it (the route handler tells people once). */
+export async function markMatesArrived(orderId: string, operatorId: string): Promise<void> {
+  for (const mateId of await relayMates(orderId)) {
+    await db.execute({
+      sql: "UPDATE order_relay_legs SET status = 'arrived' WHERE order_id = ? AND leg = 2 AND provider_id = ? AND status = 'in_transit'",
+      args: [mateId, operatorId],
+    });
+  }
+}
+
+/** The matatu's live position, for every order of the bag it carries. */
+export async function shareMatatuPosition(orderId: string, lat: number, lng: number): Promise<void> {
+  if (!(await hasColumn("orders", "rider_location_updated_at"))) return;
+  for (const mateId of await relayMates(orderId)) {
+    await db.execute({
+      sql: "UPDATE orders SET rider_lat = ?, rider_lng = ?, rider_location_updated_at = datetime('now') WHERE id = ? AND rider_id IS NULL",
+      args: [lat, lng, mateId],
+    });
+  }
 }

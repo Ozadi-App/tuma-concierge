@@ -1,4 +1,4 @@
-import type { RelayAdminOrder, RelayRouteStage, RelayMerchantOrder, RelayOpenLeg, RelayOperator, RelayOperatorParcels, RelayQuote, RelayRoute, RelaySettings, RelayStation, RelayStationParcels, RelayTrack } from "./relay.js";
+import type { BagTrip, RelayAdminOrder, RelayRouteStage, RelayMerchantOrder, RelayOpenLeg, RelayOperator, RelayOperatorParcels, RelayQuote, RelayRoute, RelaySettings, RelayStation, RelayStationParcels, RelayTrack } from "./relay.js";
 import type { AdminRole } from "./permissions.js";
 import { workMethods } from "./work-client.js";
 import { workAdminMethods } from "./work-admin-client.js";
@@ -494,6 +494,8 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
       fareOffer?: number;
       /** A long parcel dropped at a petrol station: bring it to the door, or collect it there. */
       relayLastMile?: "door" | "collect" | "meet";
+      /** A long goods parcel: by matatu relay (default when offered) or one boda all the way. */
+      deliveryMode?: "rider" | "relay";
       /** With relayLastMile "meet": the stage where the customer meets the matatu. */
       relayMeetStageId?: string;
     }) {
@@ -609,7 +611,7 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
     async getRelayQuote(input: { pickupLat: number; pickupLng: number; destinationLat: number; destinationLng: number; pickupName?: string; destinationName?: string }) {
       const params = new URLSearchParams();
       for (const [key, value] of Object.entries(input)) if (value != null && value !== "") params.set(key, String(value));
-      return request<{ relay: RelayQuote | null }>(`/v1/relay/quote?${params}`);
+      return request<{ relay: RelayQuote | null; /** One boda all the way, along the road. */ boda?: { distanceKm: number; fee: number } }>(`/v1/relay/quote?${params}`);
     },
     async trackRelayOrder(orderId: string) {
       return request<RelayTrack>(`/v1/relay/orders/${encodeURIComponent(orderId)}/track`);
@@ -1870,6 +1872,8 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
       destinationLng?: number;
       relayLastMile?: "door" | "collect" | "meet";
       relayMeetStageId?: string;
+      /** A long trip: by matatu relay (default when offered) or one rider all the way. */
+      deliveryMode?: "rider" | "relay";
     }) {
       return request<{ ok: boolean; orders: OrderRow[]; order: OrderRow }>("/v1/marketplace/checkout", {
         method: "POST",
@@ -1883,19 +1887,26 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
       destinationLng?: number;
       relayLastMile?: "door" | "collect" | "meet";
       relayMeetStageId?: string;
+      deliveryMode?: "rider" | "relay";
     }) {
       return request<{
         itemsTotal: number;
         deliveryFee: number;
         total: number;
+        /** How this quote delivers; when a relay is offered the customer chooses (relay by default). */
+        deliveryMode?: "rider" | "relay";
+        /** The delivery fee each way, so both choices show their price. */
+        options?: { rider: number; relay: number | null };
         stores: Array<{ storeId: string; storeName: string; itemsTotal: number; deliveryFee: number }>;
-        /** A long delivery from one store, relayed by matatu. */
+        /** One rider's whole trip along the road; null without a delivery location. */
+        trip?: BagTrip | null;
+        /** A long trip by matatu relay: the rider collects from every store first. */
         relay?: {
           routeName: string; dropMode: "stage" | "station"; station: string | null; lastMile: "door" | "collect" | "pending";
           doorTotal: number; collectTotal: number | null; choiceAtOrder: boolean;
           meetStages?: Array<{ id: string; name: string; distanceKm: number; isStation: boolean }>;
           meetStage?: string | null;
-          legs: Array<{ leg: number; kind: "boda" | "matatu"; fromName: string; toName: string; fee: number }>;
+          legs: Array<{ leg: number; kind: "boda" | "matatu"; fromName: string; toName: string; distanceKm?: number; fee: number }>;
         } | null;
       }>("/v1/marketplace/checkout/quote", { method: "POST", body: JSON.stringify(input) });
     },

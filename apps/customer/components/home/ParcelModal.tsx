@@ -14,17 +14,8 @@ import { RouteSummary } from "./RouteSummary";
 import { LastMileChoice, pickMeetStageId, type LastMileChoiceValue } from "../LastMileChoice";
 import { OrderVoiceNoteRecorder } from "./OrderVoiceNoteRecorder";
 
-/** Great-circle distance in km — mirrors apps/api/src/lib/geo.ts, used only
- * for the live fee preview here; the backend recomputes it authoritatively. */
-function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
-  const R = 6371;
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLng = ((lng2 - lng1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
+type BodaQuote = { distanceKm: number; fee: number };
+type DeliveryMode = "relay" | "rider";
 
 export function ParcelModal({ onClose }: { onClose: () => void }) {
   const t = useTranslate();
@@ -34,26 +25,26 @@ export function ParcelModal({ onClose }: { onClose: () => void }) {
   const [description, setDescription] = useState("");
   const [estimatedTotal, setEstimatedTotal] = useState("");
   const [voiceNote, setVoiceNote] = useState<Blob | null>(null);
-  const [pricing, setPricing] = useState<{ ratePerKm: number; minimum: number } | null>(null);
+  // Only the minimum fee is needed, to round a typed estimate when the map has no pins.
+  const [minimumFee, setMinimumFee] = useState<number | undefined>(undefined);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     api
       .getSettings()
-      .then((res) => setPricing({ ratePerKm: res.settings.deliveryRatePerKm, minimum: res.settings.minimumDeliveryFee }))
+      .then((res) => setMinimumFee(res.settings.minimumDeliveryFee))
       .catch(() => {});
   }, []);
 
   const p = route?.pickup;
   const d = route?.destination;
-  const distanceKm = p?.lat != null && p.lng != null && d?.lat != null && d.lng != null ? haversineKm(p.lat, p.lng, d.lat, d.lng) : null;
-  const liveEstimate = distanceKm != null && pricing != null ? roundFare(distanceKm * pricing.ratePerKm, pricing.minimum) : null;
 
-  // Long parcels are relayed boda -> matatu -> boda. The quote's total is
-  // exactly what the order will charge, so submit waits for it.
+  // The server prices the trip along the road: one boda all the way, and for
+  // long parcels a boda -> matatu -> boda relay. Both totals are exactly what
+  // the order will charge, so submit waits for the quote.
   const quoteKey = p?.lat != null && p.lng != null && d?.lat != null && d.lng != null ? `${p.lat},${p.lng}|${d.lat},${d.lng}` : null;
-  const [relayQuote, setRelayQuote] = useState<{ key: string; relay: RelayQuote | null; failed?: boolean } | null>(null);
+  const [relayQuote, setRelayQuote] = useState<{ key: string; relay: RelayQuote | null; boda: BodaQuote | null; failed?: boolean } | null>(null);
   const [quoteRetry, setQuoteRetry] = useState(0);
   useEffect(() => {
     if (!quoteKey || !p || !d) return;
@@ -67,8 +58,8 @@ export function ParcelModal({ onClose }: { onClose: () => void }) {
         pickupName: p.area ?? undefined,
         destinationName: d.area ?? undefined,
       })
-      .then((res) => !cancelled && setRelayQuote({ key: quoteKey, relay: res.relay }))
-      .catch(() => !cancelled && setRelayQuote({ key: quoteKey, relay: null, failed: true }));
+      .then((res) => !cancelled && setRelayQuote({ key: quoteKey, relay: res.relay, boda: res.boda ?? null }))
+      .catch(() => !cancelled && setRelayQuote({ key: quoteKey, relay: null, boda: null, failed: true }));
     return () => {
       cancelled = true;
     };
@@ -77,6 +68,12 @@ export function ParcelModal({ onClose }: { onClose: () => void }) {
   const quoteFailed = quoteKey != null && relayQuote?.key === quoteKey && relayQuote.failed === true;
   const quoteLoading = quoteKey != null && (relayQuote?.key !== quoteKey || quoteFailed);
   const relay = !quoteLoading && relayQuote ? relayQuote.relay : null;
+  const boda = !quoteLoading && relayQuote ? relayQuote.boda : null;
+  // When both are offered the customer picks; the relay is the default for each new route.
+  const [modeChoice, setModeChoice] = useState<{ key: string; mode: DeliveryMode } | null>(null);
+  const canChoose = relay != null && boda != null;
+  const mode: DeliveryMode = canChoose && modeChoice?.key === quoteKey && modeChoice.mode === "rider" ? "rider" : "relay";
+  const relayed = relay != null && mode === "relay";
   // Station drops: the matatu leaves it at a petrol station near the customer.
   const [lastMile, setLastMile] = useState<LastMileChoiceValue>("door");
   const [meetStageId, setMeetStageId] = useState<string | null>(null);
@@ -88,7 +85,7 @@ export function ParcelModal({ onClose }: { onClose: () => void }) {
   const toDoor = !station || (stationChoice && choiceAtOrder && lastMile === "door");
   const relayFare = relay ? (toDoor ? relay.total : (relay.collectTotal as number)) : null;
   const relayLegs = relay ? relay.legs.filter((leg) => toDoor || leg.leg < 3) : [];
-  const fare = relay ? relayFare : liveEstimate;
+  const fare = relayed ? relayFare : boda ? boda.fee : null;
 
   // "Next: payment" is the bottom nav's right capsule (intermediate step).
   const navFare = quoteLoading ? null : fare ?? (estimatedTotal ? Number(estimatedTotal) : null);
@@ -138,10 +135,13 @@ export function ParcelModal({ onClose }: { onClose: () => void }) {
         destinationLat: df.lat,
         destinationLng: df.lng,
         paymentRail: "escrow",
-        ...(meeting
-          ? { relayLastMile: "meet" as const, relayMeetStageId: pickMeetStageId(meetStages, meetStageId) }
-          : { relayLastMile: stationChoice ? (lastMile === "meet" ? "door" : lastMile) : undefined }),
-        estimatedTotal: fare ?? (estimatedTotal ? roundFare(Number(estimatedTotal), pricing?.minimum) : undefined),
+        ...(relay ? { deliveryMode: relayed ? ("relay" as const) : ("rider" as const) } : {}),
+        ...(!relayed
+          ? {}
+          : meeting
+            ? { relayLastMile: "meet" as const, relayMeetStageId: pickMeetStageId(meetStages, meetStageId) }
+            : { relayLastMile: stationChoice ? (lastMile === "meet" ? "door" : lastMile) : undefined }),
+        estimatedTotal: fare ?? (estimatedTotal ? roundFare(Number(estimatedTotal), minimumFee) : undefined),
       });
       if (voiceNote) {
         api.uploadOrderVoiceNote(order.id, voiceNote).catch(() => {});
@@ -183,49 +183,78 @@ export function ParcelModal({ onClose }: { onClose: () => void }) {
             <p className="text-sm text-ink-500">Getting price…</p>
           </div>
         ) : relay ? (
-          <div className="space-y-2 rounded-xl border border-gold bg-gold/10 p-3">
-            <div className="flex items-center gap-2">
-              <Route className="h-4 w-4 shrink-0 text-gold" strokeWidth={2.25} aria-hidden />
-              <p className="flex-1 text-sm font-bold text-ink">Delivery</p>
-              <p className="text-sm font-bold text-ink">Total UGX {(relayFare ?? relay.total).toLocaleString("en-UG")}</p>
-            </div>
-            <p className="text-xs text-ink-500">Long trip: relayed by boda and matatu.</p>
-            {station && stationChoice ? (
-              <LastMileChoice
-                value={lastMile}
-                onChange={setLastMile}
-                stationName={station.name}
-                doorTotal={relay.total}
-                collectTotal={relay.collectTotal as number}
-                choiceAtOrder={choiceAtOrder}
-                meetStages={meetStages}
-                meetStageId={meetStageId}
-                onMeetStageChange={setMeetStageId}
-                disabled={busy}
-              />
-            ) : station ? (
-              <p className="text-xs text-ink-500">Collect at {station.name}, or send a rider when it arrives.</p>
+          <div className="space-y-2">
+            {canChoose && (
+              <div role="radiogroup" aria-label="How it travels" className="grid grid-cols-2 gap-2">
+                {([
+                  { value: "relay", label: "Relay by matatu", note: "Recommended", total: relayFare ?? relay.total },
+                  { value: "rider", label: "One boda all the way", note: "One rider, pickup to door", total: boda.fee },
+                ] as const).map((option) => {
+                  const selected = mode === option.value;
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      disabled={busy}
+                      onClick={() => quoteKey && setModeChoice({ key: quoteKey, mode: option.value })}
+                      className={`flex min-w-0 flex-col gap-0.5 rounded-xl border px-3 py-2.5 text-left disabled:opacity-60 ${
+                        selected ? "border-gold bg-gold/10" : "border-[var(--border-faint)]"
+                      }`}
+                    >
+                      <span className={`text-sm ${selected ? "font-bold text-ink" : "font-semibold text-ink-500"}`}>{option.label}</span>
+                      <span className="text-[11px] text-ink-500">{option.note}</span>
+                      <span className="mt-1 text-sm font-bold text-ink">UGX {option.total.toLocaleString("en-UG")}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            {relayed ? (
+              <div className="space-y-2 rounded-xl border border-gold bg-gold/10 p-3">
+                <div className="flex items-center gap-2">
+                  <Route className="h-4 w-4 shrink-0 text-gold" strokeWidth={2.25} aria-hidden />
+                  <p className="flex-1 text-sm font-bold text-ink">Delivery</p>
+                  <p className="text-sm font-bold text-ink">Total UGX {(relayFare ?? relay.total).toLocaleString("en-UG")}</p>
+                </div>
+                <p className="text-xs text-ink-500">Long trip: relayed by boda and matatu.</p>
+                {station && stationChoice ? (
+                  <LastMileChoice
+                    value={lastMile}
+                    onChange={setLastMile}
+                    stationName={station.name}
+                    doorTotal={relay.total}
+                    collectTotal={relay.collectTotal as number}
+                    choiceAtOrder={choiceAtOrder}
+                    meetStages={meetStages}
+                    meetStageId={meetStageId}
+                    onMeetStageChange={setMeetStageId}
+                    disabled={busy}
+                  />
+                ) : station ? (
+                  <p className="text-xs text-ink-500">Collect at {station.name}, or send a rider when it arrives.</p>
+                ) : null}
+                <ul className="space-y-1 border-t border-[var(--border-faint)] pt-2">
+                  {relayLegs.map((leg) => (
+                    <li key={leg.leg} className="flex justify-between gap-3 text-xs text-ink">
+                      <span className="min-w-0">
+                        <span className="font-semibold">{leg.kind === "matatu" ? "Matatu" : "Boda"}:</span> {leg.fromName} to{" "}
+                        {leg.leg === 3 ? "door" : leg.toName}
+                      </span>
+                      <span className="shrink-0 font-semibold">{leg.fee.toLocaleString("en-UG")}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : boda ? (
+              <BodaPrice boda={boda} />
             ) : null}
-            <ul className="space-y-1 border-t border-[var(--border-faint)] pt-2">
-              {relayLegs.map((leg) => (
-                <li key={leg.leg} className="flex justify-between gap-3 text-xs text-ink">
-                  <span className="min-w-0">
-                    <span className="font-semibold">{leg.kind === "matatu" ? "Matatu" : "Boda"}:</span> {leg.fromName} to{" "}
-                    {leg.leg === 3 ? "door" : leg.toName}
-                  </span>
-                  <span className="shrink-0 font-semibold">{leg.fee.toLocaleString("en-UG")}</span>
-                </li>
-              ))}
-            </ul>
           </div>
-        ) : liveEstimate != null ? (
-          <div className="flex items-center gap-2 rounded-xl border border-gold bg-gold/10 p-3">
-            <Route className="h-4 w-4 shrink-0 text-gold" strokeWidth={2.25} aria-hidden />
-            <p className="text-sm text-ink">
-              Delivery <span className="font-bold">UGX {liveEstimate.toLocaleString("en-UG")}</span> ·{" "}
-              {distanceKm!.toFixed(1)} km
-            </p>
-          </div>
+        ) : boda ? (
+          <BodaPrice boda={boda} />
+        ) : quoteKey ? (
+          <p className="text-sm text-ink-500">The delivery price is shown on the next step.</p>
         ) : (
           <input
             value={estimatedTotal}
@@ -242,5 +271,17 @@ export function ParcelModal({ onClose }: { onClose: () => void }) {
 
       </div>
     </Modal>
+  );
+}
+
+/** The server's price for one boda carrying the parcel all the way, along the road. */
+function BodaPrice({ boda }: { boda: BodaQuote }) {
+  return (
+    <div className="flex items-center gap-2 rounded-xl border border-gold bg-gold/10 p-3">
+      <Route className="h-4 w-4 shrink-0 text-gold" strokeWidth={2.25} aria-hidden />
+      <p className="text-sm text-ink">
+        Delivery <span className="font-bold">UGX {boda.fee.toLocaleString("en-UG")}</span> · {boda.distanceKm.toFixed(1)} km
+      </p>
+    </div>
   );
 }

@@ -1,4 +1,7 @@
 import { Hono, type Context } from "hono";
+import { roundFare } from "@peebee/shared";
+import { getDeliverySettings } from "../lib/settings.js";
+import { roadKm } from "../lib/road-distance.js";
 import { z } from "zod";
 import { logActivity } from "../admin/activity.js";
 import { requirePermission } from "../admin/permissions.js";
@@ -26,6 +29,8 @@ import {
   relayStationsReady,
   relayView,
   RelayError,
+  markMatesArrived,
+  shareMatatuPosition,
   RELAY_DROP_LIVE,
   RELAY_DROP_OFF,
   RELAY_DROP_SANDBOX,
@@ -67,12 +72,17 @@ relayRoutes.get("/relay/quote", async (c) => {
   const parsed = quoteSchema.safeParse(c.req.query());
   if (!parsed.success) return c.json({ error: "invalid_query" }, 400);
   const d = parsed.data;
+  // One boda all the way, along the road (what the parcel costs when it isn't relayed).
+  const bodaKm = await roadKm({ lat: d.pickupLat, lng: d.pickupLng }, { lat: d.destinationLat, lng: d.destinationLng });
+  const { deliveryRatePerKm, minimumDeliveryFee } = await getDeliverySettings();
   const plan = await planRelay(
     { lat: d.pickupLat, lng: d.pickupLng, name: d.pickupName },
     { lat: d.destinationLat, lng: d.destinationLng, name: d.destinationName },
+    { tripKm: bodaKm },
   );
   const { lastMileChoice } = await getRelaySettings();
   return c.json({
+    boda: { distanceKm: Math.round(bodaKm * 10) / 10, fee: roundFare(bodaKm * deliveryRatePerKm, minimumDeliveryFee) },
     relay: plan && {
       routeName: plan.routeName,
       total: plan.total,
@@ -149,6 +159,11 @@ relayRoutes.get("/relay/legs/open", requireRole("rider"), async (c) => {
   const user = c.get("user");
   const rider = (await db.execute({ sql: "SELECT stage_lat, stage_lng FROM riders WHERE user_id = ?", args: [user.sub] })).rows[0] as Row | undefined;
   const { lastMileRadiusKm } = await getRelaySettings();
+  // A multi-store bag is one pickup: list it once, under its first store's order.
+  const bagOnce = (await hasColumn("orders", "delivery_bundle_id"))
+    ? ` AND NOT (o.delivery_bundle_id IS NOT NULL AND o.delivery_bundle_id != o.id AND EXISTS (
+          SELECT 1 FROM order_relay_legs lead WHERE lead.order_id = o.delivery_bundle_id AND lead.leg = 3 AND lead.status = 'open'))`
+    : "";
   const res = await db.execute({
     sql: `SELECT l.id, l.order_id, l.from_name, l.from_lat, l.from_lng, l.to_name, l.distance_km, l.fee, l.created_at,
                  o.destination_area, o.destination_address, m.status AS matatu_status, ro.vehicle_plate
@@ -156,7 +171,7 @@ relayRoutes.get("/relay/legs/open", requireRole("rider"), async (c) => {
           JOIN orders o ON o.id = l.order_id
           LEFT JOIN order_relay_legs m ON m.order_id = l.order_id AND m.leg = 2
           LEFT JOIN relay_operators ro ON ro.user_id = m.provider_id
-          WHERE l.leg = 3 AND l.status = 'open' AND o.environment = ? AND o.stage = 'Deliver' AND o.rider_id IS NULL
+          WHERE l.leg = 3 AND l.status = 'open' AND o.environment = ? AND o.stage = 'Deliver' AND o.rider_id IS NULL${bagOnce}
           ORDER BY l.created_at LIMIT 50`,
     args: [await getPlatformEnvironment()],
   });
@@ -296,6 +311,7 @@ relayRoutes.post("/relay/operator/legs/:id/arrived", async (c) => {
   const leg = await operatorLeg(c);
   if (!leg) return c.json({ error: "not_found", message: "This parcel isn't on your matatu." }, 404);
   await db.execute({ sql: "UPDATE order_relay_legs SET status = 'arrived' WHERE id = ? AND status = 'in_transit'", args: [String(leg.id)] });
+  await markMatesArrived(String(leg.order_id), c.get("user").sub);
   await noticeMatatuArrived(String(leg.order_id));
   await db.execute({
     sql: "INSERT INTO order_events (id, order_id, stage, note, actor_id) VALUES (?, ?, 'Deliver', ?, ?)",
@@ -322,6 +338,7 @@ relayRoutes.post("/relay/operator/legs/:id/location", async (c) => {
       sql: "UPDATE orders SET rider_lat = ?, rider_lng = ?, rider_location_updated_at = datetime('now') WHERE id = ? AND rider_id IS NULL",
       args: [parsed.data.lat, parsed.data.lng, String(leg.order_id)],
     });
+    await shareMatatuPosition(String(leg.order_id), parsed.data.lat, parsed.data.lng);
     await noticeMatatuApproach(String(leg.order_id));
   }
   return c.json({ ok: true });

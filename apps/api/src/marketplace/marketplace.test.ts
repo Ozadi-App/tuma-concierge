@@ -245,7 +245,8 @@ test("marketplace checkout: a bag from several stores is one delivery, priced ex
     const { orders } = (await res.json()) as { orders: { id: string; estimated_total: number; delivery_fee: number; delivery_bundle_id: string }[] };
     assert.equal(orders.length, 2);
     assert.ok(orders.every((order) => order.delivery_bundle_id === orders[0].id), "both stores are one delivery");
-    assert.deepEqual(orders.map((order) => order.estimated_total - order.delivery_fee), [5000, 185000], "items are not reduced by the delivery fee");
+    // Pickups are visited in the order that makes the trip shortest, not the cart's order.
+    assert.deepEqual(orders.map((order) => order.estimated_total - order.delivery_fee).sort((x, y) => x - y), [5000, 185000], "items are not reduced by the delivery fee");
     assert.equal(orders.reduce((sum, order) => sum + order.estimated_total, 0), quote.total, "the orders charge exactly the quote");
 
     await client.execute("UPDATE orders SET matching_mode = 'first_to_claim', updated_at = datetime('now', '-1 hour')");

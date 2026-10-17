@@ -32,10 +32,13 @@ export function currentVisibilityRadiusKm(becameAvailableAt: string): number | n
   return tierIndex >= RADIUS_TIERS_KM.length ? null : RADIUS_TIERS_KM[tierIndex];
 }
 
-/** The point a rider's proximity is measured against: pickup for a parcel, destination otherwise. */
+/** The point a rider's proximity is measured against. */
 export function orderMatchPoint(order: Record<string, unknown>): { lat: number; lng: number } | null {
-  const lat = (order.type === "parcel" ? order.pickup_lat : order.destination_lat) as number | null;
-  const lng = (order.type === "parcel" ? order.pickup_lng : order.destination_lng) as number | null;
+  // Riders are found near where the job starts: a parcel's pickup, or the store or restaurant
+  // a shopping order is collected from; a free-form shopping list (no pickup) near the customer.
+  const fromPickup = order.type === "parcel" || (order.pickup_lat != null && order.pickup_lng != null);
+  const lat = (fromPickup ? order.pickup_lat : order.destination_lat) as number | null;
+  const lng = (fromPickup ? order.pickup_lng : order.destination_lng) as number | null;
   return lat != null && lng != null ? { lat, lng } : null;
 }
 

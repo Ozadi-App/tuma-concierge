@@ -15,16 +15,17 @@ import {
   ShoppingBag,
   Sparkles,
   Trash2,
-  Truck,
   Wallet,
   X,
 } from "lucide-react";
 import { useCart, CartItem } from "../lib/cart";
 import { ProductImage } from "./ProductImage";
 import { api, errorMessage } from "../lib/api";
-import { getCachedCustomerCoordinates } from "../lib/location";
-import { useBagQuote } from "../lib/bag-quote";
-import { BagRelayDetails, bagRelayLastMileInput } from "./BagRelayDetails";
+import { useBagQuote, type BagDeliveryMode } from "../lib/bag-quote";
+import { bagDestinationFields, useBagDeliveryPlace } from "../lib/bag-place";
+import { bagRelayLastMileInput } from "./BagRelayDetails";
+import { BagDeliveryBreakdown, BagDestinationCard } from "./BagDeliveryBreakdown";
+import { PlaceFlow } from "./PlaceFlow";
 import type { LastMileChoiceValue } from "./LastMileChoice";
 
 export interface CartDrawerProps {
@@ -53,22 +54,32 @@ export function CartDrawer({
 
   const [portalReady, setPortalReady] = useState(false);
   const [viewMode, setViewMode] = useState<"items" | "checkout">("items");
-  const [deliveryAddress, setDeliveryAddress] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
-  // The delivery fee is the server's: one rider trip through every store. Checkout waits for it.
+  // Where the bag goes: chosen on the map and remembered on this device. Never a default place.
+  const delivery = useBagDeliveryPlace();
+  const [choosingPlace, setChoosingPlace] = useState(false);
+  // The delivery fee is the server's, for this place and the chosen way. Checkout waits for it.
+  const [deliveryMode, setDeliveryMode] = useState<BagDeliveryMode | undefined>(undefined);
   const [relayLastMile, setRelayLastMile] = useState<LastMileChoiceValue>("door");
   const [relayMeetStageId, setRelayMeetStageId] = useState<string | null>(null);
-  const bagQuote = useBagQuote(selectedItems, isOpen, relayLastMile, relayMeetStageId ?? undefined);
+  const destination =
+    delivery.place?.lat != null && delivery.place.lng != null ? { lat: delivery.place.lat, lng: delivery.place.lng } : null;
+  const bagQuote = useBagQuote(selectedItems, {
+    enabled: isOpen && delivery.ready,
+    destination,
+    deliveryMode,
+    relayLastMile,
+    relayMeetStageId: relayMeetStageId ?? undefined,
+  });
   const deliveryFee = bagQuote.quote?.deliveryFee ?? null;
-  const total = deliveryFee == null ? null : subtotal + deliveryFee;
+  const total = bagQuote.quote?.total ?? null;
   const totalLabel = total == null ? undefined : `UGX ${total.toLocaleString()}`;
-  const priceReady = total != null;
+  const priceReady = total != null && !!destination;
+  const storeCount = new Set(selectedItems.map((it) => it.storeId)).size;
 
   useEffect(() => {
     setPortalReady(true);
-    const cached = getCachedCustomerCoordinates();
-    setDeliveryAddress(cached.label ? `${cached.label}, Kampala` : "Acacia Mall / Kololo, Kampala");
   }, []);
 
   // Lock body scroll and listen for Escape key when open
@@ -76,6 +87,7 @@ export function CartDrawer({
     if (!isOpen) {
       setViewMode("items");
       setCheckoutError(null);
+      setChoosingPlace(false);
       return;
     }
 
@@ -83,7 +95,8 @@ export function CartDrawer({
     document.body.style.overflow = "hidden";
 
     function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
+      // The place picker sits on top of the bag; Escape there must not close the bag.
+      if (event.key === "Escape" && !choosingPlace) {
         onClose();
       }
     }
@@ -93,14 +106,13 @@ export function CartDrawer({
       document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, choosingPlace]);
 
   const handleCheckoutSubmit = async () => {
-    if (selectedItems.length === 0 || !priceReady) return;
+    const quote = bagQuote.quote;
+    if (selectedItems.length === 0 || !priceReady || !quote || !delivery.place) return;
     setIsSubmitting(true);
     setCheckoutError(null);
-
-    const cached = getCachedCustomerCoordinates();
 
     try {
       const res = await api.checkoutMarketplace({
@@ -115,11 +127,10 @@ export function CartDrawer({
           imageUrl: it.imageUrl,
         })),
         paymentRail: "escrow",
-        destinationAddress: deliveryAddress.trim() || cached.label || "Kampala",
-        destinationArea: "Kampala",
-        destinationLat: cached.lat || 0.3353,
-        destinationLng: cached.lng || 32.5857,
-        ...bagRelayLastMileInput(bagQuote.relay, relayLastMile, relayMeetStageId),
+        ...bagDestinationFields(delivery.place),
+        // The way this quote priced, so the order is charged what was shown.
+        deliveryMode: quote.deliveryMode,
+        ...(quote.deliveryMode === "relay" ? bagRelayLastMileInput(quote.relay, relayLastMile, relayMeetStageId) : {}),
       });
 
       const firstOrder = res.order ?? res.orders?.[0];
@@ -143,11 +154,14 @@ export function CartDrawer({
   // While open, the drawer drives the bottom nav (which floats above it):
   // Home → Back (checkout view → items, items → close), and the right capsule
   // is this drawer's next step instead of an in-sheet button.
-  useRegisterNavBack(isOpen && navPresent, () => (viewMode === "checkout" ? setViewMode("items") : onClose()), 2);
+  // While the place picker is open it drives the nav instead.
+  useRegisterNavBack(isOpen && navPresent && !choosingPlace, () => (viewMode === "checkout" ? setViewMode("items") : onClose()), 2);
   useRegisterNavPrimaryAction(
-    isOpen && navPresent && items.length > 0
+    isOpen && navPresent && items.length > 0 && !choosingPlace
       ? viewMode === "items"
         ? { tone: "step", label: "Next: delivery", detail: totalLabel, onClick: () => setViewMode("checkout") }
+        : bagQuote.needsDestination
+        ? { tone: "step", label: "Choose location", onClick: () => setChoosingPlace(true) }
         : {
             tone: "step",
             label: isSubmitting ? "Creating order…" : priceReady ? "Next: payment" : "Please wait…",
@@ -169,9 +183,10 @@ export function CartDrawer({
   if (!portalReady || typeof document === "undefined") return null;
 
   return createPortal(
+    <>
     <div
-      className={`menu-item-cart-layer marketplace-cart-layer${isOpen ? " is-open" : ""}`}
-      aria-hidden={!isOpen}
+      className={`menu-item-cart-layer marketplace-cart-layer${isOpen ? " is-open" : ""}${choosingPlace ? " invisible" : ""}`}
+      aria-hidden={!isOpen || choosingPlace}
     >
       {/* Backdrop */}
       <button
@@ -347,23 +362,16 @@ export function CartDrawer({
 
               {/* Delivery Destination */}
               <div className="space-y-2">
-                <label className="text-xs font-bold uppercase tracking-wider text-ink-500 flex items-center gap-1.5">
+                <p className="text-xs font-bold uppercase tracking-wider text-ink-500 flex items-center gap-1.5">
                   <MapPin className="h-3.5 w-3.5 text-gold" />
                   <span>Delivery Destination</span>
-                </label>
-                <div className="field-box rounded-2xl border border-[var(--border-faint)] p-3 bg-[rgb(var(--surface-muted))] focus-within:border-gold transition">
-                  <input
-                    type="text"
-                    value={deliveryAddress}
-                    onChange={(e) => setDeliveryAddress(e.target.value)}
-                    placeholder="Enter delivery address in Kampala"
-                    className="w-full text-xs font-semibold text-ink bg-transparent outline-none"
-                  />
-                  <p className="mt-1 text-[10px] text-ink-500 flex items-center gap-1">
-                    <Truck className="h-3 w-3 text-emerald-600 shrink-0" />
-                    <span>Dispatched instantly to nearby online boda riders</span>
-                  </p>
-                </div>
+                </p>
+                <BagDestinationCard
+                  place={delivery.place}
+                  ready={delivery.ready}
+                  onChange={() => setChoosingPlace(true)}
+                  disabled={isSubmitting}
+                />
               </div>
 
               {/* Order breakdown */}
@@ -372,34 +380,17 @@ export function CartDrawer({
                   <span>Items Subtotal</span>
                   <span>UGX {subtotal.toLocaleString()}</span>
                 </div>
-                <div className="flex justify-between text-ink-500">
-                  <span>Delivery</span>
-                  <span>{bagQuote.failed ? (
-                    <button type="button" onClick={bagQuote.retry} className="font-bold text-gold">Retry</button>
-                  ) : deliveryFee == null ? "Calculating…" : `UGX ${deliveryFee.toLocaleString()}`}</span>
-                </div>
-                {bagQuote.relay && (
-                  <BagRelayDetails
-                    relay={bagQuote.relay}
-                    lastMile={relayLastMile}
-                    onLastMileChange={setRelayLastMile}
-                    meetStageId={relayMeetStageId}
-                    onMeetStageChange={setRelayMeetStageId}
-                    disabled={isSubmitting}
-                    className="pl-3"
-                  />
-                )}
-                {bagQuote.quote && bagQuote.quote.stores.length > 1 && (
-                  <div className="space-y-1 pl-3 text-[11px] text-ink-500">
-                    <p>One rider collects from every store:</p>
-                    {bagQuote.quote.stores.map((store) => (
-                      <div key={store.storeId} className="flex justify-between">
-                        <span>{store.storeName}</span>
-                        <span>UGX {store.deliveryFee.toLocaleString()}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                <BagDeliveryBreakdown
+                  bag={bagQuote}
+                  storeCount={storeCount}
+                  onModeChange={setDeliveryMode}
+                  lastMile={relayLastMile}
+                  onLastMileChange={setRelayLastMile}
+                  meetStageId={relayMeetStageId}
+                  onMeetStageChange={setRelayMeetStageId}
+                  onChooseLocation={() => setChoosingPlace(true)}
+                  disabled={isSubmitting}
+                />
                 <div className="border-t border-[var(--border-faint)] pt-2 flex justify-between font-bold text-sm text-ink">
                   <span>Total Due</span>
                   <span className="text-gold font-mono">{total == null ? "—" : `UGX ${total.toLocaleString()}`}</span>
@@ -425,7 +416,9 @@ export function CartDrawer({
                 <div className="flex items-center justify-between text-xs text-ink-500">
                   <span>Delivery</span>
                   <span className="font-bold text-ink">
-                    {bagQuote.failed ? (
+                    {bagQuote.needsDestination ? (
+                    <button type="button" onClick={() => setViewMode("checkout")} className="font-bold text-gold">Choose location</button>
+                  ) : bagQuote.failed ? (
                     <button type="button" onClick={bagQuote.retry} className="font-bold text-gold">Retry</button>
                   ) : deliveryFee == null ? "Calculating…" : `UGX ${deliveryFee.toLocaleString()}`}
                   </span>
@@ -464,11 +457,11 @@ export function CartDrawer({
                 {!navPresent && (
                 <button
                   type="button"
-                  disabled={isSubmitting || selectedItems.length === 0 || !priceReady}
-                  onClick={handleCheckoutSubmit}
+                  disabled={isSubmitting || selectedItems.length === 0 || (!priceReady && !bagQuote.needsDestination)}
+                  onClick={bagQuote.needsDestination ? () => setChoosingPlace(true) : handleCheckoutSubmit}
                   className="w-full py-4 px-5 rounded-full bg-gold text-ink-gold font-black text-sm shadow-lg hover:brightness-105 active:scale-98 transition flex items-center justify-between disabled:opacity-50"
                 >
-                  <span>{isSubmitting ? "Creating Order…" : "Next: Payment"}</span>
+                  <span>{isSubmitting ? "Creating Order…" : bagQuote.needsDestination ? "Choose delivery location" : "Next: Payment"}</span>
                   <span className="font-mono font-extrabold">
                     {total == null ? "" : `UGX ${total.toLocaleString()}`}
                   </span>
@@ -487,7 +480,19 @@ export function CartDrawer({
           </div>
         )}
       </aside>
-    </div>,
+    </div>
+    {isOpen && choosingPlace && (
+      <PlaceFlow
+        concept="shopping"
+        initial={{ destination: delivery.place }}
+        onClose={() => setChoosingPlace(false)}
+        onDone={(r) => {
+          delivery.choose(r.destination);
+          setChoosingPlace(false);
+        }}
+      />
+    )}
+    </>,
     document.body
   );
 }

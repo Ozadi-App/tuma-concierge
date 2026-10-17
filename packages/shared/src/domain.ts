@@ -407,6 +407,10 @@ export type DeliverySettings = {
   serviceRangeKm: number;
   /** Furthest a rider can see or take an order, in km (0 = no limit). A rider can have their own. */
   riderVisibilityRangeKm?: number;
+  /** Delivery distances follow the road: straight line x this, unless a routing server answers. */
+  roadDistanceFactor?: number;
+  /** Admin only: an OSRM-compatible routing server for true road distances ("" = use the road factor). */
+  routingServerUrl?: string;
   /** Flat delivery fee (UGX) added on top of a shopping order's item costs
    * — see apps/api/src/lib/settings.ts for why shopping can't be priced by
    * distance the way a parcel ride is. */

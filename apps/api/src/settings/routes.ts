@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { getRoadSettings } from "../lib/road-distance.js";
 import { z } from "zod";
 import { logActivity } from "../admin/activity.js";
 import { getWorkSettings, setWorkSettings, WORK_MATCHING_MODES, WORK_PRICING_MODES, WORK_PROVIDER_KINDS, WORK_SERVICE_TYPES } from "../work/settings.js";
@@ -148,6 +149,8 @@ async function fullSettings() {
     pharmacy: await getPharmacySettings(),
     marketplace: await getMarketplaceSettings(),
     ...delivery,
+    // How delivery distances follow the road (the server address is removed for non-staff in GET /settings).
+    ...(await getRoadSettings().then((road) => ({ roadDistanceFactor: road.factor, routingServerUrl: road.routingServerUrl ?? "" }))),
     services,
     ...matching,
     paymentsActiveProviders: activeProviders,
@@ -208,7 +211,9 @@ async function fullSettings() {
  * signed out either — orderRoutes registers requireAuth as "*" on the shared
  * /v1 router, which covers everything mounted after it, this included. */
 settingsRoutes.get("/settings", async (c) => {
-  return c.json({ settings: await fullSettings() });
+  const { routingServerUrl, ...settings } = await fullSettings();
+  // The routing server's address only to staff: it may carry a key.
+  return c.json({ settings: c.get("user")?.role === "admin" ? { ...settings, routingServerUrl } : settings });
 });
 
 const practiceExperienceSchema = z.enum(["customer", "rider", "restaurant", "merchant"]);
@@ -384,6 +389,8 @@ const updateSchema = z.object({
   minimumDeliveryFee: z.number().int().nonnegative().max(1_000_000).optional(),
   serviceRangeKm: z.number().positive().max(1000).optional(),
   riderVisibilityRangeKm: z.number().min(0).max(1000).optional(),
+  roadDistanceFactor: z.number().min(1).max(3).optional(),
+  routingServerUrl: z.union([z.literal(""), z.string().url().max(300).regex(/^https?:\/\//)]).optional(),
   shoppingDeliveryFee: z.number().int().nonnegative().max(1_000_000).optional(),
   shoppingUnits: shoppingUnitSettingsSchema.optional(),
   rideTracking: rideTrackingSchema.optional(),
@@ -625,6 +632,12 @@ settingsRoutes.put(
     }
     if (parsed.data.riderVisibilityRangeKm != null) {
       await setSetting("rider_visibility_range_km", String(parsed.data.riderVisibilityRangeKm));
+    }
+    if (parsed.data.roadDistanceFactor != null) {
+      await setSetting("road_distance_factor", String(parsed.data.roadDistanceFactor));
+    }
+    if (parsed.data.routingServerUrl != null) {
+      await setSetting("routing_server_url", parsed.data.routingServerUrl.trim());
     }
     if (parsed.data.shoppingDeliveryFee != null) {
       await setSetting("shopping_delivery_fee", String(parsed.data.shoppingDeliveryFee));

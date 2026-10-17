@@ -15,6 +15,7 @@ import { z } from "zod";
 import { requireAuth, requireRole } from "../auth/middleware.js";
 import { db, executeBatch } from "../db/client.js";
 import { haversineKm } from "../lib/geo.js";
+import { roadKm, roadLegsKm } from "../lib/road-distance.js";
 import { newId } from "../lib/ids.js";
 import { getDeliverySettings, getMatchingSettings, getMaxOrderValue, getPlatformEnvironment, isServiceEnabled } from "../lib/settings.js";
 import { servicePaused } from "../lib/service-gate.js";
@@ -111,9 +112,10 @@ customerRestaurantRoutes.get("/restaurants/:id/delivery-quote", requireAuth, asy
     if (!first || restaurantLat == null || restaurantLng == null || !hasDestination) {
       return c.json({ error: "route_unavailable", message: "Both pickups and your delivery location need map coordinates to work out the delivery fee." }, 409);
     }
-    const distanceKm = haversineKm(first.lat, first.lng, restaurantLat, restaurantLng) + haversineKm(restaurantLat, restaurantLng, lat, lng);
+    // Along the road: the first pickup, this one, then the customer.
+    const distanceKm = (await roadLegsKm([first, { lat: restaurantLat, lng: restaurantLng }, { lat, lng }])).reduce((a, b) => a + b, 0);
     const routeFee = roundFare(distanceKm * deliveryRatePerKm, minimumDeliveryFee);
-    const firstFee = first.fee ?? roundFare(haversineKm(first.lat, first.lng, lat, lng) * deliveryRatePerKm, minimumDeliveryFee);
+    const firstFee = first.fee ?? roundFare((await roadKm(first, { lat, lng })) * deliveryRatePerKm, minimumDeliveryFee);
     const addedStop = Math.max(0, routeFee - firstFee);
     return c.json({
       deliveryFee: firstFee + addedStop,
@@ -122,7 +124,7 @@ customerRestaurantRoutes.get("/restaurants/:id/delivery-quote", requireAuth, asy
     });
   }
   if (restaurantLat != null && restaurantLng != null && hasDestination) {
-    const distanceKm = haversineKm(restaurantLat, restaurantLng, lat, lng);
+    const distanceKm = await roadKm({ lat: restaurantLat, lng: restaurantLng }, { lat, lng });
     return c.json({ deliveryFee: roundFare(distanceKm * deliveryRatePerKm, minimumDeliveryFee), distanceKm: Math.round(distanceKm * 10) / 10 });
   }
   return c.json({ deliveryFee: roundFare(shoppingDeliveryFee), distanceKm: null });
@@ -320,16 +322,18 @@ customerRestaurantRoutes.post("/restaurants/:id/order", requireAuth, requireRole
   let deliveryFee: number;
   if (restaurantLat != null && restaurantLng != null && d.destinationLat != null && d.destinationLng != null) {
     if (bundleWith) {
-      const firstPickupKm = haversineKm(Number(bundleWith.pickup_lat), Number(bundleWith.pickup_lng), restaurantLat, restaurantLng);
-      const finalLegKm = haversineKm(restaurantLat, restaurantLng, d.destinationLat, d.destinationLng);
-      distanceKm = firstPickupKm + finalLegKm;
+      distanceKm = (await roadLegsKm([
+        { lat: Number(bundleWith.pickup_lat), lng: Number(bundleWith.pickup_lng) },
+        { lat: restaurantLat, lng: restaurantLng },
+        { lat: d.destinationLat, lng: d.destinationLng },
+      ])).reduce((a, b) => a + b, 0);
       const routeFee = roundFare(distanceKm * deliveryRatePerKm, minimumDeliveryFee);
       bundleExtraFee = Math.max(0, routeFee - Number(bundleWith.delivery_fee ?? 0));
       deliveryFee = bundleExtraFee;
       // Keep the existing unpaid order as the deterministic bundle lead.
       deliveryBundleId = String(bundleWith.id);
     } else {
-      distanceKm = haversineKm(restaurantLat, restaurantLng, d.destinationLat, d.destinationLng);
+      distanceKm = await roadKm({ lat: restaurantLat, lng: restaurantLng }, { lat: d.destinationLat, lng: d.destinationLng });
       deliveryFee = roundFare(distanceKm * deliveryRatePerKm, minimumDeliveryFee);
     }
   } else {
