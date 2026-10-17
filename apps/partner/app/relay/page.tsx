@@ -2,13 +2,14 @@
 
 import { Select } from "@peebee/shared/select";
 import { ApiError, type RelayLegStatus, type RelayOperator, type RelayOperatorParcels, type RelayRoute, type RelayTrack } from "@peebee/shared";
-import { ArrowLeft, ArrowRight, Bus, ChevronDown, ChevronRight, Clock, MapPin, Package, Phone, QrCode, RotateCcw } from "lucide-react";
+import { ArrowLeft, ArrowRight, Bus, ChevronDown, ChevronRight, Clock, MapPin, Package, Phone, PhoneCall, QrCode, RotateCcw } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { QrCodeImage } from "../../components/QrCodeImage";
 import { QrScanner } from "../../components/QrScanner";
 import { RelayTimeline } from "../../components/RelayTimeline";
 import { api, errorMessage } from "../../lib/api";
+import { useCalls } from "../../lib/calls-context";
 
 const ugx = (n: number) => `UGX ${Number(n).toLocaleString("en-UG")}`;
 const REFRESH_MS = 15_000;
@@ -408,6 +409,7 @@ function MeetCustomer({ leg, onChange, onMissed }: { leg: RelayOperatorParcels["
   const [confirmMissed, setConfirmMissed] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const busyRef = useRef(false);
+  const { startCall } = useCalls();
 
   const handover = useCallback(
     async (raw: string) => {
@@ -472,15 +474,29 @@ function MeetCustomer({ leg, onChange, onMissed }: { leg: RelayOperatorParcels["
         <p className="flex items-center gap-2 font-bold text-ink">
           <MapPin className="h-4 w-4 shrink-0 text-gold" /> Customer meets you at {leg.meet_stage_name}
         </p>
-        <p className="flex items-center justify-between gap-3 text-sm text-ink-500">
-          <span className="truncate">{leg.customer_name ?? "Customer"}</span>
+        <p className="truncate text-sm text-ink-500">{leg.customer_name ?? "Customer"}</p>
+      </div>
+      {(leg.customer_phone || leg.customer_id) && (
+        <div className="flex flex-wrap gap-2">
           {leg.customer_phone && (
-            <a href={`tel:${leg.customer_phone}`} className="flex shrink-0 items-center gap-1.5 font-bold text-gold">
-              <Phone className="h-4 w-4" /> Call
+            <a
+              href={`tel:${leg.customer_phone}`}
+              className="flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-xl bg-gold px-3 text-sm font-bold text-ink-gold"
+            >
+              <Phone className="h-4 w-4 shrink-0" /> Call {leg.customer_phone}
             </a>
           )}
-        </p>
-      </div>
+          {leg.customer_id && (
+            <button
+              type="button"
+              onClick={() => startCall({ calleeId: leg.customer_id!, orderId: leg.order_id })}
+              className="flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-gold px-3 text-sm font-bold text-gold"
+            >
+              <PhoneCall className="h-4 w-4 shrink-0" /> Call in app
+            </button>
+          )}
+        </div>
+      )}
       <form
         onSubmit={(e) => {
           e.preventDefault();
