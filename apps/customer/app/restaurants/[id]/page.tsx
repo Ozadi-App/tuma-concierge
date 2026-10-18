@@ -933,6 +933,20 @@ function RestaurantCartSwitchDialog({ cartCount, combine, onCombine, onKeep, onD
   );
 }
 
+/**
+ * The food checkout opens only from a tap on "View cart" (this page or a dish page), never from a
+ * `?checkout=1` URL that Back, Forward or a reload brings up again. Otherwise the phone's Back during
+ * another checkout (the shopping bag's) landed here and pulled this unpaid food cart up for payment.
+ * Set by the tap, taken once by the page that opens; only good for a few seconds.
+ */
+let foodCheckoutTap: { restaurantId: string; at: number } | null = null;
+const FOOD_CHECKOUT_TAP_MS = 5000;
+function takeFoodCheckoutTap(restaurantId: string): boolean {
+  const tap = foodCheckoutTap;
+  foodCheckoutTap = null;
+  return !!tap && tap.restaurantId === restaurantId && Date.now() - tap.at < FOOD_CHECKOUT_TAP_MS;
+}
+
 export default function RestaurantPage() {
   const t = useTranslate();
   const { id, itemId } = useParams<{ id: string; itemId?:string }>();
@@ -989,32 +1003,49 @@ export default function RestaurantPage() {
     return()=>{live=false;};
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[combineOtherId,cartStoragePrefix,expiryHours]);
-  function updateCart(next:CartLine[]){setCart(next);writeFoodCart(cartKey,next);}
-  const [step, setStep] = useState<"menu" | "checkout">(checkoutRequested ? "checkout" : "menu");
+  function updateCart(next:CartLine[]){setCart(next);writeFoodCart(cartKey,next,undefined,restaurant?.name);}
+  // Never opened from the URL alone (see foodCheckoutTap): an unpaid cart stays a kept, inactive cart.
+  const [step, setStep] = useState<"menu" | "checkout">("menu");
+  const checkoutOpenedHere = useRef(false);
 
   const [delivery, setDelivery] = useState<Place | null>(null);
-  const [choosing, setChoosing] = useState(checkoutRequested);
+  const [choosing, setChoosing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [bundleCandidates, setBundleCandidates] = useState<Array<{id:string;restaurant_name:string|null;pickup_address:string|null;pickup_lat:number;pickup_lng:number;destination_lat:number;destination_lng:number;delivery_fee:number|null;estimated_total:number|null}>>([]);
   const [selectedBundleOrderId, setSelectedBundleOrderId] = useState<string | null>(null);
 
   useEffect(() => {
     if (checkoutRequested) {
-      setStep("checkout");
-      setChoosing(true);
-    } else {
-      setStep("menu");
-      setChoosing(false);
+      if (checkoutOpenedHere.current) {
+        foodCheckoutTap = null;
+        return;
+      }
+      // Tapped on a dish page: this page opens the checkout it asked for.
+      if (takeFoodCheckoutTap(id)) {
+        checkoutOpenedHere.current = true;
+        setStep("checkout");
+        setChoosing(true);
+        return;
+      }
+      // Brought back by Back/Forward or a reload: show the menu with the cart kept as it was.
+      router.replace(`/restaurants/${id}`, { scroll: false });
     }
-  }, [checkoutRequested]);
+    checkoutOpenedHere.current = false;
+    setStep("menu");
+    setChoosing(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [checkoutRequested, id]);
 
   function openCheckout() {
+    checkoutOpenedHere.current = true;
+    foodCheckoutTap = { restaurantId: id, at: Date.now() };
     setStep("checkout");
     setChoosing(true);
     router.push(`/restaurants/${id}?checkout=1`, { scroll: false });
   }
 
   function backToMenu() {
+    checkoutOpenedHere.current = false;
     setStep("menu");
     setChoosing(false);
     router.replace(`/restaurants/${id}`, { scroll: false });
@@ -1106,8 +1137,12 @@ export default function RestaurantPage() {
 
   // An earlier cart set aside from another restaurant's page may not know this name yet.
   useEffect(() => {
-    if (restaurant) nameFoodEarlierCarts(cartOwner, restaurant.id, restaurant.name);
-  }, [cartOwner, restaurant]);
+    if (!restaurant) return;
+    nameFoodEarlierCarts(cartOwner, restaurant.id, restaurant.name);
+    // The cart carries its restaurant's name, so the header's cart list can show it.
+    const saved = readFoodCart(cartKey, isCartLine);
+    if (saved.lines.length && saved.restaurantName !== restaurant.name) writeFoodCart(cartKey, saved.lines, saved.updatedAt, restaurant.name);
+  }, [cartOwner, cartKey, restaurant]);
   const earlierHereCount = earlierHere ? earlierHere.lines.reduce((n, l) => n + l.quantity, 0) : 0;
   function restoreEarlierHere() {
     if (!earlierHere) return;
@@ -1131,7 +1166,7 @@ export default function RestaurantPage() {
   const [feeQuoteError, setFeeQuoteError] = useState<string | null>(null);
   const [feeRetry, setFeeRetry] = useState(0);
   useEffect(() => {
-    if (!feeKey || !(checkoutRequested || step === "checkout") || cart.length === 0) return;
+    if (!feeKey || step !== "checkout" || cart.length === 0) return;
     if (combineOtherId && !combineOther) return;
     let live = true;
     setFeeQuoteError(null);
@@ -1140,7 +1175,7 @@ export default function RestaurantPage() {
       .catch((err) => { if (live) setFeeQuoteError(errorMessage(err)); });
     return () => { live = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [feeKey, combineOtherId, combineOther?.id, checkoutRequested, step, feeRetry, cart.length]);
+  }, [feeKey, combineOtherId, combineOther?.id, step, feeRetry, cart.length]);
   const confirmedFee = feeQuote && feeQuote.key === feeKey ? feeQuote.fee : null;
   const confirmedShared = feeQuote && feeQuote.key === feeKey ? feeQuote.shared : null;
 
@@ -1217,7 +1252,7 @@ export default function RestaurantPage() {
   // mixes with the shopping cart): on the menu, a "View cart" button that
   // opens checkout (what the old floating bar did); on the checkout step, the
   // gold "Checkout" button wired to checkout() with the same guards.
-  const onCheckoutStep = checkoutRequested || step === "checkout";
+  const onCheckoutStep = step === "checkout";
   const orderingUnavailable = !!restaurant && !!restaurant.is_demo && !restaurant.demo_checkout_enabled;
   // The whole delivery for everything paid together: for a shared delivery, both orders' parts.
   const estimatedFee = confirmedFee;
@@ -1245,7 +1280,7 @@ export default function RestaurantPage() {
       ? [combineOther?.name ?? selectedBundle?.restaurant_name ?? "Your earlier order", restaurant?.name ?? "This restaurant"]
       : [];
   // Checkout step: nav Back returns to the menu (the place picker has its own Back).
-  useRegisterNavBack(!!restaurant && (checkoutRequested || step === "checkout"), backToMenu);
+  useRegisterNavBack(!!restaurant && onCheckoutStep, backToMenu);
   useRegisterNavPrimaryAction(
     !restaurant || !menu || itemId || cart.length === 0
       ? null
@@ -1328,7 +1363,7 @@ export default function RestaurantPage() {
       </>
     );
   }
-  if (checkoutRequested || step === "checkout") {
+  if (onCheckoutStep) {
     return (
       <div className="space-y-6 px-4">
         <div className="flex items-center gap-3"><button aria-label="Back to menu" onClick={backToMenu} className="flex h-11 w-11 items-center justify-center rounded-full glass-panel"><ChevronLeft size={22}/></button><h1 className="text-2xl font-bold text-ink">Delivery and payment</h1></div>
