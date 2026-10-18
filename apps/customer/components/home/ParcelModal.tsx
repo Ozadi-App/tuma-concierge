@@ -13,6 +13,7 @@ import { placeFields } from "../../lib/places";
 import { RouteSummary } from "./RouteSummary";
 import { LastMileChoice, pickMeetStageId, type LastMileChoiceValue } from "../LastMileChoice";
 import { OrderVoiceNoteRecorder } from "./OrderVoiceNoteRecorder";
+import { deliveryModeName, deliveryModeSubtitle } from "../../lib/delivery-modes";
 
 type BodaQuote = { distanceKm: number; fee: number };
 type DeliveryMode = "relay" | "rider";
@@ -44,7 +45,7 @@ export function ParcelModal({ onClose }: { onClose: () => void }) {
   // long parcels a boda -> matatu -> boda relay. Both totals are exactly what
   // the order will charge, so submit waits for the quote.
   const quoteKey = p?.lat != null && p.lng != null && d?.lat != null && d.lng != null ? `${p.lat},${p.lng}|${d.lat},${d.lng}` : null;
-  const [relayQuote, setRelayQuote] = useState<{ key: string; relay: RelayQuote | null; boda: BodaQuote | null; failed?: boolean } | null>(null);
+  const [relayQuote, setRelayQuote] = useState<{ key: string; relay: RelayQuote | null; boda: BodaQuote | null; directMaxHours?: number; failed?: boolean } | null>(null);
   const [quoteRetry, setQuoteRetry] = useState(0);
   useEffect(() => {
     if (!quoteKey || !p || !d) return;
@@ -58,7 +59,7 @@ export function ParcelModal({ onClose }: { onClose: () => void }) {
         pickupName: p.area ?? undefined,
         destinationName: d.area ?? undefined,
       })
-      .then((res) => !cancelled && setRelayQuote({ key: quoteKey, relay: res.relay, boda: res.boda ?? null }))
+      .then((res) => !cancelled && setRelayQuote({ key: quoteKey, relay: res.relay, boda: res.boda ?? null, directMaxHours: res.directMaxHours }))
       .catch(() => !cancelled && setRelayQuote({ key: quoteKey, relay: null, boda: null, failed: true }));
     return () => {
       cancelled = true;
@@ -187,8 +188,8 @@ export function ParcelModal({ onClose }: { onClose: () => void }) {
             {canChoose && (
               <div role="radiogroup" aria-label="How it travels" className="grid grid-cols-2 gap-2">
                 {([
-                  { value: "relay", label: "Relay by matatu", note: "Recommended", total: relayFare ?? relay.total },
-                  { value: "rider", label: "One boda all the way", note: "One rider, pickup to door", total: boda.fee },
+                  { value: "relay", label: deliveryModeName("relay"), note: deliveryModeSubtitle("relay"), total: relayFare ?? relay.total },
+                  { value: "rider", label: deliveryModeName("rider"), note: deliveryModeSubtitle("rider", relayQuote?.directMaxHours), total: boda.fee },
                 ] as const).map((option) => {
                   const selected = mode === option.value;
                   return (
@@ -215,7 +216,7 @@ export function ParcelModal({ onClose }: { onClose: () => void }) {
               <div className="space-y-2 rounded-xl border border-gold bg-gold/10 p-3">
                 <div className="flex items-center gap-2">
                   <Route className="h-4 w-4 shrink-0 text-gold" strokeWidth={2.25} aria-hidden />
-                  <p className="flex-1 text-sm font-bold text-ink">Delivery</p>
+                  <p className="flex-1 text-sm font-bold text-ink">Delivery · {deliveryModeName("relay")}</p>
                   <p className="text-sm font-bold text-ink">Total UGX {(relayFare ?? relay.total).toLocaleString("en-UG")}</p>
                 </div>
                 <p className="text-xs text-ink-500">Long trip: relayed by boda and matatu.</p>
@@ -248,7 +249,7 @@ export function ParcelModal({ onClose }: { onClose: () => void }) {
                 </ul>
               </div>
             ) : boda ? (
-              <BodaPrice boda={boda} />
+              <BodaPrice boda={boda} label={`Delivery · ${deliveryModeName("rider")}`} />
             ) : null}
           </div>
         ) : boda ? (
@@ -275,12 +276,12 @@ export function ParcelModal({ onClose }: { onClose: () => void }) {
 }
 
 /** The server's price for one boda carrying the parcel all the way, along the road. */
-function BodaPrice({ boda }: { boda: BodaQuote }) {
+function BodaPrice({ boda, label = "Delivery" }: { boda: BodaQuote; label?: string }) {
   return (
     <div className="flex items-center gap-2 rounded-xl border border-gold bg-gold/10 p-3">
       <Route className="h-4 w-4 shrink-0 text-gold" strokeWidth={2.25} aria-hidden />
       <p className="text-sm text-ink">
-        Delivery <span className="font-bold">UGX {boda.fee.toLocaleString("en-UG")}</span> · {boda.distanceKm.toFixed(1)} km
+        {label} <span className="font-bold">UGX {boda.fee.toLocaleString("en-UG")}</span> · {boda.distanceKm.toFixed(1)} km
       </p>
     </div>
   );

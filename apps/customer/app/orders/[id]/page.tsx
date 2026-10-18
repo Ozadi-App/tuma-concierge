@@ -478,7 +478,9 @@ export default function OrderDetailPage() {
 
   // While an order still needs paying, its next step is the bottom nav's right
   // capsule (white in light, grey in dark); the gold Pay is on the pay page.
-  const navAwaitingPayment = !!detail && ["Create", "Match", "Fund"].includes(detail.order.stage);
+  // A relay paid before its rider is already paid: it only waits for the rider now.
+  const navPaid = !!detail?.payments.some((p) => p.type === "collection" && p.status === "successful") && detail?.order.stage !== "Fund";
+  const navAwaitingPayment = !!detail && ["Create", "Match", "Fund"].includes(detail.order.stage) && !navPaid;
   const navPendingPayment = !!detail?.payments.find((p) => p.status === "pending");
   useRegisterNavPrimaryAction(navAwaitingPayment ? {
     tone: "step",

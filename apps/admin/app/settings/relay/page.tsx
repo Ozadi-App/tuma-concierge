@@ -120,6 +120,8 @@ function SettingsTab() {
   const [noticeMin, setNoticeMin] = useState("");
   const [sandboxDemo, setSandboxDemo] = useState(true);
   const [demoStep, setDemoStep] = useState("");
+  const [payFirst, setPayFirst] = useState(true);
+  const [directHours, setDirectHours] = useState("");
   const [ready, setReady] = useState(true);
   const [stationsReady, setStationsReady] = useState(true);
   const [stagesReady, setStagesReady] = useState(true);
@@ -142,6 +144,8 @@ function SettingsTab() {
     setNoticeMin(String(s.arrivalNoticeMinutes ?? 10));
     setSandboxDemo(s.sandboxDemo ?? true);
     setDemoStep(String(s.sandboxDemoStepSeconds ?? 20));
+    setPayFirst(s.payBeforeRider ?? true);
+    setDirectHours(String(s.directMaxHours ?? 3));
   }
 
   useEffect(() => {
@@ -177,6 +181,8 @@ function SettingsTab() {
         arrivalNoticeMinutes: Number(noticeMin),
         sandboxDemo,
         sandboxDemoStepSeconds: Number(demoStep),
+        payBeforeRider: payFirst,
+        directMaxHours: Number(directHours),
       });
       load(res.settings);
       setSaved(true);
@@ -213,6 +219,22 @@ function SettingsTab() {
             </Field>
           </div>
         </div>
+      </section>
+      <section className="home-card space-y-3">
+        <p className="text-sm font-bold text-ink">Relay and Direct at checkout</p>
+        <p className="text-xs text-ink-500">
+          Customers choose Relay (same day delivery, boda and matatu legs) or Direct (instant delivery, one rider).
+        </p>
+        <label className="flex items-center gap-2 text-sm font-bold text-ink">
+          <input type="checkbox" checked={payFirst} onChange={(e) => setPayFirst(e.target.checked)} className="h-4 w-4 accent-gold" />
+          Relay orders are paid straight away, before a rider accepts
+        </label>
+        <p className="text-xs text-ink-500">
+          The payment is held in escrow until delivery, as always. Off means relay orders wait for a rider before payment, like Direct.
+        </p>
+        <Field label="Direct delivery promised in under (hours)" hint={"Customers see \u201cInstant delivery \u00b7 one rider, under N hours\u201d. Whole hours, 1 to 24."}>
+          <input inputMode="numeric" required value={directHours} onChange={(e) => setDirectHours(digits(e.target.value))} className={inputCls} />
+        </Field>
       </section>
       <section className="home-card space-y-3">
         <p className="text-sm font-bold text-ink">When each leg is paid</p>

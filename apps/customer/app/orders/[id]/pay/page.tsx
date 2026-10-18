@@ -85,11 +85,17 @@ export default function PaymentPage() {
       }
       setDetail(current);
       setQuote(nextQuote);
-      if (!["Create", "Match", "Fund"].includes(current.order.stage)) router.replace(`/orders/${id}`);
+      // Paid already (a relay paid before its rider): nothing left to do here, the order page follows it.
+      const paid = current.payments.some((p) => p.type === "collection" && p.status === "successful");
+      if (!["Create", "Match", "Fund"].includes(current.order.stage) || (paid && current.order.stage !== "Fund")) router.replace(`/orders/${id}`);
     } catch (err) { setError(errorMessage(err)); }
     finally { polling.current = false; }
   }, [id, router]);
   useLivePolling(() => void load(), 4000, [load]);
+  // A relay is paid in the app, never in cash.
+  useEffect(() => {
+    if (quote?.payBeforeRider && method === "cash") setMethod("mobile_money");
+  }, [quote?.payBeforeRider, method]);
 
   useEffect(() => {
     let active = true;
@@ -110,8 +116,11 @@ export default function PaymentPage() {
   const network = detectMobileMoneyNetwork(phone);
   const pending = detail?.payments.some((p) => p.type === "collection" && ["pending", "unknown"].includes(p.status)) ?? false;
   const combinedStops = detail?.bundleStops ?? [];
-  const ready = detail?.order.stage === "Match" && !!detail.order.rider_id && !pending
-    && (combinedStops.length < 2 || combinedStops.every((stop) => stop.stage === "Match"));
+  // Relay: pay straight away, before any rider (admin setting). Direct: wait until a rider accepts.
+  const payFirst = !!quote?.payBeforeRider;
+  const ready = !pending && (payFirst || (detail?.order.stage === "Match" && !!detail.order.rider_id
+    && (combinedStops.length < 2 || combinedStops.every((stop) => stop.stage === "Match"))));
+  const methods = payFirst ? METHODS.filter((m) => m.id !== "cash") : METHODS;
   const insufficient = method === "wallet" && selectedWallet?.balance != null && amount != null && selectedWallet.balance < amount;
   const disabled = busy || !online || !ready || amount == null ||
     (method === "mobile_money" && !network) ||
@@ -159,9 +168,12 @@ export default function PaymentPage() {
         <h1 className="text-2xl font-bold text-ink">Payment</h1>
         <p className="text-sm text-ink-500">How would you like to pay?</p>
       </div>
-      <fieldset disabled={busy || pending} className="grid grid-cols-3 gap-2">
+      {detail && !detail.order.rider_id && payFirst && (
+        <p className="rounded-xl bg-gold/10 p-3 text-sm leading-6 text-ink">Pay now. We&apos;ll assign your riders and matatu for same-day delivery.</p>
+      )}
+      <fieldset disabled={busy || pending} className={`grid gap-2 ${methods.length === 2 ? "grid-cols-2" : "grid-cols-3"}`}>
         <legend className="sr-only">Payment method</legend>
-        {METHODS.map(({ id: value, label, icon: Icon }) => (
+        {methods.map(({ id: value, label, icon: Icon }) => (
           <label key={value} className={`flex min-h-24 cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border-2 p-2 text-center text-sm font-bold ${method === value ? "border-gold bg-gold/10 text-ink" : "border-[var(--border-faint)] text-ink-500"}`}>
             <input type="radio" name="payment-method" value={value} checked={method === value} onChange={() => setMethod(value)} className="sr-only peer" />
             <Icon className="h-6 w-6 peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-gold" aria-hidden />
@@ -213,7 +225,7 @@ export default function PaymentPage() {
             delivery={quote.delivery}
             fees={amount != null ? amount - quote.baseAmount : 0}
             total={amount}
-            deliveryLabel={detail?.order.is_ride ? "Fare" : "Delivery"}
+            deliveryLabel={detail?.order.is_ride ? "Fare" : undefined}
           />
         ) : (
           <>
@@ -225,7 +237,7 @@ export default function PaymentPage() {
           </>
         )}
       </section>
-      {detail && !detail.order.rider_id && (
+      {detail && !detail.order.rider_id && !payFirst && (
         <section className="home-card">
           {detail.order.matching_mode === "customer_selects" ? <ApplicantPicker orderId={id} onSelected={() => void load()} /> :
             <p className="text-sm text-ink-500">Finding your rider. You can choose your payment option while you wait.</p>}

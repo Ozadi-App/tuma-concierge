@@ -38,6 +38,8 @@ export type CheckoutDelivery = {
   /** Relay only: brought to the door, or collected at a petrol station / stage. */
   lastMile?: "door" | "collect";
   station?: string | null;
+  /** A marketplace bag, where the customer chose Relay or Direct (the delivery title names it). */
+  marketplace?: boolean;
 };
 
 export type CheckoutBreakdown = { items: CheckoutItem[]; itemsSubtotal: number; delivery: CheckoutDelivery };
@@ -153,10 +155,11 @@ export async function checkoutBreakdown(orders: Row[]): Promise<CheckoutBreakdow
       return null;
     });
   }
+  const marketplace = orders.some((order) => !!order.store_id) ? { marketplace: true } : {};
   return {
     items,
     itemsSubtotal,
-    delivery: relay ? { total, mode: "relay", pickups, ...relay } : { total, mode: "rider", pickups },
+    delivery: relay ? { total, mode: "relay", pickups, ...relay, ...marketplace } : { total, mode: "rider", pickups, ...marketplace },
   };
 }
 

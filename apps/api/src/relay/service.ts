@@ -365,6 +365,21 @@ export async function relayLegs(orderId: string): Promise<Row[]> {
   return (await db.execute({ sql: "SELECT * FROM order_relay_legs WHERE order_id = ? ORDER BY leg", args: [orderId] })).rows as Row[];
 }
 
+/**
+ * A relay order the customer may pay before any rider accepts it: admin's
+ * "pay before rider" switch is on, it is an escrow order still waiting for its
+ * first-leg rider (Create, or Match with no rider), and it rides a relay. The
+ * payment is held in escrow exactly as today; when the first rider is assigned
+ * the order goes straight to Shop (see assignRider in ../orders/routes.ts).
+ */
+export async function relayPaysBeforeRider(order: Row): Promise<boolean> {
+  if (order.rider_id || order.payment_rail !== "escrow" || !["Create", "Match"].includes(String(order.stage))) return false;
+  if (!(await hasTable("order_relay_legs"))) return false;
+  if (!(await getRelaySettings()).payBeforeRider) return false;
+  const legs = await db.execute({ sql: "SELECT 1 FROM order_relay_legs WHERE order_id = ? LIMIT 1", args: [String(order.id)] });
+  return legs.rows.length > 0;
+}
+
 /** Whether the order's current boda rider may act as the final rider (arrive, take the PIN). */
 export async function relayBlocksFinalSteps(orderId: string): Promise<boolean> {
   const legs = await relayLegs(orderId);

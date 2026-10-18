@@ -15,6 +15,8 @@ export type BagQuote = {
   deliveryMode: BagDeliveryMode;
   /** The delivery fee each way; `relay` is null when no relay is offered. */
   options: { rider: number; relay: number | null };
+  /** "Direct" is promised in under this many hours (admin setting). */
+  directMaxHours: number | null;
   stores: Array<{ storeId: string; storeName: string; itemsTotal: number; deliveryFee: number }>;
   /** One rider's whole road trip, store to store and then to the customer. */
   trip: BagTrip | null;
@@ -97,6 +99,7 @@ export function useBagQuote(items: CartItem[], input: BagQuoteInput) {
             total: res.total,
             deliveryMode: mode,
             options: res.options ?? { rider: res.deliveryFee, relay: null },
+            directMaxHours: res.directMaxHours ?? null,
             stores: res.stores,
             trip: res.trip ?? null,
             relay,
@@ -119,6 +122,8 @@ export function useBagQuote(items: CartItem[], input: BagQuoteInput) {
     quote: current,
     relay: current ? current.relay : previous?.relay ?? null,
     options: current ? current.options : previous?.options ?? null,
+    /** "Direct" is promised in under this many hours (admin setting). */
+    directMaxHours: current ? current.directMaxHours : previous?.directMaxHours ?? null,
     /** One rider's road trip for these items and this place (the same whichever way is chosen). */
     trip: current ? current.trip : previous?.trip ?? null,
     /** The way shown as chosen: the customer's pick, else what the server chose. */

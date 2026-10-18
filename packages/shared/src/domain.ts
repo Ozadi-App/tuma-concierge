@@ -1656,6 +1656,8 @@ export type CheckoutDelivery = {
   legs?: CheckoutDeliveryLeg[];
   lastMile?: "door" | "collect";
   station?: string | null;
+  /** A marketplace bag, where the customer chose Relay or Direct. */
+  marketplace?: boolean;
 };
 
 /** Items, their subtotal and the delivery: itemsSubtotal + delivery.total (+ payment fees) is what is charged. */

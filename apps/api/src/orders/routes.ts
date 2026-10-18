@@ -27,7 +27,7 @@ import { computeCheckoutFees, isCashDepositOk, riderPayout } from "../lib/moneti
 import { notifyUser } from "../lib/webpush.js";
 import { beyondRiderRange, currentVisibilityRadiusKm, orderMatchPoint, ownRangeKm, parseDbTimestamp, riderRangeKm } from "./matching.js";
 import { redactOrder } from "./visibility.js";
-import { assignAvailableRider } from "./assignment.js";
+import { assignAvailableRider, PAID_ESCROW } from "./assignment.js";
 import { computeBidding, loadBiddingContext, validateBid } from "./bidding.js";
 import { hasColumn, hasTable } from "../lib/schema.js";
 import {
@@ -65,10 +65,10 @@ import { getR2Bucket, uploadResponseHeaders } from "../storage/r2.js";
 import { appBaseUrl } from "../verify/service.js";
 import { payFromWallet } from "../wallet/service.js";
 import { checkoutBreakdown, deliveryOrders } from "./checkout-breakdown.js";
-import { bundleCheckoutQuote, fundBundle, notifyRiderOfCombinedDelivery, unfundedBundleGroup, unpaidBundleGroup } from "./bundle-funding.js";
+import { bundleCheckoutQuote, fundBundle, notifyRiderOfCombinedDelivery, prepaidBundleGroup, unfundedBundleGroup, unpaidBundleGroup } from "./bundle-funding.js";
 import { stepSandboxRelay } from "../relay/sandbox-demo.js";
 import { isSubscriptionCurrent } from "../riders/subscription.js";
-import { insertRelayLegs, planRelay, relayChargeFor, resolveLastMile, type RelayLastMile, type RelayMeet, relayAwaitingCollection, relayBlocksFinalSteps, relayView, settleRelayPayouts, type RelayPlan } from "../relay/service.js";
+import { insertRelayLegs, planRelay, relayChargeFor, resolveLastMile, type RelayLastMile, type RelayMeet, relayAwaitingCollection, relayBlocksFinalSteps, relayPaysBeforeRider, relayView, settleRelayPayouts, type RelayPlan } from "../relay/service.js";
 import {
   activateMerchantAllocationsForFundedOrder,
   refundUnusedOrderPrincipal,
@@ -978,9 +978,14 @@ export async function assignRider(
   outOfRange: boolean,
 ): Promise<boolean> {
   if (await isBundleWindowOpen(order)) return false;
+  // An order already paid (a relay paid before any rider, or a paid order whose
+  // rider cancelled) goes straight to Shop: assignAvailableRider decides that in
+  // the same statement, so the escrow already held is never asked for again.
   const nextStage = order.payment_rail === "float" ? "Shop" : "Match";
   const assigned = await assignAvailableRider(id, riderId, nextStage, outOfRange, String(order.environment));
   if (!assigned) return false;
+  const prepaid = order.payment_rail === "escrow" &&
+    (await db.execute({ sql: "SELECT stage FROM orders WHERE id = ?", args: [id] })).rows[0]?.stage === "Shop";
 
   if (await hasColumn("orders", "delivery_bundle_id") && order.delivery_bundle_id) {
     const bundled = await db.execute({
@@ -990,7 +995,7 @@ export async function assignRider(
     const bundleOrderIds = (bundled.rows as Row[]).map((row) => String(row.id));
     if (bundleOrderIds.length) {
       await executeBatch(bundleOrderIds.map((bundleOrderId) => ({
-        sql: `UPDATE orders SET rider_id=?,stage=?,matched_out_of_range=?,updated_at=datetime('now') WHERE id=? AND delivery_bundle_id=? AND rider_id IS NULL AND stage IN ('Create','Match') AND environment=? AND EXISTS(SELECT 1 FROM orders anchor WHERE anchor.id=? AND anchor.rider_id=?)`,
+        sql: `UPDATE orders SET rider_id=?,stage=CASE WHEN ${PAID_ESCROW} THEN 'Shop' ELSE ? END,matched_out_of_range=?,updated_at=datetime('now') WHERE id=? AND delivery_bundle_id=? AND rider_id IS NULL AND stage IN ('Create','Match') AND environment=? AND EXISTS(SELECT 1 FROM orders anchor WHERE anchor.id=? AND anchor.rider_id=?)`,
         args: [riderId, nextStage, outOfRange ? 1 : 0, bundleOrderId, String(order.delivery_bundle_id), String(order.environment), id, riderId],
       })));
       if (order.funds_model === "merchant_allocations_v1") {
@@ -1003,6 +1008,7 @@ export async function assignRider(
         await db.execute({ sql: "UPDATE chat_messages SET rider_id=? WHERE order_id=? AND rider_id IS NULL", args: [riderId, bundleOrderId] });
         await logEvent(bundleOrderId, "Match", `Combined delivery assigned to rider ${riderName}`, riderId);
         if (order.payment_rail === "float") await logEvent(bundleOrderId, "Fund", "Cash rail — rider fronting funds, no payment needed upfront", riderId);
+        await startPrepaidOrder(bundleOrderId, riderId);
       }
       await notifyRiderOfCombinedDelivery(id);
     }
@@ -1034,8 +1040,21 @@ export async function assignRider(
   if (order.payment_rail === "float") {
     await logEvent(id, "Fund", "Cash rail — rider fronting funds, no payment needed upfront", riderId);
   }
+  if (prepaid) await startPrepaidOrder(id, riderId);
   if (await isCarOrder(id)) await stampCarBooking(id, riderId);
   return true;
+}
+
+/** A paid order just got its rider: start the merchant allocations its payment was waiting on. */
+async function startPrepaidOrder(orderId: string, riderId: string): Promise<void> {
+  const current = (await db.execute({ sql: "SELECT stage, payment_rail FROM orders WHERE id = ?", args: [orderId] })).rows[0] as Row | undefined;
+  if (current?.stage !== "Shop" || current.payment_rail !== "escrow") return;
+  try {
+    await activateMerchantAllocationsForFundedOrder(orderId);
+  } catch (error) {
+    console.error("Could not start merchant allocations for a paid order on assignment", orderId, error);
+  }
+  await logEvent(orderId, "Shop", "Already paid — shopping started", riderId);
 }
 
 /**
@@ -1631,8 +1650,9 @@ orderRoutes.post("/orders/:id/cancel", async (c) => {
 
 // ---------------------------------------------------------------------------
 // Customer-initiated cancel/delete — only while nothing has actually
-// happened yet: no rider assigned (which also means no money has been
-// collected, since funding only ever follows a rider being matched). Once
+// happened yet: no rider assigned. A relay may already be paid before any
+// rider (relayPaysBeforeRider): cancel refunds it to the wallet, and delete
+// refuses a paid order so no payment is ever dropped. Once
 // a rider's attached, backing out affects someone else's day and goes
 // through support instead of a self-service button.
 // ---------------------------------------------------------------------------
@@ -1680,6 +1700,11 @@ orderRoutes.post("/orders/:id/customer-delete", async (c) => {
     if (e instanceof HttpError) return c.json({ error: "cannot_delete", message: e.message }, e.status);
     throw e;
   }
+  // A relay can be paid before any rider: a paid order is cancelled (and refunded) instead, never just deleted.
+  const anyPayment = await db.execute({ sql: "SELECT 1 FROM payments WHERE order_id = ? AND type = 'collection' AND status IN ('pending', 'unknown', 'successful') LIMIT 1", args: [id] });
+  if (anyPayment.rows.length > 0) {
+    return c.json({ error: "cannot_delete", message: "This order is paid. Cancel it instead and the payment goes back to your Peebee wallet." }, 409);
+  }
 
   await touchOrder(id, { stage: "Cancelled" });
   await db.execute({
@@ -1720,10 +1745,14 @@ orderRoutes.get("/orders/:id/checkout", async (c) => {
   // A combined delivery is paid once, from its first pickup: the quote is the total for every pickup,
   // from the moment it's ordered (before a rider accepts it too).
   const bundleGroup = await unpaidBundleGroup(order);
+  // A relay can be paid straight away, before any rider (admin switch): the pay screen shows Pay now.
+  const payBeforeRider = (await relayPaysBeforeRider(order)) &&
+    (await db.execute({ sql: "SELECT 1 FROM payments WHERE order_id = ? AND type = 'collection' AND status IN ('pending', 'unknown', 'successful') LIMIT 1", args: [String(order.id)] })).rows.length === 0 &&
+    (await prepaidBundleGroup(order)) !== "not_ready";
   // Each quote also carries its breakdown (items, subtotal, delivery and its legs) over exactly
   // the orders it charges for, so items + delivery + fees is the amount paid.
   if (bundleGroup && String(bundleGroup.lead.id) === String(order.id)) {
-    return c.json({ ...(await bundleCheckoutQuote(bundleGroup)), ...(await checkoutBreakdown(bundleGroup.members)) });
+    return c.json({ ...(await bundleCheckoutQuote(bundleGroup)), ...(await checkoutBreakdown(bundleGroup.members)), payBeforeRider });
   }
   const baseAmount = Number(order.final_total ?? order.estimated_total ?? 0);
   const settings = await getMonetizationSettings();
@@ -1734,6 +1763,7 @@ orderRoutes.get("/orders/:id/checkout", async (c) => {
     wallet: baseAmount + computeCheckoutFees(settings, { ...input, payingWithWallet: true }).totalSurcharge,
     cash: baseAmount,
     ...(await checkoutBreakdown([order])),
+    payBeforeRider,
   });
 });
 
@@ -1758,7 +1788,10 @@ orderRoutes.post("/orders/:id/fund", async (c) => {
     if (e instanceof HttpError) return c.json({ error: e.message }, e.status);
     throw e;
   }
-  if (order.stage !== "Match") {
+  // A relay order may be paid as soon as it is placed (admin switch), before any rider:
+  // it is held in escrow and goes straight to Shop once the first-leg rider is assigned.
+  const payFirst = await relayPaysBeforeRider(order);
+  if (order.stage !== "Match" && !payFirst) {
     return c.json({ error: "invalid_stage", message: `Cannot fund from stage ${order.stage}` }, 409);
   }
 
@@ -1770,10 +1803,14 @@ orderRoutes.post("/orders/:id/fund", async (c) => {
   const body = await c.req.json().catch(() => ({}));
   const parsed = fundSchema.safeParse(order.payment_rail === "float" && !body?.paymentMethod ? { ...body, paymentMethod: "cash" } : body);
   if (!parsed.success) return c.json({ error: "invalid_body", issues: parsed.error.issues }, 400);
-  if (!order.rider_id) return c.json({ error: "invalid_stage", message: "Please select a rider before confirming payment." }, 409);
+  if (!order.rider_id && !payFirst) return c.json({ error: "invalid_stage", message: "Please select a rider before confirming payment." }, 409);
+  if (payFirst && parsed.data.paymentMethod === "cash") {
+    return c.json({ error: "relay_requires_prepay", message: "Relay deliveries are paid in the app, not in cash." }, 409);
+  }
 
   // Combined delivery (two pickups, one rider): one payment from the first pickup covers every pickup.
-  const bundleGroup = await unfundedBundleGroup(order);
+  const bundleGroup = payFirst ? await prepaidBundleGroup(order) : await unfundedBundleGroup(order);
+  if (bundleGroup === "not_ready") return c.json({ error: "invalid_stage", message: "This order has changed. Refresh before paying." }, 409);
   if (bundleGroup) {
     if (String(bundleGroup.lead.id) !== id) {
       return c.json({ error: "bundled_stop", message: "This pickup is paid together with the first one. Pay for the combined delivery from there.", payWithOrderId: String(bundleGroup.lead.id) }, 409);
@@ -1783,6 +1820,7 @@ orderRoutes.post("/orders/:id/fund", async (c) => {
       user,
       group: bundleGroup,
       body: parsed.data,
+      payFirst,
       deps: { getOrder, touchOrder, logEvent, paymentReturnUrl },
     });
   }
@@ -1822,6 +1860,11 @@ orderRoutes.post("/orders/:id/fund", async (c) => {
   if (parsed.data.acceptedAmount != null && parsed.data.acceptedAmount !== amount) {
     return c.json({ error: "amount_changed", message: "The total has changed. Review the updated amount before paying." }, 409);
   }
+  // Who may hold the order while it is being paid: its matched rider, or (a relay paid
+  // first) nobody yet. A paid relay with no rider waits in Match; otherwise shopping starts.
+  const holdWhere = payFirst ? "stage IN ('Create', 'Match') AND rider_id IS NULL" : "stage = 'Match' AND rider_id = ?";
+  const holdArgs = payFirst ? [] : [String(order.rider_id)];
+  const startStage = String(order.stage);
   const hasFees = fees.serviceFee > 0 || fees.processingFeeCustomer > 0 || fees.processingFeeRider > 0 || fees.deliveryCommission > 0;
   if (hasFees) {
     await db.execute({
@@ -1854,7 +1897,7 @@ orderRoutes.post("/orders/:id/fund", async (c) => {
 
     // Reserve funding before debiting; cancellation and duplicate funding
     // requests cannot race a wallet payment.
-    const funding = await db.execute({ sql: "UPDATE orders SET payment_rail = 'escrow', stage = 'Fund', updated_at = datetime('now') WHERE id = ? AND stage = 'Match' AND rider_id = ? AND COALESCE(final_total, estimated_total, 0) = ? AND NOT EXISTS (SELECT 1 FROM payments WHERE order_id = ? AND status IN ('pending', 'unknown', 'successful'))", args: [id, String(order.rider_id), baseAmount, id] });
+    const funding = await db.execute({ sql: `UPDATE orders SET payment_rail = 'escrow', stage = 'Fund', updated_at = datetime('now') WHERE id = ? AND ${holdWhere} AND COALESCE(final_total, estimated_total, 0) = ? AND NOT EXISTS (SELECT 1 FROM payments WHERE order_id = ? AND status IN ('pending', 'unknown', 'successful'))`, args: [id, ...holdArgs, baseAmount, id] });
     if (!funding.rowsAffected) return c.json({ error: "invalid_stage", message: "This order has changed. Refresh before paying." }, 409);
 
     const paymentId = await payFromWallet({
@@ -1867,10 +1910,16 @@ orderRoutes.post("/orders/:id/fund", async (c) => {
       walletId,
     });
     if (!paymentId) {
-      await db.execute({ sql: "UPDATE orders SET stage = 'Match' WHERE id = ? AND stage = 'Fund'", args: [id] });
+      await db.execute({ sql: "UPDATE orders SET stage = ? WHERE id = ? AND stage = 'Fund'", args: [startStage, id] });
       return c.json({ error: "insufficient_wallet_balance" }, 409);
     }
 
+    if (payFirst) {
+      // Held in escrow; merchant allocations start once the first-leg rider is assigned.
+      await touchOrder(id, { stage: "Match" });
+      await logEvent(id, "Fund", sharedSpend ? "Paid from a shared wallet — held until a rider is assigned" : "Paid from wallet — held until a rider is assigned", user.sub);
+      return c.json({ order: await getOrder(id), payment: { id: paymentId, status: "successful", network: null } });
+    }
     await touchOrder(id, { stage: "Shop" });
     await activateMerchantAllocationsForFundedOrder(id);
     await logEvent(id, "Fund", sharedSpend ? "Paid from a shared wallet — shopping started" : "Paid from wallet — shopping started", user.sub);
@@ -1880,7 +1929,7 @@ orderRoutes.post("/orders/:id/fund", async (c) => {
   const paymentId = newId("pay");
   const fundingToken = newId("fund");
   const funding = await executeBatch([
-    { sql: "UPDATE orders SET payment_rail = 'escrow', stage = 'Fund', time_action_token = ?, updated_at = datetime('now') WHERE id = ? AND stage = 'Match' AND rider_id = ? AND COALESCE(final_total, estimated_total, 0) = ? AND NOT EXISTS (SELECT 1 FROM payments WHERE order_id = ? AND status IN ('pending', 'unknown', 'successful'))", args: [fundingToken, id, String(order.rider_id), baseAmount, id] },
+    { sql: `UPDATE orders SET payment_rail = 'escrow', stage = 'Fund', time_action_token = ?, updated_at = datetime('now') WHERE id = ? AND ${holdWhere} AND COALESCE(final_total, estimated_total, 0) = ? AND NOT EXISTS (SELECT 1 FROM payments WHERE order_id = ? AND status IN ('pending', 'unknown', 'successful'))`, args: [fundingToken, id, ...holdArgs, baseAmount, id] },
     {
       sql: `INSERT INTO payments (id, order_id, type, provider, provider_ref, msisdn, amount, currency, status)
             SELECT ?, id, 'collection', 'unassigned', NULL, ?, ?, 'UGX', 'pending' FROM orders WHERE id = ? AND time_action_token = ?`,
@@ -1908,7 +1957,7 @@ orderRoutes.post("/orders/:id/fund", async (c) => {
   } catch (err) {
     await executeBatch([
       { sql: "UPDATE payments SET status = 'failed', updated_at = datetime('now') WHERE id = ?", args: [paymentId] },
-      { sql: "UPDATE orders SET stage = 'Match', updated_at = datetime('now') WHERE id = ? AND stage = 'Fund'", args: [id] },
+      { sql: "UPDATE orders SET stage = ?, updated_at = datetime('now') WHERE id = ? AND stage = 'Fund'", args: [startStage, id] },
     ]);
     if (err instanceof UnsupportedNetworkError) {
       return c.json({ error: "unsupported_network", message: err.message }, 400);

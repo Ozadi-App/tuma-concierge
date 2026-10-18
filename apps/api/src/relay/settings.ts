@@ -31,6 +31,10 @@ export type RelaySettings = {
   sandboxDemo: boolean;
   /** How long each demo step waits for a real tester to act first. */
   sandboxDemoStepSeconds: number;
+  /** A relay order may be paid as soon as it is placed, before any rider accepts (on by default). */
+  payBeforeRider: boolean;
+  /** "Direct" (one rider all the way) is promised in under this many hours (whole hours, 1-24). */
+  directMaxHours: number;
 };
 
 const num = (value: string | null, fallback: number) => {
@@ -39,7 +43,7 @@ const num = (value: string | null, fallback: number) => {
 };
 
 export async function getRelaySettings(): Promise<RelaySettings> {
-  const [enabled, minKm, accessKm, radiusKm, perLeg, choice, stationKm, stagePickup, fallback, speed, notice, demo, demoStep] = await Promise.all([
+  const [enabled, minKm, accessKm, radiusKm, perLeg, choice, stationKm, stagePickup, fallback, speed, notice, demo, demoStep, payFirst, directHours] = await Promise.all([
     getSetting("relay_enabled"),
     getSetting("relay_min_distance_km"),
     getSetting("relay_max_access_km"),
@@ -53,7 +57,10 @@ export async function getRelaySettings(): Promise<RelaySettings> {
     getSetting("relay_arrival_notice_minutes"),
     getSetting("relay_sandbox_demo"),
     getSetting("relay_sandbox_demo_step_seconds"),
+    getSetting("relay_pay_before_rider"),
+    getSetting("direct_delivery_max_hours"),
   ]);
+  const hours = Math.round(Number(directHours));
   return {
     enabled: enabled === "1",
     minDistanceKm: num(minKm, 25),
@@ -68,6 +75,8 @@ export async function getRelaySettings(): Promise<RelaySettings> {
     arrivalNoticeMinutes: num(notice, 10),
     sandboxDemo: demo !== "0",
     sandboxDemoStepSeconds: num(demoStep, 20),
+    payBeforeRider: payFirst !== "0",
+    directMaxHours: hours >= 1 && hours <= 24 ? hours : 3,
   };
 }
 
@@ -85,4 +94,6 @@ export async function setRelaySettings(next: Partial<RelaySettings>): Promise<vo
   if (next.sandboxDemo != null) await setSetting("relay_sandbox_demo", next.sandboxDemo ? "1" : "0");
   if (next.sandboxDemoStepSeconds != null) await setSetting("relay_sandbox_demo_step_seconds", String(next.sandboxDemoStepSeconds));
   if (next.releasePerLeg != null) await setSetting("relay_release_per_leg", next.releasePerLeg ? "1" : "0");
+  if (next.payBeforeRider != null) await setSetting("relay_pay_before_rider", next.payBeforeRider ? "1" : "0");
+  if (next.directMaxHours != null) await setSetting("direct_delivery_max_hours", String(next.directMaxHours));
 }

@@ -1,4 +1,5 @@
 import type { CheckoutDelivery, CheckoutDeliveryLeg, CheckoutItem } from "@peebee/shared";
+import { deliverySectionTitle } from "../lib/delivery-modes";
 import { formatUgx } from "../lib/order-display";
 
 const km = (value: number | null | undefined) =>
@@ -89,7 +90,7 @@ export function OrderBreakdown({
   delivery,
   fees = 0,
   total,
-  deliveryLabel = "Delivery",
+  deliveryLabel,
 }: {
   items: CheckoutItem[];
   itemsSubtotal: number;
@@ -98,6 +99,7 @@ export function OrderBreakdown({
   fees?: number;
   /** The amount to pay; null while it's loading. */
   total: number | null;
+  /** Defaults to "Delivery", or "Delivery · Relay" / "Delivery · Direct" where the customer chose. */
   deliveryLabel?: string;
 }) {
   const hasItems = items.length > 0 || itemsSubtotal > 0;
@@ -111,7 +113,7 @@ export function OrderBreakdown({
       )}
       <div className="space-y-1">
         <div className="flex justify-between gap-3 text-sm text-ink">
-          <span>{deliveryLabel}</span>
+          <span>{deliveryLabel ?? deliverySectionTitle(delivery)}</span>
           <span>{formatUgx(delivery.total)}</span>
         </div>
         <DeliveryLines delivery={delivery} />

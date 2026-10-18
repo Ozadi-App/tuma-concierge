@@ -207,7 +207,9 @@ export async function activateMerchantAllocationsForFundedOrder(orderId: string)
   if (!order || order.payment_rail !== "escrow" || order.type !== "shopping") return false;
   const environment = order.environment as PlatformEnvironment;
   if (!(await merchantPaymentsEnabled(environment))) return false;
-  if (!order.rider_id) throw new Error("Merchant-funded order must have an assigned rider");
+  // A relay paid before any rider: allocations start when the first-leg rider is
+  // assigned (assignRider in ../orders/routes.ts calls this again then).
+  if (!order.rider_id) return false;
   const existingLock = await db.execute({
     sql: "SELECT order_id FROM rider_order_locks WHERE rider_id = ?",
     args: [String(order.rider_id)],

@@ -65,6 +65,19 @@ export async function unpaidBundleGroup(order: Row): Promise<BundleGroup | null>
   return { lead: members[0], members };
 }
 
+/**
+ * A relay bag paid before any rider (see relayPaysBeforeRider): every pickup
+ * still waiting for its first rider and unpaid. Null when `order` is not part
+ * of a combined delivery; "not_ready" when some pickup has moved on, so the
+ * bag is never paid in part.
+ */
+export async function prepaidBundleGroup(order: Row): Promise<BundleGroup | "not_ready" | null> {
+  const members = await bundleMembers(order);
+  if (!members) return null;
+  if (!members.every((member) => !member.rider_id && (member.stage === "Create" || member.stage === "Match"))) return "not_ready";
+  return { lead: members[0], members };
+}
+
 /** Every live order in `order`'s combined delivery, first pickup first; null unless there are two or more. */
 async function bundleMembers(order: Row): Promise<Row[] | null> {
   if (!order.delivery_bundle_id || !(await hasColumn("orders", "delivery_bundle_id"))) return null;
@@ -112,11 +125,16 @@ export async function bundleCheckoutQuote(group: BundleGroup) {
   };
 }
 
+/** Puts every pickup back where it was before the payment was attempted (Match, or Create for a relay paid first). */
 function revertStatements(parts: Part[], token: string): DbStatement[] {
   return parts.map((part) => ({
-    sql: "UPDATE orders SET stage = 'Match', payment_rail = ?, time_action_token = NULL, updated_at = datetime('now') WHERE id = ? AND time_action_token = ?",
-    args: [String(part.order.payment_rail ?? "escrow"), String(part.order.id), token],
+    sql: "UPDATE orders SET stage = ?, payment_rail = ?, time_action_token = NULL, updated_at = datetime('now') WHERE id = ? AND time_action_token = ?",
+    args: [String(part.order.stage), String(part.order.payment_rail ?? "escrow"), String(part.order.id), token],
   }));
+}
+
+function unholdStatements(parts: Part[]): DbStatement[] {
+  return parts.map((part) => ({ sql: "UPDATE orders SET stage = ?, updated_at = datetime('now') WHERE id = ? AND stage = 'Fund'", args: [String(part.order.stage), String(part.order.id)] }));
 }
 
 /**
@@ -132,9 +150,12 @@ export async function fundBundle(input: {
   user: { sub: string; name?: string };
   group: BundleGroup;
   body: BundleFundBody;
+  /** A relay bag paid before any rider: the pickups have no rider yet and wait in Match once paid. */
+  payFirst?: boolean;
   deps: Deps;
 }): Promise<Response> {
   const { c, user, group, body, deps } = input;
+  const payFirst = !!input.payFirst;
   const lead = group.lead;
   const leadId = String(lead.id);
   const riderId = String(lead.rider_id);
@@ -151,13 +172,16 @@ export async function fundBundle(input: {
 
   // Reserve every pickup in one transaction (stage + token) so a double tap or a
   // concurrent cancel can't leave half of the delivery paid.
+  const holdWhere = payFirst ? "stage IN ('Create', 'Match') AND rider_id IS NULL" : "stage = 'Match' AND rider_id = ?";
   const reserveSql = (stage: string, rail: string) => `UPDATE orders SET payment_rail = '${rail}', stage = '${stage}', time_action_token = ?, updated_at = datetime('now')
-    WHERE id = ? AND stage = 'Match' AND rider_id = ? AND COALESCE(final_total, estimated_total, 0) = ?
+    WHERE id = ? AND ${holdWhere} AND COALESCE(final_total, estimated_total, 0) = ?
     AND NOT EXISTS (SELECT 1 FROM payments WHERE order_id = ? AND status IN ('pending', 'unknown', 'successful'))`;
+  const reserveArgs = (part: Part): DbStatement["args"] =>
+    payFirst ? [token, String(part.order.id), part.base, String(part.order.id)] : [token, String(part.order.id), riderId, part.base, String(part.order.id)];
   const reserve = async (stage: string, rail: string) => {
     const changes = await executeBatch(parts.map((part) => ({
       sql: reserveSql(stage, rail),
-      args: [token, String(part.order.id), riderId, part.base, String(part.order.id)],
+      args: reserveArgs(part),
     })));
     if (changes.every((count) => count > 0)) return true;
     await executeBatch(revertStatements(parts, token));
@@ -166,6 +190,7 @@ export async function fundBundle(input: {
   const changed = () => c.json({ error: "invalid_stage", message: "This order has changed. Refresh before paying." }, 409);
 
   if (cash) {
+    if (payFirst) return c.json({ error: "relay_requires_prepay", message: "Relay deliveries are paid in the app, not in cash." }, 409);
     if (!(await reserve("Shop", "float"))) return changed();
     for (const part of parts) {
       await deps.logEvent(String(part.order.id), "Fund", "Cash rail — rider collects full payment from the customer on delivery", user.sub);
@@ -216,8 +241,17 @@ export async function fundBundle(input: {
       walletId,
     });
     if (!paymentIds) {
-      await executeBatch(parts.map((part) => ({ sql: "UPDATE orders SET stage = 'Match' WHERE id = ? AND stage = 'Fund'", args: [String(part.order.id)] })));
+      await executeBatch(unholdStatements(parts));
       return c.json({ error: "insufficient_wallet_balance" }, 409);
+    }
+    if (payFirst) {
+      // Held in escrow until the first-leg rider is assigned; assignRider then starts every pickup.
+      for (const part of parts) {
+        const orderId = String(part.order.id);
+        await deps.touchOrder(orderId, { stage: "Match" });
+        await deps.logEvent(orderId, "Fund", sharedSpend ? "Paid from a shared wallet with the combined delivery — held until a rider is assigned" : "Paid from wallet with the combined delivery — held until a rider is assigned", user.sub);
+      }
+      return c.json({ order: await deps.getOrder(leadId), payment: { id: paymentIds[0], status: "successful", network: null } });
     }
     for (const part of parts) {
       const orderId = String(part.order.id);
@@ -235,7 +269,7 @@ export async function fundBundle(input: {
   const statements: DbStatement[] = [
     ...parts.map((part) => ({
       sql: reserveSql("Fund", "escrow"),
-      args: [token, String(part.order.id), riderId, part.base, String(part.order.id)] as DbStatement["args"],
+      args: reserveArgs(part),
     })),
     {
       sql: `INSERT INTO payments (id, order_id, type, provider, provider_ref, msisdn, amount, currency, status)
@@ -259,7 +293,7 @@ export async function fundBundle(input: {
   const paymentIds = [leadPaymentId, ...childPayments.map((child) => child.id)];
   const failAll = () => executeBatch([
     { sql: `UPDATE payments SET status = 'failed', updated_at = datetime('now') WHERE id IN (${paymentIds.map(() => "?").join(",")})`, args: paymentIds },
-    ...parts.map((part) => ({ sql: "UPDATE orders SET stage = 'Match', updated_at = datetime('now') WHERE id = ? AND stage = 'Fund'", args: [String(part.order.id)] })),
+    ...unholdStatements(parts),
   ]);
 
   let providerRef: string;
@@ -339,7 +373,11 @@ export async function finishBundleChildren(parentPaymentId: string, outcome: "su
   });
   if (kids.rows.length === 0) return;
   if (outcome === "failed") {
-    await db.execute({ sql: "UPDATE payments SET status = 'failed', updated_at = datetime('now') WHERE provider = ? AND provider_ref = ? AND status = 'pending'", args: [BUNDLE_CHILD_PROVIDER, parentPaymentId] });
+    await executeBatch([
+      { sql: "UPDATE payments SET status = 'failed', updated_at = datetime('now') WHERE provider = ? AND provider_ref = ? AND status = 'pending'", args: [BUNDLE_CHILD_PROVIDER, parentPaymentId] },
+      // A relay pickup paid before any rider goes back to waiting, so it can be paid again or expire.
+      ...(kids.rows as Row[]).map((kid) => ({ sql: "UPDATE orders SET stage = 'Create', updated_at = datetime('now') WHERE id = ? AND stage = 'Fund' AND rider_id IS NULL", args: [String(kid.order_id)] })),
+    ]);
     return;
   }
   const statements: DbStatement[] = [];
@@ -347,11 +385,13 @@ export async function finishBundleChildren(parentPaymentId: string, outcome: "su
     const orderId = String(kid.order_id);
     statements.push(
       { sql: "UPDATE payments SET status = 'successful', updated_at = datetime('now') WHERE id = ? AND status = 'pending'", args: [String(kid.id)] },
-      { sql: "UPDATE orders SET stage = 'Shop', updated_at = datetime('now') WHERE id = ? AND stage = 'Fund'", args: [orderId] },
+      // A relay pickup paid before any rider waits in Match for one (assignRider then starts it).
+      { sql: "UPDATE orders SET stage = CASE WHEN rider_id IS NULL THEN 'Match' ELSE 'Shop' END, updated_at = datetime('now') WHERE id = ? AND stage = 'Fund'", args: [orderId] },
       {
         sql: `INSERT OR IGNORE INTO order_events (id, order_id, stage, note, actor_id)
-              SELECT ?, ?, 'Shop', 'Escrow funded with the combined delivery — shopping started', ?
-              WHERE EXISTS (SELECT 1 FROM orders WHERE id = ? AND stage = 'Shop')`,
+              SELECT ?, ?, stage, CASE WHEN stage = 'Shop' THEN 'Escrow funded with the combined delivery — shopping started'
+                ELSE 'Escrow funded with the combined delivery — held until a rider is assigned' END, ?
+              FROM orders WHERE id = ? AND (stage = 'Shop' OR (stage = 'Match' AND rider_id IS NULL))`,
         args: [`evt_payment_${String(kid.id)}`, orderId, actorId, orderId],
       },
     );

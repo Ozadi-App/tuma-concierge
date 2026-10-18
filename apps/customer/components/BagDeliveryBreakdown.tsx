@@ -4,6 +4,7 @@ import { ChevronRight, MapPin } from "lucide-react";
 import type { BagTrip } from "@peebee/shared";
 import { placeSubtitle, type Place } from "../lib/places";
 import type { BagDeliveryMode, useBagQuote } from "../lib/bag-quote";
+import { deliveryModeName, deliveryModeSubtitle } from "../lib/delivery-modes";
 import { BagRelayDetails } from "./BagRelayDetails";
 import type { LastMileChoiceValue } from "./LastMileChoice";
 
@@ -12,22 +13,28 @@ type BagQuoteState = ReturnType<typeof useBagQuote>;
 const ugx = (n: number) => `UGX ${n.toLocaleString()}`;
 const km = (n: number) => `${n.toFixed(1)} km`;
 
-/** Relay by matatu or one rider all the way, each with the server's delivery price. */
+/**
+ * Relay (same day, boda and matatu legs) or Direct (instant, one rider), each
+ * with the server's delivery price. The API values stay "relay" and "rider".
+ */
 export function BagDeliveryModeChoice({
   options,
   mode,
   onChange,
+  directMaxHours,
   disabled,
 }: {
   options: { rider: number; relay: number | null };
   mode: BagDeliveryMode | null;
   onChange: (mode: BagDeliveryMode) => void;
+  /** Direct is promised in under this many hours (admin setting). */
+  directMaxHours?: number | null;
   disabled?: boolean;
 }) {
   if (options.relay == null) return null;
-  const choices: Array<{ value: BagDeliveryMode; label: string; note?: string; fee: number }> = [
-    { value: "relay", label: "Relay by matatu", note: "Recommended", fee: options.relay },
-    { value: "rider", label: "One rider all the way", fee: options.rider },
+  const choices: Array<{ value: BagDeliveryMode; label: string; note: string; fee: number }> = [
+    { value: "relay", label: deliveryModeName("relay"), note: deliveryModeSubtitle("relay"), fee: options.relay },
+    { value: "rider", label: deliveryModeName("rider"), note: deliveryModeSubtitle("rider", directMaxHours), fee: options.rider },
   ];
   const current = mode ?? "relay";
   return (
@@ -47,7 +54,7 @@ export function BagDeliveryModeChoice({
             }`}
           >
             <span className="font-bold leading-tight">{choice.label}</span>
-            <span className={`text-[10px] ${selected ? "text-ink-500" : ""}`}>{choice.note ?? " "}</span>
+            <span className={`text-[10px] leading-snug ${selected ? "text-ink-500" : ""}`}>{choice.note}</span>
             <span className="font-semibold text-ink">{ugx(choice.fee)}</span>
           </button>
         );
@@ -145,7 +152,7 @@ export function BagDeliveryBreakdown({
   return (
     <div className="space-y-2">
       {relayOffered && bag.options && (
-        <BagDeliveryModeChoice options={bag.options} mode={bag.mode} onChange={onModeChange} disabled={disabled} />
+        <BagDeliveryModeChoice options={bag.options} mode={bag.mode} onChange={onModeChange} directMaxHours={bag.directMaxHours} disabled={disabled} />
       )}
       {showTrip && bag.trip && !bag.failed ? (
         <div className={indent}>

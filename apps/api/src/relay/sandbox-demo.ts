@@ -177,7 +177,9 @@ export async function stepSandboxRelay(orderId: string, opts: { force?: boolean 
   const rider = order.rider_id ? String(order.rider_id) : null;
   const stage = String(order.stage);
   try {
-    // 1. A demo rider takes the first leg.
+    // 1. A demo rider takes the first leg. A relay the customer paid first (it waits in
+    //    Match, escrow held) goes straight to Shop on assignment, so there is no payment wait;
+    //    one still being paid (Fund) waits for the payment to finish.
     if (["Create", "Match"].includes(stage) && !rider && l1.status !== "done") {
       const demo = await freeDemoRider();
       if (!demo) return null;
@@ -185,7 +187,7 @@ export async function stepSandboxRelay(orderId: string, opts: { force?: boolean 
       const name = DEMO_RIDERS.find(([id]) => id === demo)![1];
       return (await assignRider(orderId, order, demo, name, false)) ? "first rider assigned" : null;
     }
-    // (Paying is the customer's step.)
+    // (Paying is the customer's step: before this rider for a relay paid first, otherwise now.)
     // 2. The demo rider sets off.
     if (stage === "Shop" && isDemoRelayRider(rider) && l1.status !== "done") {
       return (await asUser(rider!, "rider", `/orders/${orderId}/deliver`, {})) ? "first rider set off" : null;
