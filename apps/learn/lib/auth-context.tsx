@@ -1,98 +1,104 @@
 "use client";
 
-import { createContext, useContext, useState, useEffect, type ReactNode } from "react";
-import type { AuthUser, EducationStream } from "@peebee/shared";
+import { normalizeStream, type AuthUser, type EducationStream } from "@peebee/shared";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { api, TOKEN_KEY } from "./api";
+
+const STREAM_KEY = "peebee_learn_stream";
 
 interface LearnAuthContextType {
   user: AuthUser | null;
+  /** The stream the educator is working in; remembered between visits. */
   activeStream: EducationStream;
   setActiveStream: (stream: EducationStream) => void;
   ready: boolean;
-  login: (token: string, user: AuthUser) => void;
+  login: (identifier: string, password: string) => Promise<void>;
+  register: (input: { name: string; phone?: string; email?: string; password: string }) => Promise<void>;
+  /** Signs in with an already-issued token (Google sign-in, password reset). */
+  setSession: (token: string, user: AuthUser) => Promise<void>;
+  /** Swaps in a fresh copy of the user (e.g. after their phone or email is verified). */
+  updateUser: (user: AuthUser) => void;
   logout: () => void;
 }
-
-const DEFAULT_DEMO_USER: AuthUser = {
-  id: "usr_student_demo",
-  accountCode: "PB-STU-001",
-  name: "Denis Kigozi",
-  email: "denis.kigozi@peebee.online",
-  phone: "+256 701 234 567",
-  role: "customer",
-  status: "active",
-  emailVerifiedAt: "2026-01-01T00:00:00.000Z",
-  phoneVerifiedAt: "2026-01-01T00:00:00.000Z",
-  defaultMatchingMode: "first_to_claim",
-  passwordSet: true,
-  adminRole: null,
-  forcePasswordChange: false,
-  hasProfilePhoto: false,
-};
 
 const LearnAuthContext = createContext<LearnAuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<AuthUser | null>(DEFAULT_DEMO_USER);
-  const [activeStream, setActiveStream] = useState<EducationStream>("campus");
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [activeStream, setStream] = useState<EducationStream>("foundations");
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const stored = localStorage.getItem(STREAM_KEY);
+        // Older builds saved "campus", which is now "compass".
+        if (stored && !cancelled) setStream(normalizeStream(stored));
+        if (!localStorage.getItem(TOKEN_KEY)) return;
+        const me = await api.me();
+        if (!cancelled) setUser(me.user);
+      } catch {
+        /* a bad or expired token is cleared by the client; the shell sends them to sign in */
+      } finally {
+        if (!cancelled) setReady(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const setActiveStream = useCallback((stream: EducationStream) => {
+    setStream(stream);
     try {
-      const storedToken = localStorage.getItem(TOKEN_KEY);
-      const storedStream = localStorage.getItem("peebee_learn_stream") as EducationStream;
-      if (storedStream) {
-        setActiveStream(storedStream);
-      }
-      if (storedToken) {
-        api.me().then((res) => {
-          if (res?.user) setUser(res.user);
-        }).catch(() => {
-          // Keep demo user
-        });
-      }
+      localStorage.setItem(STREAM_KEY, stream);
     } catch {
-      // Ignore
-    } finally {
-      setReady(true);
+      /* private mode */
     }
   }, []);
 
-  const handleSetStream = (stream: EducationStream) => {
-    setActiveStream(stream);
-    try {
-      localStorage.setItem("peebee_learn_stream", stream);
-    } catch {}
-  };
+  const setSession = useCallback(async (token: string, next: AuthUser) => {
+    localStorage.setItem(TOKEN_KEY, token);
+    setUser(next);
+  }, []);
 
-  const login = (token: string, newUser: AuthUser) => {
-    try {
-      localStorage.setItem(TOKEN_KEY, token);
-    } catch {}
-    setUser(newUser);
-  };
+  const login = useCallback(
+    async (identifier: string, password: string) => {
+      const res = await api.login({ identifier: identifier.trim(), password });
+      if (res.user.role === "admin") {
+        throw new Error("Staff accounts can't use Peebee Learn. Sign in with a personal account.");
+      }
+      await setSession(res.token, res.user);
+    },
+    [setSession],
+  );
 
-  const logout = () => {
+  const register = useCallback(
+    async (input: { name: string; phone?: string; email?: string; password: string }) => {
+      const res = await api.register({ ...input, role: "customer" });
+      await setSession(res.token, res.user);
+    },
+    [setSession],
+  );
+
+  const logout = useCallback(() => {
+    void api.logout().catch(() => undefined);
     try {
       localStorage.removeItem(TOKEN_KEY);
-    } catch {}
-    setUser(DEFAULT_DEMO_USER);
-  };
+    } catch {
+      /* private mode */
+    }
+    setUser(null);
+  }, []);
 
-  return (
-    <LearnAuthContext.Provider
-      value={{
-        user,
-        activeStream,
-        setActiveStream: handleSetStream,
-        ready,
-        login,
-        logout,
-      }}
-    >
-      {children}
-    </LearnAuthContext.Provider>
+  const updateUser = useCallback((next: AuthUser) => setUser(next), []);
+
+  const value = useMemo<LearnAuthContextType>(
+    () => ({ user, activeStream, setActiveStream, ready, login, register, setSession, updateUser, logout }),
+    [user, activeStream, setActiveStream, ready, login, register, setSession, updateUser, logout],
   );
+  return <LearnAuthContext.Provider value={value}>{children}</LearnAuthContext.Provider>;
 }
 
 export function useLearnAuth() {
@@ -100,3 +106,6 @@ export function useLearnAuth() {
   if (!ctx) throw new Error("useLearnAuth must be used within an AuthProvider");
   return ctx;
 }
+
+/** The name the shared sign-in components expect. */
+export const useAuth = useLearnAuth;

@@ -5,6 +5,7 @@ import { DEMO_FOOD_RESTAURANTS, demoFoodImage, demoFoodMenu, demoFoodRestaurant 
 import { DEMO_MARKETPLACE_STORES, DEMO_MARKETPLACE_PRODUCTS, DEMO_MARKETPLACE_SPOTLIGHT } from "./demo-marketplace.js";
 import { CAR_MODEL_CATALOG } from "./car-model-catalog.js";
 import { EDUCATION_STREAMS } from "./education/types.js";
+import { handleStudioSandbox } from "./education/studio-sandbox.js";
 import {
   DEMO_INSTITUTIONS,
   DEMO_SPROUTS_ACTIVITIES,
@@ -16,9 +17,9 @@ import {
   DEMO_ACADEMY_TIMETABLE,
   DEMO_ACADEMY_EXAM,
   DEMO_ACADEMY_REPORT_CARD,
-  DEMO_CAMPUS_COURSE,
-  DEMO_CAMPUS_PEER_REVIEW,
-  DEMO_CAMPUS_CREDENTIAL,
+  DEMO_COMPASS_COURSE,
+  DEMO_COMPASS_PEER_REVIEW,
+  DEMO_COMPASS_CREDENTIAL,
   DEMO_SKILLS_COURSE,
   DEMO_SKILLS_SUBMISSION,
   DEMO_SKILLS_LOGBOOK,
@@ -1307,6 +1308,8 @@ function practiceRelayParcel(path: string, method: string, body: Record<string, 
 }
 
 function practiceEducationRequest(path: string, method: string, body: Record<string, unknown>, searchParams: URLSearchParams): Response {
+  const studio = handleStudioSandbox(path, method, body);
+  if (studio) return studio;
   if (method === "GET" && path === "/v1/education/streams") return jsonResponse({ ok: true, streams: EDUCATION_STREAMS });
   if (method === "GET" && path === "/v1/education/institutions") return jsonResponse({ ok: true, institutions: DEMO_INSTITUTIONS });
   if (method === "GET" && path.startsWith("/v1/education/institutions/")) return jsonResponse({ ok: true, institution: DEMO_INSTITUTIONS[0] });
@@ -1373,19 +1376,19 @@ function practiceEducationRequest(path: string, method: string, body: Record<str
     });
   }
 
-  // 4. Campus
-  if (method === "GET" && path === "/v1/education/campus/course") {
+  // 4. Compass
+  if (method === "GET" && path === "/v1/education/compass/course") {
     return jsonResponse({
       ok: true,
-      course: DEMO_CAMPUS_COURSE,
-      peerReview: DEMO_CAMPUS_PEER_REVIEW,
-      credential: DEMO_CAMPUS_CREDENTIAL,
+      course: DEMO_COMPASS_COURSE,
+      peerReview: DEMO_COMPASS_PEER_REVIEW,
+      credential: DEMO_COMPASS_CREDENTIAL,
     });
   }
-  if (method === "POST" && path === "/v1/education/campus/notes") {
+  if (method === "POST" && path === "/v1/education/compass/notes") {
     return jsonResponse({ ok: true, noteId: `note_practice_${Date.now()}` });
   }
-  if (method === "POST" && path === "/v1/education/campus/peer-review/submit") {
+  if (method === "POST" && path === "/v1/education/compass/peer-review/submit") {
     return jsonResponse({ ok: true, isComplete: true });
   }
 

@@ -12,9 +12,9 @@ import {
   DEMO_ACADEMY_TIMETABLE,
   DEMO_ACADEMY_EXAM,
   DEMO_ACADEMY_REPORT_CARD,
-  DEMO_CAMPUS_COURSE,
-  DEMO_CAMPUS_PEER_REVIEW,
-  DEMO_CAMPUS_CREDENTIAL,
+  DEMO_COMPASS_COURSE,
+  DEMO_COMPASS_PEER_REVIEW,
+  DEMO_COMPASS_CREDENTIAL,
   DEMO_SKILLS_COURSE,
   DEMO_SKILLS_SUBMISSION,
   DEMO_SKILLS_LOGBOOK,
@@ -109,7 +109,7 @@ export default function StreamsPage() {
       {/* 1. SPROUTS */}
       {activeStream === "sprouts" && (
         <div className="space-y-4">
-          <div className="home-card bg-gradient-to-br from-amber-500/10 via-cream to-cream p-5 dark:from-amber-950/20 dark:via-black-700">
+          <div className="home-card bg-gradient-to-br from-gold/10 via-cream to-cream p-5 dark:from-gold/10 dark:via-black-700">
             <div className="flex items-center justify-between">
               <span className="rounded-full bg-gold/20 px-2.5 py-0.5 text-[10px] font-black uppercase text-gold">
                 Ages 3–6 • Tablet-First & Audio Nav
@@ -269,9 +269,9 @@ export default function StreamsPage() {
               <p className="text-xs font-bold text-ink">{DEMO_ACADEMY_EXAM.title}</p>
 
               {/* Anti-cheat tab alert */}
-              <div className="flex items-center justify-between rounded-xl bg-amber-500/10 p-2.5 text-xs">
+              <div className="flex items-center justify-between rounded-xl bg-gold/10 p-2.5 text-xs">
                 <span className="text-ink-500">Integrity Monitor:</span>
-                <span className="font-bold text-amber-600 dark:text-amber-400">
+                <span className="font-bold text-gold">
                   {examTabSwitches} Tab-Switch Violations Detected
                 </span>
               </div>
@@ -301,8 +301,8 @@ export default function StreamsPage() {
         </div>
       )}
 
-      {/* 4. CAMPUS */}
-      {activeStream === "campus" && (
+      {/* 4. COMPASS */}
+      {activeStream === "compass" && (
         <div className="space-y-4">
           <div className="home-card p-5 space-y-4">
             <div className="flex items-center justify-between">
@@ -323,9 +323,9 @@ export default function StreamsPage() {
 
             {/* Course Syllabus Preview */}
             <div className="rounded-2xl border border-[var(--border-faint)] p-4 bg-cream-50/50 dark:bg-black/30 space-y-2">
-              <p className="text-xs font-black text-ink">{DEMO_CAMPUS_COURSE.title}</p>
+              <p className="text-xs font-black text-ink">{DEMO_COMPASS_COURSE.title}</p>
               <div className="space-y-1.5 text-xs text-ink-500">
-                {DEMO_CAMPUS_COURSE.syllabus.map((mod) => (
+                {DEMO_COMPASS_COURSE.syllabus.map((mod) => (
                   <div
                     key={mod.id}
                     className="flex items-center justify-between rounded-xl border border-[var(--border-faint)] bg-cream p-2.5 dark:bg-black/40"
@@ -341,10 +341,10 @@ export default function StreamsPage() {
             <div className="rounded-2xl border border-gold/40 bg-gold/5 p-4 flex items-center justify-between">
               <div>
                 <p className="text-xs font-black text-ink">
-                  {DEMO_CAMPUS_CREDENTIAL.courseTitle}
+                  {DEMO_COMPASS_CREDENTIAL.courseTitle}
                 </p>
                 <p className="font-mono text-[10px] text-ink-500">
-                  Verification Hash: {DEMO_CAMPUS_CREDENTIAL.verificationHash}
+                  Verification Hash: {DEMO_COMPASS_CREDENTIAL.verificationHash}
                 </p>
               </div>
               <button className="rounded-xl bg-gold px-3 py-1.5 text-xs font-black text-black">

@@ -1,15 +1,23 @@
 /**
- * Core Domain Types for the Peebee Education Platform
- * Supporting the 5-Tier Education Stream and Cross-Cutting Infrastructure:
- * 1. Sprouts (Kindergarten / Early Childhood, Ages 3-6)
- * 2. Foundations (Primary / Elementary, Ages 6-12)
- * 3. Academy (Secondary / High School, Ages 12-18)
- * 4. Campus (Higher Ed & Self-Paced Business, edX/Udemy Style)
- * 5. Skills (Vocational, Trades & Practical Training)
+ * Core Domain Types for the Peebee Learn platform.
+ *
+ * Five learning streams, one shape of content:
+ *
+ *   School / academy / tutor  →  Class (or masterclass)  →  Course  →  Module  →  Lesson
+ *
+ * 1. Sprouts      — kindergarten and early childhood, ages 3–6
+ * 2. Foundations  — primary school, ages 6–12
+ * 3. Academy      — secondary and senior high school, ages 12–18
+ * 4. Compass      — university and college students
+ * 5. Skills       — everyday learners: vocational and practical trades, tutorials
+ *                   and informal subjects
  */
 
-export type EducationStream = "sprouts" | "foundations" | "academy" | "campus" | "skills";
+export type EducationStream = "sprouts" | "foundations" | "academy" | "compass" | "skills";
 export type EducationStreamId = EducationStream;
+
+/** Every stream, in the order learners climb them. */
+export const EDUCATION_STREAM_IDS: readonly EducationStream[] = ["sprouts", "foundations", "academy", "compass", "skills"];
 
 export type EducationRole =
   | "super_admin"
@@ -33,7 +41,7 @@ export const EDUCATION_STREAMS: EducationStreamMeta[] = [
   {
     id: "sprouts",
     title: "Sprouts",
-    tagline: "Kindergarten & Early Play",
+    tagline: "Kindergarten & early play",
     ageBracket: "Ages 3–6",
     icon: "🌱",
     accentColor: "text-gold",
@@ -42,7 +50,7 @@ export const EDUCATION_STREAMS: EducationStreamMeta[] = [
   {
     id: "foundations",
     title: "Foundations",
-    tagline: "Primary & Elementary School",
+    tagline: "Primary school",
     ageBracket: "Ages 6–12",
     icon: "🎒",
     accentColor: "text-gold",
@@ -51,31 +59,119 @@ export const EDUCATION_STREAMS: EducationStreamMeta[] = [
   {
     id: "academy",
     title: "Academy",
-    tagline: "Secondary & High School",
+    tagline: "Secondary & senior high school",
     ageBracket: "Ages 12–18",
     icon: "🏛️",
     accentColor: "text-gold",
-    pedagogicalFocus: "Academic term pacing, timed exams, tab-switch anti-cheat, UNEB grading & report cards.",
+    pedagogicalFocus: "Term pacing, timed exams, tab-switch anti-cheat, national and international exam prep & report cards.",
   },
   {
-    id: "campus",
-    title: "Campus",
-    tagline: "Higher Ed & Business Courses",
-    ageBracket: "Collegiate & Adult",
+    id: "compass",
+    title: "Compass",
+    tagline: "University & college",
+    ageBracket: "University students",
     icon: "🎓",
     accentColor: "text-gold",
-    pedagogicalFocus: "Modular syllabus trees, timestamped video notes, double-blind peer review & QR certs.",
+    pedagogicalFocus: "Modular syllabus trees, timestamped video notes, double-blind peer review & verifiable certificates.",
   },
   {
     id: "skills",
     title: "Skills",
-    tagline: "Vocational & Practical Trades",
-    ageBracket: "Apprentices & Artisans",
+    tagline: "Learn anything practical",
+    ageBracket: "Everyone",
     icon: "🛠️",
     accentColor: "text-gold",
-    pedagogicalFocus: "Hands-on video submissions, second-mark timestamp critiques, tool trays & apprentice logbooks.",
+    pedagogicalFocus: "Vocational trades, how-to tutorials and informal subjects: video submissions, timestamped critiques, tool trays & logbooks.",
   },
 ];
+
+/** Accepts a stream id saved by an older build ("campus" became "compass"). */
+export function normalizeStream(value: unknown, fallback: EducationStream = "foundations"): EducationStream {
+  if (value === "campus") return "compass";
+  return typeof value === "string" && (EDUCATION_STREAM_IDS as readonly string[]).includes(value) ? (value as EducationStream) : fallback;
+}
+
+// ==========================================
+// Classes, levels and syllabus frameworks
+// ==========================================
+
+/** A class is a fixed cohort (Primary 4 Blue, S.4 Sciences). A masterclass is a short, focused programme anyone can join. */
+export type ClassKind = "class" | "masterclass";
+
+export type CurriculumFramework =
+  | "uganda_ecd"
+  | "uganda_primary"
+  | "uneb_olevel"
+  | "uneb_alevel"
+  | "cambridge_primary"
+  | "cambridge_igcse"
+  | "cambridge_a_level"
+  | "ib_pyp"
+  | "ib_myp"
+  | "ib_diploma"
+  | "kenya_cbc"
+  | "university_credit"
+  | "professional_certificate"
+  | "uvqf_tvet"
+  | "open_syllabus";
+
+export interface CurriculumFrameworkMeta {
+  id: CurriculumFramework;
+  label: string;
+  /** Streams this syllabus is normally taught in. */
+  streams: EducationStream[];
+}
+
+export const CURRICULUM_FRAMEWORKS: CurriculumFrameworkMeta[] = [
+  { id: "uganda_ecd", label: "Uganda ECD Framework", streams: ["sprouts"] },
+  { id: "uganda_primary", label: "Uganda Primary Curriculum (NCDC)", streams: ["foundations"] },
+  { id: "cambridge_primary", label: "Cambridge Primary", streams: ["foundations"] },
+  { id: "ib_pyp", label: "IB Primary Years (PYP)", streams: ["sprouts", "foundations"] },
+  { id: "kenya_cbc", label: "Kenya CBC", streams: ["sprouts", "foundations", "academy"] },
+  { id: "uneb_olevel", label: "UNEB O-Level (UCE)", streams: ["academy"] },
+  { id: "uneb_alevel", label: "UNEB A-Level (UACE)", streams: ["academy"] },
+  { id: "cambridge_igcse", label: "Cambridge IGCSE", streams: ["academy"] },
+  { id: "cambridge_a_level", label: "Cambridge A-Level", streams: ["academy"] },
+  { id: "ib_myp", label: "IB Middle Years (MYP)", streams: ["academy"] },
+  { id: "ib_diploma", label: "IB Diploma", streams: ["academy"] },
+  { id: "university_credit", label: "University credit course", streams: ["compass"] },
+  { id: "professional_certificate", label: "Professional certificate", streams: ["compass", "skills"] },
+  { id: "uvqf_tvet", label: "Vocational & TVET (UVQF)", streams: ["skills"] },
+  { id: "open_syllabus", label: "Own syllabus", streams: ["sprouts", "foundations", "academy", "compass", "skills"] },
+];
+
+/** The class / grade names each stream offers, used to pre-fill the class builder. */
+export const STREAM_LEVELS: Record<EducationStream, string[]> = {
+  sprouts: ["Baby class (3 yrs)", "Middle class (4 yrs)", "Top class (5–6 yrs)"],
+  foundations: ["Primary 1", "Primary 2", "Primary 3", "Primary 4", "Primary 5", "Primary 6", "Primary 7"],
+  academy: ["Senior 1", "Senior 2", "Senior 3", "Senior 4 (O-Level)", "Senior 5 (A-Level)", "Senior 6 (A-Level)"],
+  compass: ["Year 1", "Year 2", "Year 3", "Year 4", "Postgraduate", "Short course"],
+  skills: ["Beginner", "Intermediate", "Advanced", "Masterclass"],
+};
+
+export function frameworksForStream(stream: EducationStream): CurriculumFrameworkMeta[] {
+  return CURRICULUM_FRAMEWORKS.filter((f) => f.streams.includes(stream));
+}
+
+export interface SchoolClass {
+  id: string;
+  /** The school, academy or tutor that runs the class. */
+  schoolId: string;
+  stream: EducationStream;
+  kind: ClassKind;
+  /** "Primary 4 Blue", "S.4 Sciences", "Barbering Intensive". */
+  name: string;
+  /** Grade or level from STREAM_LEVELS, or free text. */
+  level: string;
+  framework: CurriculumFramework;
+  academicYear: string;
+  term?: string;
+  teacherName: string;
+  capacity: number;
+  enrolled: number;
+  summary: string;
+  courseIds: string[];
+}
 
 // ==========================================
 // Multi-Tenancy & School Onboarding
@@ -145,6 +241,12 @@ export interface CreatorCourse {
   summary: string;
   thumbnailUrl: string;
   priceUgx: number; // 0 for term-tuition or free intro
+  /** The class this course is taught in. */
+  classId?: string;
+  /** Syllabus the course follows. */
+  framework?: CurriculumFramework;
+  /** What a learner can do after finishing, one line each. */
+  outcomes?: string[];
   enrolledStudentsCount: number;
   rating: number;
   reviewCount: number;
@@ -170,6 +272,8 @@ export interface CreatorProfile {
   rating: number;
   reviewCount: number;
   courses: CreatorCourse[];
+  /** Classes and masterclasses the school runs. */
+  classes?: SchoolClass[];
   tuitionFeeUgx?: number;
   tuitionCadence?: "term" | "course" | "monthly";
   payoutBalanceUgx: number;
@@ -350,7 +454,7 @@ export interface AcademyTerminalReportCard {
 }
 
 // ==========================================
-// 4. Campus (Collegiate & Self-Paced Business)
+// 4. Compass (Collegiate & Self-Paced Business)
 // ==========================================
 
 export interface SyllabusUnit {
@@ -376,7 +480,7 @@ export interface SyllabusModule {
   sections: SyllabusSection[];
 }
 
-export interface CampusCourseDetail {
+export interface CompassCourseDetail {
   id: string;
   code: string;
   title: string;
@@ -415,7 +519,7 @@ export interface PeerReviewAssignment {
   isComplete: boolean;
 }
 
-export interface CampusVerifiableCredential {
+export interface CompassVerifiableCredential {
   certificateId: string;
   studentName: string;
   courseTitle: string;

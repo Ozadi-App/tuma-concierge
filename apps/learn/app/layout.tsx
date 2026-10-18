@@ -22,8 +22,8 @@ const THEME_INIT_SCRIPT = `
 `;
 
 export const metadata: Metadata = {
-  title: "Peebee Learn — Live Classrooms, Tutors & 5-Tier Learning",
-  description: "Interactive Zoom-style classrooms, real-time tutor chat, and 5-stream curriculum from Sprouts to Skills",
+  title: "Peebee Learn — Educator Studio",
+  description: "Create a school, run classes and masterclasses, and publish courses and lessons for every stage of learning, from kindergarten to university to everyday skills",
   manifest: "/manifest.json",
   icons: {
     icon: [

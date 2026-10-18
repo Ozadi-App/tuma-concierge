@@ -20,6 +20,7 @@ import {
   LogOut,
   MapPin,
   Mic,
+  GraduationCap,
   Moon,
   Phone,
   PiggyBank,
@@ -221,6 +222,13 @@ export function SettingsListContent({ onItemClick }: { onItemClick?: () => void 
       icon: Store,
       label: "Marketplace & Pro stores",
       value: "TikTok live & ads",
+      show: true,
+    },
+    {
+      href: "/settings/learn",
+      icon: GraduationCap,
+      label: "Peebee Learn",
+      value: "Schools & courses",
       show: true,
     },
     {

@@ -1,0 +1,378 @@
+"use client";
+
+import { CURRICULUM_FRAMEWORKS, LESSON_CONTENT_TYPES, type StudioClass, type StudioCourseDetail, type StudioLesson, type StudioSchool } from "@peebee/shared";
+import { Eye, EyeOff, HelpCircle, Layers, Pencil, Plus, Trash2 } from "lucide-react";
+import { useParams, useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { CourseForm, LessonForm, ModuleForm, type CourseInput, type LessonInput } from "../../../components/studio/forms";
+import { Button, Chip, Crumbs, EmptyState, Notice, Skeleton, cardCls } from "../../../components/ui";
+import { api, errorMessage } from "../../../lib/api";
+import { useStudioSettings } from "../../../lib/studio-config";
+import { STREAM_UI, formatMinutes, formatUgx, plural } from "../../../lib/streams";
+
+type Editing =
+  | { kind: "none" }
+  | { kind: "course" }
+  | { kind: "module-new" }
+  | { kind: "module-edit"; id: string }
+  | { kind: "lesson-new"; moduleId: string }
+  | { kind: "lesson-edit"; id: string };
+
+const TYPE_LABEL = Object.fromEntries(LESSON_CONTENT_TYPES.map((t) => [t.id, t.label]));
+
+export default function CoursePage() {
+  const { id } = useParams<{ id: string }>();
+  const router = useRouter();
+  const settings = useStudioSettings();
+  const [course, setCourse] = useState<StudioCourseDetail | null>(null);
+  const [cls, setCls] = useState<StudioClass | null>(null);
+  const [school, setSchool] = useState<StudioSchool | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [editing, setEditing] = useState<Editing>({ kind: "none" });
+  const [busy, setBusy] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const found = await api.studioCourse(id);
+      const owner = await api.studioClass(found.course.classId);
+      const holder = await api.studioSchool(found.course.schoolId);
+      setCourse(found.course);
+      setCls(owner.class);
+      setSchool(holder.school);
+      setError(null);
+    } catch (err) {
+      setCourse(null);
+      setError(errorMessage(err));
+    } finally {
+      setLoaded(true);
+    }
+  }, [id]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const totals = useMemo(() => {
+    const lessons = course?.modules.flatMap((m) => m.lessons) ?? [];
+    return { lessons: lessons.length, minutes: lessons.reduce((n, l) => n + l.durationMinutes, 0), quizzes: lessons.filter((l) => l.quiz).length };
+  }, [course]);
+
+  const suspended = school?.status === "suspended";
+  const canBuild = settings.enabled && !suspended;
+
+  /** Runs one change, then refreshes the course. Every handler below goes through this so errors are shown the same way. */
+  async function run(action: () => Promise<unknown>, done?: string) {
+    setBusy(true);
+    setFormError(null);
+    setNotice(null);
+    try {
+      await action();
+      setEditing({ kind: "none" });
+      await load();
+      if (done) setNotice(done);
+    } catch (err) {
+      setFormError(errorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const cancel = () => {
+    setEditing({ kind: "none" });
+    setFormError(null);
+  };
+
+  if (!loaded) return <Skeleton className="h-64" />;
+  if (!course || !cls || !school) {
+    return (
+      <div className="space-y-4">
+        <Crumbs items={[{ label: "Schools", href: "/schools" }, { label: "Not found" }]} />
+        <Notice tone="error">{error ?? "That course wasn't found."}</Notice>
+      </div>
+    );
+  }
+
+  const published = course.status === "published";
+  const framework = CURRICULUM_FRAMEWORKS.find((f) => f.id === course.framework)?.label ?? "Own syllabus";
+  const lessonRoomLeft = (moduleId: string) => (course.modules.find((m) => m.id === moduleId)?.lessons.length ?? 0) < settings.maxLessonsPerModule;
+  const editingLesson: StudioLesson | undefined =
+    editing.kind === "lesson-edit" ? course.modules.flatMap((m) => m.lessons).find((l) => l.id === editing.id) : undefined;
+
+  function saveLesson(input: LessonInput, existing?: StudioLesson, moduleId?: string) {
+    return run(
+      () => (existing ? api.studioUpdateLesson(existing.id, input) : api.studioCreateLesson(moduleId as string, input)),
+      existing ? "Lesson saved." : "Lesson added.",
+    );
+  }
+
+  return (
+    <div className="space-y-5 pb-6">
+      <Crumbs
+        items={[
+          { label: "Schools", href: "/schools" },
+          { label: school.name, href: `/schools/${school.id}` },
+          { label: cls.name, href: `/classes/${cls.id}` },
+          { label: course.title },
+        ]}
+      />
+
+      <header className={`${cardCls} space-y-3 p-4 sm:p-5`}>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0 space-y-1">
+            <div className="flex flex-wrap gap-1.5">
+              <Chip tone={published ? "green" : "muted"}>{published ? "Live" : "Draft"}</Chip>
+              <Chip tone="gold">{STREAM_UI[course.stream].title}</Chip>
+            </div>
+            <h2 className="font-display text-2xl font-semibold text-ink">{course.title}</h2>
+            <p className="text-xs text-ink-500">
+              {framework} · {formatUgx(course.priceUgx)}
+            </p>
+          </div>
+          {canBuild && editing.kind === "none" && (
+            <div className="flex flex-wrap gap-2">
+              <Button variant="secondary" onClick={() => setEditing({ kind: "course" })}>
+                <Pencil className="h-4 w-4" aria-hidden /> Edit
+              </Button>
+              <Button
+                variant={published ? "secondary" : "primary"}
+                disabled={busy || (!published && totals.lessons === 0)}
+                onClick={() => run(() => api.studioUpdateCourse(id, { status: published ? "draft" : "published" }), published ? "The course is now a draft and hidden from learners." : "Published. Learners can now find this course.")}
+              >
+                {published ? <EyeOff className="h-4 w-4" aria-hidden /> : <Eye className="h-4 w-4" aria-hidden />}
+                {published ? "Unpublish" : "Publish"}
+              </Button>
+            </div>
+          )}
+        </div>
+        {course.summary && <p className="text-sm text-ink-500">{course.summary}</p>}
+        {course.outcomes.length > 0 && (
+          <div className="space-y-1 border-t border-[var(--border-faint)] pt-3">
+            <p className="text-xs font-semibold text-ink-500">After this course, a learner can:</p>
+            <ul className="list-disc space-y-0.5 pl-5 text-sm text-ink">
+              {course.outcomes.map((o) => (
+                <li key={o}>{o}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+        <p className="border-t border-[var(--border-faint)] pt-3 text-xs text-ink-500">
+          {plural(course.modules.length, "module")} · {plural(totals.lessons, "lesson")} · {formatMinutes(totals.minutes)} · {plural(totals.quizzes, "quiz", "quizzes")}
+        </p>
+        {!published && totals.lessons === 0 && canBuild && <p className="text-xs text-ink-500">Add at least one lesson to be able to publish.</p>}
+      </header>
+
+      {suspended && <Notice tone="error">This school has been suspended by Peebee, so it can&apos;t be edited and its courses are hidden.</Notice>}
+      {!settings.enabled && !suspended && <Notice tone="info">The Studio is switched off right now, so nothing can be created or edited.</Notice>}
+      {notice && (
+        <Notice tone="success" onClose={() => setNotice(null)}>
+          {notice}
+        </Notice>
+      )}
+      {error && <Notice tone="error">{error}</Notice>}
+      {editing.kind === "none" && formError && <Notice tone="error">{formError}</Notice>}
+
+      {editing.kind === "course" && (
+        <CourseForm
+          settings={settings}
+          stream={course.stream}
+          defaultFramework={course.framework}
+          initial={course}
+          title="Course details"
+          submitLabel="Save changes"
+          busy={busy}
+          error={formError}
+          onSubmit={(input: CourseInput) => run(() => api.studioUpdateCourse(id, input), "Course saved.")}
+          onCancel={cancel}
+        />
+      )}
+
+      <section aria-labelledby="syllabus-heading" className="space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <h3 id="syllabus-heading" className="text-base font-semibold text-ink">
+            Syllabus
+          </h3>
+          {canBuild && editing.kind === "none" && course.modules.length > 0 && course.modules.length < settings.maxModulesPerCourse && (
+            <Button onClick={() => setEditing({ kind: "module-new" })}>
+              <Plus className="h-4 w-4" aria-hidden /> Add module
+            </Button>
+          )}
+        </div>
+
+        {editing.kind === "module-new" && (
+          <ModuleForm
+            title="Add a module"
+            submitLabel="Add module"
+            busy={busy}
+            error={formError}
+            onSubmit={(input) => run(() => api.studioCreateModule(id, input), "Module added.")}
+            onCancel={cancel}
+          />
+        )}
+
+        {course.modules.length === 0 ? (
+          editing.kind !== "module-new" && (
+            <EmptyState
+              icon={Layers}
+              title="Start with a module"
+              body="Modules are the units or weeks of your syllabus. Each one holds lessons."
+              action={
+                canBuild ? (
+                  <Button onClick={() => setEditing({ kind: "module-new" })}>
+                    <Plus className="h-4 w-4" aria-hidden /> Add the first module
+                  </Button>
+                ) : undefined
+              }
+            />
+          )
+        ) : (
+          course.modules.map((mod, mi) => (
+            <article key={mod.id} className={`${cardCls} space-y-3 p-4`}>
+              {editing.kind === "module-edit" && editing.id === mod.id ? (
+                <ModuleForm
+                  initial={mod}
+                  title="Edit module"
+                  submitLabel="Save module"
+                  busy={busy}
+                  error={formError}
+                  onSubmit={(input) => run(() => api.studioUpdateModule(mod.id, input), "Module saved.")}
+                  onCancel={cancel}
+                />
+              ) : (
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-gold">Module {mi + 1}</p>
+                    <h4 className="text-sm font-semibold text-ink">{mod.title}</h4>
+                    {mod.description && <p className="text-xs text-ink-500">{mod.description}</p>}
+                  </div>
+                  {canBuild && editing.kind === "none" && (
+                    <div className="flex shrink-0 gap-1">
+                      <button type="button" aria-label={`Edit module ${mi + 1}`} onClick={() => setEditing({ kind: "module-edit", id: mod.id })} className="rounded-lg p-2 text-ink-500 hover:bg-[rgb(var(--surface-muted))] hover:text-ink">
+                        <Pencil className="h-4 w-4" />
+                      </button>
+                      <button
+                        type="button"
+                        aria-label={`Delete module ${mi + 1}`}
+                        onClick={() => {
+                          if (window.confirm(`Delete “${mod.title}” and its ${mod.lessons.length} lessons?`)) void run(() => api.studioDeleteModule(mod.id), "Module deleted.");
+                        }}
+                        className="rounded-lg p-2 text-ink-500 hover:bg-[rgb(var(--surface-muted))] hover:text-red-600"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <ol className="space-y-2">
+                {mod.lessons.map((lesson, li) =>
+                  editing.kind === "lesson-edit" && editing.id === lesson.id && editingLesson ? (
+                    <li key={lesson.id}>
+                      <LessonForm
+                        settings={settings}
+                        initial={editingLesson}
+                        title={`Edit lesson ${li + 1}`}
+                        submitLabel="Save lesson"
+                        busy={busy}
+                        error={formError}
+                        onSubmit={(input) => saveLesson(input, editingLesson)}
+                        onCancel={cancel}
+                      />
+                    </li>
+                  ) : (
+                    <li key={lesson.id} className="flex items-start justify-between gap-3 rounded-xl border border-[var(--border-faint)] px-3.5 py-3">
+                      <div className="min-w-0 space-y-0.5">
+                        <p className="text-sm font-semibold text-ink">
+                          {li + 1}. {lesson.title}
+                        </p>
+                        <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-500">
+                          <span>{TYPE_LABEL[lesson.contentType] ?? lesson.contentType}</span>
+                          <span aria-hidden>·</span>
+                          <span>{formatMinutes(lesson.durationMinutes)}</span>
+                          {lesson.quiz && (
+                            <span className="inline-flex items-center gap-1 text-gold">
+                              <HelpCircle className="h-3 w-3" aria-hidden /> Quiz · {lesson.quiz.questions.length} {lesson.quiz.questions.length === 1 ? "question" : "questions"}
+                            </span>
+                          )}
+                        </p>
+                        {lesson.summary && <p className="line-clamp-2 text-xs text-ink-500">{lesson.summary}</p>}
+                      </div>
+                      {canBuild && editing.kind === "none" && (
+                        <div className="flex shrink-0 gap-1">
+                          <button type="button" aria-label={`Edit lesson ${li + 1}`} onClick={() => setEditing({ kind: "lesson-edit", id: lesson.id })} className="rounded-lg p-2 text-ink-500 hover:bg-[rgb(var(--surface-muted))] hover:text-ink">
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                          <button
+                            type="button"
+                            aria-label={`Delete lesson ${li + 1}`}
+                            onClick={() => {
+                              if (window.confirm(`Delete the lesson “${lesson.title}”?`)) void run(() => api.studioDeleteLesson(lesson.id), "Lesson deleted.");
+                            }}
+                            className="rounded-lg p-2 text-ink-500 hover:bg-[rgb(var(--surface-muted))] hover:text-red-600"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      )}
+                    </li>
+                  ),
+                )}
+              </ol>
+
+              {editing.kind === "lesson-new" && editing.moduleId === mod.id ? (
+                <LessonForm
+                  settings={settings}
+                  title="Add a lesson"
+                  submitLabel="Add lesson"
+                  busy={busy}
+                  error={formError}
+                  onSubmit={(input) => saveLesson(input, undefined, mod.id)}
+                  onCancel={cancel}
+                />
+              ) : (
+                canBuild &&
+                editing.kind === "none" && (
+                  <Button variant="secondary" disabled={!lessonRoomLeft(mod.id)} onClick={() => setEditing({ kind: "lesson-new", moduleId: mod.id })}>
+                    <Plus className="h-4 w-4" aria-hidden /> Add lesson
+                  </Button>
+                )
+              )}
+              {!lessonRoomLeft(mod.id) && <p className="text-xs text-ink-500">A module can have up to {settings.maxLessonsPerModule} lessons.</p>}
+            </article>
+          ))
+        )}
+      </section>
+
+      {canBuild && (
+        <section aria-labelledby="danger-heading" className={`${cardCls} flex flex-wrap items-center justify-between gap-3 p-4`}>
+          <div>
+            <h3 id="danger-heading" className="text-sm font-semibold text-ink">
+              Delete this course
+            </h3>
+            <p className="text-xs text-ink-500">Removes the course with all of its modules and lessons.</p>
+          </div>
+          <Button
+            variant="danger"
+            disabled={busy}
+            onClick={async () => {
+              if (!window.confirm(`Delete “${course.title}” with its ${totals.lessons} lessons? This can't be undone.`)) return;
+              setBusy(true);
+              try {
+                await api.studioDeleteCourse(id);
+                router.replace(`/classes/${cls.id}`);
+              } catch (err) {
+                setError(errorMessage(err));
+                setBusy(false);
+              }
+            }}
+          >
+            <Trash2 className="h-4 w-4" aria-hidden /> Delete course
+          </Button>
+        </section>
+      )}
+    </div>
+  );
+}

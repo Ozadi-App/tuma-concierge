@@ -58,7 +58,7 @@ export default function LearnPracticePage() {
   const [chatSent, setChatSent] = useState(false);
   const [voicePlaying, setVoicePlaying] = useState(false);
 
-  // Step 6: Campus State
+  // Step 6: Compass State
   const [peerReviewScored, setPeerReviewScored] = useState(false);
   const [credentialVerified, setCredentialVerified] = useState(false);
 
@@ -285,9 +285,9 @@ export default function LearnPracticePage() {
                     <span className="font-mono font-bold text-gold">Time: 90 Mins</span>
                   </div>
 
-                  <div className="rounded-xl bg-amber-500/10 p-3 flex items-center justify-between">
+                  <div className="rounded-xl bg-gold/10 p-3 flex items-center justify-between">
                     <span>Browser Visibility Anti-Cheat Monitor:</span>
-                    <span className="font-bold text-amber-600 dark:text-amber-400">
+                    <span className="font-bold text-gold">
                       {tabSwitchCount} Tab Switch Violations Logged
                     </span>
                   </div>
@@ -329,7 +329,7 @@ export default function LearnPracticePage() {
                     <button
                       onClick={() => setHandRaised(!handRaised)}
                       className={`flex items-center justify-center gap-1.5 rounded-xl border p-2.5 font-bold transition ${
-                        handRaised ? "bg-amber-400 text-black border-amber-400 font-black" : "border-[var(--border-faint)] text-ink"
+                        handRaised ? "bg-gold text-black border-gold font-black" : "border-[var(--border-faint)] text-ink"
                       }`}
                     >
                       <Hand className="h-4 w-4" />
@@ -383,7 +383,7 @@ export default function LearnPracticePage() {
                 </div>
               )}
 
-              {/* Step 5: Campus Credential */}
+              {/* Step 5: Compass Credential */}
               {activeStep === 5 && (
                 <div className="space-y-3 text-xs">
                   <div className="flex items-center justify-between">

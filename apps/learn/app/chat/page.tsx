@@ -137,7 +137,7 @@ export default function TutorChatPage() {
         <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-gold">
           Academic Support & Mentorship
         </p>
-        <h1 className="font-display text-2xl font-semibold text-cream mt-0.5">
+        <h1 className="font-display text-2xl font-semibold text-ink mt-0.5">
           Live Chat with Your Tutors
         </h1>
         <div className="mt-2 flex items-center gap-2 rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] px-3.5 py-2 text-xs text-ink-500">

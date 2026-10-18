@@ -1,6 +1,6 @@
 "use client";
 
-import { BookOpen, Video, MessageSquare, Layers, UserRound } from "lucide-react";
+import { GraduationCap, Home, MessageSquare, UserRound, Video } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -8,10 +8,10 @@ export function BottomNav() {
   const pathname = usePathname();
 
   const tabs = [
-    { href: "/", label: "Studio", icon: BookOpen },
-    { href: "/live", label: "Live Host", icon: Video },
+    { href: "/", label: "Home", icon: Home },
+    { href: "/schools", label: "Schools", icon: GraduationCap },
+    { href: "/live", label: "Live", icon: Video },
     { href: "/chat", label: "Students", icon: MessageSquare },
-    { href: "/streams", label: "Streams", icon: Layers },
     { href: "/account", label: "Account", icon: UserRound },
   ];
 
@@ -20,7 +20,8 @@ export function BottomNav() {
       <div className="mx-auto flex max-w-lg items-center justify-center">
         <ul className="customer-nav-capsule pointer-events-auto flex w-full items-stretch justify-around gap-1 rounded-[24px] p-1.5">
           {tabs.map((tab) => {
-            const active = tab.href === "/" ? pathname === "/" : pathname.startsWith(tab.href);
+            const owned = tab.href === "/schools" && (pathname.startsWith("/classes") || pathname.startsWith("/courses"));
+            const active = tab.href === "/" ? pathname === "/" : owned || pathname.startsWith(tab.href);
             const Icon = tab.icon;
             return (
               <li key={tab.href} className="flex-1">

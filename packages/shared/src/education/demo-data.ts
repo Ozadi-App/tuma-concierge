@@ -5,6 +5,7 @@ import type {
   CourseModule,
   CourseLesson,
   CourseQuiz,
+  SchoolClass,
   QuizQuestion,
   SproutsActivity,
   SproutsScreenTimer,
@@ -15,9 +16,9 @@ import type {
   AcademyTimetableDay,
   AcademyExam,
   AcademyTerminalReportCard,
-  CampusCourseDetail,
+  CompassCourseDetail,
   PeerReviewAssignment,
-  CampusVerifiableCredential,
+  CompassVerifiableCredential,
   SkillsCourseDetail,
   SkillsVideoSubmission,
   ApprenticeLogbookEntry,
@@ -98,7 +99,7 @@ export const DEMO_INSTITUTIONS: InstitutionProfile[] = [
     logoUrl: "https://images.unsplash.com/photo-1523240795612-9a054b0db644?auto=format&fit=crop&w=120&q=80",
     badge: "Licensed Professional Institute",
     verifiedNationalAccreditation: true,
-    supportedStreams: ["campus"],
+    supportedStreams: ["compass"],
     contactEmail: "admissions@fintech.ac.ug",
     contactPhone: "+256 312 999 800",
   },
@@ -360,10 +361,10 @@ export const DEMO_ACADEMY_REPORT_CARD: AcademyTerminalReportCard = {
 };
 
 // ==========================================
-// 4. Campus Demo Data (Higher Ed & Business)
+// 4. Compass Demo Data (Higher Ed & Business)
 // ==========================================
 
-export const DEMO_CAMPUS_COURSE: CampusCourseDetail = {
+export const DEMO_COMPASS_COURSE: CompassCourseDetail = {
   id: "course_fintech_growth",
   code: "MKT-802",
   title: "FinTech Product Growth, Unit Economics & Mobile Money In Africa",
@@ -413,7 +414,7 @@ export const DEMO_CAMPUS_COURSE: CampusCourseDetail = {
   ],
 };
 
-export const DEMO_CAMPUS_PEER_REVIEW: PeerReviewAssignment = {
+export const DEMO_COMPASS_PEER_REVIEW: PeerReviewAssignment = {
   id: "peer_review_capstone",
   capstoneTitle: "FinTech Merchant Settlement Capstone Proposal",
   studentSubmissionUrl: "https://peebee.online/cdn/capstones/esther-fintech-proposal.pdf",
@@ -437,7 +438,7 @@ export const DEMO_CAMPUS_PEER_REVIEW: PeerReviewAssignment = {
   isComplete: false,
 };
 
-export const DEMO_CAMPUS_CREDENTIAL: CampusVerifiableCredential = {
+export const DEMO_COMPASS_CREDENTIAL: CompassVerifiableCredential = {
   certificateId: "PB-CERT-2026-89410",
   studentName: "Esther Nabirye",
   courseTitle: "FinTech Product Growth, Unit Economics & Mobile Money In Africa",
@@ -581,9 +582,9 @@ export const DEMO_SUBSCRIPTION_PASSES: SubscriptionPass[] = [
     ],
   },
   {
-    id: "pass_campus_all",
-    name: "Peebee Campus Executive Pass",
-    stream: "campus",
+    id: "pass_compass_all",
+    name: "Peebee Compass Executive Pass",
+    stream: "compass",
     monthlyPriceUgx: 120000,
     annualPriceUgx: 1200000,
     benefits: [
@@ -628,7 +629,7 @@ export const DEMO_LIVE_MEETINGS: EducationLiveMeeting[] = [
     roomCode: "PB-MKT-802",
     title: "Live FinTech Masterclass: USSD Callback Architectures & Merchant Settlement",
     subject: "FinTech Product Growth",
-    stream: "campus",
+    stream: "compass",
     hostTutorName: "Dr. Kenneth Ochieng",
     hostTutorAvatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=200&q=80",
     hostTutorTitle: "FinTech Fellow & Lead Lecturer",
@@ -772,7 +773,7 @@ export const DEMO_TUTOR_CONTACTS: TutorContact[] = [
     name: "Dr. Kenneth Ochieng",
     title: "Senior FinTech & Academic Fellow",
     subject: "FinTech & Mathematics",
-    stream: "campus",
+    stream: "compass",
     avatarUrl: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=200&q=80",
     isOnline: true,
     lastMessage: "Review the float reconciliation diagram before tomorrow's live drill.",
@@ -1037,7 +1038,7 @@ export const DEMO_CREATOR_COURSES: CreatorCourse[] = [
     creatorRoleTitle: "Dr. Kenneth Ochieng (Principal Fellow)",
     institutionName: "FinTech Africa Institute",
     title: "Mobile Money Rails & Double-Entry Float Reconciliations",
-    stream: "campus",
+    stream: "compass",
     category: "Higher Ed & Professional Degrees",
     level: "Collegiate / Professional",
     summary: "Industry-grade payments architecture course. Covers telecom switch protocols, idempotency key guarantees, double-entry ledgers, and Bank of Uganda NPS regulatory compliance.",
@@ -1268,7 +1269,7 @@ export const DEMO_CREATOR_COURSES: CreatorCourse[] = [
     creatorRoleTitle: "Sarah Kyomuhendo (Growth Consultant)",
     institutionName: "Independent Creator Studio",
     title: "WhatsApp Business Automation & Digital Ads for East African SMBs",
-    stream: "campus",
+    stream: "compass",
     category: "Self-Paced Commercial Courses",
     level: "Business Owners & Creators",
     summary: "Step-by-step masterclass on automating customer orders on WhatsApp, running Meta Click-to-WhatsApp ads with MoMo payment links, and tracking margins.",
@@ -1575,8 +1576,8 @@ export const DEMO_CREATORS: CreatorProfile[] = [
     bio: "Collegiate and executive institute teaching software engineering, mobile money settlement architectures, and financial modeling.",
     location: "Innovation Village, Ntinda, Kampala",
     badge: "Licensed Professional Institute",
-    stream: "campus",
-    supportedStreams: ["campus"],
+    stream: "compass",
+    supportedStreams: ["compass"],
     enrolledStudents: 1240,
     rating: 5.0,
     reviewCount: 310,
@@ -1650,8 +1651,8 @@ export const DEMO_CREATORS: CreatorProfile[] = [
     bio: "On-demand business courses teaching East African entrepreneurs WhatsApp automation, digital advertising, and bookkeeping.",
     location: "Kampala, Uganda",
     badge: "Verified Independent Tutor",
-    stream: "campus",
-    supportedStreams: ["campus"],
+    stream: "compass",
+    supportedStreams: ["compass"],
     enrolledStudents: 850,
     rating: 4.9,
     reviewCount: 220,
@@ -1689,3 +1690,464 @@ export const DEMO_CREATORS: CreatorProfile[] = [
   },
 ];
 
+
+// ==========================================
+// Demo schools, classes and syllabus
+//
+// Every demo school follows the same shape the Studio builds for real users:
+//   school → class (or masterclass) → course → module → lesson, on a named syllabus.
+// The block below adds the classes, the syllabus and learning outcomes for the
+// courses above, and a few more schools so every stream has more than one.
+// ==========================================
+
+const img = (id: string, w = 600) => `https://images.unsplash.com/photo-${id}?auto=format&fit=crop&w=${w}&q=80`;
+
+type QuizRow = [question: string, options: string[], correctIndex: number, explanation: string];
+
+function demoQuiz(id: string, title: string, rows: QuizRow[], passingScorePercent = 70): CourseQuiz {
+  return {
+    id,
+    title,
+    instructions: `Answer every question. Passing score is ${passingScorePercent}%.`,
+    timeLimitMinutes: Math.max(5, rows.length * 2),
+    passingScorePercent,
+    questions: rows.map(([questionText, options, correctOptionIndex, explanation], i): QuizQuestion => ({
+      id: `${id}_q${i + 1}`,
+      questionText,
+      options,
+      correctOptionIndex,
+      explanation,
+      points: 5,
+    })),
+  };
+}
+
+function demoLesson(
+  id: string,
+  title: string,
+  durationMinutes: number,
+  contentType: CourseLesson["contentType"],
+  summary: string,
+  extra: Partial<CourseLesson> = {},
+): CourseLesson {
+  return { id, title, durationMinutes, contentType, summary, ...extra };
+}
+
+function demoModule(id: string, order: number, title: string, description: string, lessons: CourseLesson[]): CourseModule {
+  return { id, title, description, order, lessons };
+}
+
+function schoolCourse(
+  school: Pick<CreatorProfile, "id" | "name" | "avatarUrl" | "leadInstructor" | "leadInstructorTitle">,
+  c: Pick<CreatorCourse, "id" | "title" | "stream" | "category" | "level" | "summary" | "thumbnailUrl" | "priceUgx" | "modules"> &
+    Partial<CreatorCourse>,
+): CreatorCourse {
+  return {
+    creatorId: school.id,
+    creatorName: school.name,
+    creatorAvatar: school.avatarUrl,
+    creatorRoleTitle: `${school.leadInstructor} (${school.leadInstructorTitle})`,
+    institutionName: school.name,
+    enrolledStudentsCount: 0,
+    rating: 4.8,
+    reviewCount: 0,
+    ...c,
+  };
+}
+
+const NILE_VALLEY = {
+  id: "creator_nile_valley",
+  name: "Nile Valley University — School of Computing",
+  avatarUrl: img("1523240795612-9a054b0db644", 200),
+  leadInstructor: "Dr. Miriam Atuhaire",
+  leadInstructorTitle: "Head of Computer Science",
+};
+const LAKESIDE = {
+  id: "creator_lakeside_intl",
+  name: "Lakeside International School",
+  avatarUrl: img("1580582932707-520aed937b7b", 200),
+  leadInstructor: "Mr. David Whitlock",
+  leadInstructorTitle: "Director of Studies",
+};
+const ROSE = {
+  id: "creator_rose_everyday",
+  name: "Auntie Rose Everyday Learning",
+  avatarUrl: img("1500648767791-00dcc994a43e", 200),
+  leadInstructor: "Rose Nankya",
+  leadInstructorTitle: "Home Gardener & Community Tutor",
+};
+
+DEMO_CREATOR_COURSES.push(
+  schoolCourse(ST_JUDE_REF(), {
+    id: "course_st_jude_s5_maths",
+    title: "S.5 Pure Mathematics: Functions, Differentiation & Integration",
+    stream: "academy",
+    category: "Secondary / Senior High",
+    level: "S.5 A-Level",
+    summary: "The first year of UACE Pure Mathematics: functions and graphs, differentiation from first principles and the integration techniques examiners reward.",
+    thumbnailUrl: img("1509198397868-475647b2a1e5"),
+    priceUgx: 700000,
+    enrolledStudentsCount: 64,
+    rating: 4.8,
+    reviewCount: 17,
+    modules: [
+      demoModule("mod_sj_m5_1", 1, "Module 1: Functions & Graphs", "Domain, range, composite and inverse functions.", [
+        demoLesson("les_sj_m5_1", "Lesson 1: Domain, Range & Composite Functions", 30, "video", "Reading a function as a machine, and combining two of them."),
+        demoLesson("les_sj_m5_2", "Lesson 2: Inverse Functions & Their Graphs", 28, "video", "Finding an inverse, and why its graph mirrors the original in y = x.", {
+          quiz: demoQuiz("quiz_sj_m5_1", "Functions checkpoint", [
+            ["If f(x) = 2x + 3, what is f⁻¹(x)?", ["(x − 3)/2", "2x − 3", "(x + 3)/2", "x/2 + 3"], 0, "Swap x and y, then solve: x = 2y + 3 gives y = (x − 3)/2."],
+            ["The graph of an inverse function is a reflection of the original in which line?", ["y = x", "y = 0", "x = 0", "y = −x"], 0, "Reflection in y = x swaps every (a, b) for (b, a)."],
+          ]),
+        }),
+      ]),
+      demoModule("mod_sj_m5_2", 2, "Module 2: Differentiation", "From first principles to the chain rule.", [
+        demoLesson("les_sj_m5_3", "Lesson 3: Differentiation from First Principles", 35, "video", "Deriving the gradient of x² as a limit."),
+        demoLesson("les_sj_m5_4", "Lesson 4: Product, Quotient & Chain Rules", 40, "reading", "Worked UACE past-paper questions with marking-guide steps."),
+      ]),
+    ],
+  }),
+  schoolCourse(NILE_VALLEY, {
+    id: "course_nile_python101",
+    title: "CSC 1101 · Introduction to Programming with Python",
+    stream: "compass",
+    category: "University / College",
+    level: "Year 1 · 4 credit units",
+    summary: "A first university programming course: variables, control flow, functions and lists, finishing with a small mobile-money statement analyser.",
+    thumbnailUrl: img("1551836022-d5d88e9218df"),
+    priceUgx: 480000,
+    enrolledStudentsCount: 212,
+    rating: 4.7,
+    reviewCount: 58,
+    modules: [
+      demoModule("mod_nv_p1", 1, "Unit 1: Thinking in Code", "Variables, types and decisions.", [
+        demoLesson("les_nv_p1", "Lecture 1: Variables, Types & Input", 45, "video", "Storing values, reading input and printing results."),
+        demoLesson("les_nv_p2", "Lecture 2: Conditions & Loops", 50, "video", "if, elif, else, for and while — with five practice drills.", {
+          quiz: demoQuiz("quiz_nv_p1", "Unit 1 quiz", [
+            ["What does `range(3)` produce?", ["0, 1, 2", "1, 2, 3", "0, 1, 2, 3", "3"], 0, "range(n) counts from 0 up to n − 1."],
+            ["Which keyword runs a block only when the first condition is false?", ["else", "elif", "while", "break"], 0, "else is the fallback branch of an if statement."],
+          ], 60),
+        }),
+      ]),
+      demoModule("mod_nv_p2", 2, "Unit 2: Functions & Lists", "Reusable code and collections.", [
+        demoLesson("les_nv_p3", "Lecture 3: Functions & Scope", 45, "video", "Parameters, return values and why variables disappear."),
+        demoLesson("les_nv_p4", "Lab: Mobile-Money Statement Analyser", 90, "practical_demo", "Read a CSV of transactions and total money in, money out and fees.", {
+          practicalChecklist: ["Python 3.11 installed", "VS Code or any editor", "statement.csv from the course resources"],
+        }),
+      ]),
+    ],
+  }),
+  schoolCourse(NILE_VALLEY, {
+    id: "course_nile_sql",
+    title: "CSC 2204 · Databases & SQL Fundamentals",
+    stream: "compass",
+    category: "University / College",
+    level: "Year 2 · 3 credit units",
+    summary: "Relational modelling, normalisation and SQL queries on a real-style school-fees database.",
+    thumbnailUrl: img("1526304640581-d334cdbbf45e"),
+    priceUgx: 420000,
+    enrolledStudentsCount: 138,
+    rating: 4.8,
+    reviewCount: 36,
+    modules: [
+      demoModule("mod_nv_s1", 1, "Unit 1: The Relational Model", "Tables, keys and relationships.", [
+        demoLesson("les_nv_s1", "Lecture 1: Tables, Keys & Relationships", 40, "video", "Primary keys, foreign keys and one-to-many relationships."),
+        demoLesson("les_nv_s2", "Lecture 2: Normalisation to 3NF", 45, "reading", "Removing repeated data step by step."),
+      ]),
+      demoModule("mod_nv_s2", 2, "Unit 2: Querying", "SELECT, JOIN and GROUP BY.", [
+        demoLesson("les_nv_s3", "Lecture 3: SELECT, WHERE & ORDER BY", 40, "video", "Filtering and sorting rows."),
+        demoLesson("les_nv_s4", "Lecture 4: JOIN & GROUP BY", 50, "video", "Combine tables and summarise them.", {
+          quiz: demoQuiz("quiz_nv_s1", "Querying quiz", [
+            ["Which clause filters groups after GROUP BY?", ["HAVING", "WHERE", "ORDER BY", "LIMIT"], 0, "WHERE filters rows before grouping; HAVING filters the groups."],
+            ["Which JOIN keeps every row from the left table?", ["LEFT JOIN", "INNER JOIN", "CROSS JOIN", "SELF JOIN"], 0, "A LEFT JOIN keeps all left rows, filling gaps with NULL."],
+          ], 60),
+        }),
+      ]),
+    ],
+  }),
+  schoolCourse(LAKESIDE, {
+    id: "course_lakeside_igcse_bio",
+    title: "IGCSE Biology: Cells, Enzymes & Nutrition",
+    stream: "academy",
+    category: "Secondary / Senior High",
+    level: "Grade 9 · Cambridge IGCSE 0610",
+    summary: "The first term of Cambridge IGCSE Biology, with practical write-ups marked against the Cambridge assessment objectives.",
+    thumbnailUrl: img("1532094349884-543bc11b234d"),
+    priceUgx: 1200000,
+    enrolledStudentsCount: 46,
+    rating: 4.9,
+    reviewCount: 14,
+    modules: [
+      demoModule("mod_lk_b1", 1, "Topic 1: Cells", "Cell structure and specialisation.", [
+        demoLesson("les_lk_b1", "Lesson 1: Plant & Animal Cells", 30, "video", "Organelles and what each one does."),
+        demoLesson("les_lk_b2", "Lesson 2: Using a Microscope", 40, "practical_demo", "Prepare a slide and calculate magnification.", {
+          practicalChecklist: ["Light microscope", "Onion epidermis slide", "Iodine solution", "Ruler for scale"],
+        }),
+      ]),
+      demoModule("mod_lk_b2", 2, "Topic 2: Enzymes", "Biological catalysts.", [
+        demoLesson("les_lk_b3", "Lesson 3: How Enzymes Work", 30, "video", "Lock-and-key model and active sites."),
+        demoLesson("les_lk_b4", "Lesson 4: Temperature & pH Practical", 45, "practical_demo", "Design a fair test and plot the results.", {
+          quiz: demoQuiz("quiz_lk_b1", "Enzymes checkpoint", [
+            ["What happens to an enzyme above its optimum temperature?", ["It denatures", "It speeds up", "It is used up", "Nothing"], 0, "Heat changes the active site's shape, so the substrate no longer fits."],
+            ["The part of an enzyme where the substrate binds is the…", ["active site", "nucleus", "membrane", "vacuole"], 0, "The active site has a shape complementary to its substrate."],
+          ]),
+        }),
+      ]),
+    ],
+  }),
+  schoolCourse(LAKESIDE, {
+    id: "course_lakeside_ib_econ",
+    title: "IB Economics SL: Microeconomics Foundations",
+    stream: "academy",
+    category: "Secondary / Senior High",
+    level: "IB Diploma · Year 1",
+    summary: "Demand, supply, elasticity and market failure through East African markets, with Paper 1 essay technique.",
+    thumbnailUrl: img("1460925895917-afdab827c52f"),
+    priceUgx: 1500000,
+    enrolledStudentsCount: 28,
+    rating: 4.9,
+    reviewCount: 9,
+    modules: [
+      demoModule("mod_lk_e1", 1, "Unit 1: Competitive Markets", "Demand, supply and equilibrium.", [
+        demoLesson("les_lk_e1", "Lesson 1: Demand & Supply", 35, "video", "Why the price of matooke moves with the harvest."),
+        demoLesson("les_lk_e2", "Lesson 2: Price Elasticity", 40, "video", "Measuring how strongly buyers react to price.", {
+          quiz: demoQuiz("quiz_lk_e1", "Elasticity checkpoint", [
+            ["If demand is price inelastic, a price rise causes total revenue to…", ["rise", "fall", "stay the same", "become zero"], 0, "Quantity falls proportionally less than price rises, so revenue goes up."],
+          ]),
+        }),
+      ]),
+      demoModule("mod_lk_e2", 2, "Unit 2: Market Failure", "Externalities and government responses.", [
+        demoLesson("les_lk_e3", "Lesson 3: Externalities", 35, "reading", "Private versus social cost, with a boda-boda pollution example."),
+        demoLesson("les_lk_e4", "Lesson 4: Writing the Paper 1 Essay", 45, "interactive_h5p", "Plan a 10-mark answer in 8 minutes."),
+      ]),
+    ],
+  }),
+  schoolCourse(ROSE, {
+    id: "course_rose_kitchen_garden",
+    title: "Kitchen Garden Masterclass: Grow Vegetables in Small Spaces",
+    stream: "skills",
+    category: "Everyday Skills",
+    level: "Beginner · Masterclass",
+    summary: "Four weeks to a working sack garden: soil, sowing, watering and pests, using only what you can buy at the local market.",
+    thumbnailUrl: img("1587654780291-39c9404d746b"),
+    priceUgx: 45000,
+    enrolledStudentsCount: 320,
+    rating: 4.9,
+    reviewCount: 104,
+    modules: [
+      demoModule("mod_rs_g1", 1, "Week 1: Soil & Sacks", "Build a sack garden that drains well.", [
+        demoLesson("les_rs_g1", "Lesson 1: Mixing Soil and Filling a Sack", 15, "practical_demo", "Topsoil, compost and sand in the right ratio.", {
+          practicalChecklist: ["Empty 50 kg sack", "Topsoil", "Compost or old manure", "Pipe or tin for the drainage core"],
+        }),
+        demoLesson("les_rs_g2", "Lesson 2: Choosing What to Grow", 12, "video", "Sukuma wiki, spinach, tomatoes and onions compared."),
+      ]),
+      demoModule("mod_rs_g2", 2, "Week 2: Sowing & Watering", "Get seedlings through the first fortnight.", [
+        demoLesson("les_rs_g3", "Lesson 3: Sowing Seeds and Transplanting", 14, "video", "Depth, spacing and when to move seedlings."),
+        demoLesson("les_rs_g4", "Lesson 4: Watering Without Waste", 10, "reading", "Morning versus evening, and the finger test.", {
+          quiz: demoQuiz("quiz_rs_g1", "Garden basics", [
+            ["When is the best time to water vegetables?", ["Early morning", "Midday", "Never", "Midnight"], 0, "Morning water soaks in before the heat evaporates it."],
+          ], 50),
+        }),
+      ]),
+    ],
+  }),
+  schoolCourse(ROSE, {
+    id: "course_rose_guitar",
+    title: "Guitar for Complete Beginners: Your First 10 Songs",
+    stream: "skills",
+    category: "Everyday Skills",
+    level: "Beginner · Masterclass",
+    summary: "From holding the guitar to playing along with ten well-known songs, with a video submission each week for feedback.",
+    thumbnailUrl: img("1539571696357-5a69c17a67c6"),
+    priceUgx: 60000,
+    enrolledStudentsCount: 190,
+    rating: 4.8,
+    reviewCount: 61,
+    modules: [
+      demoModule("mod_rs_m1", 1, "Week 1: First Chords", "Posture, tuning and three open chords.", [
+        demoLesson("les_rs_m1", "Lesson 1: Holding & Tuning", 12, "video", "Posture and tuning with a free phone app."),
+        demoLesson("les_rs_m2", "Lesson 2: G, C and D Chords", 18, "practical_demo", "Place each chord and switch cleanly.", {
+          practicalChecklist: ["Acoustic guitar", "Tuner app", "Pick (optional)"],
+        }),
+      ]),
+      demoModule("mod_rs_m2", 2, "Week 2: Strumming", "Keep time and sing along.", [
+        demoLesson("les_rs_m3", "Lesson 3: Down-Up Strumming", 15, "video", "A steady four-beat pattern."),
+        demoLesson("les_rs_m4", "Lesson 4: Your First Song", 20, "practical_demo", "Play a full verse and record it for feedback."),
+      ]),
+    ],
+  }),
+);
+
+// A reference to St. Jude's profile fields, resolved once the creators below exist.
+function ST_JUDE_REF() {
+  return {
+    id: "creator_st_jude",
+    name: "St. Jude Senior Secondary School",
+    avatarUrl: img("1509062522246-3755977927d7", 200),
+    leadInstructor: "Mr. Patrick Okello",
+    leadInstructorTitle: "Principal & Head of UNEB Examination Center",
+  };
+}
+
+const courseById = (id: string): CreatorCourse => {
+  const found = DEMO_CREATOR_COURSES.find((c) => c.id === id);
+  if (!found) throw new Error(`Unknown demo course ${id}`);
+  return found;
+};
+
+// Whole-school profile data for the three added schools.
+DEMO_CREATORS.push(
+  {
+    id: NILE_VALLEY.id,
+    name: NILE_VALLEY.name,
+    handle: "nile-valley-computing",
+    type: "academy",
+    leadInstructor: NILE_VALLEY.leadInstructor,
+    leadInstructorTitle: NILE_VALLEY.leadInstructorTitle,
+    avatarUrl: NILE_VALLEY.avatarUrl,
+    bannerUrl: img("1523050854058-8df90110c9f1", 1200),
+    tagline: "Undergraduate Computing: programming, databases and software engineering",
+    bio: "A university school running credit-bearing computing courses with lecture video, lab work and a final project.",
+    location: "Jinja Road, Kampala",
+    badge: "NCHE Accredited Programme",
+    stream: "compass",
+    supportedStreams: ["compass"],
+    enrolledStudents: 560,
+    rating: 4.7,
+    reviewCount: 94,
+    tuitionFeeUgx: 480000,
+    tuitionCadence: "course",
+    payoutBalanceUgx: 6800000,
+    totalEarningsUgx: 41200000,
+    isVerified: true,
+    courses: [courseById("course_nile_python101"), courseById("course_nile_sql")],
+  },
+  {
+    id: LAKESIDE.id,
+    name: LAKESIDE.name,
+    handle: "lakeside-international",
+    type: "school",
+    leadInstructor: LAKESIDE.leadInstructor,
+    leadInstructorTitle: LAKESIDE.leadInstructorTitle,
+    avatarUrl: LAKESIDE.avatarUrl,
+    bannerUrl: img("1503676260728-1c00da094a0b", 1200),
+    tagline: "Cambridge IGCSE and IB Diploma, taught in Kampala",
+    bio: "An international secondary school teaching Cambridge and IB syllabi to day students and to online learners across East Africa.",
+    location: "Munyonyo, Kampala",
+    badge: "Cambridge International School",
+    stream: "academy",
+    supportedStreams: ["academy"],
+    enrolledStudents: 74,
+    rating: 4.9,
+    reviewCount: 23,
+    tuitionFeeUgx: 1200000,
+    tuitionCadence: "term",
+    payoutBalanceUgx: 9200000,
+    totalEarningsUgx: 58600000,
+    isVerified: true,
+    courses: [courseById("course_lakeside_igcse_bio"), courseById("course_lakeside_ib_econ")],
+  },
+  {
+    id: ROSE.id,
+    name: ROSE.name,
+    handle: "auntie-rose",
+    type: "independent_tutor",
+    leadInstructor: ROSE.leadInstructor,
+    leadInstructorTitle: ROSE.leadInstructorTitle,
+    avatarUrl: ROSE.avatarUrl,
+    bannerUrl: img("1587654780291-39c9404d746b", 1200),
+    tagline: "Short practical masterclasses: gardening, music and home skills",
+    bio: "Friendly four-week masterclasses for anyone who wants to learn something useful, with no exams and no prior experience needed.",
+    location: "Wakiso, Uganda",
+    badge: "Verified Independent Tutor",
+    stream: "skills",
+    supportedStreams: ["skills"],
+    enrolledStudents: 510,
+    rating: 4.9,
+    reviewCount: 165,
+    tuitionFeeUgx: 45000,
+    tuitionCadence: "course",
+    payoutBalanceUgx: 1600000,
+    totalEarningsUgx: 9800000,
+    isVerified: true,
+    courses: [courseById("course_rose_kitchen_garden"), courseById("course_rose_guitar")],
+  },
+);
+
+// St. Jude also teaches the A-Level maths course.
+const stJude = DEMO_CREATORS.find((c) => c.id === "creator_st_jude");
+if (stJude) stJude.courses = [...stJude.courses, courseById("course_st_jude_s5_maths")];
+
+// Sarah's WhatsApp-for-business course is everyday practical learning, so it belongs in Skills.
+const sarah = DEMO_CREATORS.find((c) => c.id === "creator_sarah_growth");
+if (sarah) {
+  sarah.stream = "skills";
+  sarah.supportedStreams = ["skills"];
+}
+courseById("course_sarah_growth_whatsapp").stream = "skills";
+courseById("course_sarah_growth_whatsapp").category = "Everyday Skills";
+courseById("course_sarah_growth_whatsapp").level = "Beginner · Masterclass";
+
+type ClassSeed = Omit<SchoolClass, "enrolled" | "capacity" | "academicYear"> & { capacity?: number; enrolled?: number; academicYear?: string };
+
+const CLASS_SEEDS: ClassSeed[] = [
+  // Sprouts
+  { id: "class_ls_middle", schoolId: "creator_sharon", stream: "sprouts", kind: "class", name: "Middle Class — Numbers & Shapes", level: "Middle class (4 yrs)", framework: "uganda_ecd", term: "Term 3", teacherName: "Teacher Sharon Mukasa", capacity: 25, enrolled: 22, summary: "Counting to 20, sorting and everyday shapes through songs and games.", courseIds: ["course_little_stars_numbers"] },
+  { id: "class_ls_top", schoolId: "creator_sharon", stream: "sprouts", kind: "class", name: "Top Class — Phonics & Early Reading", level: "Top class (5–6 yrs)", framework: "uganda_ecd", term: "Term 3", teacherName: "Teacher Sharon Mukasa", capacity: 25, enrolled: 24, summary: "Letter sounds, blending and read-along storybooks, ready for Primary 1.", courseIds: ["course_little_stars_phonics"] },
+  // Foundations
+  { id: "class_gw_p4", schoolId: "creator_greenwood", stream: "foundations", kind: "class", name: "Primary 4 Blue", level: "Primary 4", framework: "uganda_primary", term: "Term 3", teacherName: "Tr. Brenda Namutebi", capacity: 45, enrolled: 42, summary: "Mathematics for Primary 4 with parent-signed homework.", courseIds: ["course_greenwood_math4"] },
+  { id: "class_gw_p5", schoolId: "creator_greenwood", stream: "foundations", kind: "class", name: "Primary 5 Gold", level: "Primary 5", framework: "uganda_primary", term: "Term 3", teacherName: "Tr. Brenda Namutebi", capacity: 45, enrolled: 39, summary: "Integrated Science with weekly experiments and worksheet turn-ins.", courseIds: ["course_greenwood_science5"] },
+  // Academy
+  { id: "class_sj_s4", schoolId: "creator_st_jude", stream: "academy", kind: "class", name: "Senior 4 Sciences", level: "Senior 4 (O-Level)", framework: "uneb_olevel", term: "Term 3", teacherName: "Mr. Patrick Okello", capacity: 60, enrolled: 54, summary: "UCE Physics with timed mock exams under anti-cheat proctoring.", courseIds: ["course_st_jude_physics"] },
+  { id: "class_sj_s5", schoolId: "creator_st_jude", stream: "academy", kind: "class", name: "Senior 5 Maths-Physics", level: "Senior 5 (A-Level)", framework: "uneb_alevel", term: "Term 3", teacherName: "Mr. Patrick Okello", capacity: 40, enrolled: 31, summary: "Year one of the UACE Pure Mathematics paper.", courseIds: ["course_st_jude_s5_maths"] },
+  { id: "class_lk_g9", schoolId: "creator_lakeside_intl", stream: "academy", kind: "class", name: "Grade 9 · IGCSE Sciences", level: "Senior 3", framework: "cambridge_igcse", term: "Michaelmas term", teacherName: "Mr. David Whitlock", capacity: 24, enrolled: 21, summary: "Cambridge IGCSE Biology in small groups with practical write-ups.", courseIds: ["course_lakeside_igcse_bio"] },
+  { id: "class_lk_ib", schoolId: "creator_lakeside_intl", stream: "academy", kind: "class", name: "IB Diploma Year 1", level: "Senior 5 (A-Level)", framework: "ib_diploma", term: "Michaelmas term", teacherName: "Mr. David Whitlock", capacity: 20, enrolled: 14, summary: "IB Economics Standard Level, with internal assessment coaching.", courseIds: ["course_lakeside_ib_econ"] },
+  // Compass
+  { id: "class_nv_y1", schoolId: "creator_nile_valley", stream: "compass", kind: "class", name: "BSc Computer Science · Year 1", level: "Year 1", framework: "university_credit", academicYear: "2026/27", term: "Semester 1", teacherName: "Dr. Miriam Atuhaire", capacity: 120, enrolled: 108, summary: "First-year programming, taught as lectures and a weekly lab.", courseIds: ["course_nile_python101"] },
+  { id: "class_nv_y2", schoolId: "creator_nile_valley", stream: "compass", kind: "class", name: "BSc Computer Science · Year 2", level: "Year 2", framework: "university_credit", academicYear: "2026/27", term: "Semester 1", teacherName: "Dr. Miriam Atuhaire", capacity: 100, enrolled: 88, summary: "Databases and data modelling for second-year students.", courseIds: ["course_nile_sql"] },
+  { id: "class_ft_cohort7", schoolId: "creator_ochieng", stream: "compass", kind: "class", name: "Payments Engineering Certificate · Cohort 7", level: "Short course", framework: "professional_certificate", academicYear: "2026", term: "Cohort 7", teacherName: "Dr. Kenneth Ochieng", capacity: 80, enrolled: 71, summary: "Settlement, float reconciliation and USSD architecture for fintech engineers.", courseIds: ["course_fintech_101"] },
+  // Skills
+  { id: "class_crown_2026", schoolId: "creator_alex", stream: "skills", kind: "class", name: "Barbering Apprentices · Intake 2026", level: "Beginner", framework: "uvqf_tvet", academicYear: "2026", term: "Intake 2026", teacherName: "Master Alex Mukasa", capacity: 30, enrolled: 28, summary: "Practical barbering with video submissions and a signed logbook.", courseIds: ["course_crown_barber"] },
+  { id: "class_kc_pastry", schoolId: "creator_chef_grace", stream: "skills", kind: "class", name: "Pastry & Baking Certificate · Evening", level: "Intermediate", framework: "uvqf_tvet", academicYear: "2026", term: "Evening intake", teacherName: "Chef Grace Achieng", capacity: 24, enrolled: 20, summary: "Commercial baking skills in the kitchen, two evenings a week.", courseIds: ["course_kampala_culinary"] },
+  { id: "class_sg_whatsapp", schoolId: "creator_sarah_growth", stream: "skills", kind: "masterclass", name: "WhatsApp Business Masterclass", level: "Masterclass", framework: "open_syllabus", academicYear: "2026", term: "Self-paced", teacherName: "Sarah Kyomuhendo", capacity: 500, enrolled: 412, summary: "Sell more on WhatsApp: catalogues, automated replies and simple ads.", courseIds: ["course_sarah_growth_whatsapp"] },
+  { id: "class_rose_garden", schoolId: "creator_rose_everyday", stream: "skills", kind: "masterclass", name: "Kitchen Garden Masterclass", level: "Masterclass", framework: "open_syllabus", academicYear: "2026", term: "4 weeks", teacherName: "Rose Nankya", capacity: 400, enrolled: 320, summary: "Grow your own vegetables in a sack, in any small space.", courseIds: ["course_rose_kitchen_garden"] },
+  { id: "class_rose_guitar", schoolId: "creator_rose_everyday", stream: "skills", kind: "masterclass", name: "Guitar for Beginners Masterclass", level: "Masterclass", framework: "open_syllabus", academicYear: "2026", term: "4 weeks", teacherName: "Rose Nankya", capacity: 300, enrolled: 190, summary: "Hold, tune and play your first ten songs.", courseIds: ["course_rose_guitar"] },
+];
+
+/** What a learner can do after finishing each demo course. */
+const COURSE_OUTCOMES: Record<string, string[]> = {
+  course_greenwood_math4: ["Compare and simplify fractions", "Solve shilling word problems with decimals", "Name and measure basic shapes"],
+  course_greenwood_science5: ["Label the parts of a flowering plant", "Explain how a seed germinates", "Describe how weather affects crops"],
+  course_st_jude_physics: ["Apply Newton's laws to UCE problems", "Calculate momentum and energy changes", "Sit a timed mock under exam conditions"],
+  course_st_jude_s5_maths: ["Differentiate from first principles", "Use the product, quotient and chain rules", "Integrate standard functions"],
+  course_lakeside_igcse_bio: ["Describe cell structures and their functions", "Plan and write up an enzyme practical", "Answer Cambridge command-word questions"],
+  course_lakeside_ib_econ: ["Explain demand, supply and elasticity", "Evaluate market failure and government responses", "Plan a Paper 1 essay quickly"],
+  course_nile_python101: ["Write Python programs with loops and functions", "Process a CSV file", "Debug a failing script"],
+  course_nile_sql: ["Model data in third normal form", "Write JOIN and GROUP BY queries", "Explain keys and constraints"],
+  course_fintech_101: ["Trace a mobile-money transaction end to end", "Reconcile float against a ledger", "Design a safe callback handler"],
+  course_crown_barber: ["Perform a clean taper fade", "Run a hot-towel treatment safely", "Log supervised practical hours"],
+  course_kampala_culinary: ["Scale a recipe with baker's percentages", "Laminate dough for croissants", "Keep a commercial kitchen hygienic"],
+  course_sarah_growth_whatsapp: ["Set up a WhatsApp Business catalogue", "Automate greetings and quick replies", "Run a small paid advert"],
+  course_rose_kitchen_garden: ["Build a sack garden", "Sow and transplant seedlings", "Water without waste"],
+  course_rose_guitar: ["Tune a guitar", "Play G, C and D chords", "Strum a full song"],
+  course_little_stars_phonics: ["Say the sound of each letter", "Blend three-letter words", "Follow a read-along story"],
+  course_little_stars_numbers: ["Count objects to 20", "Sort by size and colour", "Name circles, squares and triangles"],
+};
+
+export const DEMO_SCHOOL_CLASSES: SchoolClass[] = CLASS_SEEDS.map((seed) => ({
+  academicYear: "2026",
+  capacity: 40,
+  enrolled: 0,
+  ...seed,
+}));
+
+for (const cls of DEMO_SCHOOL_CLASSES) {
+  for (const courseId of cls.courseIds) {
+    const course = courseById(courseId);
+    course.classId = cls.id;
+    course.framework = cls.framework;
+    course.outcomes = COURSE_OUTCOMES[courseId] ?? [];
+  }
+}
+for (const creator of DEMO_CREATORS) {
+  creator.classes = DEMO_SCHOOL_CLASSES.filter((c) => c.schoolId === creator.id);
+}

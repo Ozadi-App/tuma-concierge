@@ -10,9 +10,9 @@ import type {
   AcademyTimetableDay,
   AcademyExam,
   AcademyTerminalReportCard,
-  CampusCourseDetail,
+  CompassCourseDetail,
   PeerReviewAssignment,
-  CampusVerifiableCredential,
+  CompassVerifiableCredential,
   SkillsCourseDetail,
   SkillsVideoSubmission,
   VideoTimestampCritique,
@@ -25,6 +25,21 @@ import type {
   TutorContact,
   LiveChatMessage,
 } from "./education/types.js";
+import type {
+  LearnSettings,
+  SchoolKind,
+  SchoolStatus,
+  StudioClass,
+  StudioCourse,
+  StudioCourseDetail,
+  StudioLesson,
+  StudioModule,
+  StudioQuiz,
+  StudioSchool,
+  StudioStatus,
+  LessonContentType,
+} from "./education/studio.js";
+import type { ClassKind, CurriculumFramework } from "./education/types.js";
 
 type RequestFn = <T>(path: string, options?: RequestInit) => Promise<T>;
 
@@ -101,30 +116,30 @@ export function educationMethods(request: RequestFn) {
       tabSwitchCount: number;
       focusLossEventsCount: number;
     }) {
-      return request<{ ok: true; scorePercent: number; passed: boolean; message: string }>("/v1/education/academy/exam/submit", {
+      return request<{ ok: true; scorePercent: number | null; passed: boolean | null; status: "submitted" | "graded"; tabSwitchCount: number; message: string }>("/v1/education/academy/exam/submit", {
         method: "POST",
         body: JSON.stringify(data),
       });
     },
 
     // ----------------------------------------------------
-    // 4. Campus (Higher Ed & Business)
+    // 4. Compass (Higher Ed & Business)
     // ----------------------------------------------------
-    async getCampusCourse(courseId?: string) {
+    async getCompassCourse(courseId?: string) {
       const q = courseId ? `?id=${encodeURIComponent(courseId)}` : "";
       return request<{
         ok: true;
-        course: CampusCourseDetail;
+        course: CompassCourseDetail;
         peerReview: PeerReviewAssignment;
-        credential: CampusVerifiableCredential;
-      }>(`/v1/education/campus/course${q}`);
+        credential: CompassVerifiableCredential;
+      }>(`/v1/education/compass/course${q}`);
     },
     async saveVideoTimestampNote(data: {
       unitId: string;
       timestampSeconds: number;
       noteText: string;
     }) {
-      return request<{ ok: true; noteId: string }>("/v1/education/campus/notes", {
+      return request<{ ok: true; noteId: string }>("/v1/education/compass/notes", {
         method: "POST",
         body: JSON.stringify(data),
       });
@@ -134,7 +149,7 @@ export function educationMethods(request: RequestFn) {
       anonymousSubmissionId: string;
       scores: { criteriaName: string; scoreAwarded: number; feedback: string }[];
     }) {
-      return request<{ ok: true; isComplete: boolean }>("/v1/education/campus/peer-review/submit", {
+      return request<{ ok: true; isComplete: boolean }>("/v1/education/compass/peer-review/submit", {
         method: "POST",
         body: JSON.stringify(data),
       });
@@ -261,6 +276,175 @@ export function educationMethods(request: RequestFn) {
       return request<{ ok: true; message: LiveChatMessage }>("/v1/education/chat/send", {
         method: "POST",
         body: JSON.stringify(data),
+      });
+    },
+
+    // ----------------------------------------------------
+    // Catalogue: published studio courses (public, no quiz answers)
+    // ----------------------------------------------------
+    async getCatalogCourses(stream?: EducationStream) {
+      const q = stream ? `?stream=${encodeURIComponent(stream)}` : "";
+      return request<{
+        ok: true;
+        courses: {
+          id: string; stream: EducationStream; title: string; summary: string; priceUgx: number; framework: CurriculumFramework; outcomes: string[];
+          schoolName: string; schoolSlug: string; className: string; classKind: ClassKind; classLevel: string; lessonCount: number;
+        }[];
+      }>(`/v1/education/catalog/courses${q}`);
+    },
+    async getCatalogCourse(id: string) {
+      return request<{
+        ok: true;
+        course: {
+          id: string; stream: EducationStream; title: string; summary: string; priceUgx: number; framework: CurriculumFramework; outcomes: string[];
+          schoolName: string; className: string;
+          modules: { id: string; title: string; description: string; lessons: { id: string; title: string; contentType: LessonContentType; durationMinutes: number; summary: string; questionCount: number }[] }[];
+        };
+      }>(`/v1/education/catalog/courses/${encodeURIComponent(id)}`);
+    },
+
+    // ----------------------------------------------------
+    // Studio: school → class → course → module → lesson (all scoped to the signed-in educator)
+    // ----------------------------------------------------
+    async studioConfig() {
+      return request<{ ok: true; settings: LearnSettings; usage: { schools: number } }>("/v1/education/studio/config");
+    },
+    async studioSchools() {
+      return request<{ ok: true; schools: StudioSchool[] }>("/v1/education/studio/schools");
+    },
+    async studioSchool(id: string) {
+      return request<{ ok: true; school: StudioSchool }>(`/v1/education/studio/schools/${encodeURIComponent(id)}`);
+    },
+    async studioCreateSchool(data: {
+      name: string;
+      kind: SchoolKind;
+      streams: EducationStream[];
+      tagline?: string;
+      bio?: string;
+      location?: string;
+      motto?: string;
+      badge?: string;
+      contactEmail?: string;
+      contactPhone?: string;
+    }) {
+      return request<{ ok: true; school: StudioSchool }>("/v1/education/studio/schools", { method: "POST", body: JSON.stringify(data) });
+    },
+    async studioUpdateSchool(id: string, data: Partial<Omit<StudioSchool, "id" | "slug" | "status" | "createdAt" | "classCount" | "courseCount">>) {
+      return request<{ ok: true; school: StudioSchool }>(`/v1/education/studio/schools/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(data) });
+    },
+    async studioDeleteSchool(id: string) {
+      return request<{ ok: true }>(`/v1/education/studio/schools/${encodeURIComponent(id)}`, { method: "DELETE" });
+    },
+    async studioClasses(schoolId: string) {
+      return request<{ ok: true; classes: StudioClass[] }>(`/v1/education/studio/schools/${encodeURIComponent(schoolId)}/classes`);
+    },
+    async studioCreateClass(
+      schoolId: string,
+      data: {
+        stream: EducationStream;
+        kind: ClassKind;
+        name: string;
+        level: string;
+        framework: CurriculumFramework;
+        academicYear?: string;
+        term?: string;
+        teacherName?: string;
+        capacity?: number;
+        summary?: string;
+      },
+    ) {
+      return request<{ ok: true; class: StudioClass }>(`/v1/education/studio/schools/${encodeURIComponent(schoolId)}/classes`, {
+        method: "POST",
+        body: JSON.stringify(data),
+      });
+    },
+    async studioClass(id: string) {
+      return request<{ ok: true; class: StudioClass }>(`/v1/education/studio/classes/${encodeURIComponent(id)}`);
+    },
+    async studioUpdateClass(id: string, data: Partial<Omit<StudioClass, "id" | "schoolId" | "courseCount">>) {
+      return request<{ ok: true; class: StudioClass }>(`/v1/education/studio/classes/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(data) });
+    },
+    async studioDeleteClass(id: string) {
+      return request<{ ok: true }>(`/v1/education/studio/classes/${encodeURIComponent(id)}`, { method: "DELETE" });
+    },
+    async studioCourses(classId: string) {
+      return request<{ ok: true; courses: StudioCourse[] }>(`/v1/education/studio/classes/${encodeURIComponent(classId)}/courses`);
+    },
+    async studioCreateCourse(
+      classId: string,
+      data: { title: string; summary?: string; priceUgx?: number; framework?: CurriculumFramework; outcomes?: string[] },
+    ) {
+      return request<{ ok: true; course: StudioCourse }>(`/v1/education/studio/classes/${encodeURIComponent(classId)}/courses`, {
+        method: "POST",
+        body: JSON.stringify(data),
+      });
+    },
+    async studioCourse(id: string) {
+      return request<{ ok: true; course: StudioCourseDetail }>(`/v1/education/studio/courses/${encodeURIComponent(id)}`);
+    },
+    async studioUpdateCourse(
+      id: string,
+      data: { title?: string; summary?: string; priceUgx?: number; framework?: CurriculumFramework; outcomes?: string[]; status?: StudioStatus },
+    ) {
+      return request<{ ok: true; course: StudioCourse }>(`/v1/education/studio/courses/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(data) });
+    },
+    async studioDeleteCourse(id: string) {
+      return request<{ ok: true }>(`/v1/education/studio/courses/${encodeURIComponent(id)}`, { method: "DELETE" });
+    },
+    async studioCreateModule(courseId: string, data: { title: string; description?: string }) {
+      return request<{ ok: true; module: StudioModule }>(`/v1/education/studio/courses/${encodeURIComponent(courseId)}/modules`, {
+        method: "POST",
+        body: JSON.stringify(data),
+      });
+    },
+    async studioUpdateModule(id: string, data: { title?: string; description?: string }) {
+      return request<{ ok: true; module: StudioModule }>(`/v1/education/studio/modules/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(data) });
+    },
+    async studioDeleteModule(id: string) {
+      return request<{ ok: true }>(`/v1/education/studio/modules/${encodeURIComponent(id)}`, { method: "DELETE" });
+    },
+    async studioCreateLesson(
+      moduleId: string,
+      data: {
+        title: string;
+        contentType?: LessonContentType;
+        durationMinutes?: number;
+        summary?: string;
+        contentUrl?: string;
+        quiz?: StudioQuiz | null;
+      },
+    ) {
+      return request<{ ok: true; lesson: StudioLesson }>(`/v1/education/studio/modules/${encodeURIComponent(moduleId)}/lessons`, {
+        method: "POST",
+        body: JSON.stringify(data),
+      });
+    },
+    async studioUpdateLesson(
+      id: string,
+      data: { title?: string; contentType?: LessonContentType; durationMinutes?: number; summary?: string; contentUrl?: string; quiz?: StudioQuiz | null },
+    ) {
+      return request<{ ok: true; lesson: StudioLesson }>(`/v1/education/studio/lessons/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(data) });
+    },
+    async studioDeleteLesson(id: string) {
+      return request<{ ok: true }>(`/v1/education/studio/lessons/${encodeURIComponent(id)}`, { method: "DELETE" });
+    },
+
+    // ----------------------------------------------------
+    // Admin (staff only)
+    // ----------------------------------------------------
+    async adminGetLearnSettings() {
+      return request<{ learn: LearnSettings }>("/v1/admin/learn-settings");
+    },
+    async adminUpdateLearnSettings(learn: Partial<LearnSettings>) {
+      return request<{ learn: LearnSettings }>("/v1/admin/learn-settings", { method: "PATCH", body: JSON.stringify(learn) });
+    },
+    async adminLearnSchools() {
+      return request<{ ok: true; schools: (StudioSchool & { ownerName: string; ownerId: string })[] }>("/v1/admin/learn-schools");
+    },
+    async adminSetLearnSchoolStatus(id: string, status: SchoolStatus) {
+      return request<{ ok: true; status: SchoolStatus }>(`/v1/admin/learn-schools/${encodeURIComponent(id)}/status`, {
+        method: "POST",
+        body: JSON.stringify({ status }),
       });
     },
   };
