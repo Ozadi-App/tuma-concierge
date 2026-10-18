@@ -152,7 +152,7 @@ jobs:
           fi
 
           OUTPUT=$(npx wrangler versions upload --preview-alias "$ALIAS" --tag "$ALIAS" --message "Preview for $ALIAS ($GITHUB_SHA)" 2>&1 || \
-                   npx wrangler versions upload --tag "$ALIAS" --message "Preview for $ALIAS ($GITHUB_SHA)" 2>&1)
+                   npx wrangler versions upload --tag "$ALIAS" --message "Preview for $ALIAS ($GITHUB_SHA)" 2>&1 || true)
           echo "$OUTPUT"
 
           PREVIEW_URL=$(echo "$OUTPUT" | grep -oE 'https://[a-zA-Z0-9.-]+\.workers\.dev' | head -n 1 || echo "https://${ALIAS}-peebee-${{ matrix.app }}.peebeeapp.workers.dev")
