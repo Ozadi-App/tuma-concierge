@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { api } from "../../lib/api";
 import {
   EDUCATION_STREAMS,
   DEMO_CREATORS,
@@ -28,6 +29,7 @@ import {
   type EducationStreamId,
   type CreatorProfile,
   type CreatorCourse,
+  type CourseModule,
   type CourseLesson,
   type EducationLiveMeeting,
 } from "@peebee/shared";
@@ -84,6 +86,14 @@ const CREATOR_TYPE_LABELS: Record<CreatorProfile["type"], string> = {
   independent_tutor: "Independent Tutor",
 };
 
+const CATALOG_THUMBS: Record<EducationStreamId, string> = {
+  sprouts: "https://images.unsplash.com/photo-1503676260728-1c00da094a0b?auto=format&fit=crop&w=600&q=80",
+  foundations: "https://images.unsplash.com/photo-1596495578065-6e0763fa1178?auto=format&fit=crop&w=600&q=80",
+  academy: "https://images.unsplash.com/photo-1509198397868-475647b2a1e5?auto=format&fit=crop&w=600&q=80",
+  compass: "https://images.unsplash.com/photo-1551836022-d5d88e9218df?auto=format&fit=crop&w=600&q=80",
+  skills: "https://images.unsplash.com/photo-1581092921461-eab62e97a780?auto=format&fit=crop&w=600&q=80",
+};
+
 function formatUgx(amount: number) {
   return `UGX ${amount.toLocaleString()}`;
 }
@@ -98,10 +108,72 @@ export default function CustomerLearnPage() {
   const [creators, setCreators] = useState<CreatorProfile[]>(DEMO_CREATORS);
   const [courses, setCourses] = useState<CreatorCourse[]>(DEMO_CREATOR_COURSES);
 
+  // Courses educators have published from the Learn Studio. They join the demo courses
+  // below; the demo set always stays, so the page is never empty while the catalogue loads.
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .getCatalogCourses()
+      .then((res) => {
+        if (cancelled) return;
+        const live: CreatorCourse[] = res.courses.map((c) => ({
+          id: c.id,
+          creatorId: `school:${c.schoolSlug}`,
+          creatorName: c.schoolName,
+          creatorAvatar: "",
+          creatorRoleTitle: c.className,
+          institutionName: c.schoolName,
+          title: c.title,
+          stream: c.stream,
+          category: STREAM_LABELS[c.stream],
+          level: c.classLevel || c.className,
+          summary: c.summary,
+          thumbnailUrl: CATALOG_THUMBS[c.stream],
+          priceUgx: c.priceUgx,
+          framework: c.framework,
+          outcomes: c.outcomes,
+          enrolledStudentsCount: 0,
+          rating: 0,
+          reviewCount: 0,
+          modules: [],
+        }));
+        setCourses((prev) => [...live.filter((l) => !prev.some((p) => p.id === l.id)), ...prev]);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // Drill-down selection state
   const [selectedCreatorId, setSelectedCreatorId] = useState<string | null>(null);
   const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null);
   const [selectedLessonId, setSelectedLessonId] = useState<string | null>(null);
+
+  // A published course's syllabus is fetched when it is opened.
+  useEffect(() => {
+    if (!selectedCourseId?.startsWith("crs_")) return;
+    const open = courses.find((c) => c.id === selectedCourseId);
+    if (!open || open.modules.length > 0) return;
+    let cancelled = false;
+    api
+      .getCatalogCourse(selectedCourseId)
+      .then((res) => {
+        if (cancelled) return;
+        const modules: CourseModule[] = res.course.modules.map((m, i) => ({
+          id: m.id,
+          title: m.title,
+          description: m.description,
+          order: i + 1,
+          lessons: m.lessons.map((l) => ({ id: l.id, title: l.title, durationMinutes: l.durationMinutes, contentType: l.contentType, summary: l.summary })),
+        }));
+        setCourses((prev) => prev.map((c) => (c.id === open.id ? { ...c, modules } : c)));
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCourseId, courses]);
   const [enrolledCourseIds, setEnrolledCourseIds] = useState<string[]>([
     "course_greenwood_math4",
     "course_fintech_101",

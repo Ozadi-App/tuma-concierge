@@ -280,6 +280,30 @@ export function educationMethods(request: RequestFn) {
     },
 
     // ----------------------------------------------------
+    // Catalogue: published studio courses (public, no quiz answers)
+    // ----------------------------------------------------
+    async getCatalogCourses(stream?: EducationStream) {
+      const q = stream ? `?stream=${encodeURIComponent(stream)}` : "";
+      return request<{
+        ok: true;
+        courses: {
+          id: string; stream: EducationStream; title: string; summary: string; priceUgx: number; framework: CurriculumFramework; outcomes: string[];
+          schoolName: string; schoolSlug: string; className: string; classKind: ClassKind; classLevel: string; lessonCount: number;
+        }[];
+      }>(`/v1/education/catalog/courses${q}`);
+    },
+    async getCatalogCourse(id: string) {
+      return request<{
+        ok: true;
+        course: {
+          id: string; stream: EducationStream; title: string; summary: string; priceUgx: number; framework: CurriculumFramework; outcomes: string[];
+          schoolName: string; className: string;
+          modules: { id: string; title: string; description: string; lessons: { id: string; title: string; contentType: LessonContentType; durationMinutes: number; summary: string; questionCount: number }[] }[];
+        };
+      }>(`/v1/education/catalog/courses/${encodeURIComponent(id)}`);
+    },
+
+    // ----------------------------------------------------
     // Studio: school → class → course → module → lesson (all scoped to the signed-in educator)
     // ----------------------------------------------------
     async studioConfig() {
