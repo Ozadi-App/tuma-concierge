@@ -1,33 +1,22 @@
 "use client";
 
 import { useRegisterNavBack, useRegisterNavPrimaryAction } from "../lib/nav-primary-action";
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  ArrowLeft,
-  Check,
   ChevronRight,
-  MapPin,
   Minus,
   Plus,
   ShoppingBag,
-  Sparkles,
   Trash2,
-  Wallet,
   X,
 } from "lucide-react";
-import { useCart, CartItem, dismissEarlierCartNotice } from "../lib/cart";
+import { useCart, dismissEarlierCartNotice } from "../lib/cart";
+import { bagCheckoutHref } from "../lib/bag-checkout";
 import { EarlierCarts } from "./EarlierCarts";
 import { ProductImage } from "./ProductImage";
-import { api, errorMessage } from "../lib/api";
-import { useBagQuote, type BagDeliveryMode } from "../lib/bag-quote";
-import { bagDestinationFields, useBagDeliveryPlace } from "../lib/bag-place";
-import { bagRelayLastMileInput } from "./BagRelayDetails";
-import { BagDeliveryBreakdown, BagDestinationCard } from "./BagDeliveryBreakdown";
-import { PlaceFlow } from "./PlaceFlow";
-import type { LastMileChoiceValue } from "./LastMileChoice";
 
 export interface CartDrawerProps {
   isOpen: boolean;
@@ -35,49 +24,26 @@ export interface CartDrawerProps {
   onOpen?: () => void;
 }
 
+/**
+ * The shopping bag: its items and their subtotal only. Delivery is its own step: "Proceed to
+ * Checkout" goes to /cart?step=delivery (see lib/bag-checkout.ts), which only ever checks out
+ * this bag. Restaurant carts and earlier carts are never touched from here.
+ */
 export function CartDrawer({
   isOpen,
   onClose,
-  onOpen,
 }: CartDrawerProps) {
   const router = useRouter();
   const {
     items,
-    mounted,
     totalQuantity,
-    selectedItems,
     selectedCount,
     subtotal,
     updateQuantity,
     removeItem,
-    completeCheckout,
   } = useCart();
 
   const [portalReady, setPortalReady] = useState(false);
-  const [viewMode, setViewMode] = useState<"items" | "checkout">("items");
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [checkoutError, setCheckoutError] = useState<string | null>(null);
-  // Where the bag goes: chosen on the map and remembered on this device. Never a default place.
-  const delivery = useBagDeliveryPlace();
-  const [choosingPlace, setChoosingPlace] = useState(false);
-  // The delivery fee is the server's, for this place and the chosen way. Checkout waits for it.
-  const [deliveryMode, setDeliveryMode] = useState<BagDeliveryMode | undefined>(undefined);
-  const [relayLastMile, setRelayLastMile] = useState<LastMileChoiceValue>("door");
-  const [relayMeetStageId, setRelayMeetStageId] = useState<string | null>(null);
-  const destination =
-    delivery.place?.lat != null && delivery.place.lng != null ? { lat: delivery.place.lat, lng: delivery.place.lng } : null;
-  const bagQuote = useBagQuote(selectedItems, {
-    enabled: isOpen && delivery.ready,
-    destination,
-    deliveryMode,
-    relayLastMile,
-    relayMeetStageId: relayMeetStageId ?? undefined,
-  });
-  const deliveryFee = bagQuote.quote?.deliveryFee ?? null;
-  const total = bagQuote.quote?.total ?? null;
-  const totalLabel = total == null ? undefined : `UGX ${total.toLocaleString()}`;
-  const priceReady = total != null && !!destination;
-  const storeCount = new Set(selectedItems.map((it) => it.storeId)).size;
 
   useEffect(() => {
     setPortalReady(true);
@@ -92,21 +58,13 @@ export function CartDrawer({
 
   // Lock body scroll and listen for Escape key when open
   useEffect(() => {
-    if (!isOpen) {
-      setViewMode("items");
-      setCheckoutError(null);
-      setChoosingPlace(false);
-      return;
-    }
+    if (!isOpen) return;
 
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
 
     function handleKeyDown(event: KeyboardEvent) {
-      // The place picker sits on top of the bag; Escape there must not close the bag.
-      if (event.key === "Escape" && !choosingPlace) {
-        onClose();
-      }
+      if (event.key === "Escape") onClose();
     }
 
     window.addEventListener("keydown", handleKeyDown);
@@ -114,73 +72,29 @@ export function CartDrawer({
       document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [isOpen, onClose, choosingPlace]);
+  }, [isOpen, onClose]);
 
-  const handleCheckoutSubmit = async () => {
-    const quote = bagQuote.quote;
-    if (selectedItems.length === 0 || !priceReady || !quote || !delivery.place) return;
-    setIsSubmitting(true);
-    setCheckoutError(null);
-    // Only the current bag's selected lines are ever submitted (earlier carts never are).
-    const submitted = selectedItems;
-
-    try {
-      const res = await api.checkoutMarketplace({
-        items: submitted.map((it) => ({
-          productId: it.productId,
-          storeId: it.storeId,
-          title: it.title,
-          price: it.price,
-          quantity: it.quantity,
-          variantId: it.variantId,
-          variantTitle: it.variantTitle,
-          imageUrl: it.imageUrl,
-        })),
-        paymentRail: "escrow",
-        ...bagDestinationFields(delivery.place),
-        // The way this quote priced, so the order is charged what was shown.
-        deliveryMode: quote.deliveryMode,
-        ...(quote.deliveryMode === "relay" ? bagRelayLastMileInput(quote.relay, relayLastMile, relayMeetStageId) : {}),
-      });
-
-      const firstOrder = res.order ?? res.orders?.[0];
-      // Checked-out lines leave the bag; unselected ones are kept under Earlier carts.
-      completeCheckout(submitted.map((it) => it.id));
-      setIsSubmitting(false);
-      onClose();
-
-      if (firstOrder?.id) {
-        router.push(`/orders/${firstOrder.id}/pay`);
-      } else {
-        router.push("/orders");
-      }
-    } catch (err) {
-      setCheckoutError(errorMessage(err));
-      setIsSubmitting(false);
-    }
+  // Next step: the Delivery screen of this bag's checkout.
+  const proceedToCheckout = () => {
+    if (selectedCount === 0) return;
+    onClose();
+    router.push(bagCheckoutHref("delivery"));
   };
 
   // Screens without the bottom nav (single store, product) keep the bag's own buttons.
   const [navPresent, setNavPresent] = useState(false);
   // While open, the drawer drives the bottom nav (which floats above it):
-  // Home → Back (checkout view → items, items → close), and the right capsule
-  // is this drawer's next step instead of an in-sheet button.
-  // While the place picker is open it drives the nav instead.
-  useRegisterNavBack(isOpen && navPresent && !choosingPlace, () => (viewMode === "checkout" ? setViewMode("items") : onClose()), 2);
+  // Home → Back (closes the bag), and the right capsule is this bag's next step.
+  useRegisterNavBack(isOpen && navPresent, onClose, 2);
   useRegisterNavPrimaryAction(
-    isOpen && navPresent && items.length > 0 && !choosingPlace
-      ? viewMode === "items"
-        ? { tone: "step", label: "Next: delivery", detail: totalLabel, onClick: () => setViewMode("checkout") }
-        : bagQuote.needsDestination
-        ? { tone: "step", label: "Choose location", onClick: () => setChoosingPlace(true) }
-        : {
-            tone: "step",
-            label: isSubmitting ? "Creating order…" : priceReady ? "Next: payment" : "Please wait…",
-            detail: totalLabel,
-            disabled: isSubmitting || selectedItems.length === 0 || !priceReady,
-            busy: isSubmitting,
-            onClick: () => void handleCheckoutSubmit(),
-          }
+    isOpen && navPresent && items.length > 0
+      ? {
+          tone: "step",
+          label: "Continue to delivery",
+          detail: `UGX ${subtotal.toLocaleString()}`,
+          disabled: selectedCount === 0,
+          onClick: proceedToCheckout,
+        }
       : null,
     2,
   );
@@ -194,10 +108,9 @@ export function CartDrawer({
   if (!portalReady || typeof document === "undefined") return null;
 
   return createPortal(
-    <>
     <div
-      className={`menu-item-cart-layer marketplace-cart-layer${isOpen ? " is-open" : ""}${choosingPlace ? " invisible" : ""}`}
-      aria-hidden={!isOpen || choosingPlace}
+      className={`menu-item-cart-layer marketplace-cart-layer${isOpen ? " is-open" : ""}`}
+      aria-hidden={!isOpen}
     >
       {/* Backdrop */}
       <button
@@ -222,31 +135,18 @@ export function CartDrawer({
         ========================================================================= */}
         <div className="menu-item-cart-drawer__header flex items-center justify-between px-5 py-4 border-b border-[var(--border-faint)]">
           <div className="flex items-center gap-3">
-            {viewMode === "checkout" ? (
-              <button
-                type="button"
-                onClick={() => setViewMode("items")}
-                className="flex h-9 w-9 items-center justify-center rounded-full border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] text-ink hover:scale-105 active:scale-95 transition"
-                aria-label="Back to items list"
-              >
-                <ArrowLeft className="h-4 w-4" />
-              </button>
-            ) : (
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gold/15 text-gold">
-                <ShoppingBag className="h-5 w-5" />
-              </div>
-            )}
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gold/15 text-gold">
+              <ShoppingBag className="h-5 w-5" />
+            </div>
             <div>
               <h2
                 id="marketplace-cart-drawer-title"
                 className="text-lg font-extrabold tracking-tight text-ink leading-tight"
               >
-                {viewMode === "checkout" ? "Delivery & Payment" : "Your Shopping Bag"}
+                Your Shopping Bag
               </h2>
               <p className="text-xs text-ink-500 font-medium" aria-live="polite">
-                {viewMode === "checkout"
-                  ? `${totalQuantity} item${totalQuantity === 1 ? "" : "s"} selected`
-                  : totalQuantity > 0
+                {totalQuantity > 0
                   ? `${totalQuantity} item${totalQuantity === 1 ? "" : "s"} from stores`
                   : "Cart is empty"}
               </p>
@@ -289,7 +189,7 @@ export function CartDrawer({
               </button>
               <EarlierCarts className="w-full pt-4 text-left" />
             </div>
-          ) : viewMode === "items" ? (
+          ) : (
             /* Items List View */
             <div className="space-y-4">
               <EarlierCarts showList={false} />
@@ -365,148 +265,48 @@ export function CartDrawer({
               </ul>
               <EarlierCarts showNotice={false} />
             </div>
-          ) : (
-            /* Quick Checkout Form */
-            <div className="space-y-4">
-              {checkoutError && (
-                <div className="rounded-2xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800/50 p-3 text-xs text-red-700 dark:text-red-300">
-                  {checkoutError}
-                </div>
-              )}
-
-              {/* Delivery Destination */}
-              <div className="space-y-2">
-                <p className="text-xs font-bold uppercase tracking-wider text-ink-500 flex items-center gap-1.5">
-                  <MapPin className="h-3.5 w-3.5 text-gold" />
-                  <span>Delivery Destination</span>
-                </p>
-                <BagDestinationCard
-                  place={delivery.place}
-                  ready={delivery.ready}
-                  onChange={() => setChoosingPlace(true)}
-                  disabled={isSubmitting}
-                />
-              </div>
-
-              {/* Order breakdown */}
-              <div className="rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] p-3.5 space-y-2 text-xs">
-                <div className="flex justify-between text-ink-500">
-                  <span>Items Subtotal</span>
-                  <span>UGX {subtotal.toLocaleString()}</span>
-                </div>
-                <BagDeliveryBreakdown
-                  bag={bagQuote}
-                  storeCount={storeCount}
-                  onModeChange={setDeliveryMode}
-                  lastMile={relayLastMile}
-                  onLastMileChange={setRelayLastMile}
-                  meetStageId={relayMeetStageId}
-                  onMeetStageChange={setRelayMeetStageId}
-                  onChooseLocation={() => setChoosingPlace(true)}
-                  disabled={isSubmitting}
-                />
-                <div className="border-t border-[var(--border-faint)] pt-2 flex justify-between font-bold text-sm text-ink">
-                  <span>Total Due</span>
-                  <span className="text-gold font-mono">{total == null ? "—" : `UGX ${total.toLocaleString()}`}</span>
-                </div>
-              </div>
-            </div>
           )}
         </div>
 
         {/* =========================================================================
-            FOOTER ACTIONS
+            FOOTER: items subtotal only; delivery is chosen at the next step.
         ========================================================================= */}
         {items.length > 0 && (
           <div className="menu-item-cart-drawer__footer border-t border-[var(--border-faint)] px-5 py-4 bg-[rgb(var(--surface-card))] space-y-3">
-            {viewMode === "items" ? (
-              <>
-                <div className="flex items-center justify-between text-xs text-ink-500">
-                  <span>Subtotal ({totalQuantity} items)</span>
-                  <span className="font-mono text-sm font-bold text-ink">
-                    UGX {subtotal.toLocaleString()}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between text-xs text-ink-500">
-                  <span>Delivery</span>
-                  <span className="font-bold text-ink">
-                    {bagQuote.needsDestination ? (
-                    <button type="button" onClick={() => setViewMode("checkout")} className="font-bold text-gold">Choose location</button>
-                  ) : bagQuote.failed ? (
-                    <button type="button" onClick={bagQuote.retry} className="font-bold text-gold">Retry</button>
-                  ) : deliveryFee == null ? "Calculating…" : `UGX ${deliveryFee.toLocaleString()}`}
-                  </span>
-                </div>
-                <div className="border-t border-[var(--border-faint)] pt-2 flex items-center justify-between text-sm font-black text-ink">
-                  <span>Total</span>
-                  <span className="font-mono text-base text-gold">
-                    {total == null ? "—" : `UGX ${total.toLocaleString()}`}
-                  </span>
-                </div>
+            <div className="space-y-1">
+              <div className="flex items-center justify-between text-sm font-black text-ink">
+                <span>Subtotal ({selectedCount} item{selectedCount === 1 ? "" : "s"})</span>
+                <span className="font-mono text-base text-gold">UGX {subtotal.toLocaleString()}</span>
+              </div>
+              <p className="text-[11px] text-ink-500">Delivery is chosen at the next step.</p>
+            </div>
 
-                <div className={`pt-1 flex items-center gap-2 ${navPresent ? "justify-end" : ""}`}>
-                  {!navPresent && (
-                  <button
-                    type="button"
-                    onClick={() => setViewMode("checkout")}
-                    className="flex-1 py-3.5 px-4 rounded-full bg-gold text-ink-gold font-bold text-sm shadow-md hover:brightness-105 active:scale-98 transition flex items-center justify-center gap-2"
-                  >
-                    <span>Proceed to Checkout</span>
-                    <ChevronRight className="h-4 w-4 stroke-[2.5]" />
-                  </button>
-                  )}
+            <div className={`pt-1 flex items-center gap-2 ${navPresent ? "justify-end" : ""}`}>
+              {!navPresent && (
+              <button
+                type="button"
+                onClick={proceedToCheckout}
+                disabled={selectedCount === 0}
+                className="flex-1 py-3.5 px-4 rounded-full bg-gold text-ink-gold font-bold text-sm shadow-md hover:brightness-105 active:scale-98 transition flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                <span>Proceed to Checkout</span>
+                <ChevronRight className="h-4 w-4 stroke-[2.5]" />
+              </button>
+              )}
 
-                  <Link
-                    href="/cart"
-                    onClick={onClose}
-                    className="p-3.5 rounded-full border border-[var(--border-faint)] text-xs font-bold text-ink-500 hover:text-ink hover:bg-[rgb(var(--surface-muted))] transition"
-                    title="View full cart screen"
-                  >
-                    Full Cart
-                  </Link>
-                </div>
-              </>
-            ) : (
-              <>
-                {!navPresent && (
-                <button
-                  type="button"
-                  disabled={isSubmitting || selectedItems.length === 0 || (!priceReady && !bagQuote.needsDestination)}
-                  onClick={bagQuote.needsDestination ? () => setChoosingPlace(true) : handleCheckoutSubmit}
-                  className="w-full py-4 px-5 rounded-full bg-gold text-ink-gold font-black text-sm shadow-lg hover:brightness-105 active:scale-98 transition flex items-center justify-between disabled:opacity-50"
-                >
-                  <span>{isSubmitting ? "Creating Order…" : bagQuote.needsDestination ? "Choose delivery location" : "Next: Payment"}</span>
-                  <span className="font-mono font-extrabold">
-                    {total == null ? "" : `UGX ${total.toLocaleString()}`}
-                  </span>
-                </button>
-                )}
-
-                <button
-                  type="button"
-                  onClick={() => setViewMode("items")}
-                  className="w-full text-center text-xs font-semibold text-ink-500 hover:text-ink"
-                >
-                  ← Edit items in bag
-                </button>
-              </>
-            )}
+              <Link
+                href="/cart"
+                onClick={onClose}
+                className="p-3.5 rounded-full border border-[var(--border-faint)] text-xs font-bold text-ink-500 hover:text-ink hover:bg-[rgb(var(--surface-muted))] transition"
+                title="View full cart screen"
+              >
+                Full Cart
+              </Link>
+            </div>
           </div>
         )}
       </aside>
-    </div>
-    {isOpen && choosingPlace && (
-      <PlaceFlow
-        concept="shopping"
-        initial={{ destination: delivery.place }}
-        onClose={() => setChoosingPlace(false)}
-        onDone={(r) => {
-          delivery.choose(r.destination);
-          setChoosingPlace(false);
-        }}
-      />
-    )}
-    </>,
+    </div>,
     document.body
   );
 }

@@ -10,6 +10,7 @@ import {useCart} from "../lib/cart";
 import {loadOrderFeed} from "../lib/order-feed";
 import {useResolvedTheme,useThemeMode} from "../lib/theme";
 import {BrandLogo} from "./BrandLogo";
+import {SavedCartsList,useCartRows} from "./SavedCarts";
 
 type MenuCounts={wallet:number|null;unreadChats:number;inProgress:number;attention:number};
 const EMPTY_COUNTS:MenuCounts={wallet:null,unreadChats:0,inProgress:0,attention:0};
@@ -51,6 +52,9 @@ export function BrandHeader() {
   const activeTheme=useResolvedTheme();
   const {totalQuantity:cartCount}=useCart();
   const [expanded,setExpanded]=useState(false);
+  // Every cart on this device (the bag, each restaurant's, the earlier ones), re-read each time the menu opens.
+  const cartRows=useCartRows(expanded);
+  const openCarts=cartRows.some(row=>row.kind!=="earlier");
   const toggleRef=useRef<HTMLButtonElement>(null);
   const menuRef=useRef<HTMLDivElement>(null);
   const releaseTimer=useRef<number|undefined>(undefined);
@@ -101,7 +105,7 @@ export function BrandHeader() {
         <Link href="/" aria-label={`Go to home${modeLabel ? ", demo mode" : ""}`} className="flex shrink-0 items-start gap-1"><BrandLogo variant={isDark ? "dark" : "light"}/>{modeLabel&&<sup aria-hidden="true" className="pt-1 text-[10px] font-bold leading-none text-gold">{modeLabel}</sup>}</Link>
         <button ref={toggleRef} type="button" aria-label={expanded?"Close menu":"Open menu"} aria-expanded={expanded} aria-controls="header-menu" onClick={()=>setExpanded(value=>!value)} className="customer-header-toggle relative flex h-11 w-11 items-center justify-center rounded-full">
           <ChevronDown size={24} className={`transition-transform duration-300 ${expanded?"rotate-180":""}`} aria-hidden/>
-          {!expanded&&cartCount>0&&<span aria-hidden className="customer-header-dot absolute right-1.5 top-1.5 h-2.5 w-2.5 rounded-full"/>}
+          {!expanded&&(cartCount>0||openCarts)&&<span aria-hidden className="customer-header-dot absolute right-1.5 top-1.5 h-2.5 w-2.5 rounded-full"/>}
         </button>
       </div>
       <div id="header-menu" className={`customer-profile-reveal customer-menu-reveal mx-auto grid max-w-lg ${expanded?"is-expanded":""}`} inert={!expanded} aria-hidden={!expanded}>
@@ -131,6 +135,7 @@ export function BrandHeader() {
               <MenuTile href="/notifications" label="Notifications" Icon={Bell} badge={counts.attention} badgeLabel="new" onNavigate={close}/>
               <MenuTile href="/settings" label="Settings" Icon={Settings} onNavigate={close}/>
             </div>
+            <SavedCartsList rows={cartRows} onNavigate={close}/>
             <button type="button" role="switch" aria-checked={isDark} onClick={()=>setMode(isDark?"light":"dark")} className="customer-menu-row customer-menu-theme flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-left">
               <span className="customer-menu-tile-icon flex h-9 w-9 shrink-0 items-center justify-center rounded-xl">{isDark?<Moon size={18} strokeWidth={1.9} aria-hidden/>:<Sun size={18} strokeWidth={1.9} aria-hidden/>}</span>
               <span className="flex-1 text-[14px] font-semibold">Dark mode</span>

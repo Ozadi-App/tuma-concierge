@@ -26,6 +26,19 @@ export function bagRelayLastMileInput(
   return { relayLastMile: lastMile };
 }
 
+/**
+ * Which relay legs this choice pays for: the last boda only when it brings the bag to the door.
+ * The Delivery step and the Review step both show these.
+ */
+export function bagRelayShownLegs(relay: BagRelay, lastMile: LastMileChoiceValue) {
+  const station = relay.dropMode === "station" && relay.station ? relay.station : null;
+  const choice = bagRelayHasChoice(relay);
+  const meeting = choice && lastMile === "meet" && (relay.meetStages?.length ?? 0) > 0;
+  const toDoor = !station || (choice && relay.choiceAtOrder ? lastMile === "door" : !meeting && relay.lastMile === "door");
+  const legs = [...relay.legs].sort((a, b) => a.leg - b.leg).filter((leg) => toDoor || leg.leg < 3);
+  return { station, choice, meeting, toDoor, legs };
+}
+
 /** The legs of a relayed bag delivery, and the door/collect choice for a petrol-station drop. */
 export function BagRelayDetails({
   relay,
@@ -49,11 +62,7 @@ export function BagRelayDetails({
   disabled?: boolean;
   className?: string;
 }) {
-  const station = relay.dropMode === "station" && relay.station ? relay.station : null;
-  const choice = bagRelayHasChoice(relay);
-  const meeting = choice && lastMile === "meet" && (relay.meetStages?.length ?? 0) > 0;
-  const toDoor = !station || (choice && relay.choiceAtOrder ? lastMile === "door" : !meeting && relay.lastMile === "door");
-  const legs = [...relay.legs].sort((a, b) => a.leg - b.leg).filter((leg) => toDoor || leg.leg < 3);
+  const { station, choice, toDoor, legs } = bagRelayShownLegs(relay, lastMile);
   return (
     <div className={`space-y-1.5 text-[11px] text-ink-500 ${className}`}>
       <p>Long trip: relayed by boda and matatu.</p>
