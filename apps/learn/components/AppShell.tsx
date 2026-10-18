@@ -12,7 +12,7 @@ import { PracticeModeFrame, usePracticeModeActive } from "@peebee/shared/practic
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const { user, activeStream } = useLearnAuth();
+  const { activeStream } = useLearnAuth();
   const isPracticeActive = usePracticeModeActive();
 
   const isMeetingRoom = pathname.startsWith("/live/") && pathname !== "/live";
@@ -24,18 +24,18 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="min-h-dvh bg-cream text-ink">
-      <PracticeModeFrame onExit={handleExitPractice} label="Learner Sandbox" />
+      <PracticeModeFrame onExit={handleExitPractice} label="Educator Sandbox" />
 
       {isPracticeActive && !isMeetingRoom && (
         <aside
-          aria-label="Learner Practice and Sandbox Banner"
+          aria-label="Educator Practice and Sandbox Banner"
           className="border-b border-[var(--border-faint)] bg-[rgb(var(--surface-card))] px-4 py-2 text-xs text-cream"
         >
           <div className="mx-auto flex max-w-5xl items-center justify-between gap-2">
             <div className="flex min-w-0 items-center gap-2">
               <span className="h-2 w-2 shrink-0 rounded-full bg-gold" />
               <p className="truncate font-medium">
-                <strong className="font-semibold text-gold">Sandbox Mode Active:</strong> Simulated schools, courses & live classrooms
+                <strong className="font-semibold text-gold">Sandbox Mode Active:</strong> Test course publishing, live rooms & payouts safely
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
@@ -64,7 +64,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               <BrandLogo wordmark={false} className="[&_img]:h-9 [&_img]:w-9 shrink-0" />
               <div className="min-w-0">
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-gold">Peebee Learn</p>
-                <h1 className="truncate text-sm font-semibold text-cream">{user?.name ?? "Schools & Courses"}</h1>
+                <h1 className="truncate text-sm font-semibold text-cream">Educator & School Studio</h1>
               </div>
             </Link>
 
@@ -87,7 +87,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               >
                 <span className="h-2 w-2 rounded-full bg-gold" />
                 <Radio className="h-3.5 w-3.5 text-gold" />
-                <span className="hidden sm:inline">Live Classes</span>
+                <span className="hidden sm:inline">Host Live</span>
               </Link>
 
               <span className="rounded-lg bg-gold/15 px-2.5 py-1 text-[11px] font-semibold capitalize text-gold">

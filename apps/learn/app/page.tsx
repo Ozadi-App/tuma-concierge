@@ -8,27 +8,31 @@ import {
   DEMO_CREATORS,
   DEMO_CREATOR_COURSES,
   DEMO_LIVE_MEETINGS,
+  DEMO_FOUNDATIONS_SUBMISSIONS,
+  DEMO_SKILLS_SUBMISSION,
+  DEMO_ACADEMY_REPORT_CARD,
   type EducationStreamId,
   type CreatorProfile,
   type CreatorCourse,
   type CourseLesson,
 } from "@peebee/shared";
 import {
-  Search,
   Video,
   MessageSquare,
   BookOpen,
   CheckCircle2,
   FileText,
   Clock,
-  ChevronRight,
-  ArrowLeft,
   ShieldCheck,
   X,
-  Download,
-  Play,
-  Layers,
+  Plus,
+  Users,
+  ArrowDownToLine,
+  ClipboardCheck,
+  Building2,
 } from "lucide-react";
+
+type EducatorTab = "courses" | "publish_course" | "add_lesson" | "grading";
 
 const STREAM_LABELS: Record<EducationStreamId, string> = {
   sprouts: "Sprouts · Ages 3–6",
@@ -50,133 +54,101 @@ function formatUgx(amount: number) {
   return `UGX ${amount.toLocaleString()}`;
 }
 
-export default function LearnHomePage() {
+export default function EducatorStudioHomePage() {
   const { setActiveStream } = useLearnAuth();
-  const [mode, setMode] = useState<"browse" | "studio">("browse");
-  const [streamFilter, setStreamFilter] = useState<EducationStreamId | "all">("all");
-  const [searchQuery, setSearchQuery] = useState("");
 
+  // Active school / educator profile being managed in the Educator App
   const [creators, setCreators] = useState<CreatorProfile[]>(DEMO_CREATORS);
   const [courses, setCourses] = useState<CreatorCourse[]>(DEMO_CREATOR_COURSES);
+  const [activeCreatorId, setActiveCreatorId] = useState<string>(DEMO_CREATORS[0].id);
+  const [activeTab, setActiveTab] = useState<EducatorTab>("courses");
 
-  const [selectedCreatorId, setSelectedCreatorId] = useState<string | null>(null);
-  const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null);
-  const [selectedLessonId, setSelectedLessonId] = useState<string | null>(null);
-  const [enrolledCourseIds, setEnrolledCourseIds] = useState<string[]>([
-    "course_greenwood_math4",
-    "course_fintech_101",
-    "course_little_stars_phonics",
-  ]);
-  const [completedLessonIds, setCompletedLessonIds] = useState<string[]>(["les_gw_1"]);
+  // Course curriculum drill-down for the educator
+  const [inspectingCourseId, setInspectingCourseId] = useState<string | null>(null);
 
-  // Quiz state
-  const [quizAnswers, setQuizAnswers] = useState<Record<string, number>>({});
-  const [quizSubmittedLessonId, setQuizSubmittedLessonId] = useState<string | null>(null);
-
-  // Resource modal
-  const [previewResource, setPreviewResource] = useState<{
-    name: string;
-    size: string;
-    courseTitle: string;
-    lessonTitle: string;
-  } | null>(null);
-
-  // Educator Studio state
-  const [studioCreatorId, setStudioCreatorId] = useState<string>(DEMO_CREATORS[0].id);
+  // Publish New Course state
   const [newCourseTitle, setNewCourseTitle] = useState("");
   const [newCourseStream, setNewCourseStream] = useState<EducationStreamId>("foundations");
   const [newCourseLevel, setNewCourseLevel] = useState("Primary 5");
   const [newCoursePrice, setNewCoursePrice] = useState("280000");
   const [newCourseSummary, setNewCourseSummary] = useState("");
-  const [studioNotice, setStudioNotice] = useState<string | null>(null);
 
-  const filteredCreators = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    return creators.filter((c) => {
-      const matchesStream =
-        streamFilter === "all" || c.stream === streamFilter || c.supportedStreams.includes(streamFilter);
-      const matchesQuery =
-        !q ||
-        c.name.toLowerCase().includes(q) ||
-        c.leadInstructor.toLowerCase().includes(q) ||
-        c.tagline.toLowerCase().includes(q);
-      return matchesStream && matchesQuery;
-    });
-  }, [creators, streamFilter, searchQuery]);
+  // Add Lesson & Quiz state
+  const [targetCourseId, setTargetCourseId] = useState<string>(DEMO_CREATOR_COURSES[0].id);
+  const [newLessonTitle, setNewLessonTitle] = useState("");
+  const [newLessonDuration, setNewLessonDuration] = useState("25");
+  const [newLessonSummary, setNewLessonSummary] = useState("");
+  const [newQuizQuestion, setNewQuizQuestion] = useState("");
+  const [newQuizOptionA, setNewQuizOptionA] = useState("");
+  const [newQuizOptionB, setNewQuizOptionB] = useState("");
 
-  const filteredCourses = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    return courses.filter((course) => {
-      const matchesStream = streamFilter === "all" || course.stream === streamFilter;
-      const matchesCreator = !selectedCreatorId || course.creatorId === selectedCreatorId;
-      const matchesQuery =
-        !q ||
-        course.title.toLowerCase().includes(q) ||
-        course.creatorName.toLowerCase().includes(q) ||
-        course.level.toLowerCase().includes(q) ||
-        course.summary.toLowerCase().includes(q);
-      return matchesStream && matchesCreator && matchesQuery;
-    });
-  }, [courses, streamFilter, selectedCreatorId, searchQuery]);
+  // Grading & Payout state
+  const [notice, setNotice] = useState<string | null>(null);
+  const [gradedSubmissionIds, setGradedSubmissionIds] = useState<string[]>([]);
+  const [newCritiquePinText, setNewCritiquePinText] = useState("");
+  const [critiquePins, setCritiquePins] = useState(DEMO_SKILLS_SUBMISSION.critiques);
 
-  const filteredLiveMeetings = useMemo(() => {
-    return DEMO_LIVE_MEETINGS.filter(
-      (m) => streamFilter === "all" || m.stream === streamFilter
-    );
-  }, [streamFilter]);
-
-  const selectedCreator = useMemo(
-    () => creators.find((c) => c.id === selectedCreatorId) ?? null,
-    [creators, selectedCreatorId]
+  const activeCreator = useMemo(
+    () => creators.find((c) => c.id === activeCreatorId) ?? creators[0],
+    [creators, activeCreatorId]
   );
 
-  const selectedCourse = useMemo(
-    () => courses.find((c) => c.id === selectedCourseId) ?? null,
-    [courses, selectedCourseId]
+  const creatorCourses = useMemo(
+    () => courses.filter((c) => c.creatorId === activeCreator.id),
+    [courses, activeCreator.id]
   );
 
-  const allLessonsInSelectedCourse = useMemo(() => {
-    if (!selectedCourse) return [];
-    return selectedCourse.modules.flatMap((m) => m.lessons);
-  }, [selectedCourse]);
+  const inspectingCourse = useMemo(
+    () => courses.find((c) => c.id === inspectingCourseId) ?? null,
+    [courses, inspectingCourseId]
+  );
 
-  const activeLesson: CourseLesson | null = useMemo(() => {
-    if (!selectedCourse) return null;
-    if (selectedLessonId) {
-      const found = allLessonsInSelectedCourse.find((l) => l.id === selectedLessonId);
-      if (found) return found;
-    }
-    return allLessonsInSelectedCourse[0] ?? null;
-  }, [selectedCourse, selectedLessonId, allLessonsInSelectedCourse]);
+  const creatorLiveRoom = useMemo(
+    () =>
+      DEMO_LIVE_MEETINGS.find((m) => m.stream === activeCreator.stream) ??
+      DEMO_LIVE_MEETINGS[0],
+    [activeCreator.stream]
+  );
 
-  function openCourse(course: CreatorCourse) {
-    setSelectedCourseId(course.id);
-    setActiveStream(course.stream);
-    setSelectedLessonId(course.modules[0]?.lessons[0]?.id ?? null);
-    setQuizAnswers({});
-    setQuizSubmittedLessonId(null);
-    setMode("browse");
+  function handleSelectCreator(creator: CreatorProfile) {
+    setActiveCreatorId(creator.id);
+    setActiveStream(creator.stream);
+    setNewCourseStream(creator.stream);
+    setInspectingCourseId(null);
+    const firstCourse = courses.find((c) => c.creatorId === creator.id);
+    if (firstCourse) setTargetCourseId(firstCourse.id);
   }
 
-  function handleCreateCourse(e: FormEvent) {
+  function handleWithdrawPayout() {
+    if (activeCreator.payoutBalanceUgx <= 0) return;
+    const amount = activeCreator.payoutBalanceUgx;
+    setCreators((prev) =>
+      prev.map((c) => (c.id === activeCreator.id ? { ...c, payoutBalanceUgx: 0 } : c))
+    );
+    setNotice(
+      `Settlement of ${formatUgx(amount)} initiated for ${activeCreator.name} (${activeCreator.leadInstructor}).`
+    );
+  }
+
+  function handlePublishCourse(e: FormEvent) {
     e.preventDefault();
     if (!newCourseTitle.trim()) return;
-    const creator = creators.find((c) => c.id === studioCreatorId) ?? creators[0];
+
     const created: CreatorCourse = {
       id: `course_custom_${Date.now()}`,
-      creatorId: creator.id,
-      creatorName: creator.name,
-      creatorAvatar: creator.avatarUrl,
-      creatorRoleTitle: `${creator.leadInstructor} (${creator.leadInstructorTitle})`,
-      institutionName: creator.name,
+      creatorId: activeCreator.id,
+      creatorName: activeCreator.name,
+      creatorAvatar: activeCreator.avatarUrl,
+      creatorRoleTitle: `${activeCreator.leadInstructor} (${activeCreator.leadInstructorTitle})`,
+      institutionName: activeCreator.name,
       title: newCourseTitle.trim(),
       stream: newCourseStream,
       category: STREAM_LABELS[newCourseStream],
       level: newCourseLevel.trim() || "All Levels",
       summary:
         newCourseSummary.trim() ||
-        "Structured course with interactive lessons, study materials, and graded assessments.",
-      thumbnailUrl: creator.bannerUrl ?? creator.avatarUrl,
+        "Structured course with interactive lessons, downloadable study resources, and graded assessments.",
+      thumbnailUrl: activeCreator.bannerUrl ?? activeCreator.avatarUrl,
       priceUgx: Number(newCoursePrice) || 150000,
       enrolledStudentsCount: 1,
       rating: 5.0,
@@ -184,29 +156,29 @@ export default function LearnHomePage() {
       modules: [
         {
           id: `mod_custom_${Date.now()}`,
-          title: "Module 1: Core Foundations",
-          description: "First module published via Educator Studio.",
+          title: "Module 1: Core Foundations & Practicals",
+          description: "Published via Peebee Learn Educator Studio.",
           order: 1,
           lessons: [
             {
               id: `les_custom_${Date.now()}`,
-              title: "Lesson 1: Welcome & Orientation",
+              title: "Lesson 1: Course Orientation & Syllabus",
               durationMinutes: 20,
               contentType: "video",
-              summary: "Course overview, learning objectives, and study schedule.",
+              summary: "Welcome lecture, study expectations, and assessment schedule.",
               quiz: {
                 id: `quiz_custom_${Date.now()}`,
                 title: "Orientation Checkpoint Quiz",
-                instructions: "Quick check to verify your course setup.",
+                instructions: "Complete this quick checkpoint to unlock Lesson 2.",
                 timeLimitMinutes: 5,
                 passingScorePercent: 50,
                 questions: [
                   {
                     id: `q_custom_${Date.now()}`,
-                    questionText: `Which institution published "${newCourseTitle.trim()}"?`,
-                    options: [creator.name, "Other Institution"],
+                    questionText: `Which educator published "${newCourseTitle.trim()}"?`,
+                    options: [activeCreator.name, "Other Institution"],
                     correctOptionIndex: 0,
-                    explanation: `Published directly by ${creator.name} (${creator.leadInstructor}).`,
+                    explanation: `Published by ${activeCreator.name} (${activeCreator.leadInstructor}).`,
                     points: 5,
                   },
                 ],
@@ -219,481 +191,332 @@ export default function LearnHomePage() {
 
     setCourses((prev) => [created, ...prev]);
     setCreators((prev) =>
-      prev.map((c) => (c.id === creator.id ? { ...c, courses: [created, ...c.courses] } : c))
+      prev.map((c) =>
+        c.id === activeCreator.id ? { ...c, courses: [created, ...c.courses] } : c
+      )
     );
+    setTargetCourseId(created.id);
     setNewCourseTitle("");
     setNewCourseSummary("");
-    setStudioNotice(`Published "${created.title}" under ${creator.name}.`);
+    setActiveTab("courses");
+    setNotice(
+      `Published "${created.title}" to the Peebee Learn catalog under ${activeCreator.name}.`
+    );
+  }
+
+  function handleAddLesson(e: FormEvent) {
+    e.preventDefault();
+    if (!newLessonTitle.trim()) return;
+    const targetCourse = courses.find((c) => c.id === targetCourseId);
+    if (!targetCourse) return;
+
+    const newLesson: CourseLesson = {
+      id: `les_${Date.now()}`,
+      title: newLessonTitle.trim(),
+      durationMinutes: Number(newLessonDuration) || 25,
+      contentType: "video",
+      summary:
+        newLessonSummary.trim() ||
+        "Structured lesson with study notes and checkpoint quiz.",
+      quiz: newQuizQuestion.trim()
+        ? {
+            id: `quiz_${Date.now()}`,
+            title: `${newLessonTitle.trim()} — Checkpoint Quiz`,
+            instructions: "Answer the checkpoint question below.",
+            timeLimitMinutes: 10,
+            passingScorePercent: 70,
+            questions: [
+              {
+                id: `q_${Date.now()}`,
+                questionText: newQuizQuestion.trim(),
+                options: [
+                  newQuizOptionA.trim() || "Correct Answer",
+                  newQuizOptionB.trim() || "Alternative Option",
+                ],
+                correctOptionIndex: 0,
+                explanation: `Verified by ${activeCreator.leadInstructor}.`,
+                points: 10,
+              },
+            ],
+          }
+        : undefined,
+    };
+
+    setCourses((prev) =>
+      prev.map((c) => {
+        if (c.id !== targetCourseId) return c;
+        const firstMod = c.modules[0] ?? {
+          id: `mod_${Date.now()}`,
+          title: "Module 1",
+          description: "Core curriculum",
+          order: 1,
+          lessons: [],
+        };
+        return {
+          ...c,
+          modules: [{ ...firstMod, lessons: [...firstMod.lessons, newLesson] }, ...c.modules.slice(1)],
+        };
+      })
+    );
+
+    setNewLessonTitle("");
+    setNewLessonSummary("");
+    setNewQuizQuestion("");
+    setNewQuizOptionA("");
+    setNewQuizOptionB("");
+    setInspectingCourseId(targetCourse.id);
+    setActiveTab("courses");
+    setNotice(`Added "${newLesson.title}" to ${targetCourse.title}.`);
   }
 
   return (
     <div className="space-y-5 pb-10">
-      <header className="space-y-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className="text-[11px] uppercase tracking-[0.2em] text-gold font-semibold">
-              Peebee Learn
-            </p>
-            <h1 className="font-display text-2xl sm:text-3xl font-semibold text-cream mt-0.5">
-              Schools, Tutors & Courses
-            </h1>
-            <p className="text-sm text-ink-500 mt-1">
-              Explore partner schools, vocational guilds, and tutor-led courses across all five education streams.
-            </p>
+      {/* ─── Active Institution / Educator Switcher Banner (matches Pharmacy & Merchant apps) ─── */}
+      <section className="rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-4 sm:p-5 space-y-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3.5 min-w-0">
+            <img
+              src={activeCreator.avatarUrl}
+              alt={activeCreator.name}
+              className="h-12 w-12 rounded-2xl object-cover border border-[var(--border-faint)] shrink-0"
+            />
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-gold">
+                <ShieldCheck className="h-3.5 w-3.5 shrink-0" />
+                <span>
+                  {CREATOR_TYPE_LABELS[activeCreator.type]} · {activeCreator.badge}
+                </span>
+              </div>
+              <h1 className="font-display text-xl sm:text-2xl font-semibold text-cream truncate">
+                {activeCreator.name}
+              </h1>
+              <p className="text-xs text-ink-500 truncate">
+                {activeCreator.leadInstructor} ({activeCreator.leadInstructorTitle}) ·{" "}
+                {activeCreator.location}
+              </p>
+            </div>
           </div>
 
-          <div className="flex items-center gap-1.5 rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-1 self-start sm:self-auto">
-            <button
-              type="button"
-              onClick={() => setMode("browse")}
-              className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
-                mode === "browse" ? "bg-gold text-ink-gold" : "text-ink-500 hover:text-cream"
-              }`}
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <Link
+              href={`/live/${creatorLiveRoom.id}`}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-gold px-3.5 py-2 text-xs font-semibold text-ink-gold"
             >
-              <BookOpen className="h-3.5 w-3.5" />
-              <span>Browse & Learn</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setMode("studio");
-                setSelectedCourseId(null);
-              }}
-              className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
-                mode === "studio" ? "bg-gold text-ink-gold" : "text-ink-500 hover:text-cream"
-              }`}
+              <Video className="h-3.5 w-3.5" />
+              Host Live Class
+            </Link>
+            <Link
+              href="/chat"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] px-3.5 py-2 text-xs font-semibold text-cream hover:border-gold/40"
             >
-              <Layers className="h-3.5 w-3.5" />
-              <span>Educator Studio</span>
-            </button>
+              <MessageSquare className="h-3.5 w-3.5 text-gold" />
+              Student Messages
+            </Link>
           </div>
         </div>
 
-        {mode === "browse" && !selectedCourse && (
-          <>
-            <div className="field-box flex items-center gap-2.5 rounded-xl px-3.5 py-2.5">
-              <Search className="h-4 w-4 text-ink-500 shrink-0" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search schools, courses, subjects or tutors..."
-                className="w-full text-sm text-cream placeholder:text-ink-500 focus:outline-none"
-              />
-              {searchQuery && (
+        {/* Switch Demo School / Educator Account */}
+        <div className="border-t border-[var(--border-faint)] pt-3">
+          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-500 shrink-0 mr-1">
+              Switch Educator:
+            </span>
+            {creators.map((c) => {
+              const selected = c.id === activeCreator.id;
+              return (
                 <button
+                  key={c.id}
                   type="button"
-                  onClick={() => setSearchQuery("")}
-                  className="text-xs text-ink-500 hover:text-cream"
+                  onClick={() => handleSelectCreator(c)}
+                  className={`whitespace-nowrap rounded-full px-3 py-1 text-xs font-semibold transition ${
+                    selected
+                      ? "bg-gold text-ink-gold"
+                      : "bg-[rgb(var(--surface-muted))] text-ink-500 hover:text-cream"
+                  }`}
                 >
-                  Clear
+                  {c.name}
                 </button>
-              )}
-            </div>
-
-            <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
-              <button
-                type="button"
-                onClick={() => {
-                  setStreamFilter("all");
-                  setSelectedCreatorId(null);
-                }}
-                className={`whitespace-nowrap rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${
-                  streamFilter === "all"
-                    ? "bg-gold text-ink-gold"
-                    : "bg-[rgb(var(--surface-muted))] text-ink-500 hover:text-cream"
-                }`}
-              >
-                All Streams ({courses.length})
-              </button>
-              {EDUCATION_STREAMS.map((s) => {
-                const active = streamFilter === s.id;
-                return (
-                  <button
-                    key={s.id}
-                    type="button"
-                    onClick={() => {
-                      setStreamFilter(s.id);
-                      setActiveStream(s.id);
-                      setSelectedCreatorId(null);
-                    }}
-                    className={`whitespace-nowrap rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${
-                      active
-                        ? "bg-gold text-ink-gold"
-                        : "bg-[rgb(var(--surface-muted))] text-ink-500 hover:text-cream"
-                    }`}
-                  >
-                    {s.title} · {s.ageBracket}
-                  </button>
-                );
-              })}
-            </div>
-          </>
-        )}
-      </header>
-
-      {/* Course Player View */}
-      {mode === "browse" && selectedCourse && (
-        <div className="space-y-5">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <button
-              type="button"
-              onClick={() => setSelectedCourseId(null)}
-              className="inline-flex items-center gap-1.5 text-xs font-semibold text-gold hover:underline"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              Back to {selectedCreator ? selectedCreator.name : "Schools & Courses"}
-            </button>
-            <div className="flex items-center gap-2">
-              <Link
-                href="/chat"
-                className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] px-3 py-1.5 text-xs font-semibold text-cream hover:border-gold/40"
-              >
-                <MessageSquare className="h-3.5 w-3.5 text-gold" />
-                Ask Instructor
-              </Link>
-              <Link
-                href="/streams"
-                onClick={() => setActiveStream(selectedCourse.stream)}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-gold px-3 py-1.5 text-xs font-semibold text-ink-gold"
-              >
-                Open {selectedCourse.stream.toUpperCase()} Stream Tools
-              </Link>
-            </div>
+              );
+            })}
           </div>
+        </div>
+      </section>
 
-          <div className="rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-4 sm:p-5 space-y-2">
-            <div className="flex flex-wrap items-center gap-2 text-xs text-ink-500">
-              <span className="rounded-md bg-[rgb(var(--surface-muted))] px-2 py-0.5 font-semibold text-gold">
-                {STREAM_LABELS[selectedCourse.stream]}
-              </span>
-              <span>·</span>
-              <span>{selectedCourse.level}</span>
-              <span>·</span>
-              <span>★ {selectedCourse.rating.toFixed(1)} ({selectedCourse.reviewCount} reviews)</span>
-            </div>
-            <h2 className="font-display text-xl sm:text-2xl font-semibold text-cream">
-              {selectedCourse.title}
-            </h2>
-            <p className="text-xs sm:text-sm text-ink-500">{selectedCourse.summary}</p>
-          </div>
-
-          <div className="grid gap-4 lg:grid-cols-12">
-            <div className="lg:col-span-4 rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-4 space-y-3">
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-ink-500">
-                Curriculum ({allLessonsInSelectedCourse.length} Lessons)
-              </h3>
-              {selectedCourse.modules.map((mod) => (
-                <div key={mod.id} className="space-y-2">
-                  <div className="text-xs font-semibold text-cream">{mod.title}</div>
-                  {mod.lessons.map((lesson, idx) => {
-                    const isSelected = activeLesson?.id === lesson.id;
-                    const isDone = completedLessonIds.includes(lesson.id);
-                    return (
-                      <button
-                        key={lesson.id}
-                        type="button"
-                        onClick={() => {
-                          setSelectedLessonId(lesson.id);
-                          setQuizAnswers({});
-                          setQuizSubmittedLessonId(null);
-                        }}
-                        className={`w-full text-left rounded-xl p-3 transition border ${
-                          isSelected
-                            ? "border-gold bg-gold/10"
-                            : "border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] hover:border-gold/30"
-                        }`}
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <span className="text-xs font-semibold text-cream">
-                            {idx + 1}. {lesson.title}
-                          </span>
-                          {isDone && <CheckCircle2 className="h-4 w-4 text-gold shrink-0" />}
-                        </div>
-                        <div className="mt-1 flex items-center gap-2 text-[11px] text-ink-500">
-                          <Clock className="h-3 w-3" />
-                          <span>{lesson.durationMinutes} min</span>
-                          {lesson.quiz && <span className="text-gold font-medium">· Quiz</span>}
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              ))}
-            </div>
-
-            <div className="lg:col-span-8 space-y-4">
-              {activeLesson && (
-                <div className="rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-4 sm:p-5 space-y-4">
-                  <div className="flex items-center justify-between border-b border-[var(--border-faint)] pb-3">
-                    <div>
-                      <span className="text-[11px] uppercase tracking-wider text-gold font-semibold">
-                        Active Lesson · {activeLesson.durationMinutes} Mins
-                      </span>
-                      <h3 className="font-display text-lg font-semibold text-cream mt-0.5">
-                        {activeLesson.title}
-                      </h3>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setCompletedLessonIds((prev) =>
-                          prev.includes(activeLesson.id)
-                            ? prev.filter((id) => id !== activeLesson.id)
-                            : [...prev, activeLesson.id]
-                        )
-                      }
-                      className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${
-                        completedLessonIds.includes(activeLesson.id)
-                          ? "bg-gold text-ink-gold"
-                          : "border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] text-cream"
-                      }`}
-                    >
-                      {completedLessonIds.includes(activeLesson.id) ? "✓ Completed" : "Mark Complete"}
-                    </button>
-                  </div>
-
-                  <div className="rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] p-4 space-y-2">
-                    <div className="flex items-center gap-2.5">
-                      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gold text-ink-gold">
-                        <Play className="h-4 w-4 fill-current" />
-                      </div>
-                      <div className="text-xs font-semibold text-cream">
-                        {selectedCourse.creatorName} — {selectedCourse.creatorRoleTitle}
-                      </div>
-                    </div>
-                    <p className="text-xs sm:text-sm text-cream leading-relaxed">
-                      {activeLesson.summary}
-                    </p>
-                  </div>
-
-                  {activeLesson.downloadableResources &&
-                    activeLesson.downloadableResources.length > 0 && (
-                      <div className="grid gap-2 sm:grid-cols-2">
-                        {activeLesson.downloadableResources.map((res) => (
-                          <button
-                            key={res.name}
-                            type="button"
-                            onClick={() =>
-                              setPreviewResource({
-                                name: res.name,
-                                size: res.size,
-                                courseTitle: selectedCourse.title,
-                                lessonTitle: activeLesson.title,
-                              })
-                            }
-                            className="flex items-center justify-between rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] p-3 text-left hover:border-gold/40"
-                          >
-                            <div className="flex items-center gap-2 min-w-0">
-                              <FileText className="h-4 w-4 text-gold shrink-0" />
-                              <span className="truncate text-xs font-semibold text-cream">
-                                {res.name} ({res.size})
-                              </span>
-                            </div>
-                            <Download className="h-4 w-4 text-gold shrink-0" />
-                          </button>
-                        ))}
-                      </div>
-                    )}
-
-                  {activeLesson.quiz && (
-                    <div className="rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] p-4 space-y-3">
-                      <div>
-                        <span className="text-[11px] uppercase tracking-wider text-gold font-semibold">
-                          Checkpoint Quiz
-                        </span>
-                        <h4 className="text-sm font-semibold text-cream">
-                          {activeLesson.quiz.title}
-                        </h4>
-                      </div>
-                      {activeLesson.quiz.questions.map((q, qIdx) => {
-                        const chosen = quizAnswers[q.id];
-                        const isSubmitted = quizSubmittedLessonId === activeLesson.id;
-                        return (
-                          <div
-                            key={q.id}
-                            className="rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-3 space-y-2"
-                          >
-                            <div className="text-xs font-semibold text-cream">
-                              {qIdx + 1}. {q.questionText}
-                            </div>
-                            <div className="grid gap-1.5">
-                              {q.options.map((opt, oIdx) => {
-                                const selected = chosen === oIdx;
-                                const isCorrect = q.correctOptionIndex === oIdx;
-                                let btnStyle =
-                                  "border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] text-cream";
-                                if (selected) {
-                                  btnStyle = "border-gold bg-gold text-ink-gold font-semibold";
-                                }
-                                if (isSubmitted && isCorrect) {
-                                  btnStyle = "border-gold bg-gold/20 text-gold font-semibold";
-                                }
-                                return (
-                                  <button
-                                    key={opt}
-                                    type="button"
-                                    onClick={() => {
-                                      if (!isSubmitted) {
-                                        setQuizAnswers((prev) => ({ ...prev, [q.id]: oIdx }));
-                                      }
-                                    }}
-                                    className={`w-full text-left rounded-lg border px-3 py-2 text-xs ${btnStyle}`}
-                                  >
-                                    {opt}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                            {isSubmitted && (
-                              <p className="text-[11px] text-gold">✓ {q.explanation}</p>
-                            )}
-                          </div>
-                        );
-                      })}
-                      <button
-                        type="button"
-                        onClick={() => setQuizSubmittedLessonId(activeLesson.id)}
-                        className="rounded-lg bg-gold px-4 py-2 text-xs font-semibold text-ink-gold"
-                      >
-                        {quizSubmittedLessonId === activeLesson.id
-                          ? "Quiz Completed"
-                          : "Submit Quiz Answers"}
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
+      {notice && (
+        <div className="rounded-xl border border-gold/40 bg-gold/10 px-4 py-3 text-xs text-gold flex items-center justify-between">
+          <span>✓ {notice}</span>
+          <button type="button" onClick={() => setNotice(null)} className="text-cream">
+            <X className="h-4 w-4" />
+          </button>
         </div>
       )}
 
-      {/* Main Catalog View */}
-      {mode === "browse" && !selectedCourse && (
-        <div className="space-y-6">
-          {/* Stream-Matched Live Class Card */}
-          {filteredLiveMeetings.length > 0 && (
-            <section className="rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-4 sm:p-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <span className="inline-flex items-center gap-1.5 rounded-full bg-gold/15 px-2.5 py-0.5 text-[11px] font-semibold text-gold">
-                    <span className="h-1.5 w-1.5 rounded-full bg-gold" />
-                    {filteredLiveMeetings[0].isLiveNow ? "Live Classroom" : "Scheduled Classroom"}
+      {/* ─── Educator KPI & Tuition Settlement Row (matches apps/merchant & apps/pharmacy) ─── */}
+      <section className="grid gap-3 sm:grid-cols-3">
+        <div className="rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-4 flex flex-col justify-between gap-3">
+          <div>
+            <p className="text-xs text-ink-500">Available Tuition to Settle</p>
+            <p className="mt-1 font-display text-2xl font-semibold text-gold">
+              {formatUgx(activeCreator.payoutBalanceUgx)}
+            </p>
+            <p className="mt-0.5 text-[11px] text-ink-500">
+              Cumulative Earnings: {formatUgx(activeCreator.totalEarningsUgx)}
+            </p>
+          </div>
+          <button
+            type="button"
+            disabled={activeCreator.payoutBalanceUgx <= 0}
+            onClick={handleWithdrawPayout}
+            className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-gold px-3.5 py-2 text-xs font-semibold text-ink-gold disabled:opacity-40"
+          >
+            <ArrowDownToLine className="h-3.5 w-3.5" />
+            {activeCreator.payoutBalanceUgx > 0 ? "Withdraw to Mobile Money" : "Settled"}
+          </button>
+        </div>
+
+        <div className="rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-4 flex flex-col justify-between">
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-ink-500">Enrolled Students</span>
+            <Users className="h-4 w-4 text-gold" />
+          </div>
+          <div>
+            <p className="font-display text-2xl font-semibold text-cream">
+              {activeCreator.enrolledStudents.toLocaleString()}
+            </p>
+            <p className="text-[11px] text-ink-500 mt-0.5">
+              ★ {activeCreator.rating.toFixed(1)} rating ({activeCreator.reviewCount} student reviews)
+            </p>
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-4 flex flex-col justify-between">
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-ink-500">Published Courses</span>
+            <BookOpen className="h-4 w-4 text-gold" />
+          </div>
+          <div>
+            <p className="font-display text-2xl font-semibold text-cream">
+              {creatorCourses.length}
+            </p>
+            <p className="text-[11px] text-ink-500 mt-0.5">
+              Stream: {STREAM_LABELS[activeCreator.stream]}
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* ─── Educator Studio Workspace Switcher ─── */}
+      <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-1">
+        {(
+          [
+            { id: "courses", label: `My Courses (${creatorCourses.length})`, icon: BookOpen },
+            { id: "publish_course", label: "Publish New Course", icon: Plus },
+            { id: "add_lesson", label: "Add Lesson & Quiz", icon: FileText },
+            { id: "grading", label: "Student Submissions & Grading", icon: ClipboardCheck },
+          ] as const
+        ).map((tab) => {
+          const Icon = tab.icon;
+          const active = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3.5 py-2 text-xs font-semibold transition ${
+                active ? "bg-gold text-ink-gold" : "text-ink-500 hover:text-cream"
+              }`}
+            >
+              <Icon className="h-3.5 w-3.5 shrink-0" />
+              <span>{tab.label}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* =====================================================================
+          TAB 1: MY PUBLISHED COURSES & CURRICULUM MANAGER
+         ===================================================================== */}
+      {activeTab === "courses" && (
+        <div className="space-y-4">
+          {inspectingCourse ? (
+            <div className="rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-4 sm:p-5 space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border-faint)] pb-3">
+                <div>
+                  <span className="text-[11px] uppercase tracking-wider text-gold font-semibold">
+                    {STREAM_LABELS[inspectingCourse.stream]} · {inspectingCourse.level}
                   </span>
-                  <span className="text-xs text-ink-500">
-                    Room {filteredLiveMeetings[0].roomCode} · {STREAM_LABELS[filteredLiveMeetings[0].stream]}
-                  </span>
+                  <h2 className="font-display text-lg sm:text-xl font-semibold text-cream">
+                    {inspectingCourse.title}
+                  </h2>
                 </div>
-                <h2 className="font-display text-base sm:text-lg font-semibold text-cream">
-                  {filteredLiveMeetings[0].title}
-                </h2>
-                <p className="text-xs text-ink-500">
-                  Host: {filteredLiveMeetings[0].hostTutorName} · {filteredLiveMeetings[0].participantCount} learners
-                </p>
-              </div>
-              <Link
-                href={`/live/${filteredLiveMeetings[0].id}`}
-                className="inline-flex items-center gap-1.5 rounded-xl bg-gold px-4 py-2 text-xs font-semibold text-ink-gold self-start sm:self-center shrink-0"
-              >
-                <Video className="h-3.5 w-3.5" />
-                Join Live Class
-              </Link>
-            </section>
-          )}
-
-          {/* Partner Schools & Tutors */}
-          <section className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h2 className="font-display text-lg font-semibold text-cream">
-                Partner Schools, Academies & Tutors
-              </h2>
-              {selectedCreatorId && (
-                <button
-                  type="button"
-                  onClick={() => setSelectedCreatorId(null)}
-                  className="text-xs font-semibold text-gold hover:underline"
-                >
-                  Show All
-                </button>
-              )}
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {filteredCreators.map((creator) => {
-                const isSelected = selectedCreatorId === creator.id;
-                const creatorCourseCount = courses.filter((c) => c.creatorId === creator.id).length;
-                return (
-                  <div
-                    key={creator.id}
-                    className={`rounded-2xl border p-4 transition flex flex-col justify-between gap-3 ${
-                      isSelected
-                        ? "border-gold bg-gold/10"
-                        : "border-[var(--border-faint)] bg-[rgb(var(--surface-card))] hover:border-gold/30"
-                    }`}
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTargetCourseId(inspectingCourse.id);
+                      setActiveTab("add_lesson");
+                    }}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-gold px-3.5 py-1.5 text-xs font-semibold text-ink-gold"
                   >
-                    <div className="space-y-2.5">
-                      <div className="flex items-start gap-3">
-                        <img
-                          src={creator.avatarUrl}
-                          alt={creator.name}
-                          className="h-12 w-12 rounded-xl object-cover shrink-0 border border-[var(--border-faint)]"
-                        />
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-[11px] font-semibold text-gold">
-                              {CREATOR_TYPE_LABELS[creator.type]}
-                            </span>
-                            {creator.isVerified && (
-                              <ShieldCheck className="h-3.5 w-3.5 text-gold shrink-0" />
-                            )}
-                          </div>
-                          <h3 className="font-display text-base font-semibold text-cream truncate">
-                            {creator.name}
-                          </h3>
-                          <p className="text-xs text-ink-500 truncate">
-                            {creator.leadInstructor} · {creator.location}
-                          </p>
-                        </div>
-                      </div>
-                      <p className="text-xs text-ink-500 line-clamp-2">{creator.bio}</p>
-                    </div>
+                    <Plus className="h-3.5 w-3.5" />
+                    Add Lesson & Quiz
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setInspectingCourseId(null)}
+                    className="rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] px-3 py-1.5 text-xs font-semibold text-cream"
+                  >
+                    Back to Courses
+                  </button>
+                </div>
+              </div>
 
-                    <div className="space-y-2 pt-2 border-t border-[var(--border-faint)]">
-                      <div className="flex items-center justify-between text-xs text-ink-500">
-                        <span>★ {creator.rating.toFixed(1)}</span>
-                        <span>{creator.enrolledStudents.toLocaleString()} students</span>
-                        <span className="text-gold font-semibold">{creatorCourseCount} courses</span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setSelectedCreatorId((prev) => (prev === creator.id ? null : creator.id))
-                        }
-                        className={`w-full rounded-xl px-3 py-2 text-xs font-semibold ${
-                          isSelected
-                            ? "bg-gold text-ink-gold"
-                            : "bg-[rgb(var(--surface-muted))] text-cream"
-                        }`}
-                      >
-                        {isSelected ? "Showing Courses" : "View Courses"}
-                      </button>
+              <div className="space-y-3">
+                {inspectingCourse.modules.map((mod) => (
+                  <div
+                    key={mod.id}
+                    className="rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] p-4 space-y-3"
+                  >
+                    <div>
+                      <h3 className="text-sm font-semibold text-cream">{mod.title}</h3>
+                      <p className="text-xs text-ink-500">{mod.description}</p>
+                    </div>
+                    <div className="space-y-2">
+                      {mod.lessons.map((lesson, idx) => (
+                        <div
+                          key={lesson.id}
+                          className="rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-3.5 space-y-2"
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span className="text-xs font-semibold text-cream">
+                              Lesson {idx + 1}: {lesson.title}
+                            </span>
+                            <div className="flex items-center gap-2 text-[11px] text-ink-500">
+                              <Clock className="h-3.5 w-3.5" />
+                              <span>{lesson.durationMinutes} mins</span>
+                              {lesson.quiz && (
+                                <span className="rounded bg-gold/15 px-2 py-0.5 font-semibold text-gold">
+                                  Quiz: {lesson.quiz.questions.length} Qs
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <p className="text-xs text-ink-500">{lesson.summary}</p>
+                        </div>
+                      ))}
                     </div>
                   </div>
-                );
-              })}
+                ))}
+              </div>
             </div>
-          </section>
-
-          {/* Courses Grid */}
-          <section className="space-y-3">
-            <h2 className="font-display text-lg font-semibold text-cream">
-              {selectedCreator ? `Courses by ${selectedCreator.name}` : "Published Courses & Quizzes"}
-            </h2>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {filteredCourses.map((course) => {
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2">
+              {creatorCourses.map((course) => {
                 const lessonCount = course.modules.reduce((acc, m) => acc + m.lessons.length, 0);
-                const isEnrolled = enrolledCourseIds.includes(course.id);
+                const quizCount = course.modules.reduce(
+                  (acc, m) => acc + m.lessons.filter((l) => l.quiz).length,
+                  0
+                );
                 return (
                   <div
                     key={course.id}
@@ -709,10 +532,13 @@ export default function LearnHomePage() {
                         <div className="absolute top-2.5 left-2.5 rounded-lg bg-[rgb(var(--surface-card))]/90 px-2.5 py-1 text-[11px] font-semibold text-gold">
                           {STREAM_LABELS[course.stream]}
                         </div>
+                        <div className="absolute top-2.5 right-2.5 rounded-lg bg-[rgb(var(--surface-card))]/90 px-2.5 py-1 text-[11px] font-semibold text-cream">
+                          {course.enrolledStudentsCount} Enrolled
+                        </div>
                       </div>
                       <div className="p-4 space-y-2">
                         <div className="text-xs text-ink-500">
-                          {course.creatorName} · {course.level}
+                          {course.level} · Tuition: <strong className="text-cream">{formatUgx(course.priceUgx)}</strong>
                         </div>
                         <h3 className="font-display text-base font-semibold text-cream">
                           {course.title}
@@ -720,161 +546,345 @@ export default function LearnHomePage() {
                         <p className="text-xs text-ink-500 line-clamp-2">{course.summary}</p>
                       </div>
                     </div>
+
                     <div className="p-4 pt-0 space-y-3">
                       <div className="flex items-center justify-between text-xs text-ink-500 border-t border-[var(--border-faint)] pt-3">
-                        <span>{lessonCount} Lessons</span>
-                        <span className="font-semibold text-cream">{formatUgx(course.priceUgx)}</span>
+                        <span>
+                          {course.modules.length} Modules · {lessonCount} Lessons · {quizCount} Quizzes
+                        </span>
+                        <span>★ {course.rating.toFixed(1)}</span>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => openCourse(course)}
-                        className="w-full rounded-xl bg-gold px-4 py-2.5 text-xs font-semibold text-ink-gold flex items-center justify-center gap-1.5"
-                      >
-                        <span>{isEnrolled ? "Continue Course" : "Open Course & Quizzes"}</span>
-                        <ChevronRight className="h-3.5 w-3.5" />
-                      </button>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setInspectingCourseId(course.id)}
+                          className="flex-1 rounded-xl bg-gold px-3 py-2 text-xs font-semibold text-ink-gold"
+                        >
+                          Manage Curriculum
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setTargetCourseId(course.id);
+                            setActiveTab("add_lesson");
+                          }}
+                          className="rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] px-3 py-2 text-xs font-semibold text-cream hover:border-gold/40"
+                        >
+                          + Lesson
+                        </button>
+                      </div>
                     </div>
                   </div>
                 );
               })}
             </div>
-          </section>
+          )}
         </div>
       )}
 
-      {/* Educator Studio View */}
-      {mode === "studio" && (
-        <div className="space-y-4">
-          {studioNotice && (
-            <div className="rounded-xl border border-gold/40 bg-gold/10 px-4 py-3 text-xs text-gold flex items-center justify-between">
-              <span>✓ {studioNotice}</span>
-              <button type="button" onClick={() => setStudioNotice(null)}>
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-          )}
+      {/* =====================================================================
+          TAB 2: PUBLISH NEW COURSE
+         ===================================================================== */}
+      {activeTab === "publish_course" && (
+        <form
+          onSubmit={handlePublishCourse}
+          className="rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-4 sm:p-5 space-y-4 max-w-2xl"
+        >
+          <div>
+            <span className="text-[11px] uppercase tracking-wider text-gold font-semibold">
+              Publishing as {activeCreator.name}
+            </span>
+            <h2 className="font-display text-lg font-semibold text-cream">
+              Create & Publish a New Course
+            </h2>
+            <p className="text-xs text-ink-500">
+              Your published course will immediately be available to students and parents in the Customer app.
+            </p>
+          </div>
 
-          <form
-            onSubmit={handleCreateCourse}
-            className="rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-4 sm:p-5 space-y-3.5 max-w-2xl"
-          >
-            <div>
-              <span className="text-[11px] uppercase tracking-wider text-gold font-semibold">
-                Educator Studio
-              </span>
-              <h2 className="font-display text-lg font-semibold text-cream">
-                Publish a New Course
-              </h2>
-            </div>
-
+          <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1">
-              <label className="block text-xs text-ink-500">Publishing School or Tutor</label>
+              <label className="block text-xs text-ink-500">Education Stream</label>
               <select
-                value={studioCreatorId}
-                onChange={(e) => setStudioCreatorId(e.target.value)}
+                value={newCourseStream}
+                onChange={(e) => setNewCourseStream(e.target.value as EducationStreamId)}
                 className="w-full rounded-xl px-3 py-2.5 text-xs text-cream"
               >
-                {creators.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name} ({c.leadInstructor})
+                {EDUCATION_STREAMS.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.title} ({s.ageBracket})
                   </option>
                 ))}
               </select>
             </div>
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-1">
-                <label className="block text-xs text-ink-500">Stream</label>
-                <select
-                  value={newCourseStream}
-                  onChange={(e) => setNewCourseStream(e.target.value as EducationStreamId)}
-                  className="w-full rounded-xl px-3 py-2.5 text-xs text-cream"
-                >
-                  {EDUCATION_STREAMS.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.title} ({s.ageBracket})
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="space-y-1">
-                <label className="block text-xs text-ink-500">Level</label>
-                <input
-                  type="text"
-                  value={newCourseLevel}
-                  onChange={(e) => setNewCourseLevel(e.target.value)}
-                  className="w-full rounded-xl px-3 py-2 text-xs text-cream"
-                />
-              </div>
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-3">
-              <div className="sm:col-span-2 space-y-1">
-                <label className="block text-xs text-ink-500">Course Title</label>
-                <input
-                  type="text"
-                  required
-                  value={newCourseTitle}
-                  onChange={(e) => setNewCourseTitle(e.target.value)}
-                  placeholder="Course title..."
-                  className="w-full rounded-xl px-3 py-2 text-xs text-cream"
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="block text-xs text-ink-500">Tuition (UGX)</label>
-                <input
-                  type="number"
-                  value={newCoursePrice}
-                  onChange={(e) => setNewCoursePrice(e.target.value)}
-                  className="w-full rounded-xl px-3 py-2 text-xs text-cream"
-                />
-              </div>
-            </div>
-
             <div className="space-y-1">
-              <label className="block text-xs text-ink-500">Summary</label>
-              <textarea
-                rows={2}
-                value={newCourseSummary}
-                onChange={(e) => setNewCourseSummary(e.target.value)}
-                className="w-full rounded-xl p-3 text-xs text-cream"
+              <label className="block text-xs text-ink-500">Class / Grade Level</label>
+              <input
+                type="text"
+                value={newCourseLevel}
+                onChange={(e) => setNewCourseLevel(e.target.value)}
+                placeholder="e.g. Primary 6, S.4 O-Level, Vocational"
+                className="w-full rounded-xl px-3 py-2 text-xs text-cream"
               />
             </div>
+          </div>
 
-            <button
-              type="submit"
-              className="rounded-xl bg-gold px-4 py-2.5 text-xs font-semibold text-ink-gold"
-            >
-              Publish Course
-            </button>
-          </form>
-        </div>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="sm:col-span-2 space-y-1">
+              <label className="block text-xs text-ink-500">Course Title</label>
+              <input
+                type="text"
+                required
+                value={newCourseTitle}
+                onChange={(e) => setNewCourseTitle(e.target.value)}
+                placeholder="e.g. Primary 6 Social Studies: East African Trade"
+                className="w-full rounded-xl px-3 py-2 text-xs text-cream"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="block text-xs text-ink-500">Tuition Fee (UGX)</label>
+              <input
+                type="number"
+                value={newCoursePrice}
+                onChange={(e) => setNewCoursePrice(e.target.value)}
+                className="w-full rounded-xl px-3 py-2 text-xs text-cream"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <label className="block text-xs text-ink-500">Course Syllabus Summary</label>
+            <textarea
+              rows={3}
+              value={newCourseSummary}
+              onChange={(e) => setNewCourseSummary(e.target.value)}
+              placeholder="Describe the learning outcomes, practical exercises, and assessment format..."
+              className="w-full rounded-xl p-3 text-xs text-cream"
+            />
+          </div>
+
+          <button
+            type="submit"
+            className="rounded-xl bg-gold px-5 py-2.5 text-xs font-semibold text-ink-gold"
+          >
+            Publish Course to Student Catalog
+          </button>
+        </form>
       )}
 
-      {previewResource && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4">
-          <div className="w-full max-w-md rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-5 space-y-4">
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <h3 className="text-sm font-semibold text-cream">{previewResource.name}</h3>
-                <p className="text-xs text-ink-500">
-                  {previewResource.courseTitle} · {previewResource.size}
-                </p>
-              </div>
-              <button type="button" onClick={() => setPreviewResource(null)}>
-                <X className="h-4 w-4 text-ink-500" />
-              </button>
+      {/* =====================================================================
+          TAB 3: ADD LESSON & INTERACTIVE QUIZ BUILDER
+         ===================================================================== */}
+      {activeTab === "add_lesson" && (
+        <form
+          onSubmit={handleAddLesson}
+          className="rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-4 sm:p-5 space-y-4 max-w-2xl"
+        >
+          <div>
+            <span className="text-[11px] uppercase tracking-wider text-gold font-semibold">
+              Curriculum & Quiz Authoring
+            </span>
+            <h2 className="font-display text-lg font-semibold text-cream">
+              Add a Lesson & Auto-Graded Quiz
+            </h2>
+          </div>
+
+          <div className="space-y-1">
+            <label className="block text-xs text-ink-500">Select Course</label>
+            <select
+              value={targetCourseId}
+              onChange={(e) => setTargetCourseId(e.target.value)}
+              className="w-full rounded-xl px-3 py-2.5 text-xs text-cream"
+            >
+              {courses.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.title} ({c.creatorName})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="sm:col-span-2 space-y-1">
+              <label className="block text-xs text-ink-500">Lesson Title</label>
+              <input
+                type="text"
+                required
+                value={newLessonTitle}
+                onChange={(e) => setNewLessonTitle(e.target.value)}
+                placeholder="e.g. Lesson 3: Worked Past Paper Problems"
+                className="w-full rounded-xl px-3 py-2 text-xs text-cream"
+              />
             </div>
-            <p className="text-xs text-ink-500">
-              Study material attached to <strong className="text-cream">{previewResource.lessonTitle}</strong>.
-            </p>
-            <div className="flex justify-end">
+            <div className="space-y-1">
+              <label className="block text-xs text-ink-500">Duration (Minutes)</label>
+              <input
+                type="number"
+                value={newLessonDuration}
+                onChange={(e) => setNewLessonDuration(e.target.value)}
+                className="w-full rounded-xl px-3 py-2 text-xs text-cream"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <label className="block text-xs text-ink-500">Lesson Notes / Summary</label>
+            <textarea
+              rows={2}
+              value={newLessonSummary}
+              onChange={(e) => setNewLessonSummary(e.target.value)}
+              placeholder="Key concepts and instructions for this lesson..."
+              className="w-full rounded-xl p-3 text-xs text-cream"
+            />
+          </div>
+
+          <div className="space-y-2 border-t border-[var(--border-faint)] pt-3">
+            <label className="block text-xs font-semibold text-gold">
+              Attach Checkpoint Quiz Question (Optional)
+            </label>
+            <input
+              type="text"
+              value={newQuizQuestion}
+              onChange={(e) => setNewQuizQuestion(e.target.value)}
+              placeholder="Question prompt..."
+              className="w-full rounded-xl px-3 py-2 text-xs text-cream"
+            />
+            <div className="grid gap-3 sm:grid-cols-2">
+              <input
+                type="text"
+                value={newQuizOptionA}
+                onChange={(e) => setNewQuizOptionA(e.target.value)}
+                placeholder="Correct Answer Option"
+                className="w-full rounded-xl px-3 py-2 text-xs text-cream"
+              />
+              <input
+                type="text"
+                value={newQuizOptionB}
+                onChange={(e) => setNewQuizOptionB(e.target.value)}
+                placeholder="Distractor Option"
+                className="w-full rounded-xl px-3 py-2 text-xs text-cream"
+              />
+            </div>
+          </div>
+
+          <button
+            type="submit"
+            className="rounded-xl bg-gold px-5 py-2.5 text-xs font-semibold text-ink-gold"
+          >
+            Save Lesson & Quiz to Course
+          </button>
+        </form>
+      )}
+
+      {/* =====================================================================
+          TAB 4: STUDENT SUBMISSIONS, WORKSHEETS & VIDEO CRITIQUE GRADING
+         ===================================================================== */}
+      {activeTab === "grading" && (
+        <div className="grid gap-4 lg:grid-cols-2">
+          {/* Primary Worksheet Turn-In Queue */}
+          <div className="rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-4 sm:p-5 space-y-3">
+            <div>
+              <span className="text-[11px] uppercase tracking-wider text-gold font-semibold">
+                Foundations · Homework Turn-Ins
+              </span>
+              <h2 className="font-display text-base font-semibold text-cream">
+                Parent-Signed Exercise Book Submissions
+              </h2>
+            </div>
+
+            {DEMO_FOUNDATIONS_SUBMISSIONS.map((sub) => {
+              const isAwarded = gradedSubmissionIds.includes(sub.id);
+              return (
+                <div
+                  key={sub.id}
+                  className="rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] p-3.5 space-y-2.5 text-xs"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-cream">{sub.studentName}</span>
+                    <span className="text-gold font-semibold">
+                      {sub.parentSigned ? `✓ Signed by ${sub.parentSignerName}` : "Awaiting Parent"}
+                    </span>
+                  </div>
+                  <div className="text-ink-500">{sub.worksheetTitle}</div>
+                  <div className="flex items-center justify-between pt-1">
+                    <span className="text-ink-500">Submitted {sub.submittedAt}</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setGradedSubmissionIds((prev) =>
+                          prev.includes(sub.id) ? prev : [...prev, sub.id]
+                        );
+                        setNotice(`Awarded 25 Merit Stars to ${sub.studentName} and notified parent.`);
+                      }}
+                      className="rounded-lg bg-gold px-3 py-1.5 text-xs font-semibold text-ink-gold"
+                    >
+                      {isAwarded ? "✓ 25 Merit Stars Awarded" : "Approve & Award 25★"}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Vocational Video Timestamp Critique Queue */}
+          <div className="rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-4 sm:p-5 space-y-3">
+            <div>
+              <span className="text-[11px] uppercase tracking-wider text-gold font-semibold">
+                Skills · Apprentice Video Critique
+              </span>
+              <h2 className="font-display text-base font-semibold text-cream">
+                {DEMO_SKILLS_SUBMISSION.studentName} — {DEMO_SKILLS_SUBMISSION.taskTitle}
+              </h2>
+            </div>
+
+            <div className="space-y-2">
+              {critiquePins.map((pin) => (
+                <div
+                  key={pin.id}
+                  className="rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] p-3 text-xs space-y-1"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-gold">
+                      Pin @ 0{Math.floor(pin.timestampSeconds / 60)}:
+                      {String(pin.timestampSeconds % 60).padStart(2, "0")}
+                    </span>
+                    <span className="text-[10px] uppercase text-ink-500">
+                      {pin.severity.replace("_", " ")}
+                    </span>
+                  </div>
+                  <p className="text-cream">{pin.critiqueText}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex gap-2 pt-1">
+              <input
+                type="text"
+                value={newCritiquePinText}
+                onChange={(e) => setNewCritiquePinText(e.target.value)}
+                placeholder="Drop a new feedback pin at 02:10..."
+                className="w-full rounded-xl px-3 py-2 text-xs text-cream"
+              />
               <button
                 type="button"
-                onClick={() => setPreviewResource(null)}
-                className="rounded-xl bg-gold px-4 py-2 text-xs font-semibold text-ink-gold"
+                onClick={() => {
+                  if (!newCritiquePinText.trim()) return;
+                  setCritiquePins((prev) => [
+                    ...prev,
+                    {
+                      id: `crit_${Date.now()}`,
+                      timestampSeconds: 130,
+                      instructorName: activeCreator.leadInstructor,
+                      critiqueText: newCritiquePinText.trim(),
+                      severity: "technique_correction",
+                      resolved: false,
+                    },
+                  ]);
+                  setNewCritiquePinText("");
+                }}
+                className="rounded-xl bg-gold px-3.5 py-2 text-xs font-semibold text-ink-gold shrink-0"
               >
-                Close Preview
+                Pin Feedback
               </button>
             </div>
           </div>
