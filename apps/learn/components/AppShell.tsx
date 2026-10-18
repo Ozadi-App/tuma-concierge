@@ -1,21 +1,50 @@
 "use client";
 
-import { usePathname } from "next/navigation";
-import type { ReactNode } from "react";
+import { exitPracticeMode, isUserVerified } from "@peebee/shared";
+import { PracticeModeFrame, usePracticeModeActive } from "@peebee/shared/practice-ui";
+import { FlaskConical } from "lucide-react";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, type ReactNode } from "react";
 import { useLearnAuth } from "../lib/auth-context";
 import { BottomNav } from "./BottomNav";
 import { BrandLogo } from "./BrandLogo";
-import Link from "next/link";
-import { Radio, FlaskConical } from "lucide-react";
-import { exitPracticeMode } from "@peebee/shared";
-import { PracticeModeFrame, usePracticeModeActive } from "@peebee/shared/practice-ui";
+
+const PUBLIC_PAGES = ["/login", "/signup", "/forgot-password"];
+// Reachable whatever the auth state — the emailed "Verify Email Address"
+// link can be opened signed out, on a different device.
+const UNGATED_PAGES = ["/verify/confirmed"];
+// Full-screen account screens drawn by the shared AuthScene (same as every
+// other Peebee app), so they skip the app header and page padding.
+const AUTH_SCENE_PAGES = [...PUBLIC_PAGES, "/verify", ...UNGATED_PAGES];
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const { activeStream } = useLearnAuth();
+  const router = useRouter();
+  const { user, ready } = useLearnAuth();
   const isPracticeActive = usePracticeModeActive();
-
+  const isPublic = PUBLIC_PAGES.includes(pathname);
+  const isUngated = UNGATED_PAGES.includes(pathname);
+  const verified = isUserVerified(user);
   const isMeetingRoom = pathname.startsWith("/live/") && pathname !== "/live";
+
+  // Signed out → sign in. Signed in but phone/email not confirmed yet → verify
+  // it (same identity check as the other Peebee apps).
+  useEffect(() => {
+    if (!ready || isUngated) return;
+    if (!user && !isPublic) router.replace("/login");
+    else if (!user) return;
+    else if (!verified) {
+      if (pathname !== "/verify") router.replace("/verify");
+    } else if (pathname === "/verify" || isPublic) router.replace("/");
+  }, [ready, user, verified, pathname, isPublic, isUngated, router]);
+
+  if (isUngated) return <>{children}</>;
+  if (!ready) return null;
+  if (isPublic) return user ? null : <>{children}</>;
+  if (!user) return null;
+  if (!verified) return pathname === "/verify" ? <>{children}</> : null;
+  if (AUTH_SCENE_PAGES.includes(pathname)) return null;
 
   const handleExitPractice = () => {
     exitPracticeMode("learner");
@@ -26,85 +55,28 @@ export function AppShell({ children }: { children: ReactNode }) {
     <div className="min-h-dvh bg-cream text-ink">
       <PracticeModeFrame onExit={handleExitPractice} label="Educator Sandbox" />
 
-      {isPracticeActive && !isMeetingRoom && (
-        <aside
-          aria-label="Educator Practice and Sandbox Banner"
-          className="border-b border-[var(--border-faint)] bg-[rgb(var(--surface-card))] px-4 py-2 text-xs text-cream"
-        >
-          <div className="mx-auto flex max-w-5xl items-center justify-between gap-2">
-            <div className="flex min-w-0 items-center gap-2">
-              <span className="h-2 w-2 shrink-0 rounded-full bg-gold" />
-              <p className="truncate font-medium">
-                <strong className="font-semibold text-gold">Sandbox Mode Active:</strong> Test course publishing, live rooms & payouts safely
-              </p>
-            </div>
-            <div className="flex shrink-0 items-center gap-2">
-              <Link
-                href="/practice"
-                className="rounded-lg bg-gold px-2.5 py-0.5 text-[11px] font-semibold text-ink-gold"
-              >
-                Guide
-              </Link>
-              <button
-                type="button"
-                onClick={handleExitPractice}
-                className="text-[11px] font-semibold text-ink-500 hover:text-cream"
-              >
-                Exit
-              </button>
-            </div>
-          </div>
-        </aside>
-      )}
-
       {!isMeetingRoom && (
-        <header className="customer-header sticky top-0 z-30 border-b border-[var(--border-faint)] bg-cream/95 px-4 py-3 backdrop-blur">
-          <div className="mx-auto flex max-w-5xl items-center justify-between gap-2">
-            <Link href="/" className="flex items-center gap-2 min-w-0">
-              <BrandLogo wordmark={false} className="[&_img]:h-9 [&_img]:w-9 shrink-0" />
+        <header className="customer-header sticky top-0 z-30 px-4 py-3 backdrop-blur">
+          <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
+            <Link href="/" className="flex min-w-0 items-center gap-2.5" aria-label="Peebee Learn home">
+              <BrandLogo wordmark={false} className="shrink-0 [&_img]:h-9 [&_img]:w-9" />
               <div className="min-w-0">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-gold">Peebee Learn</p>
-                <h1 className="truncate text-sm font-semibold text-cream">Educator & School Studio</h1>
+                <p className="text-[10px] font-bold uppercase tracking-wider opacity-80">Peebee Learn</p>
+                <h1 className="truncate text-sm font-bold">Educator Studio</h1>
               </div>
             </Link>
-
-            <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-              <Link
-                href="/practice"
-                className={`flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold transition ${
-                  isPracticeActive
-                    ? "bg-gold text-ink-gold"
-                    : "border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] text-cream hover:border-gold/40"
-                }`}
-              >
-                <FlaskConical className="h-3.5 w-3.5 text-gold" />
-                <span className="hidden sm:inline">Sandbox</span>
-              </Link>
-
-              <Link
-                href="/live"
-                className="flex items-center gap-1.5 rounded-lg border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] px-2.5 py-1 text-xs font-semibold text-cream hover:border-gold/40"
-              >
-                <span className="h-2 w-2 rounded-full bg-gold" />
-                <Radio className="h-3.5 w-3.5 text-gold" />
-                <span className="hidden sm:inline">Host Live</span>
-              </Link>
-
-              <span className="rounded-lg bg-gold/15 px-2.5 py-1 text-[11px] font-semibold capitalize text-gold">
-                {activeStream}
-              </span>
-            </div>
+            <Link
+              href="/practice"
+              className={`customer-header-toggle flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold ${isPracticeActive ? "ring-2 ring-current" : ""}`}
+            >
+              <FlaskConical className="h-3.5 w-3.5" aria-hidden />
+              <span>{isPracticeActive ? "Sandbox on" : "Sandbox"}</span>
+            </Link>
           </div>
         </header>
       )}
 
-      <main
-        className={`mx-auto ${
-          isMeetingRoom ? "max-w-5xl" : "max-w-5xl px-4 py-5"
-        } ${!isMeetingRoom ? "customer-nav-content-clearance" : ""}`}
-      >
-        {children}
-      </main>
+      <main className={isMeetingRoom ? "mx-auto max-w-5xl" : "customer-nav-content-clearance mx-auto max-w-5xl px-4 py-5"}>{children}</main>
 
       {!isMeetingRoom && <BottomNav />}
     </div>

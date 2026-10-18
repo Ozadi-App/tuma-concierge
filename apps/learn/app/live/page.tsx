@@ -111,10 +111,10 @@ export default function LiveMeetingsDirectoryPage() {
                     <span className="rounded-full bg-gold/15 px-2.5 py-0.5 text-[10px] font-semibold uppercase text-gold">
                       Room: {meeting.roomCode}
                     </span>
-                    <h3 className="mt-2 font-display text-base font-semibold text-cream">{meeting.title}</h3>
+                    <h3 className="mt-2 font-display text-base font-semibold text-ink">{meeting.title}</h3>
                     <p className="mt-0.5 text-xs text-ink-500">
                       {meeting.subject} • Hosted by{" "}
-                      <span className="font-semibold text-cream">{meeting.hostTutorName}</span>
+                      <span className="font-semibold text-ink">{meeting.hostTutorName}</span>
                     </p>
                   </div>
                   <span className="flex shrink-0 items-center gap-1 rounded-full bg-gold/15 px-2.5 py-1 text-[11px] font-semibold text-gold">
@@ -148,7 +148,7 @@ export default function LiveMeetingsDirectoryPage() {
 
       {/* Scheduled Live Classes */}
       <section className="space-y-3">
-        <h2 className="font-display text-base font-semibold text-cream">Upcoming Scheduled Classes</h2>
+        <h2 className="font-display text-base font-semibold text-ink">Upcoming Scheduled Classes</h2>
 
         <div className="space-y-2.5">
           {scheduled.map((meeting) => (
@@ -166,7 +166,7 @@ export default function LiveMeetingsDirectoryPage() {
                       {meeting.scheduledFor}
                     </span>
                   </div>
-                  <h3 className="mt-1 font-display text-sm font-semibold text-cream">{meeting.title}</h3>
+                  <h3 className="mt-1 font-display text-sm font-semibold text-ink">{meeting.title}</h3>
                   <p className="mt-0.5 text-xs text-ink-500">
                     {meeting.hostTutorName} • {meeting.hostTutorTitle}
                   </p>
@@ -174,7 +174,7 @@ export default function LiveMeetingsDirectoryPage() {
 
                 <Link
                   href={`/live/${meeting.id}`}
-                  className="shrink-0 rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] px-3 py-1.5 text-xs font-semibold text-cream transition hover:border-gold/40"
+                  className="shrink-0 rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] px-3 py-1.5 text-xs font-semibold text-ink transition hover:border-gold/40"
                 >
                   Enter Room
                 </Link>
@@ -189,7 +189,7 @@ export default function LiveMeetingsDirectoryPage() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <PlayCircle className="h-4 w-4 text-gold" />
-            <h2 className="font-display text-sm font-semibold text-cream">Recent Class Playbacks</h2>
+            <h2 className="font-display text-sm font-semibold text-ink">Recent Class Playbacks</h2>
           </div>
           <span className="text-xs font-medium text-ink-500">2 Available</span>
         </div>
@@ -200,7 +200,7 @@ export default function LiveMeetingsDirectoryPage() {
         <div className="mt-3 space-y-2">
           <div className="flex items-center justify-between rounded-xl border border-[var(--border-faint)] p-2.5">
             <div>
-              <p className="text-xs font-semibold text-cream">
+              <p className="text-xs font-semibold text-ink">
                 FinTech 101: Core Banking Ledgers & Webhooks
               </p>
               <p className="text-[10px] text-ink-500">Streamed Yesterday • 52 mins • Dr. Kenneth Ochieng</p>
@@ -214,7 +214,7 @@ export default function LiveMeetingsDirectoryPage() {
           </div>
           <div className="flex items-center justify-between rounded-xl border border-[var(--border-faint)] p-2.5">
             <div>
-              <p className="text-xs font-semibold text-cream">
+              <p className="text-xs font-semibold text-ink">
                 P.4 Math: Fractions & Decimal Placement Workshop
               </p>
               <p className="text-[10px] text-ink-500">Streamed 2 days ago • 40 mins • Tr. Brenda Namutebi</p>

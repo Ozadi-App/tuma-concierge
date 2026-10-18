@@ -18,8 +18,8 @@ import {
   DEMO_ACADEMY_TIMETABLE,
   DEMO_ACADEMY_EXAM,
   DEMO_ACADEMY_REPORT_CARD,
-  DEMO_CAMPUS_PEER_REVIEW,
-  DEMO_CAMPUS_CREDENTIAL,
+  DEMO_COMPASS_PEER_REVIEW,
+  DEMO_COMPASS_CREDENTIAL,
   DEMO_SKILLS_COURSE,
   DEMO_SKILLS_SUBMISSION,
   DEMO_SKILLS_LOGBOOK,
@@ -72,7 +72,7 @@ const STREAM_LABELS: Record<EducationStreamId, string> = {
   sprouts: "Sprouts · Ages 3–6",
   foundations: "Foundations · Ages 6–12",
   academy: "Academy · Ages 12–18",
-  campus: "Campus · Higher Ed & Business",
+  compass: "Compass · Higher Ed & Business",
   skills: "Skills · Vocational Trades",
 };
 
@@ -197,7 +197,7 @@ export default function CustomerLearnPage() {
   const [examMcqChoice, setExamMcqChoice] = useState<number | null>(0);
   const [examWorkings, setExamWorkings] = useState("d/dx [3x³ - 4sin(x) + e^(2x)] = 9x² - 4cos(x) + 2e^(2x)");
 
-  // 4. Campus
+  // 4. Compass
   const [playbackSpeed, setPlaybackSpeed] = useState<number>(1);
   const [videoNotes, setVideoNotes] = useState<Array<{ time: string; note: string }>>([
     { time: "02:15", note: "Idempotency key must be stored in Redis/Postgres with 24h TTL." },
@@ -360,7 +360,7 @@ export default function CustomerLearnPage() {
             <p className="text-[11px] uppercase tracking-[0.2em] text-gold font-semibold">
               Peebee Learn
             </p>
-            <h1 className="font-display text-2xl sm:text-3xl font-semibold text-cream mt-0.5">
+            <h1 className="font-display text-2xl sm:text-3xl font-semibold text-ink mt-0.5">
               Schools, Tutors & Courses
             </h1>
             <p className="text-sm text-ink-500 mt-1">
@@ -393,7 +393,7 @@ export default function CustomerLearnPage() {
                   className={`flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
                     isActive
                       ? "bg-gold text-ink-gold"
-                      : "text-ink-500 hover:text-cream"
+                      : "text-ink-500 hover:text-ink"
                   }`}
                 >
                   <Icon className="h-3.5 w-3.5 shrink-0" />
@@ -413,13 +413,13 @@ export default function CustomerLearnPage() {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search schools, courses, subjects or tutors..."
-              className="w-full text-sm text-cream placeholder:text-ink-500 focus:outline-none"
+              className="w-full text-sm text-ink placeholder:text-ink-500 focus:outline-none"
             />
             {searchQuery && (
               <button
                 type="button"
                 onClick={() => setSearchQuery("")}
-                className="text-xs text-ink-500 hover:text-cream"
+                className="text-xs text-ink-500 hover:text-ink"
               >
                 Clear
               </button>
@@ -439,7 +439,7 @@ export default function CustomerLearnPage() {
               className={`whitespace-nowrap rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${
                 streamFilter === "all"
                   ? "bg-gold text-ink-gold"
-                  : "bg-[rgb(var(--surface-muted))] text-ink-500 hover:text-cream"
+                  : "bg-[rgb(var(--surface-muted))] text-ink-500 hover:text-ink"
               }`}
             >
               All Streams ({courses.length})
@@ -457,7 +457,7 @@ export default function CustomerLearnPage() {
                   className={`whitespace-nowrap rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${
                     active
                       ? "bg-gold text-ink-gold"
-                      : "bg-[rgb(var(--surface-muted))] text-ink-500 hover:text-cream"
+                      : "bg-[rgb(var(--surface-muted))] text-ink-500 hover:text-ink"
                   }`}
                 >
                   {s.title} · {s.ageBracket}
@@ -487,7 +487,7 @@ export default function CustomerLearnPage() {
               <button
                 type="button"
                 onClick={() => openTutorChatForCreator(selectedCourse.creatorRoleTitle, selectedCourse.stream)}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] px-3 py-1.5 text-xs font-semibold text-cream hover:border-gold/40"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] px-3 py-1.5 text-xs font-semibold text-ink hover:border-gold/40"
               >
                 <MessageSquare className="h-3.5 w-3.5 text-gold" />
                 Ask Instructor
@@ -522,7 +522,7 @@ export default function CustomerLearnPage() {
                   <span>·</span>
                   <span>★ {selectedCourse.rating.toFixed(1)} ({selectedCourse.reviewCount} reviews)</span>
                 </div>
-                <h2 className="font-display text-xl sm:text-2xl font-semibold text-cream">
+                <h2 className="font-display text-xl sm:text-2xl font-semibold text-ink">
                   {selectedCourse.title}
                 </h2>
                 <p className="text-xs sm:text-sm text-ink-500 max-w-3xl">
@@ -534,7 +534,7 @@ export default function CustomerLearnPage() {
                     alt={selectedCourse.creatorName}
                     className="h-6 w-6 rounded-full object-cover"
                   />
-                  <span className="text-xs font-medium text-cream">
+                  <span className="text-xs font-medium text-ink">
                     {selectedCourse.creatorName}
                   </span>
                   <span className="text-xs text-ink-500">
@@ -555,7 +555,7 @@ export default function CustomerLearnPage() {
                 </h3>
                 {selectedCourse.modules.map((mod) => (
                   <div key={mod.id} className="space-y-2">
-                    <div className="text-xs font-semibold text-cream">{mod.title}</div>
+                    <div className="text-xs font-semibold text-ink">{mod.title}</div>
                     <div className="space-y-1.5">
                       {mod.lessons.map((lesson, idx) => {
                         const isSelected = activeLesson?.id === lesson.id;
@@ -576,7 +576,7 @@ export default function CustomerLearnPage() {
                             }`}
                           >
                             <div className="flex items-start justify-between gap-2">
-                              <span className="text-xs font-semibold text-cream leading-snug">
+                              <span className="text-xs font-semibold text-ink leading-snug">
                                 {idx + 1}. {lesson.title}
                               </span>
                               {isDone && (
@@ -611,7 +611,7 @@ export default function CustomerLearnPage() {
                       <span className="text-[11px] uppercase tracking-wider text-gold font-semibold">
                         Active Lesson · {activeLesson.durationMinutes} Mins
                       </span>
-                      <h3 className="font-display text-lg font-semibold text-cream mt-0.5">
+                      <h3 className="font-display text-lg font-semibold text-ink mt-0.5">
                         {activeLesson.title}
                       </h3>
                     </div>
@@ -627,7 +627,7 @@ export default function CustomerLearnPage() {
                       className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
                         completedLessonIds.includes(activeLesson.id)
                           ? "bg-gold text-ink-gold"
-                          : "border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] text-cream hover:border-gold/40"
+                          : "border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] text-ink hover:border-gold/40"
                       }`}
                     >
                       {completedLessonIds.includes(activeLesson.id)
@@ -644,7 +644,7 @@ export default function CustomerLearnPage() {
                           <Play className="h-4 w-4 fill-current" />
                         </div>
                         <div>
-                          <div className="text-xs font-semibold text-cream">
+                          <div className="text-xs font-semibold text-ink">
                             {selectedCourse.creatorName} Lesson Player
                           </div>
                           <div className="text-[11px] text-ink-500">
@@ -661,7 +661,7 @@ export default function CustomerLearnPage() {
                             className={`rounded px-2 py-0.5 text-[11px] font-semibold ${
                               playbackSpeed === spd
                                 ? "bg-gold text-ink-gold"
-                                : "bg-[rgb(var(--surface-card))] text-ink-500 hover:text-cream"
+                                : "bg-[rgb(var(--surface-card))] text-ink-500 hover:text-ink"
                             }`}
                           >
                             {spd}x
@@ -669,7 +669,7 @@ export default function CustomerLearnPage() {
                         ))}
                       </div>
                     </div>
-                    <p className="text-xs sm:text-sm text-cream leading-relaxed">
+                    <p className="text-xs sm:text-sm text-ink leading-relaxed">
                       {activeLesson.summary}
                     </p>
                   </div>
@@ -699,7 +699,7 @@ export default function CustomerLearnPage() {
                               <div className="flex items-center gap-2.5 min-w-0">
                                 <FileText className="h-4 w-4 text-gold shrink-0" />
                                 <div className="truncate">
-                                  <div className="truncate text-xs font-semibold text-cream">
+                                  <div className="truncate text-xs font-semibold text-ink">
                                     {res.name}
                                   </div>
                                   <div className="text-[11px] text-ink-500">{res.size} · Click to open</div>
@@ -723,7 +723,7 @@ export default function CustomerLearnPage() {
                           {activeLesson.practicalChecklist.map((item) => (
                             <label
                               key={item}
-                              className="flex items-center gap-2 text-xs text-cream cursor-pointer"
+                              className="flex items-center gap-2 text-xs text-ink cursor-pointer"
                             >
                               <input
                                 type="checkbox"
@@ -751,7 +751,7 @@ export default function CustomerLearnPage() {
                           <span className="text-[11px] uppercase tracking-wider text-gold font-semibold">
                             Interactive Assessment · {activeLesson.quiz.timeLimitMinutes} Min
                           </span>
-                          <h4 className="text-sm font-semibold text-cream">
+                          <h4 className="text-sm font-semibold text-ink">
                             {activeLesson.quiz.title}
                           </h4>
                           <p className="text-xs text-ink-500">{activeLesson.quiz.instructions}</p>
@@ -767,7 +767,7 @@ export default function CustomerLearnPage() {
                               key={q.id}
                               className="rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-3.5 space-y-2.5"
                             >
-                              <div className="text-xs font-semibold text-cream">
+                              <div className="text-xs font-semibold text-ink">
                                 {qIdx + 1}. {q.questionText}
                               </div>
                               <div className="grid gap-1.5">
@@ -775,7 +775,7 @@ export default function CustomerLearnPage() {
                                   const selected = chosen === oIdx;
                                   const isCorrect = q.correctOptionIndex === oIdx;
                                   let btnStyle =
-                                    "border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] text-cream hover:border-gold/40";
+                                    "border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] text-ink hover:border-gold/40";
                                   if (selected) {
                                     btnStyle = "border-gold bg-gold text-ink-gold font-semibold";
                                   }
@@ -831,7 +831,7 @@ export default function CustomerLearnPage() {
                                 setQuizAnswers({});
                                 setQuizSubmittedLessonId(null);
                               }}
-                              className="text-xs text-ink-500 underline hover:text-cream"
+                              className="text-xs text-ink-500 underline hover:text-ink"
                             >
                               Retry Quiz
                             </button>
@@ -864,14 +864,14 @@ export default function CustomerLearnPage() {
                       <span className="text-[11px] uppercase tracking-wider text-gold font-semibold">
                         Sprouts Early Childhood Mode (Ages 3–6)
                       </span>
-                      <h3 className="font-display text-base font-semibold text-cream">
+                      <h3 className="font-display text-base font-semibold text-ink">
                         Touch Phonics, Read-Along Storybook & Guardian Screen Timer
                       </h3>
                     </div>
                     <button
                       type="button"
                       onClick={() => setScreenTimerLocked((prev) => !prev)}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] px-3 py-1.5 text-xs font-semibold text-cream"
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] px-3 py-1.5 text-xs font-semibold text-ink"
                     >
                       {screenTimerLocked ? (
                         <>
@@ -889,7 +889,7 @@ export default function CustomerLearnPage() {
 
                   {screenTimerLocked ? (
                     <div className="rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] p-4 space-y-3">
-                      <p className="text-xs font-semibold text-cream">
+                      <p className="text-xs font-semibold text-ink">
                         Session resting time reached to prevent child screen fatigue. Enter Guardian PIN (1234) to unlock:
                       </p>
                       <div className="flex items-center gap-2 max-w-xs">
@@ -898,7 +898,7 @@ export default function CustomerLearnPage() {
                           value={parentPinInput}
                           onChange={(e) => setParentPinInput(e.target.value)}
                           placeholder="Guardian PIN (e.g. 1234)"
-                          className="rounded-lg px-3 py-1.5 text-xs text-cream"
+                          className="rounded-lg px-3 py-1.5 text-xs text-ink"
                         />
                         <button
                           type="button"
@@ -936,7 +936,7 @@ export default function CustomerLearnPage() {
                                 <span className="text-2xl">{act.characterGuideAvatar}</span>
                                 <Volume2 className="h-4 w-4 text-gold" />
                               </div>
-                              <div className="text-xs font-semibold text-cream">{act.title}</div>
+                              <div className="text-xs font-semibold text-ink">{act.title}</div>
                               <div className="text-[11px] text-gold font-medium">
                                 {unlocked ? `★ Earned: ${act.stickerRewardTitle}` : "Tap to Play & Earn Sticker"}
                               </div>
@@ -946,12 +946,12 @@ export default function CustomerLearnPage() {
                       </div>
 
                       {activeAudioToast && (
-                        <div className="rounded-xl border border-gold/40 bg-gold/10 px-3.5 py-2.5 text-xs text-cream flex items-center justify-between">
+                        <div className="rounded-xl border border-gold/40 bg-gold/10 px-3.5 py-2.5 text-xs text-ink flex items-center justify-between">
                           <span>🔊 {activeAudioToast}</span>
                           <button
                             type="button"
                             onClick={() => setActiveAudioToast(null)}
-                            className="text-ink-500 hover:text-cream ml-2"
+                            className="text-ink-500 hover:text-ink ml-2"
                           >
                             <X className="h-3.5 w-3.5" />
                           </button>
@@ -970,7 +970,7 @@ export default function CustomerLearnPage() {
                               <button
                                 type="button"
                                 onClick={() => setStoryPageIndex((i) => Math.max(0, i - 1))}
-                                className="rounded bg-[rgb(var(--surface-card))] px-2.5 py-1 text-xs text-cream"
+                                className="rounded bg-[rgb(var(--surface-card))] px-2.5 py-1 text-xs text-ink"
                               >
                                 Prev
                               </button>
@@ -990,11 +990,11 @@ export default function CustomerLearnPage() {
                               </button>
                             </div>
                           </div>
-                          <p className="text-sm font-medium text-cream">
+                          <p className="text-sm font-medium text-ink">
                             &ldquo;{DEMO_SPROUTS_ACTIVITIES[2].gameConfig.storyPages[storyPageIndex]?.text}&rdquo;
                           </p>
                           <div className="border-t border-[var(--border-faint)] pt-2.5 text-xs text-ink-500">
-                            <strong className="text-cream">{DEMO_SPROUTS_COPLAY.promptTitle}:</strong>{" "}
+                            <strong className="text-ink">{DEMO_SPROUTS_COPLAY.promptTitle}:</strong>{" "}
                             {DEMO_SPROUTS_COPLAY.offlineActionPrompt}
                           </div>
                         </div>
@@ -1011,7 +1011,7 @@ export default function CustomerLearnPage() {
                       <span className="text-[11px] uppercase tracking-wider text-gold font-semibold">
                         Foundations Primary Workflow (Ages 6–12)
                       </span>
-                      <h3 className="font-display text-base font-semibold text-cream">
+                      <h3 className="font-display text-base font-semibold text-ink">
                         Handwritten Worksheet Turn-In & Parent Sign-Off
                       </h3>
                     </div>
@@ -1021,7 +1021,7 @@ export default function CustomerLearnPage() {
                   </div>
 
                   <div className="rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] p-4 space-y-3">
-                    <div className="text-xs font-semibold text-cream">
+                    <div className="text-xs font-semibold text-ink">
                       {DEMO_FOUNDATIONS_WORKSHEETS[0].title}
                     </div>
                     <p className="text-xs text-ink-500">
@@ -1036,7 +1036,7 @@ export default function CustomerLearnPage() {
                           type="text"
                           value={parentSignName}
                           onChange={(e) => setParentSignName(e.target.value)}
-                          className="w-full rounded-lg px-3 py-2 text-xs text-cream"
+                          className="w-full rounded-lg px-3 py-2 text-xs text-ink"
                         />
                       </div>
                       <div className="flex items-end gap-2">
@@ -1046,7 +1046,7 @@ export default function CustomerLearnPage() {
                           className={`rounded-lg px-3 py-2 text-xs font-semibold border transition ${
                             parentSignedOff
                               ? "border-gold bg-gold/15 text-gold"
-                              : "border-[var(--border-faint)] bg-[rgb(var(--surface-card))] text-cream"
+                              : "border-[var(--border-faint)] bg-[rgb(var(--surface-card))] text-ink"
                           }`}
                         >
                           {parentSignedOff ? "✓ Parent Signed" : "Sign as Parent"}
@@ -1073,7 +1073,7 @@ export default function CustomerLearnPage() {
                       <span className="text-[11px] uppercase tracking-wider text-gold font-semibold">
                         Academy Secondary Tools (Ages 12–18)
                       </span>
-                      <h3 className="font-display text-base font-semibold text-cream">
+                      <h3 className="font-display text-base font-semibold text-ink">
                         Proctored UNEB Mock Exam & Weighted Terminal Report Card
                       </h3>
                     </div>
@@ -1089,7 +1089,7 @@ export default function CustomerLearnPage() {
                   {examStarted ? (
                     <div className="rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] p-4 space-y-3">
                       <div className="flex items-center justify-between">
-                        <span className="text-xs font-semibold text-cream">
+                        <span className="text-xs font-semibold text-ink">
                           {DEMO_ACADEMY_EXAM.title}
                         </span>
                         <span className="rounded bg-gold/15 px-2.5 py-0.5 text-[11px] font-semibold text-gold">
@@ -1097,7 +1097,7 @@ export default function CustomerLearnPage() {
                         </span>
                       </div>
                       <div className="space-y-2">
-                        <div className="text-xs font-medium text-cream">
+                        <div className="text-xs font-medium text-ink">
                           Q1: {DEMO_ACADEMY_EXAM.questions[0].questionText}
                         </div>
                         <div className="grid gap-1.5 sm:grid-cols-2">
@@ -1109,7 +1109,7 @@ export default function CustomerLearnPage() {
                               className={`rounded-lg border px-3 py-1.5 text-left text-xs ${
                                 examMcqChoice === idx
                                   ? "border-gold bg-gold text-ink-gold font-semibold"
-                                  : "border-[var(--border-faint)] bg-[rgb(var(--surface-card))] text-cream"
+                                  : "border-[var(--border-faint)] bg-[rgb(var(--surface-card))] text-ink"
                               }`}
                             >
                               {opt}
@@ -1118,14 +1118,14 @@ export default function CustomerLearnPage() {
                         </div>
                       </div>
                       <div>
-                        <label className="block text-xs font-medium text-cream mb-1">
+                        <label className="block text-xs font-medium text-ink mb-1">
                           Q2 Formula Workings ({DEMO_ACADEMY_EXAM.questions[1].questionText})
                         </label>
                         <textarea
                           rows={2}
                           value={examWorkings}
                           onChange={(e) => setExamWorkings(e.target.value)}
-                          className="w-full rounded-lg p-2.5 text-xs text-cream"
+                          className="w-full rounded-lg p-2.5 text-xs text-ink"
                         />
                       </div>
                       <button
@@ -1139,7 +1139,7 @@ export default function CustomerLearnPage() {
                   ) : (
                     <div className="rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] p-4 space-y-2.5">
                       <div className="flex flex-wrap items-center justify-between text-xs">
-                        <span className="font-semibold text-cream">
+                        <span className="font-semibold text-ink">
                           {DEMO_ACADEMY_REPORT_CARD.studentName} · {DEMO_ACADEMY_REPORT_CARD.homeroomClass}
                         </span>
                         <span className="text-gold font-semibold">
@@ -1153,7 +1153,7 @@ export default function CustomerLearnPage() {
                             key={sub.code}
                             className="rounded-lg border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-2.5 text-xs"
                           >
-                            <div className="flex items-center justify-between font-semibold text-cream">
+                            <div className="flex items-center justify-between font-semibold text-ink">
                               <span>{sub.subjectName}</span>
                               <span className="text-gold">{sub.finalGrade} ({sub.weightedTotalPercent}%)</span>
                             </div>
@@ -1168,14 +1168,14 @@ export default function CustomerLearnPage() {
                 </div>
               )}
 
-              {selectedCourse.stream === "campus" && (
+              {selectedCourse.stream === "compass" && (
                 <div className="rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-4 sm:p-5 space-y-4">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
                       <span className="text-[11px] uppercase tracking-wider text-gold font-semibold">
-                        Campus Higher Ed & Executive Tools
+                        Compass Higher Ed & Executive Tools
                       </span>
-                      <h3 className="font-display text-base font-semibold text-cream">
+                      <h3 className="font-display text-base font-semibold text-ink">
                         Timestamped Lecture Notes & Verifiable Credential
                       </h3>
                     </div>
@@ -1192,14 +1192,14 @@ export default function CustomerLearnPage() {
                   {certificateVerified && (
                     <div className="rounded-xl border border-gold/40 bg-gold/10 p-4 space-y-1.5 text-xs">
                       <div className="font-semibold text-gold">
-                        ✓ Cryptographically Signed Certificate · {DEMO_CAMPUS_CREDENTIAL.certificateId}
+                        ✓ Cryptographically Signed Certificate · {DEMO_COMPASS_CREDENTIAL.certificateId}
                       </div>
-                      <div className="text-cream">
-                        Awarded to <strong>{DEMO_CAMPUS_CREDENTIAL.studentName}</strong> by{" "}
-                        {DEMO_CAMPUS_CREDENTIAL.institutionName}
+                      <div className="text-ink">
+                        Awarded to <strong>{DEMO_COMPASS_CREDENTIAL.studentName}</strong> by{" "}
+                        {DEMO_COMPASS_CREDENTIAL.institutionName}
                       </div>
                       <div className="text-[11px] text-ink-500 break-all">
-                        SHA-256 Hash: {DEMO_CAMPUS_CREDENTIAL.verificationHash}
+                        SHA-256 Hash: {DEMO_COMPASS_CREDENTIAL.verificationHash}
                       </div>
                     </div>
                   )}
@@ -1211,7 +1211,7 @@ export default function CustomerLearnPage() {
                         value={newVideoNote}
                         onChange={(e) => setNewVideoNote(e.target.value)}
                         placeholder="Pin a study note to current video timestamp (e.g. 04:12)..."
-                        className="w-full rounded-lg px-3 py-1.5 text-xs text-cream"
+                        className="w-full rounded-lg px-3 py-1.5 text-xs text-ink"
                       />
                       <button
                         type="button"
@@ -1232,7 +1232,7 @@ export default function CustomerLearnPage() {
                       {videoNotes.map((n, idx) => (
                         <div
                           key={idx}
-                          className="rounded-lg border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] px-3 py-2 text-xs text-cream"
+                          className="rounded-lg border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] px-3 py-2 text-xs text-ink"
                         >
                           <span className="font-semibold text-gold mr-2">[{n.time}]</span>
                           {n.note}
@@ -1249,14 +1249,14 @@ export default function CustomerLearnPage() {
                     <span className="text-[11px] uppercase tracking-wider text-gold font-semibold">
                       Skills Vocational Trade Assessment
                     </span>
-                    <h3 className="font-display text-base font-semibold text-cream">
+                    <h3 className="font-display text-base font-semibold text-ink">
                       Video Timestamp Critique & Apprentice Logbook
                     </h3>
                   </div>
 
                   {/* Timestamped Critique Pins */}
                   <div className="rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] p-4 space-y-3">
-                    <div className="text-xs font-semibold text-cream">
+                    <div className="text-xs font-semibold text-ink">
                       Practical Submission: {DEMO_SKILLS_SUBMISSION.taskTitle} ({DEMO_SKILLS_SUBMISSION.finalGrade})
                     </div>
                     <div className="flex flex-wrap gap-2">
@@ -1268,7 +1268,7 @@ export default function CustomerLearnPage() {
                           className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition ${
                             selectedCritiqueSec === c.timestampSeconds
                               ? "bg-gold text-ink-gold"
-                              : "bg-[rgb(var(--surface-card))] text-cream"
+                              : "bg-[rgb(var(--surface-card))] text-ink"
                           }`}
                         >
                           Pin @ 0{Math.floor(c.timestampSeconds / 60)}:
@@ -1286,14 +1286,14 @@ export default function CustomerLearnPage() {
                           <div className="font-semibold text-gold">
                             {c.instructorName} · {c.severity.replace("_", " ").toUpperCase()}
                           </div>
-                          <p className="text-cream">{c.critiqueText}</p>
+                          <p className="text-ink">{c.critiqueText}</p>
                         </div>
                       ))}
                   </div>
 
                   {/* Apprentice Logbook */}
                   <div className="rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] p-4 space-y-3">
-                    <div className="text-xs font-semibold text-cream">
+                    <div className="text-xs font-semibold text-ink">
                       Verified Apprentice Workshop Logbook ({logbookEntries.reduce((acc, e) => acc + e.practicalHours, 0)} hrs logged)
                     </div>
                     <div className="flex flex-col sm:flex-row gap-2">
@@ -1302,14 +1302,14 @@ export default function CustomerLearnPage() {
                         value={newLogTask}
                         onChange={(e) => setNewLogTask(e.target.value)}
                         placeholder="Practical task completed today..."
-                        className="w-full rounded-lg px-3 py-1.5 text-xs text-cream"
+                        className="w-full rounded-lg px-3 py-1.5 text-xs text-ink"
                       />
                       <div className="flex gap-2">
                         <input
                           type="number"
                           value={newLogHours}
                           onChange={(e) => setNewLogHours(e.target.value)}
-                          className="w-20 rounded-lg px-2.5 py-1.5 text-xs text-cream"
+                          className="w-20 rounded-lg px-2.5 py-1.5 text-xs text-ink"
                         />
                         <button
                           type="button"
@@ -1365,7 +1365,7 @@ export default function CustomerLearnPage() {
                       Room {filteredLiveMeetings[0].roomCode} · {STREAM_LABELS[filteredLiveMeetings[0].stream]}
                     </span>
                   </div>
-                  <h2 className="font-display text-base sm:text-lg font-semibold text-cream">
+                  <h2 className="font-display text-base sm:text-lg font-semibold text-ink">
                     {filteredLiveMeetings[0].title}
                   </h2>
                   <p className="text-xs text-ink-500">
@@ -1389,7 +1389,7 @@ export default function CustomerLearnPage() {
                     <button
                       type="button"
                       onClick={() => setActiveTab("live")}
-                      className="rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] px-3 py-2 text-xs font-semibold text-cream hover:border-gold/40"
+                      className="rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] px-3 py-2 text-xs font-semibold text-ink hover:border-gold/40"
                     >
                       All ({filteredLiveMeetings.length})
                     </button>
@@ -1403,7 +1403,7 @@ export default function CustomerLearnPage() {
           <section className="space-y-3">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="font-display text-lg font-semibold text-cream">
+                <h2 className="font-display text-lg font-semibold text-ink">
                   Partner Schools, Academies & Tutors
                 </h2>
                 <p className="text-xs text-ink-500">
@@ -1450,7 +1450,7 @@ export default function CustomerLearnPage() {
                               <ShieldCheck className="h-3.5 w-3.5 text-gold shrink-0" />
                             )}
                           </div>
-                          <h3 className="font-display text-base font-semibold text-cream truncate">
+                          <h3 className="font-display text-base font-semibold text-ink truncate">
                             {creator.name}
                           </h3>
                           <p className="text-xs text-ink-500 truncate">
@@ -1467,7 +1467,7 @@ export default function CustomerLearnPage() {
                     <div className="space-y-2.5 pt-2 border-t border-[var(--border-faint)]">
                       <div className="flex items-center justify-between text-xs text-ink-500">
                         <span>
-                          ★ <strong className="text-cream">{creator.rating.toFixed(1)}</strong> ({creator.reviewCount})
+                          ★ <strong className="text-ink">{creator.rating.toFixed(1)}</strong> ({creator.reviewCount})
                         </span>
                         <span>{creator.enrolledStudents.toLocaleString()} students</span>
                         <span className="text-gold font-semibold">
@@ -1484,7 +1484,7 @@ export default function CustomerLearnPage() {
                           className={`flex-1 rounded-xl px-3 py-2 text-xs font-semibold transition ${
                             isSelected
                               ? "bg-gold text-ink-gold"
-                              : "bg-[rgb(var(--surface-muted))] text-cream hover:border-gold/40"
+                              : "bg-[rgb(var(--surface-muted))] text-ink hover:border-gold/40"
                           }`}
                         >
                           {isSelected ? "Showing Courses" : "View Courses"}
@@ -1492,7 +1492,7 @@ export default function CustomerLearnPage() {
                         <button
                           type="button"
                           onClick={() => openTutorChatForCreator(creator.leadInstructor, creator.stream)}
-                          className="rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] px-3 py-2 text-xs font-semibold text-cream hover:border-gold/40"
+                          className="rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] px-3 py-2 text-xs font-semibold text-ink hover:border-gold/40"
                           title="Message Instructor"
                         >
                           <MessageSquare className="h-3.5 w-3.5 text-gold" />
@@ -1509,7 +1509,7 @@ export default function CustomerLearnPage() {
           <section className="space-y-3">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="font-display text-lg font-semibold text-cream">
+                <h2 className="font-display text-lg font-semibold text-ink">
                   {selectedCreator
                     ? `Courses by ${selectedCreator.name}`
                     : "Published Courses, Lessons & Quizzes"}
@@ -1525,7 +1525,7 @@ export default function CustomerLearnPage() {
 
             {filteredCourses.length === 0 ? (
               <div className="rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-8 text-center space-y-2">
-                <p className="text-sm font-semibold text-cream">No courses match your current filter</p>
+                <p className="text-sm font-semibold text-ink">No courses match your current filter</p>
                 <p className="text-xs text-ink-500">
                   Try clearing your search query or switching to All Streams.
                 </p>
@@ -1575,14 +1575,14 @@ export default function CustomerLearnPage() {
 
                         <div className="p-4 space-y-2">
                           <div className="flex items-center gap-2 text-xs text-ink-500">
-                            <span className="font-medium text-cream truncate">
+                            <span className="font-medium text-ink truncate">
                               {course.creatorName}
                             </span>
                             <span>·</span>
                             <span className="shrink-0">{course.level}</span>
                           </div>
 
-                          <h3 className="font-display text-base font-semibold text-cream leading-snug">
+                          <h3 className="font-display text-base font-semibold text-ink leading-snug">
                             {course.title}
                           </h3>
 
@@ -1598,7 +1598,7 @@ export default function CustomerLearnPage() {
                             {lessonCount} {lessonCount === 1 ? "Lesson" : "Lessons"} · {quizCount}{" "}
                             {quizCount === 1 ? "Quiz" : "Quizzes"}
                           </span>
-                          <span className="font-semibold text-cream">
+                          <span className="font-semibold text-ink">
                             {formatUgx(course.priceUgx)}
                           </span>
                         </div>
@@ -1650,7 +1650,7 @@ export default function CustomerLearnPage() {
                       <span className="text-[11px] uppercase tracking-wider text-gold font-semibold">
                         {STREAM_LABELS[activeLiveMeeting.stream]} · Live Session
                       </span>
-                      <h2 className="font-display text-lg font-semibold text-cream">
+                      <h2 className="font-display text-lg font-semibold text-ink">
                         {activeLiveMeeting.title}
                       </h2>
                       <p className="text-xs text-ink-500">
@@ -1666,7 +1666,7 @@ export default function CustomerLearnPage() {
                           className={`rounded-lg px-2.5 py-1 text-xs font-semibold capitalize ${
                             liveStageMode === mode
                               ? "bg-gold text-ink-gold"
-                              : "text-ink-500 hover:text-cream"
+                              : "text-ink-500 hover:text-ink"
                           }`}
                         >
                           {mode}
@@ -1683,7 +1683,7 @@ export default function CustomerLearnPage() {
                           <MonitorUp className="h-3.5 w-3.5" />
                           {activeLiveMeeting.hostTutorName} is sharing presentation slides
                         </div>
-                        <h3 className="font-display text-base sm:text-lg font-semibold text-cream">
+                        <h3 className="font-display text-base sm:text-lg font-semibold text-ink">
                           {activeLiveMeeting.subject}: Live Walkthrough & Worked Examples
                         </h3>
                         <p className="text-xs sm:text-sm text-ink-500 leading-relaxed">
@@ -1697,7 +1697,7 @@ export default function CustomerLearnPage() {
                         <div className="text-xs font-semibold text-gold">
                           Interactive Collaborative Whiteboard
                         </div>
-                        <div className="rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-4 font-mono text-xs text-cream space-y-1.5">
+                        <div className="rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-4 font-mono text-xs text-ink space-y-1.5">
                           <div>[Step 1] Verify input parameters & boundary conditions</div>
                           <div>[Step 2] Apply curriculum formula & check units</div>
                           <div>[Step 3] Live Q&A checkpoint with {activeLiveMeeting.hostTutorName}</div>
@@ -1718,7 +1718,7 @@ export default function CustomerLearnPage() {
                               className="h-9 w-9 rounded-full object-cover shrink-0"
                             />
                             <div className="min-w-0">
-                              <div className="truncate text-xs font-semibold text-cream">
+                              <div className="truncate text-xs font-semibold text-ink">
                                 {part.name}
                               </div>
                               <div className="text-[11px] text-ink-500 uppercase">
@@ -1738,7 +1738,7 @@ export default function CustomerLearnPage() {
                           onClick={() => setMicMuted((m) => !m)}
                           className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold ${
                             micMuted
-                              ? "bg-[rgb(var(--surface-card))] text-cream"
+                              ? "bg-[rgb(var(--surface-card))] text-ink"
                               : "bg-gold text-ink-gold"
                           }`}
                         >
@@ -1750,7 +1750,7 @@ export default function CustomerLearnPage() {
                           onClick={() => setCamOn((c) => !c)}
                           className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold ${
                             !camOn
-                              ? "bg-[rgb(var(--surface-card))] text-cream"
+                              ? "bg-[rgb(var(--surface-card))] text-ink"
                               : "bg-gold text-ink-gold"
                           }`}
                         >
@@ -1763,7 +1763,7 @@ export default function CustomerLearnPage() {
                           className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold ${
                             handRaised
                               ? "bg-gold text-ink-gold"
-                              : "bg-[rgb(var(--surface-card))] text-cream"
+                              : "bg-[rgb(var(--surface-card))] text-ink"
                           }`}
                         >
                           <Hand className="h-3.5 w-3.5" />
@@ -1774,7 +1774,7 @@ export default function CustomerLearnPage() {
                       <button
                         type="button"
                         onClick={() => setActiveLiveRoomId(null)}
-                        className="rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] px-3.5 py-2 text-xs font-semibold text-cream hover:border-gold/40"
+                        className="rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] px-3.5 py-2 text-xs font-semibold text-ink hover:border-gold/40"
                       >
                         Leave Room
                       </button>
@@ -1795,7 +1795,7 @@ export default function CustomerLearnPage() {
                           className="rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] p-3 space-y-1 text-xs"
                         >
                           <div className="flex items-center justify-between">
-                            <span className="font-semibold text-cream">{msg.senderName}</span>
+                            <span className="font-semibold text-ink">{msg.senderName}</span>
                             <span className="text-[10px] text-ink-500">{msg.timestamp}</span>
                           </div>
                           <p className="text-ink-500 leading-relaxed">{msg.text}</p>
@@ -1810,7 +1810,7 @@ export default function CustomerLearnPage() {
                       value={liveChatInput}
                       onChange={(e) => setLiveChatInput(e.target.value)}
                       placeholder="Ask a question in the room..."
-                      className="w-full text-xs text-cream placeholder:text-ink-500 focus:outline-none"
+                      className="w-full text-xs text-ink placeholder:text-ink-500 focus:outline-none"
                     />
                     <button
                       type="submit"
@@ -1836,7 +1836,7 @@ export default function CustomerLearnPage() {
                       </span>
                       <span className="text-ink-500">{meeting.scheduledFor}</span>
                     </div>
-                    <h3 className="font-display text-base font-semibold text-cream">
+                    <h3 className="font-display text-base font-semibold text-ink">
                       {meeting.title}
                     </h3>
                     <div className="flex items-center gap-2.5 pt-1">
@@ -1846,7 +1846,7 @@ export default function CustomerLearnPage() {
                         className="h-8 w-8 rounded-full object-cover"
                       />
                       <div>
-                        <div className="text-xs font-semibold text-cream">
+                        <div className="text-xs font-semibold text-ink">
                           {meeting.hostTutorName}
                         </div>
                         <div className="text-[11px] text-ink-500">
@@ -1907,7 +1907,7 @@ export default function CustomerLearnPage() {
                     />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-1">
-                        <span className="truncate text-xs font-semibold text-cream">
+                        <span className="truncate text-xs font-semibold text-ink">
                           {tutor.name}
                         </span>
                         <span className="text-[10px] text-gold shrink-0">
@@ -1936,7 +1936,7 @@ export default function CustomerLearnPage() {
                     className="h-10 w-10 rounded-full object-cover"
                   />
                   <div>
-                    <div className="text-sm font-semibold text-cream">{selectedTutor.name}</div>
+                    <div className="text-sm font-semibold text-ink">{selectedTutor.name}</div>
                     <div className="text-xs text-ink-500">
                       {selectedTutor.title} · {STREAM_LABELS[selectedTutor.stream]}
                     </div>
@@ -1965,7 +1965,7 @@ export default function CustomerLearnPage() {
                     className={`rounded-xl p-3 text-xs max-w-lg ${
                       m.sender === "student"
                         ? "ml-auto bg-gold text-ink-gold font-medium"
-                        : "border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] text-cream"
+                        : "border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] text-ink"
                     }`}
                   >
                     <p className="leading-relaxed">{m.text}</p>
@@ -1990,7 +1990,7 @@ export default function CustomerLearnPage() {
                 value={tutorChatInput}
                 onChange={(e) => setTutorChatInput(e.target.value)}
                 placeholder={`Message ${selectedTutor.name}...`}
-                className="w-full text-xs sm:text-sm text-cream placeholder:text-ink-500 focus:outline-none"
+                className="w-full text-xs sm:text-sm text-ink placeholder:text-ink-500 focus:outline-none"
               />
               <button
                 type="submit"
@@ -2014,7 +2014,7 @@ export default function CustomerLearnPage() {
               <button
                 type="button"
                 onClick={() => setPaymentSuccessNotice(null)}
-                className="text-cream"
+                className="text-ink"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -2029,7 +2029,7 @@ export default function CustomerLearnPage() {
                   <span className="text-[11px] uppercase tracking-wider text-gold font-semibold">
                     Term Tuition Installments
                   </span>
-                  <h2 className="font-display text-lg font-semibold text-cream">
+                  <h2 className="font-display text-lg font-semibold text-ink">
                     {DEMO_TUITION_INVOICE.institutionName}
                   </h2>
                   <p className="text-xs text-ink-500">
@@ -2044,7 +2044,7 @@ export default function CustomerLearnPage() {
               <div className="rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] p-3.5 grid grid-cols-3 gap-2 text-xs">
                 <div>
                   <div className="text-ink-500">Total Tuition</div>
-                  <div className="font-semibold text-cream mt-0.5">
+                  <div className="font-semibold text-ink mt-0.5">
                     {formatUgx(DEMO_TUITION_INVOICE.totalTuitionUgx)}
                   </div>
                 </div>
@@ -2056,7 +2056,7 @@ export default function CustomerLearnPage() {
                 </div>
                 <div>
                   <div className="text-ink-500">Remaining</div>
-                  <div className="font-semibold text-cream mt-0.5">
+                  <div className="font-semibold text-ink mt-0.5">
                     {formatUgx(Math.max(0, DEMO_TUITION_INVOICE.totalTuitionUgx - tuitionPaidUgx))}
                   </div>
                 </div>
@@ -2092,7 +2092,7 @@ export default function CustomerLearnPage() {
                         <span className="text-[11px] uppercase tracking-wider text-gold font-semibold">
                           {pass.stream === "all_access" ? "All Streams" : STREAM_LABELS[pass.stream]}
                         </span>
-                        <h3 className="font-display text-base font-semibold text-cream">
+                        <h3 className="font-display text-base font-semibold text-ink">
                           {pass.name}
                         </h3>
                       </div>
@@ -2145,7 +2145,7 @@ export default function CustomerLearnPage() {
               <div className="flex items-center gap-2.5">
                 <FileText className="h-5 w-5 text-gold shrink-0" />
                 <div>
-                  <h3 className="text-sm font-semibold text-cream">{previewResource.name}</h3>
+                  <h3 className="text-sm font-semibold text-ink">{previewResource.name}</h3>
                   <p className="text-xs text-ink-500">
                     {previewResource.courseTitle} · {previewResource.size}
                   </p>
@@ -2154,13 +2154,13 @@ export default function CustomerLearnPage() {
               <button
                 type="button"
                 onClick={() => setPreviewResource(null)}
-                className="text-ink-500 hover:text-cream"
+                className="text-ink-500 hover:text-ink"
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
 
-            <div className="rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] p-3.5 text-xs text-cream space-y-1.5">
+            <div className="rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] p-3.5 text-xs text-ink space-y-1.5">
               <div className="font-semibold text-gold">Document Summary & Reference</div>
               <p className="text-ink-500 leading-relaxed">
                 Official study sheet attached to <strong>{previewResource.lessonTitle}</strong>. Verified for offline revision and practice exercises.

@@ -289,5 +289,7 @@ export type {
 export { WORK_SETTINGS_EXTRA_DEFAULTS } from "./work-admin-client.js";
 
 export * from "./education/types.js";
+export * from "./education/studio.js";
+export { handleStudioSandbox, resetStudioSandbox } from "./education/studio-sandbox.js";
 export * from "./education/demo-data.js";
 

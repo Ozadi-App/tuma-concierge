@@ -4,7 +4,7 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "Peebee Learn",
     short_name: "Peebee Learn",
-    description: "Interactive live classrooms, tutor chats & 5-tier learning hub",
+    description: "Create schools, classes, courses and lessons for every stage of learning",
     start_url: "/",
     scope: "/",
     display: "standalone",

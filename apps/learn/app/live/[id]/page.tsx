@@ -272,7 +272,7 @@ export default function LiveMeetingRoomPage() {
                       <div
                         key={p.id}
                         className={`live-video-tile relative flex aspect-video items-center justify-center bg-zinc-800 ${
-                          p.hasHandRaised ? "border-amber-400" : ""
+                          p.hasHandRaised ? "border-gold" : ""
                         }`}
                       >
                         {p.isVideoOn ? (
@@ -292,7 +292,7 @@ export default function LiveMeetingRoomPage() {
 
                         {/* Hand Raised Floating Badge */}
                         {p.hasHandRaised && (
-                          <div className="absolute top-2 left-2 flex items-center gap-1 rounded-full bg-amber-400 px-2 py-0.5 text-[10px] font-black text-black animate-pulse">
+                          <div className="absolute top-2 left-2 flex items-center gap-1 rounded-full bg-gold px-2 py-0.5 text-[10px] font-black text-black animate-pulse">
                             <Hand className="h-3 w-3" />
                             <span>Hand Raised</span>
                           </div>
@@ -426,8 +426,8 @@ export default function LiveMeetingRoomPage() {
                       <span className="text-[10px] text-white/50">Idempotency Key</span>
                     </div>
 
-                    <div className="rounded-xl border border-blue-500/40 bg-blue-500/10 p-3">
-                      <p className="font-black text-blue-400">Telecom Switch</p>
+                    <div className="rounded-xl border border-gold/40 bg-gold/10 p-3">
+                      <p className="font-black text-gold">Telecom Switch</p>
                       <p className="mt-1 font-mono text-[11px] text-white/70">
                         MTN / Airtel MoMo<br />
                         Instant SMS Push
@@ -541,14 +541,14 @@ export default function LiveMeetingRoomPage() {
                           msg.isQuestion
                             ? "border border-gold/40 bg-gold/10"
                             : isTutor
-                            ? "border border-blue-500/30 bg-blue-950/40"
+                            ? "border border-gold/30 bg-gold/10"
                             : "bg-white/5"
                         }`}
                       >
                         <div className="flex items-center justify-between">
                           <span
                             className={`font-bold ${
-                              isTutor ? "text-blue-400" : msg.isQuestion ? "text-gold" : "text-white/90"
+                              isTutor ? "text-white font-black" : msg.isQuestion ? "text-gold" : "text-white/90"
                             }`}
                           >
                             {msg.senderName}
@@ -649,7 +649,7 @@ export default function LiveMeetingRoomPage() {
 
                       <div className="flex items-center gap-1.5 shrink-0">
                         {p.hasHandRaised && (
-                          <span className="rounded-full bg-amber-400 p-1 text-black">
+                          <span className="rounded-full bg-gold p-1 text-black">
                             <Hand className="h-3 w-3" />
                           </span>
                         )}
@@ -698,7 +698,7 @@ export default function LiveMeetingRoomPage() {
             onClick={handleToggleHand}
             className={`meeting-control-btn ${
               hasHandRaised
-                ? "bg-amber-400 text-black font-black shadow-md scale-105"
+                ? "bg-gold text-black font-black shadow-md scale-105"
                 : "bg-white/10 text-white hover:bg-white/20"
             }`}
           >

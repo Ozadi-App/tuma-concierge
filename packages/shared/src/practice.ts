@@ -129,7 +129,7 @@ export const PRACTICE_JOURNEYS: Record<PracticeRole, PracticeJourney> = {
         resultLabel: "Dr. Kenneth replied with voice note (0:24)",
       },
       {
-        title: "Capstone Peer Review & Verifiable Credential (Campus)",
+        title: "Capstone Peer Review & Verifiable Credential (Compass)",
         description: "Score anonymized peer capstone projects against instructor rubrics and generate a cryptographically signed LinkedIn-ready certificate.",
         actionLabel: "Verify credential certificate",
         resultLabel: "SHA-256 certificate verified with QR code",

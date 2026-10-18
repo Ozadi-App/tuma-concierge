@@ -21,6 +21,7 @@ export const api = createApiClient({
     } catch {
       /* private mode */
     }
+    if (window.location.pathname !== "/login") window.location.href = "/login";
   },
 });
 
