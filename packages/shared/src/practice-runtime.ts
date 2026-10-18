@@ -29,6 +29,8 @@ import {
   DEMO_LIVE_PARTICIPANTS,
   DEMO_TUTOR_CONTACTS,
   DEMO_LIVE_CHAT_MESSAGES,
+  DEMO_CREATORS,
+  DEMO_CREATOR_COURSES,
 } from "./education/demo-data.js";
 
 const PRACTICE_STATE_VERSION = 4;
@@ -1308,6 +1310,8 @@ function practiceEducationRequest(path: string, method: string, body: Record<str
   if (method === "GET" && path === "/v1/education/streams") return jsonResponse({ ok: true, streams: EDUCATION_STREAMS });
   if (method === "GET" && path === "/v1/education/institutions") return jsonResponse({ ok: true, institutions: DEMO_INSTITUTIONS });
   if (method === "GET" && path.startsWith("/v1/education/institutions/")) return jsonResponse({ ok: true, institution: DEMO_INSTITUTIONS[0] });
+  if (method === "GET" && path === "/v1/education/creators") return jsonResponse({ ok: true, creators: DEMO_CREATORS });
+  if (method === "GET" && path === "/v1/education/courses") return jsonResponse({ ok: true, courses: DEMO_CREATOR_COURSES });
 
   // 1. Sprouts
   if (method === "GET" && path === "/v1/education/sprouts/activities") {
