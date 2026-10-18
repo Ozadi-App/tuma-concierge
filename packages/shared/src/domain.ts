@@ -1633,6 +1633,34 @@ export type FeeProposal = {
   updated_at: string;
 };
 
+/** One line of what the customer pays for at checkout. `price` is the line's amount (quantity × unit price), or null when not known exactly. */
+export type CheckoutItem = { orderId: string; storeName: string | null; name: string; quantity: number; price: number | null; note?: string | null };
+
+/** One leg of a relayed delivery, as charged: boda to the stage, matatu along the route, boda to the door. */
+export type CheckoutDeliveryLeg = {
+  leg?: number;
+  kind: "boda" | "matatu";
+  fromName: string | null;
+  toName: string | null;
+  distanceKm: number | null;
+  fee: number;
+  /** Matatu legs: the way along the route, "KLA - EBB". */
+  direction?: string | null;
+};
+
+/** The delivery part of a checkout: its charged total, every pickup, and (relay) the legs it is made of. */
+export type CheckoutDelivery = {
+  total: number;
+  mode: "relay" | "rider";
+  pickups: string[];
+  legs?: CheckoutDeliveryLeg[];
+  lastMile?: "door" | "collect";
+  station?: string | null;
+};
+
+/** Items, their subtotal and the delivery: itemsSubtotal + delivery.total (+ payment fees) is what is charged. */
+export type CheckoutBreakdown = { items: CheckoutItem[]; itemsSubtotal: number; delivery: CheckoutDelivery };
+
 export type OrderDetail = {
   timeFees?: OrderTimeFees;
   order: OrderRow;

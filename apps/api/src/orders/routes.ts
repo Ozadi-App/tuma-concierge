@@ -64,6 +64,7 @@ import {
 import { getR2Bucket, uploadResponseHeaders } from "../storage/r2.js";
 import { appBaseUrl } from "../verify/service.js";
 import { payFromWallet } from "../wallet/service.js";
+import { checkoutBreakdown, deliveryOrders } from "./checkout-breakdown.js";
 import { bundleCheckoutQuote, fundBundle, notifyRiderOfCombinedDelivery, unfundedBundleGroup, unpaidBundleGroup } from "./bundle-funding.js";
 import { stepSandboxRelay } from "../relay/sandbox-demo.js";
 import { isSubscriptionCurrent } from "../riders/subscription.js";
@@ -1719,7 +1720,11 @@ orderRoutes.get("/orders/:id/checkout", async (c) => {
   // A combined delivery is paid once, from its first pickup: the quote is the total for every pickup,
   // from the moment it's ordered (before a rider accepts it too).
   const bundleGroup = await unpaidBundleGroup(order);
-  if (bundleGroup && String(bundleGroup.lead.id) === String(order.id)) return c.json(await bundleCheckoutQuote(bundleGroup));
+  // Each quote also carries its breakdown (items, subtotal, delivery and its legs) over exactly
+  // the orders it charges for, so items + delivery + fees is the amount paid.
+  if (bundleGroup && String(bundleGroup.lead.id) === String(order.id)) {
+    return c.json({ ...(await bundleCheckoutQuote(bundleGroup)), ...(await checkoutBreakdown(bundleGroup.members)) });
+  }
   const baseAmount = Number(order.final_total ?? order.estimated_total ?? 0);
   const settings = await getMonetizationSettings();
   const input = { baseAmount, deliveryFee: Number(order.delivery_fee ?? 0), orderType: order.type as "parcel" | "shopping" };
@@ -1728,7 +1733,18 @@ orderRoutes.get("/orders/:id/checkout", async (c) => {
     mobileMoney: baseAmount + computeCheckoutFees(settings, { ...input, payingWithWallet: false }).totalSurcharge,
     wallet: baseAmount + computeCheckoutFees(settings, { ...input, payingWithWallet: true }).totalSurcharge,
     cash: baseAmount,
+    ...(await checkoutBreakdown([order])),
   });
+});
+
+/** The order page's money breakdown: every live order of a combined delivery (at any stage), or the order alone. */
+orderRoutes.get("/orders/:id/breakdown", async (c) => {
+  const order = await getOrder(c.req.param("id"));
+  if (!order) return c.json({ error: "not_found" }, 404);
+  if (order.customer_id !== c.get("user").sub) return c.json({ error: "forbidden" }, 403);
+  const orders = (await hasColumn("orders", "delivery_bundle_id")) ? await deliveryOrders(order) : [order];
+  const breakdown = await checkoutBreakdown(orders);
+  return c.json({ ...breakdown, total: breakdown.itemsSubtotal + breakdown.delivery.total });
 });
 
 orderRoutes.post("/orders/:id/fund", async (c) => {

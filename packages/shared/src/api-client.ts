@@ -110,6 +110,7 @@ import type {
   MatchingMode,
   NavMode,
   OrderDetail,
+  CheckoutBreakdown,
   OrderEvent,
   OrderRow,
   OrderOverview,
@@ -786,7 +787,11 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
         baseAmount: number; mobileMoney: number; wallet: number; cash: number;
         /** Present on the first pickup of a combined delivery: the quote covers every pickup. */
         bundle?: { deliveryFee: number; orders: Array<{ id: string; restaurantName: string | null; itemsAndDelivery: number; deliveryFee: number }> };
-      }>(`/v1/orders/${orderId}/checkout`);
+      } & Partial<CheckoutBreakdown>>(`/v1/orders/${orderId}/checkout`);
+    },
+    /** What the order page shows: items, subtotal and delivery for the whole combined delivery (or the order), at any stage. */
+    async getOrderBreakdown(orderId: string) {
+      return request<CheckoutBreakdown & { total: number }>(`/v1/orders/${orderId}/breakdown`);
     },
     async fundOrder(
       orderId: string,

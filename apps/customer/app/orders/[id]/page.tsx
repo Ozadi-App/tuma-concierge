@@ -2,7 +2,7 @@
 
 import { RideStopsList } from "../../../components/ride/RideStopsList";
 import { useRegisterNavPrimaryAction } from "../../../lib/nav-primary-action";
-import { ApiError, type OrderDetail, type OrderRating, type OrderRelay } from "@peebee/shared";
+import { ApiError, type CheckoutBreakdown, type OrderDetail, type OrderRating, type OrderRelay } from "@peebee/shared";
 import { MapPin, MessageCircle, Phone, TriangleAlert, User } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -12,6 +12,7 @@ import { CodeQr } from "../../../components/CodeQr";
 import { FeeProposalVoicePlayer } from "../../../components/FeeProposalVoicePlayer";
 import { LiveTrackingMap } from "../../../components/LiveTrackingMap";
 import { Modal } from "../../../components/Modal";
+import { OrderBreakdown, pickupList } from "../../../components/OrderBreakdown";
 import { OrderTimeline } from "../../../components/OrderTimeline";
 import { RateDeliveryCard } from "../../../components/RateDeliveryCard";
 import { ApplicantPicker } from "../../../components/ApplicantPicker";
@@ -382,6 +383,22 @@ export default function OrderDetailPage() {
 
   useLivePolling(() => void load().catch(() => {}), 4000, [load]);
 
+  // The money breakdown (items, delivery and its legs) for the whole delivery: fetched again only
+  // when something it depends on changes, not on every poll. Older servers have none: the page
+  // then keeps its own per-order lines.
+  const [breakdown, setBreakdown] = useState<(CheckoutBreakdown & { total: number }) | null>(null);
+  const breakdownKey = detail
+    ? [detail.order.id, detail.order.stage, detail.order.final_total, detail.order.estimated_total, detail.order.delivery_fee, (detail.bundleStops ?? []).map((stop) => stop.id + stop.stage).join(","), detail.relay?.lastMile ?? ""].join("|")
+    : null;
+  useEffect(() => {
+    if (!breakdownKey) return;
+    let live = true;
+    api.getOrderBreakdown(orderId)
+      .then((next) => { if (live) setBreakdown(next.delivery ? next : null); })
+      .catch(() => { if (live) setBreakdown(null); });
+    return () => { live = false; };
+  }, [breakdownKey, orderId]);
+
   // Silently find a rider as soon as an unmatched order lands here, then
   // keep retrying on a fixed 4s cadence until one is found. Depends only on
   // stable primitives (stage, rider_id) rather than `detail` itself —
@@ -654,53 +671,61 @@ export default function OrderDetailPage() {
 
       {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
 
-      {order.type === "shopping" && (
-        <section className="home-card space-y-2">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-500">{t("order_items_heading")}</h2>
-          <ul className="space-y-1.5">
-            {items.map((item) => (
-              <li key={item.id} className="flex items-center justify-between text-sm text-ink">
-                <span>
-                  <span className="block">
-                    {item.quantity}× {item.name}
-                    {item.unit_price != null && (
-                      <span className="text-ink-500">
-                        {" "}
-                        · {t("order_est_each")} {formatUgx(item.unit_price)} {t("order_each")}
+      {breakdown && (order.type === "shopping" || !order.is_ride) ? (
+        <section className="home-card">
+          <OrderBreakdown items={breakdown.items} itemsSubtotal={breakdown.itemsSubtotal} delivery={breakdown.delivery} total={breakdown.total} />
+        </section>
+      ) : (
+        <>
+          {order.type === "shopping" && (
+            <section className="home-card space-y-2">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-500">{t("order_items_heading")}</h2>
+              <ul className="space-y-1.5">
+                {items.map((item) => (
+                  <li key={item.id} className="flex items-center justify-between text-sm text-ink">
+                    <span>
+                      <span className="block">
+                        {item.quantity}× {item.name}
+                        {item.unit_price != null && (
+                          <span className="text-ink-500">
+                            {" "}
+                            · {t("order_est_each")} {formatUgx(item.unit_price)} {t("order_each")}
+                          </span>
+                        )}
                       </span>
+                      {item.note && <span className="block text-xs text-ink-500">{item.note}</span>}
+                    </span>
+                    {item.unit_price != null && (
+                      <span className="shrink-0 font-semibold">{formatUgx(item.unit_price * item.quantity)}</span>
                     )}
-                  </span>
-                  {item.note && <span className="block text-xs text-ink-500">{item.note}</span>}
-                </span>
-                {item.unit_price != null && (
-                  <span className="shrink-0 font-semibold">{formatUgx(item.unit_price * item.quantity)}</span>
+                  </li>
+                ))}
+              </ul>
+              <div className="space-y-1 border-t border-[var(--border-faint)] pt-2 text-sm font-semibold">
+                <div className="flex justify-between">
+                  <span>{t("order_items_total")}</span>
+                  <span>{formatUgx((order.final_total ?? order.estimated_total ?? 0) - (order.delivery_fee ?? 0))}</span>
+                </div>
+                <div className="flex justify-between text-ink-500">
+                  <span>{t("order_delivery_fee")}</span>
+                  <span>{formatUgx(order.delivery_fee ?? 0)}</span>
+                </div>
+                {sharedWith.length > 0 && (
+                  <p className="pt-1 text-xs font-normal text-ink-500">
+                    One rider collects from {pickupList([...(detail.bundleStops ?? []).filter((stop) => stop.id === order.id).map((stop) => stop.restaurant_name ?? stop.outlet_name ?? "this pickup"), ...sharedWith])} and brings them to you.
+                  </p>
                 )}
-              </li>
-            ))}
-          </ul>
-          <div className="space-y-1 border-t border-[var(--border-faint)] pt-2 text-sm font-semibold">
-            <div className="flex justify-between">
-              <span>{t("order_items_total")}</span>
-              <span>{formatUgx((order.final_total ?? order.estimated_total ?? 0) - (order.delivery_fee ?? 0))}</span>
-            </div>
-            <div className="flex justify-between text-ink-500">
-              <span>{sharedWith.length === 0 ? t("order_delivery_fee") : order.delivery_bundle_id === order.id ? "Delivery to you" : "Added stop on the way"}</span>
-              <span>{formatUgx(order.delivery_fee ?? 0)}</span>
-            </div>
-            {sharedWith.length > 0 && (
-              <p className="pt-1 text-xs font-normal text-ink-500">
-                One rider also collects from {sharedWith.join(" and ")}. Both orders are paid together.
-              </p>
-            )}
-          </div>
-        </section>
-      )}
+              </div>
+            </section>
+          )}
 
-      {order.type === "parcel" && (
-        <section className="home-card flex justify-between text-sm font-semibold">
-          <span>{order.is_ride ? t("order_fare") : t("order_delivery_fee")}</span>
-          <span>{formatUgx(order.delivery_fee ?? order.final_total ?? order.estimated_total)}</span>
-        </section>
+          {order.type === "parcel" && (
+            <section className="home-card flex justify-between text-sm font-semibold">
+              <span>{order.is_ride ? t("order_fare") : t("order_delivery_fee")}</span>
+              <span>{formatUgx(order.delivery_fee ?? order.final_total ?? order.estimated_total)}</span>
+            </section>
+          )}
+        </>
       )}
 
       {awaitingRiderOrPayment && (

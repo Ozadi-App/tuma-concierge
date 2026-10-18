@@ -157,6 +157,7 @@ export function BagDeliveryBreakdown({
             <BagRelayDetails
               relay={bag.relay}
               storeCount={storeCount}
+              pickups={bag.quote?.stores.map((store) => store.storeName) ?? []}
               lastMile={lastMile}
               onLastMileChange={onLastMileChange}
               meetStageId={meetStageId}

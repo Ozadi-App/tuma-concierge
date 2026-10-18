@@ -165,6 +165,54 @@ test("a bag's delivery is the rider's whole road trip, and a long one offers a r
       const final = (await client.execute("SELECT leg, status FROM order_relay_legs WHERE leg IN (2, 3)")).rows;
       assert.ok(final.every((l) => (Number(l.leg) === 2 ? l.status === "done" : l.status === "in_transit")), "the last rider has the whole bag");
     });
+
+    await t.test("the pay screen's breakdown: items, subtotal, the relay legs and fees add up to what is charged", async () => {
+      for (const [key, value] of Object.entries({ monetization_service_fee_enabled: "1", monetization_service_fee_type: "flat", monetization_service_fee_value: "500", monetization_processing_fee_enabled: "1", monetization_processing_fee_percent: "2", monetization_processing_fee_mode: "customer" })) {
+        await client.execute({ sql: "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", args: [key, value] });
+      }
+      try {
+        const twoStores = [ITEMS[2], { productId: "prod_retro_high_top", storeId: "store_demo_sneaker_hub", title: "Air sneakers", price: 185000, quantity: 1 }];
+        const res = await call("shopper", "/marketplace/checkout", { items: twoStores, paymentRail: "escrow", destinationArea: "Entebbe", ...ENTEBBE_DOOR });
+        assert.equal(res.status, 201, await res.clone().text());
+        const bag = (await json<{ orders: typeof orders }>(res)).orders;
+        assert.equal(bag.length, 2);
+        type Breakdown = {
+          baseAmount: number; mobileMoney: number; wallet: number; cash: number;
+          bundle?: { deliveryFee: number };
+          items: Array<{ orderId: string; storeName: string | null; name: string; quantity: number; price: number | null }>;
+          itemsSubtotal: number;
+          delivery: { total: number; mode: string; pickups: string[]; lastMile?: string; legs?: Array<{ kind: string; fromName: string; toName: string; distanceKm: number; fee: number; direction?: string | null }> };
+        };
+        const quote = await json<Breakdown>(call("shopper", `/orders/${bag[0].id}/checkout`));
+        assert.ok(quote.bundle, "the first pickup's quote covers the whole bag");
+        assert.equal(quote.items.length, 2);
+        assert.deepEqual(quote.items.map((item) => item.price).sort((a, b) => a! - b!), [68500, 185000]);
+        assert.equal(new Set(quote.items.map((item) => item.storeName)).size, 2, "each item names its store");
+        assert.equal(quote.itemsSubtotal, 68500 + 185000);
+        assert.equal(quote.delivery.mode, "relay");
+        assert.equal(quote.delivery.lastMile, "door");
+        assert.equal(quote.delivery.pickups.length, 2, "the first rider collects from both stores");
+        assert.deepEqual(quote.delivery.legs!.map((leg) => leg.kind), ["boda", "matatu", "boda"]);
+        assert.match(quote.delivery.legs![1].direction ?? "", /^[A-Z]{2,4} - [A-Z]{2,4}$/, "the matatu leg carries its direction");
+        assert.equal(quote.delivery.legs!.reduce((sum, leg) => sum + leg.fee, 0), quote.delivery.total, "the legs make up the delivery charged");
+        assert.equal(quote.delivery.total, bag.reduce((sum, order) => sum + order.delivery_fee, 0));
+        assert.equal(quote.itemsSubtotal + quote.delivery.total, quote.baseAmount);
+        assert.ok(quote.mobileMoney > quote.baseAmount, "fees apply");
+        for (const charged of [quote.mobileMoney, quote.wallet, quote.cash]) {
+          const fees = charged - quote.baseAmount;
+          assert.ok(fees >= 0);
+          assert.equal(quote.itemsSubtotal + quote.delivery.total + fees, charged);
+        }
+        // The order page shows the same breakdown from either store's order.
+        const page = await json<Breakdown & { total: number }>(call("shopper", `/orders/${bag[1].id}/breakdown`));
+        assert.equal(page.itemsSubtotal, quote.itemsSubtotal);
+        assert.equal(page.delivery.total, quote.delivery.total);
+        assert.equal(page.total, quote.baseAmount);
+        assert.equal((await call("first", `/orders/${bag[1].id}/breakdown`)).status, 403);
+      } finally {
+        await client.execute("DELETE FROM settings WHERE key LIKE 'monetization_%'");
+      }
+    });
   } finally {
     process.env.JWT_SECRET = previousSecret;
     client.close();

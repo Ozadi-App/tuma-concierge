@@ -1,6 +1,7 @@
 "use client";
 
 import type { BagRelay } from "../lib/bag-quote";
+import { relayLegLabel } from "./OrderBreakdown";
 import { LastMileChoice, pickMeetStageId, type LastMileChoiceValue } from "./LastMileChoice";
 
 /** Whether the bag's relay asks the customer to choose now (door/collect, or meeting the matatu at a stage). */
@@ -33,12 +34,14 @@ export function BagRelayDetails({
   meetStageId,
   onMeetStageChange,
   disabled,
-  storeCount = 1,
+  pickups = [],
   className = "",
 }: {
   relay: BagRelay;
-  /** Stores in the bag: with more than one, the first rider collects from each before the stage. */
+  /** Stores in the bag (kept for callers; `pickups` names them). */
   storeCount?: number;
+  /** The stores' names, in pickup order: the first boda leg names them all. */
+  pickups?: string[];
   lastMile: LastMileChoiceValue;
   onLastMileChange: (value: LastMileChoiceValue) => void;
   meetStageId?: string | null;
@@ -70,17 +73,18 @@ export function BagRelayDetails({
       ) : station && !toDoor ? (
         <p>Collect at {station}, or send a rider when it arrives.</p>
       ) : null}
-      {legs.map((leg) => {
-        const to = leg.leg === 3 ? "your door" : leg.toName;
-        const route = leg.kind === "boda" && leg.leg === 1 && storeCount > 1
-          ? `collects from every store, then to ${to}`
-          : `${leg.fromName} → ${to}`;
+      {legs.map((leg, i) => {
+        // The same labels as the pay screen: the first boda names every store, the matatu its direction.
+        const label = relayLegLabel(
+          { ...leg, distanceKm: leg.distanceKm ?? null, direction: leg.kind === "matatu" ? relay.direction ?? null : undefined },
+          i,
+          legs.length,
+          pickups,
+          toDoor,
+        );
         return (
           <div key={leg.leg} className="flex justify-between gap-3">
-            <span className="min-w-0">
-              {leg.kind === "matatu" ? `Matatu${relay.direction ? ` ${relay.direction}` : ""}` : "Boda"}: {route}
-              {leg.distanceKm != null && Number.isFinite(leg.distanceKm) ? ` · ${leg.distanceKm.toFixed(1)} km` : ""}
-            </span>
+            <span className="min-w-0">{label}</span>
             <span className="shrink-0">UGX {leg.fee.toLocaleString()}</span>
           </div>
         );
