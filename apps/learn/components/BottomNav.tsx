@@ -1,6 +1,6 @@
 "use client";
 
-import { Home, Video, MessageSquare, Layers, UserRound } from "lucide-react";
+import { BookOpen, Video, MessageSquare, Layers, UserRound } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -8,9 +8,9 @@ export function BottomNav() {
   const pathname = usePathname();
 
   const tabs = [
-    { href: "/", label: "Home", icon: Home },
-    { href: "/live", label: "Live Classes", icon: Video },
-    { href: "/chat", label: "Tutor Chat", icon: MessageSquare },
+    { href: "/", label: "Studio", icon: BookOpen },
+    { href: "/live", label: "Live Host", icon: Video },
+    { href: "/chat", label: "Students", icon: MessageSquare },
     { href: "/streams", label: "Streams", icon: Layers },
     { href: "/account", label: "Account", icon: UserRound },
   ];
