@@ -110,6 +110,7 @@ import type {
   MatchingMode,
   NavMode,
   OrderDetail,
+  CheckoutBreakdown,
   OrderEvent,
   OrderRow,
   OrderOverview,
@@ -612,7 +613,11 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
     async getRelayQuote(input: { pickupLat: number; pickupLng: number; destinationLat: number; destinationLng: number; pickupName?: string; destinationName?: string }) {
       const params = new URLSearchParams();
       for (const [key, value] of Object.entries(input)) if (value != null && value !== "") params.set(key, String(value));
-      return request<{ relay: RelayQuote | null; /** One boda all the way, along the road. */ boda?: { distanceKm: number; fee: number } }>(`/v1/relay/quote?${params}`);
+      return request<{
+        relay: RelayQuote | null;
+        /** One boda all the way, along the road. */ boda?: { distanceKm: number; fee: number };
+        /** "Direct" is promised in under this many hours (admin setting). */ directMaxHours?: number;
+      }>(`/v1/relay/quote?${params}`);
     },
     async trackRelayOrder(orderId: string) {
       return request<RelayTrack>(`/v1/relay/orders/${encodeURIComponent(orderId)}/track`);
@@ -786,7 +791,13 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
         baseAmount: number; mobileMoney: number; wallet: number; cash: number;
         /** Present on the first pickup of a combined delivery: the quote covers every pickup. */
         bundle?: { deliveryFee: number; orders: Array<{ id: string; restaurantName: string | null; itemsAndDelivery: number; deliveryFee: number }> };
-      }>(`/v1/orders/${orderId}/checkout`);
+        /** A relay that can be paid now, before any rider accepts it (admin setting). */
+        payBeforeRider?: boolean;
+      } & Partial<CheckoutBreakdown>>(`/v1/orders/${orderId}/checkout`);
+    },
+    /** What the order page shows: items, subtotal and delivery for the whole combined delivery (or the order), at any stage. */
+    async getOrderBreakdown(orderId: string) {
+      return request<CheckoutBreakdown & { total: number }>(`/v1/orders/${orderId}/breakdown`);
     },
     async fundOrder(
       orderId: string,
@@ -1898,6 +1909,8 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
         deliveryMode?: "rider" | "relay";
         /** The delivery fee each way, so both choices show their price. */
         options?: { rider: number; relay: number | null };
+        /** "Direct" (one rider all the way) is promised in under this many hours (admin setting). */
+        directMaxHours?: number;
         stores: Array<{ storeId: string; storeName: string; itemsTotal: number; deliveryFee: number }>;
         /** One rider's whole trip along the road; null without a delivery location. */
         trip?: BagTrip | null;

@@ -8,6 +8,14 @@ import { signToken } from "../auth/jwt.js";
 import { setD1Binding, type D1Database } from "../db/client.js";
 import { splitSqlStatements } from "../db/split-sql.js";
 import { resetSchemaCache } from "../lib/schema.js";
+import { reconcilePayment } from "../payments/reconciliation.js";
+
+// The payment mocks settle from a hash of the provider reference; pick a reference that succeeds.
+function refWithOutcome(succeeds: boolean): string {
+  const hash = (input: string) => { let h = 0; for (let i = 0; i < input.length; i++) h = (h * 31 + input.charCodeAt(i)) >>> 0; return h; };
+  for (let i = 0; i < 1000; i++) if ((hash(`bag-pay-first-${i}`) % 100 < 8) !== succeeds) return `bag-pay-first-${i}`;
+  throw new Error("no reference found");
+}
 
 function bindDatabase(client: Client) {
   const prepare = (sql: string) => ({
@@ -164,6 +172,109 @@ test("a bag's delivery is the rider's whole road trip, and a long one offers a r
       assert.equal((await call("last", `/relay/legs/${open.legs[0].id}/collect`, { code: leadLeg.handoff_code })).status, 200);
       const final = (await client.execute("SELECT leg, status FROM order_relay_legs WHERE leg IN (2, 3)")).rows;
       assert.ok(final.every((l) => (Number(l.leg) === 2 ? l.status === "done" : l.status === "in_transit")), "the last rider has the whole bag");
+    });
+
+    await t.test("the pay screen's breakdown: items, subtotal, the relay legs and fees add up to what is charged", async () => {
+      for (const [key, value] of Object.entries({ monetization_service_fee_enabled: "1", monetization_service_fee_type: "flat", monetization_service_fee_value: "500", monetization_processing_fee_enabled: "1", monetization_processing_fee_percent: "2", monetization_processing_fee_mode: "customer" })) {
+        await client.execute({ sql: "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", args: [key, value] });
+      }
+      try {
+        const twoStores = [ITEMS[2], { productId: "prod_retro_high_top", storeId: "store_demo_sneaker_hub", title: "Air sneakers", price: 185000, quantity: 1 }];
+        const res = await call("shopper", "/marketplace/checkout", { items: twoStores, paymentRail: "escrow", destinationArea: "Entebbe", ...ENTEBBE_DOOR });
+        assert.equal(res.status, 201, await res.clone().text());
+        const bag = (await json<{ orders: typeof orders }>(res)).orders;
+        assert.equal(bag.length, 2);
+        type Breakdown = {
+          baseAmount: number; mobileMoney: number; wallet: number; cash: number;
+          bundle?: { deliveryFee: number };
+          items: Array<{ orderId: string; storeName: string | null; name: string; quantity: number; price: number | null }>;
+          itemsSubtotal: number;
+          delivery: { total: number; mode: string; pickups: string[]; lastMile?: string; legs?: Array<{ kind: string; fromName: string; toName: string; distanceKm: number; fee: number; direction?: string | null }> };
+        };
+        const quote = await json<Breakdown>(call("shopper", `/orders/${bag[0].id}/checkout`));
+        assert.ok(quote.bundle, "the first pickup's quote covers the whole bag");
+        assert.equal(quote.items.length, 2);
+        assert.deepEqual(quote.items.map((item) => item.price).sort((a, b) => a! - b!), [68500, 185000]);
+        assert.equal(new Set(quote.items.map((item) => item.storeName)).size, 2, "each item names its store");
+        assert.equal(quote.itemsSubtotal, 68500 + 185000);
+        assert.equal(quote.delivery.mode, "relay");
+        assert.equal(quote.delivery.lastMile, "door");
+        assert.equal(quote.delivery.pickups.length, 2, "the first rider collects from both stores");
+        assert.deepEqual(quote.delivery.legs!.map((leg) => leg.kind), ["boda", "matatu", "boda"]);
+        assert.match(quote.delivery.legs![1].direction ?? "", /^[A-Z]{2,4} - [A-Z]{2,4}$/, "the matatu leg carries its direction");
+        assert.equal(quote.delivery.legs!.reduce((sum, leg) => sum + leg.fee, 0), quote.delivery.total, "the legs make up the delivery charged");
+        assert.equal(quote.delivery.total, bag.reduce((sum, order) => sum + order.delivery_fee, 0));
+        assert.equal(quote.itemsSubtotal + quote.delivery.total, quote.baseAmount);
+        assert.ok(quote.mobileMoney > quote.baseAmount, "fees apply");
+        for (const charged of [quote.mobileMoney, quote.wallet, quote.cash]) {
+          const fees = charged - quote.baseAmount;
+          assert.ok(fees >= 0);
+          assert.equal(quote.itemsSubtotal + quote.delivery.total + fees, charged);
+        }
+        // The order page shows the same breakdown from either store's order.
+        const page = await json<Breakdown & { total: number }>(call("shopper", `/orders/${bag[1].id}/breakdown`));
+        assert.equal(page.itemsSubtotal, quote.itemsSubtotal);
+        assert.equal(page.delivery.total, quote.delivery.total);
+        assert.equal(page.total, quote.baseAmount);
+        assert.equal((await call("first", `/orders/${bag[1].id}/breakdown`)).status, 403);
+      } finally {
+        await client.execute("DELETE FROM settings WHERE key LIKE 'monetization_%'");
+      }
+    });
+
+    const twoStores = [ITEMS[0], ITEMS[1]];
+    const stagesOf = async (ids: string[]) => Promise.all(ids.map(async (id) => {
+      const row = (await client.execute({ sql: "SELECT stage, rider_id FROM orders WHERE id = ?", args: [id] })).rows[0];
+      return `${row.stage}/${row.rider_id ?? "-"}`;
+    }));
+    await t.test("Relay: a two-store bag is paid in full before any rider, and both stores proceed once the rider is assigned", async () => {
+      await client.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('payments_demo_mode', '1')");
+      try {
+        const res = await call("shopper", "/marketplace/checkout", { items: twoStores, paymentRail: "escrow", destinationArea: "Entebbe", ...ENTEBBE_DOOR });
+        assert.equal(res.status, 201, await res.clone().text());
+        const bag = (await json<{ orders: typeof orders }>(res)).orders;
+        const ids = bag.map((order) => order.id);
+        assert.equal(ids.length, 2);
+        assert.deepEqual(await stagesOf(ids), ["Create/-", "Create/-"]);
+        const quote = await json<{ mobileMoney: number; payBeforeRider: boolean; bundle?: object }>(call("shopper", `/orders/${ids[0]}/checkout`));
+        assert.ok(quote.bundle);
+        assert.equal(quote.payBeforeRider, true);
+        assert.equal(quote.mobileMoney, bag.reduce((sum, order) => sum + order.estimated_total, 0), "the combined total");
+
+        const second = await call("shopper", `/orders/${ids[1]}/fund`, { paymentMethod: "mobile_money", msisdn: "256772123456", acceptedAmount: quote.mobileMoney });
+        assert.equal(second.status, 409, "the bag is paid from its first store");
+        const paid = await call("shopper", `/orders/${ids[0]}/fund`, { paymentMethod: "mobile_money", msisdn: "256772123456", acceptedAmount: quote.mobileMoney });
+        assert.equal(paid.status, 200, await paid.clone().text());
+        const payment = (await json<{ payment: { id: string; status: string } }>(paid)).payment;
+        assert.equal(payment.status, "pending");
+        assert.deepEqual(await stagesOf(ids), ["Fund/-", "Fund/-"]);
+        await client.execute({ sql: "UPDATE payments SET provider_ref = ?, created_at = datetime('now', '-1 hour') WHERE id = ?", args: [refWithOutcome(true), payment.id] });
+        const child = (await client.execute({ sql: "SELECT id FROM payments WHERE order_id = ?", args: [ids[1]] })).rows[0];
+        assert.equal(await reconcilePayment(String(child.id), "test"), "successful", "checking either store's payment resolves the collection");
+        assert.deepEqual(await stagesOf(ids), ["Match/-", "Match/-"], "both funded, waiting for a rider");
+        const collected = (await client.execute({ sql: `SELECT SUM(amount) AS total FROM payments WHERE order_id IN (?, ?) AND type = 'collection' AND status = 'successful'`, args: ids })).rows[0];
+        assert.equal(Number(collected.total), quote.mobileMoney, "both orders are funded with the one payment");
+
+        await client.execute({ sql: "UPDATE orders SET matching_mode = 'first_to_claim', updated_at = datetime('now', '-1 hour') WHERE id IN (?, ?)", args: ids });
+        const claim = await call("first", `/orders/${ids[0]}/claim`, {});
+        assert.equal(claim.status, 200, await claim.clone().text());
+        assert.deepEqual(await stagesOf(ids), ["Shop/first", "Shop/first"], "the rider takes the whole bag and both go straight to Shop");
+        assert.equal((await client.execute({ sql: "SELECT COUNT(*) AS n FROM payments WHERE order_id IN (?, ?)", args: ids })).rows[0].n, 2, "no second charge");
+        await client.execute({ sql: "UPDATE orders SET stage = 'Settle' WHERE id IN (?, ?)", args: ids });
+      } finally {
+        await client.execute("DELETE FROM settings WHERE key = 'payments_demo_mode'");
+      }
+    });
+
+    await t.test("Direct: a one-rider bag still waits for its rider before it can be paid", async () => {
+      const res = await call("shopper", "/marketplace/checkout", { items: twoStores, paymentRail: "escrow", destinationArea: "Entebbe", ...ENTEBBE_DOOR, deliveryMode: "rider" });
+      assert.equal(res.status, 201, await res.clone().text());
+      const bag = (await json<{ orders: typeof orders }>(res)).orders;
+      const quote = await json<{ wallet: number; payBeforeRider: boolean }>(call("shopper", `/orders/${bag[0].id}/checkout`));
+      assert.equal(quote.payBeforeRider, false);
+      const early = await call("shopper", `/orders/${bag[0].id}/fund`, { paymentMethod: "wallet", useWallet: true, acceptedAmount: quote.wallet });
+      assert.equal(early.status, 409);
+      assert.deepEqual(await stagesOf(bag.map((order) => order.id)), ["Create/-", "Create/-"]);
     });
   } finally {
     process.env.JWT_SECRET = previousSecret;

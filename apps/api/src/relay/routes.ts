@@ -82,8 +82,10 @@ relayRoutes.get("/relay/quote", async (c) => {
     { lat: d.destinationLat, lng: d.destinationLng, name: d.destinationName },
     { tripKm: bodaKm },
   );
-  const { lastMileChoice } = await getRelaySettings();
+  const { lastMileChoice, directMaxHours } = await getRelaySettings();
   return c.json({
+    /** "Direct" (one boda all the way) is promised in under this many hours (admin setting). */
+    directMaxHours,
     boda: { distanceKm: Math.round(bodaKm * 10) / 10, fee: roundFare(bodaKm * deliveryRatePerKm, minimumDeliveryFee) },
     relay: plan && {
       routeName: plan.routeName,
@@ -404,6 +406,8 @@ const settingsSchema = z.object({
   arrivalNoticeMinutes: z.number().int().min(1).max(120),
   sandboxDemo: z.boolean(),
   sandboxDemoStepSeconds: z.number().int().min(5).max(600),
+  payBeforeRider: z.boolean(),
+  directMaxHours: z.number().int().min(1).max(24),
 }).partial();
 
 relayRoutes.put("/admin/relay/settings", requirePermission("settings.manage"), async (c) => {

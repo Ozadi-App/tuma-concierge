@@ -11,6 +11,7 @@ import { roundFare, type MatchingMode } from "@peebee/shared";
 import { snapshotTimeFees } from "../orders/time-fees.js";
 import { notifyUser } from "../lib/webpush.js";
 import { insertRelayLegs, planRelay, relayChargeFor, resolveLastMile, type RelayLastMile, type RelayMeet, type RelayPlan } from "../relay/service.js";
+import { getRelaySettings } from "../relay/settings.js";
 
 export const marketplaceRoutes = new Hono();
 
@@ -1902,6 +1903,8 @@ marketplaceRoutes.post("/marketplace/checkout/quote", requireAuth, async (c) => 
     deliveryMode: bag.mode,
     /** The delivery fee each way, so both choices show their price. */
     options: { rider: trip?.fee ?? deliveryFee, relay: relayed?.fee ?? null },
+    /** "Direct" (one rider all the way) is promised in under this many hours (admin setting). */
+    directMaxHours: (await getRelaySettings()).directMaxHours,
     stores: stops.map((stop) => ({ storeId: stop.storeId, storeName: stop.storeName, itemsTotal: stop.itemsTotal, deliveryFee: stop.deliveryFee })),
     // One rider's whole trip along the road: each leg, the direct trip and the distance the other stops add.
     trip,

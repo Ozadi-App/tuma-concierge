@@ -132,6 +132,26 @@ test("sandbox relay demo: demo riders, matatu and petrol station carry a parcel 
       assert.equal(await stageOf(order.id), "Settle");
     });
 
+    await t.test("paid before any rider: the demo assigns its rider straight into Shop and carries the parcel to the end", async () => {
+      const order = await parcel("door");
+      const quote = await json<{ wallet: number; payBeforeRider: boolean }>(call("customer", `orders/${order.id}/checkout`));
+      assert.equal(quote.payBeforeRider, true);
+      assert.equal((await call("customer", `orders/${order.id}/fund`, { paymentMethod: "wallet", useWallet: true, acceptedAmount: quote.wallet })).status, 200);
+      assert.equal(await stageOf(order.id), "Match", "paid, no rider yet");
+      assert.deepEqual(await runDemo(order.id), [
+        "first rider assigned", "first rider set off", "matatu received", "matatu nearly there", "matatu arrived", "station received",
+        "last rider assigned", "last rider collected at the station", "last rider at the door",
+      ], "no wait for payment after the rider is assigned");
+      const pin = String((await client.execute({ sql: "SELECT pin_code FROM orders WHERE id = ?", args: [order.id] })).rows[0].pin_code);
+      assert.equal((await call("customer", `orders/${order.id}/handover`, { pin })).status, 200);
+      assert.deepEqual(await runDemo(order.id), ["settled"]);
+      assert.equal(await stageOf(order.id), "Settle");
+      const payments = (await client.execute({ sql: "SELECT type, amount FROM payments WHERE order_id = ? ORDER BY created_at", args: [order.id] })).rows;
+      assert.deepEqual(payments.filter((p) => p.type === "collection").map((p) => Number(p.amount)), [quote.wallet], "paid once");
+      const legs = (await client.execute({ sql: "SELECT COALESCE(SUM(paid_amount), 0) AS paid FROM order_relay_legs WHERE order_id = ?", args: [order.id] })).rows[0];
+      assert.equal(Number(legs.paid), quote.wallet, "the legs are paid what was collected");
+    });
+
     await t.test("a real tester acting first is never overridden, and live orders are never touched", async () => {
       const order = await parcel("door");
       assert.equal(await stepSandboxRelay(order.id), null, "inside the step delay the demo waits");

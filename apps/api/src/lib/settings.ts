@@ -455,6 +455,10 @@ const DEFAULTS = {
   relay_sandbox_demo: "1",
   /** Seconds each demo step waits, so a real tester can act first. */
   relay_sandbox_demo_step_seconds: "20",
+  /** A relay order can be paid as soon as it is placed; off: it waits for a rider like a direct order. */
+  relay_pay_before_rider: "1",
+  /** "Direct" (one rider all the way) is promised in under this many hours. */
+  direct_delivery_max_hours: "3",
 } as const;
 
 export type SettingKey = keyof typeof DEFAULTS;

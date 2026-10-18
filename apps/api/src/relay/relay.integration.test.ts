@@ -10,6 +10,14 @@ import { splitSqlStatements } from "../db/split-sql.js";
 import { orderRoutes } from "../orders/routes.js";
 import { relayRoutes } from "./routes.js";
 import { resetSchemaCache } from "../lib/schema.js";
+import { reconcilePayment } from "../payments/reconciliation.js";
+
+// The payment mocks settle from a hash of the provider reference; pick references that do / don't succeed.
+function refWithOutcome(succeeds: boolean): string {
+  const hash = (input: string) => { let h = 0; for (let i = 0; i < input.length; i++) h = (h * 31 + input.charCodeAt(i)) >>> 0; return h; };
+  for (let i = 0; i < 1000; i++) if ((hash(`relay-pay-first-${i}`) % 100 < 8) !== succeeds) return `relay-pay-first-${i}`;
+  throw new Error("no reference found");
+}
 
 function bindDatabase(client: Client) {
   const prepare = (sql: string) => ({
@@ -214,6 +222,153 @@ test("relay delivery: boda -> matatu -> boda with coded handoffs and split payou
       assert.deepEqual(legs.map((l) => l.status), ["done", "done", "done"]);
       const view = (await (await call("customer", `orders/${orderId}`)).json()) as { relay: { legs: { handedOverAt: string | null }[] } };
       assert.ok(view.relay.legs.every((leg) => leg.handedOverAt), "every handoff is timestamped");
+    });
+
+    // ---- Relay is paid before any rider; Direct waits for one --------------------------------
+    let lists = 0;
+    const relayParcel = async () => {
+      const listId = `pf-${++lists}`;
+      await client.execute({ sql: "INSERT INTO lists (id, customer_id, title) VALUES (?, 'customer', 'Pay first')", args: [listId] });
+      const res = await parcel(listId, PICKUP, DOOR);
+      assert.equal(res.status, 201);
+      const order = ((await res.json()) as { order: { id: string; estimated_total: number; stage: string; rider_id: string | null } }).order;
+      assert.deepEqual([order.stage, order.rider_id], ["Create", null]);
+      return order;
+    };
+    const orderRow = async (id: string) => {
+      const row = (await client.execute({ sql: "SELECT stage, rider_id FROM orders WHERE id = ?", args: [id] })).rows[0];
+      return [row.stage, row.rider_id];
+    };
+    const payWallet = (id: string, amount: number) => call("customer", `orders/${id}/fund`, { paymentMethod: "wallet", useWallet: true, acceptedAmount: amount });
+    const claimable = (id: string) => client.execute({ sql: "UPDATE orders SET matching_mode = 'first_to_claim', updated_at = datetime('now', '-1 hour') WHERE id = ?", args: [id] });
+    const checkout = async (id: string) => (await (await call("customer", `orders/${id}/checkout`)).json()) as { wallet: number; payBeforeRider: boolean };
+
+    await t.test("relay paid before a rider: the rider is assigned straight into Shop and the legs share what was paid", async () => {
+      const order = await relayParcel();
+      const quote = await checkout(order.id);
+      assert.equal(quote.payBeforeRider, true, "the pay screen offers Pay now");
+      await client.execute({ sql: "UPDATE users SET wallet_balance = ? WHERE id = 'customer'", args: [quote.wallet] });
+      const paid = await payWallet(order.id, quote.wallet);
+      assert.equal(paid.status, 200, await paid.clone().text());
+      assert.deepEqual(await orderRow(order.id), ["Match", null], "paid and held in escrow, waiting for a rider");
+      assert.equal(await wallet("users", "customer"), 0);
+      assert.equal((await payWallet(order.id, quote.wallet)).status, 409, "never paid twice");
+      assert.equal((await checkout(order.id)).payBeforeRider, false, "nothing left to pay");
+      assert.equal((await call("customer", `orders/${order.id}/customer-delete`, {})).status, 409, "a paid order is cancelled, never just deleted");
+
+      const before = { first: await wallet("riders", "first"), op: await wallet("users", "op"), last: await wallet("riders", "last") };
+      await claimable(order.id);
+      const claim = await call("first", `orders/${order.id}/claim`, {});
+      assert.equal(claim.status, 200, await claim.clone().text());
+      assert.deepEqual(await orderRow(order.id), ["Shop", "first"], "straight to Shop, no payment wait");
+      assert.equal((await client.execute({ sql: "SELECT COUNT(*) AS n FROM payments WHERE order_id = ?", args: [order.id] })).rows[0].n, 1, "one payment only");
+
+      assert.equal((await call("first", `orders/${order.id}/deliver`, {})).status, 200);
+      await client.execute({ sql: "UPDATE orders SET pin_code = '2468' WHERE id = ?", args: [order.id] });
+      const code = ((await (await call("first", `orders/${order.id}`)).json()) as { relay: { legs: { handoffCode?: string }[] } }).relay.legs[0].handoffCode!;
+      assert.equal((await call("op", "relay/operator/receive", { code })).status, 200);
+      const carrying = ((await (await call("op", "relay/operator/parcels")).json()) as { carrying: { id: string; order_id: string; handoff_code: string }[] }).carrying.find((p) => p.order_id === order.id)!;
+      assert.equal((await call("op", `relay/operator/legs/${carrying.id}/arrived`, {})).status, 200);
+      const open = ((await (await call("last", "relay/legs/open")).json()) as { legs: { id: string; order_id: string }[] }).legs.find((l) => l.order_id === order.id)!;
+      assert.equal((await call("last", `relay/legs/${open.id}/claim`, {})).status, 200);
+      assert.equal((await call("last", `relay/legs/${open.id}/collect`, { code: carrying.handoff_code })).status, 200);
+      assert.equal((await call("last", `orders/${order.id}/arrived`, {})).status, 200);
+      assert.equal((await call("customer", `orders/${order.id}/handover`, { pin: "2468" })).status, 200);
+      assert.equal((await call("last", `orders/${order.id}/settle`, {})).status, 200);
+      assert.equal((await orderRow(order.id))[0], "Settle");
+      const payouts = (await wallet("riders", "first")) - before.first + (await wallet("users", "op")) - before.op + (await wallet("riders", "last")) - before.last;
+      assert.equal(payouts, quote.wallet, "the leg payouts sum to what the customer paid");
+    });
+
+    await t.test("relay paid and cancelled before any rider is refunded in full", async () => {
+      const order = await relayParcel();
+      const quote = await checkout(order.id);
+      await client.execute({ sql: "UPDATE users SET wallet_balance = ? WHERE id = 'customer'", args: [quote.wallet + 700] });
+      assert.equal((await payWallet(order.id, quote.wallet)).status, 200);
+      assert.equal(await wallet("users", "customer"), 700);
+      const cancel = await call("customer", `orders/${order.id}/customer-cancel`, { acceptedFee: 0 });
+      assert.equal(cancel.status, 200, await cancel.clone().text());
+      assert.equal((await orderRow(order.id))[0], "Cancelled");
+      assert.equal(await wallet("users", "customer"), quote.wallet + 700, "every shilling is back in the wallet");
+      const refund = (await client.execute({ sql: "SELECT amount FROM payments WHERE order_id = ? AND type = 'refund' AND status = 'successful'", args: [order.id] })).rows;
+      assert.deepEqual(refund.map((r) => Number(r.amount)), [quote.wallet]);
+    });
+
+    await t.test("the no-rider expiry sweep refunds a relay paid before any rider", async () => {
+      const order = await relayParcel();
+      const quote = await checkout(order.id);
+      await client.execute({ sql: "UPDATE users SET wallet_balance = ? WHERE id = 'customer'", args: [quote.wallet] });
+      assert.equal((await payWallet(order.id, quote.wallet)).status, 200);
+      for (const [key, value] of Object.entries({ job_expiry_enabled: "1", job_expiry_value: "30", job_expiry_unit: "minutes" })) {
+        await client.execute({ sql: "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", args: [key, value] });
+      }
+      try {
+        await client.execute({ sql: "UPDATE orders SET created_at = datetime('now', '-2 hours') WHERE id = ?", args: [order.id] });
+        const { sweepExpiredOrders } = await import("../orders/expiry.js");
+        assert.ok((await sweepExpiredOrders()).expired >= 1);
+        assert.equal((await orderRow(order.id))[0], "Cancelled");
+        assert.equal(await wallet("users", "customer"), quote.wallet, "refunded to the wallet");
+      } finally {
+        await client.execute("DELETE FROM settings WHERE key LIKE 'job_expiry_%'");
+      }
+    });
+
+    await t.test("Mobile Money paid before a rider: pending holds the order, success waits in Match, failure returns it", async () => {
+      await client.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('payments_demo_mode', '1')");
+      try {
+        for (const succeeds of [false, true]) {
+          const order = await relayParcel();
+          const res = await call("customer", `orders/${order.id}/fund`, { paymentMethod: "mobile_money", msisdn: "256772123456" });
+          assert.equal(res.status, 200, await res.clone().text());
+          const payment = ((await res.json()) as { payment: { id: string; status: string } }).payment;
+          assert.equal(payment.status, "pending");
+          assert.equal((await orderRow(order.id))[0], "Fund");
+          await claimable(order.id);
+          assert.notEqual((await call("first", `orders/${order.id}/claim`, {})).status, 200, "no rider while the payment is pending");
+          await client.execute({ sql: "UPDATE payments SET provider_ref = ?, created_at = datetime('now', '-1 hour') WHERE id = ?", args: [refWithOutcome(succeeds), payment.id] });
+          assert.equal(await reconcilePayment(payment.id, "test"), succeeds ? "successful" : "failed");
+          assert.deepEqual(await orderRow(order.id), [succeeds ? "Match" : "Create", null]);
+          if (!succeeds) {
+            assert.equal((await checkout(order.id)).payBeforeRider, true, "a failed payment can be tried again");
+            await client.execute({ sql: "UPDATE orders SET stage = 'Cancelled' WHERE id = ?", args: [order.id] });
+            continue;
+          }
+          await claimable(order.id);
+          assert.equal((await call("first", `orders/${order.id}/claim`, {})).status, 200);
+          assert.deepEqual(await orderRow(order.id), ["Shop", "first"]);
+          await client.execute({ sql: "UPDATE orders SET stage = 'Settle' WHERE id = ?", args: [order.id] });
+        }
+      } finally {
+        await client.execute("DELETE FROM settings WHERE key = 'payments_demo_mode'");
+      }
+    });
+
+    await t.test("with relay_pay_before_rider off, a relay waits for its rider before payment, as before", async () => {
+      const put = await call("staff", "admin/relay/settings", { payBeforeRider: false, directMaxHours: 4 }, "PUT");
+      assert.equal(put.status, 200);
+      const saved = ((await put.json()) as { settings: { payBeforeRider: boolean; directMaxHours: number } }).settings;
+      assert.deepEqual([saved.payBeforeRider, saved.directMaxHours], [false, 4]);
+      assert.equal((await call("staff", "admin/relay/settings", { directMaxHours: 0 }, "PUT")).status, 400);
+      assert.equal((await call("staff", "admin/relay/settings", { directMaxHours: 2.5 }, "PUT")).status, 400);
+      const logged = (await client.execute("SELECT after_json FROM admin_activity_log WHERE action = 'settings.relay' ORDER BY created_at DESC LIMIT 1")).rows[0];
+      assert.match(String(logged.after_json), /"payBeforeRider":false/, "the switch is in the activity log");
+      try {
+        const order = await relayParcel();
+        const quote = await checkout(order.id);
+        assert.equal(quote.payBeforeRider, false);
+        await client.execute({ sql: "UPDATE users SET wallet_balance = ? WHERE id = 'customer'", args: [quote.wallet] });
+        const early = await payWallet(order.id, quote.wallet);
+        assert.equal(early.status, 409);
+        assert.equal(((await early.json()) as { error: string }).error, "invalid_stage", "as before: no payment until a rider has accepted");
+        await claimable(order.id);
+        assert.equal((await call("first", `orders/${order.id}/claim`, {})).status, 200);
+        assert.deepEqual(await orderRow(order.id), ["Match", "first"], "waits for payment");
+        assert.equal((await payWallet(order.id, quote.wallet)).status, 200);
+        assert.equal((await orderRow(order.id))[0], "Shop");
+        await client.execute({ sql: "UPDATE orders SET stage = 'Settle' WHERE id = ?", args: [order.id] });
+      } finally {
+        assert.equal((await call("staff", "admin/relay/settings", { payBeforeRider: true, directMaxHours: 3 }, "PUT")).status, 200);
+      }
     });
 
     await t.test("before migration 0107: codes come from the stage names and saving codes asks for the migration", async () => {

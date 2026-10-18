@@ -139,6 +139,13 @@ export async function reconcilePayment(paymentId: string, actorId: string): Prom
       sql: "UPDATE payments SET status = 'failed', updated_at = datetime('now') WHERE id = ? AND status = 'pending'",
       args: [paymentId],
     });
+    // A relay paid before any rider goes back to waiting, so it can be paid again or expire.
+    if (payment.type === "collection") {
+      await db.execute({
+        sql: "UPDATE orders SET stage = 'Create', updated_at = datetime('now') WHERE id = ? AND stage = 'Fund' AND rider_id IS NULL",
+        args: [String(payment.order_id)],
+      });
+    }
     if (op) await finishProviderOperation(String(op.id), "failed", "provider_confirmed_failed");
     await finishBundleChildren(paymentId, "failed", actorId);
     return status;
@@ -153,13 +160,14 @@ export async function reconcilePayment(paymentId: string, actorId: string): Prom
   if (payment.type === "collection") {
     statements.push(
       {
-        sql: "UPDATE orders SET stage = 'Shop', updated_at = datetime('now') WHERE id = ? AND stage = 'Fund'",
+        // A relay paid before any rider waits in Match, escrow held, until assignRider starts it.
+        sql: "UPDATE orders SET stage = CASE WHEN rider_id IS NULL THEN 'Match' ELSE 'Shop' END, updated_at = datetime('now') WHERE id = ? AND stage = 'Fund'",
         args: [String(payment.order_id)],
       },
       {
         sql: `INSERT OR IGNORE INTO order_events (id, order_id, stage, note, actor_id)
-              SELECT ?, ?, 'Shop', 'Escrow funded — shopping started', ?
-              WHERE EXISTS (SELECT 1 FROM orders WHERE id = ? AND stage = 'Shop')`,
+              SELECT ?, ?, stage, CASE WHEN stage = 'Shop' THEN 'Escrow funded — shopping started' ELSE 'Escrow funded — held until a rider is assigned' END, ?
+              FROM orders WHERE id = ? AND (stage = 'Shop' OR (stage = 'Match' AND rider_id IS NULL))`,
         args: [`evt_payment_${paymentId}`, String(payment.order_id), actorId, String(payment.order_id)],
       },
     );

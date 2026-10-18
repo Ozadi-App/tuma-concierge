@@ -20,6 +20,7 @@ import { api, errorMessage } from "../../../lib/api";
 import { useRegisterNavPrimaryAction, useRegisterNavBack } from "../../../lib/nav-primary-action";
 import { useTranslate } from "../../../lib/i18n";
 import { formatUgx } from "../../../lib/order-display";
+import { DeliveryLines, ItemsBreakdown } from "../../../components/OrderBreakdown";
 import { menuItemPricing } from "../../../lib/product-pricing";
 import { formatCartDate, useCartExpiryHours } from "../../../lib/cart";
 import {
@@ -850,33 +851,6 @@ function ItemDetailPage({
 
 type SharedDelivery = { firstPickup: { name: string; fee: number }; addedStop: { name: string; fee: number } };
 
-/**
- * One delivery from two food businesses, shown as what each order is charged: the first
- * restaurant's items and delivery to you, then the second's items and what its stop adds.
- * The same amounts appear on the pay screen and on each order.
- */
-function SharedDeliveryBreakdown({ first, second }: {
-  first: { name: string; items: number; delivery: number };
-  second: { name: string; items: number; delivery: number };
-}) {
-  const part = (p: typeof first, deliveryLabel: string) => (
-    <div className="space-y-1">
-      <p className="text-sm font-bold text-ink">{p.name}</p>
-      <div className="flex justify-between gap-3 text-sm text-ink-500"><span>Items</span><span>{formatUgx(p.items)}</span></div>
-      <div className="flex justify-between gap-3 text-sm text-ink-500"><span>{deliveryLabel}</span><span>{formatUgx(p.delivery)}</span></div>
-    </div>
-  );
-  return (
-    <div className="space-y-3">
-      {part(first, "Delivery to you")}
-      {part(second, "Added stop on the way")}
-      <div className="flex justify-between gap-3 border-t border-[var(--border-faint)] pt-1.5 text-sm text-ink-500">
-        <span>Delivery (one rider)</span><span>{formatUgx(first.delivery + second.delivery)}</span>
-      </div>
-    </div>
-  );
-}
-
 function RestaurantCartSwitchDialog({ cartCount, combine, onCombine, onKeep, onDiscard, onCancel }: {
   cartCount: number;
   /** Set when exactly one other restaurant cart exists: explains what a shared delivery means. */
@@ -1253,6 +1227,23 @@ export default function RestaurantPage() {
   const joinedItemsTotal = selectedBundle ? Math.max(0, Number(selectedBundle.estimated_total ?? 0) - Number(selectedBundle.delivery_fee ?? 0)) : 0;
   const checkoutItemsTotal = itemsTotal + (combineOther ? combineOtherItemsTotal : 0) + joinedItemsTotal;
   const orderItemCount = cart.reduce((n, l) => n + l.quantity, 0) + (combineOther ? combineOther.lines.reduce((n, l) => n + l.quantity, 0) : 0);
+  // Checkout's item lines, the other restaurant's first when two share the delivery.
+  const lineOf = (storeName: string | null) => (l: CartLine) => ({
+    key: l.key, storeName, name: l.name, quantity: l.quantity, price: l.unitPrice * l.quantity,
+    detail: l.choiceNames?.length ? l.choiceNames.join(", ") : null,
+  });
+  const twoPickups = !!combineOther || !!selectedBundle;
+  const checkoutLines = [
+    ...(combineOther ? combineOther.lines.map(lineOf(combineOther.name)) : []),
+    ...(selectedBundle ? [{ key: `order-${selectedBundle.id}`, storeName: selectedBundle.restaurant_name ?? "Your earlier order", name: "Items already ordered", quantity: 0, price: joinedItemsTotal }] : []),
+    ...cart.map(lineOf(twoPickups ? restaurant?.name ?? "This restaurant" : null)),
+  ];
+  // Where the one rider collects, in pickup order.
+  const checkoutPickups = confirmedShared
+    ? [confirmedShared.firstPickup.name, confirmedShared.addedStop.name]
+    : twoPickups
+      ? [combineOther?.name ?? selectedBundle?.restaurant_name ?? "Your earlier order", restaurant?.name ?? "This restaurant"]
+      : [];
   // Checkout step: nav Back returns to the menu (the place picker has its own Back).
   useRegisterNavBack(!!restaurant && (checkoutRequested || step === "checkout"), backToMenu);
   useRegisterNavPrimaryAction(
@@ -1341,25 +1332,8 @@ export default function RestaurantPage() {
     return (
       <div className="space-y-6 px-4">
         <div className="flex items-center gap-3"><button aria-label="Back to menu" onClick={backToMenu} className="flex h-11 w-11 items-center justify-center rounded-full glass-panel"><ChevronLeft size={22}/></button><h1 className="text-2xl font-bold text-ink">Delivery and payment</h1></div>
-        {orderItemCount === 0 ? (
+        {orderItemCount === 0 && (
           <div className="food-menu-card px-4 py-5 text-center text-sm text-ink-500">Your cart is empty. Add items from the menu to check out.</div>
-        ) : (
-          <section className="food-menu-card px-4 py-4" aria-label="Your order">
-            {[...(combineOther ? [{ name: combineOther.name, lines: combineOther.lines }] : []), { name: restaurant.name, lines: cart }].filter((group) => group.lines.length > 0).map((group, index) => (
-              <div key={group.name + index}>
-                {index > 0 && <hr className="restaurant-cart-group__divider" />}
-                {combineOther && <p className="restaurant-cart-group__name">{group.name}</p>}
-                <ul className="space-y-1.5">
-                  {group.lines.map((l) => (
-                    <li key={l.key} className="flex justify-between gap-3 text-sm text-ink">
-                      <span className="min-w-0">{l.quantity}× {l.name}{l.choiceNames?.length ? <span className="text-ink-500"> · {l.choiceNames.join(", ")}</span> : null}</span>
-                      <span className="shrink-0">{formatUgx(l.unitPrice * l.quantity)}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
-          </section>
         )}
         {!delivery && !choosing && <button onClick={() => setChoosing(true)} className="food-menu-card w-full text-left font-semibold">Choose delivery location →</button>}
 
@@ -1394,30 +1368,24 @@ export default function RestaurantPage() {
 
 
 
-        {orderItemCount > 0 && <div className="food-menu-card space-y-3 px-4 py-5">
-          {(combineOther || selectedBundle) && confirmedShared ? (
-            <SharedDeliveryBreakdown
-              first={{ name: confirmedShared.firstPickup.name, items: combineOther ? combineOtherItemsTotal : joinedItemsTotal, delivery: confirmedShared.firstPickup.fee }}
-              second={{ name: restaurant.name, items: itemsTotal, delivery: confirmedShared.addedStop.fee }}
-            />
-          ) : (
-            <>
-              <div className="flex items-center justify-between text-sm text-ink-500">
-                <span>{t("restaurant_items_total")}</span>
-                <span>{formatUgx(checkoutItemsTotal)}</span>
-              </div>
-              <div className="flex items-center justify-between text-sm text-ink-500">
-                <span>{t("restaurant_delivery_fee")}</span>
-                <span>{confirmedFee != null ? formatUgx(confirmedFee) : feeQuoteError ? "Couldn't confirm" : !delivery ? "Choose location" : "Calculating…"}</span>
-              </div>
-            </>
-          )}
-          <div className="flex items-center justify-between border-t border-[var(--border-faint)] pt-1.5 text-sm font-bold text-ink">
+        {orderItemCount > 0 && <section className="food-menu-card space-y-3 px-4 py-5" aria-label="Your order">
+          {/* Items (by restaurant when there are two), their subtotal, a faint line, the delivery, the total. */}
+          <ItemsBreakdown items={checkoutLines} itemsSubtotal={checkoutItemsTotal} />
+          <hr className="border-[var(--border-faint)]" />
+          <div className="space-y-1">
+            <div className="flex items-center justify-between gap-3 text-sm text-ink">
+              <span>Delivery</span>
+              <span>{confirmedFee != null ? formatUgx(confirmedFee) : feeQuoteError ? "Couldn't confirm" : !delivery ? "Choose location" : "Calculating…"}</span>
+            </div>
+            {checkoutPickups.length > 1 && <DeliveryLines delivery={{ mode: "rider", pickups: checkoutPickups }} />}
+          </div>
+          <hr className="border-[var(--border-faint)]" />
+          <div className="flex items-center justify-between text-lg font-bold text-ink">
             <span>Total</span>
             <span>{deliveryFeeKnown ? formatUgx(checkoutItemsTotal + estimatedFee!) : "—"}</span>
           </div>
-          {(combineOther || selectedBundle) && <p className="text-xs text-ink-500">One rider collects from both and delivers together. You pay this total once.</p>}
-        </div>}
+          {(combineOther || selectedBundle) && <p className="text-xs text-ink-500">You pay this total once.</p>}
+        </section>}
 
         {feeQuoteError && delivery && <button type="button" onClick={() => setFeeRetry((n) => n + 1)} className="min-h-11 w-full rounded-full border border-[var(--border-faint)] px-4 text-sm font-bold text-ink">Couldn&apos;t confirm the delivery fee. Try again</button>}
         {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}

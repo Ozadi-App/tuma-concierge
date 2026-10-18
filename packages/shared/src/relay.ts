@@ -156,6 +156,10 @@ export type RelaySettings = {
   /** Sandbox only: demo riders, matatu and petrol stations play the roles a tester leaves. */
   sandboxDemo?: boolean;
   sandboxDemoStepSeconds?: number;
+  /** A relay order can be paid as soon as it is placed, before any rider (default on). */
+  payBeforeRider?: boolean;
+  /** "Direct" (one rider all the way) is promised in under this many hours (1-24, default 3). */
+  directMaxHours?: number;
 };
 
 export type RelayRouteStage = {
