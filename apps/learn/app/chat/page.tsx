@@ -134,14 +134,16 @@ export default function TutorChatPage() {
     <div className="space-y-4">
       {/* Page Title & Safeguarding Notice */}
       <div>
-        <p className="text-[10px] font-black uppercase tracking-wider text-gold">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-gold">
           Academic Support & Mentorship
         </p>
-        <h1 className="text-xl font-black text-ink">Live Chat with Your Tutors</h1>
-        <div className="mt-2 flex items-center gap-2 rounded-xl bg-green-500/10 px-3 py-1.5 text-xs text-green-700 dark:text-green-400">
-          <ShieldCheck className="h-4 w-4 shrink-0 text-green-600" />
+        <h1 className="font-display text-2xl font-semibold text-cream mt-0.5">
+          Live Chat with Your Tutors
+        </h1>
+        <div className="mt-2 flex items-center gap-2 rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] px-3.5 py-2 text-xs text-ink-500">
+          <ShieldCheck className="h-4 w-4 shrink-0 text-gold" />
           <span>
-            Safe Student Environment: Conversations are monitored for student safeguarding and institutional auditing.
+            Verified school & tutor messaging with student safeguarding enabled.
           </span>
         </div>
       </div>
@@ -170,7 +172,7 @@ export default function TutorChatPage() {
                   className={`flex w-full items-center gap-3 rounded-2xl p-2.5 text-left transition ${
                     isSelected
                       ? "bg-gold/15 border border-gold/40"
-                      : "hover:bg-cream-100 border border-transparent dark:hover:bg-black/30"
+                      : "hover:bg-[rgb(var(--surface-muted))] border border-transparent"
                   }`}
                 >
                   <div className="relative shrink-0">
@@ -180,7 +182,7 @@ export default function TutorChatPage() {
                       className="h-10 w-10 rounded-full object-cover"
                     />
                     {tutor.isOnline && (
-                      <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-cream bg-green-500 dark:border-black-700" />
+                      <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-cream bg-gold" />
                     )}
                   </div>
 
@@ -298,9 +300,24 @@ export default function TutorChatPage() {
                           <FileText className="h-3.5 w-3.5 text-gold" />
                           <span>reconciliation_spec_v2.pdf</span>
                         </span>
-                        <span className="text-[10px] text-gold underline cursor-pointer">
-                          Download
-                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const blob = new Blob(
+                              ["Peebee Learn Study Reference: reconciliation_spec_v2.pdf\nInstructor: Dr. Kenneth Ochieng\n"],
+                              { type: "text/plain;charset=utf-8" }
+                            );
+                            const url = URL.createObjectURL(blob);
+                            const a = document.createElement("a");
+                            a.href = url;
+                            a.download = "reconciliation_spec_v2.txt";
+                            a.click();
+                            URL.revokeObjectURL(url);
+                          }}
+                          className="text-[10px] text-gold underline cursor-pointer"
+                        >
+                          Save Copy
+                        </button>
                       </div>
                     )}
                   </div>
@@ -323,12 +340,12 @@ export default function TutorChatPage() {
               </label>
 
               {isRecordingVoice ? (
-                <div className="flex items-center gap-2 text-xs font-bold text-red-500">
-                  <span className="h-2 w-2 rounded-full bg-red-500 animate-ping" />
+                <div className="flex items-center gap-2 text-xs font-bold text-gold">
+                  <span className="h-2 w-2 rounded-full bg-gold animate-ping" />
                   <span>Recording voice note...</span>
                   <button
                     onClick={handleSendSimulatedVoiceNote}
-                    className="rounded-lg bg-red-500/20 px-2 py-0.5 text-red-600 font-black"
+                    className="rounded-lg bg-gold px-2 py-0.5 text-ink-gold font-semibold"
                   >
                     Done & Send
                   </button>

@@ -1,51 +1,14 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import Link from "next/link";
-import {
-  BookOpen,
-  GraduationCap,
-  Sparkles,
-  Award,
-  Clock,
-  ShieldCheck,
-  CheckCircle2,
-  Camera,
-  Play,
-  Pause,
-  Volume2,
-  RotateCcw,
-  Upload,
-  Calendar,
-  FileText,
-  AlertCircle,
-  QrCode,
-  Download,
-  Star,
-  Users,
-  ChevronRight,
-  Lock,
-  Unlock,
-  KeyRound,
-  Eye,
-  Check,
-  X,
-  CreditCard,
-  MessageSquare,
-  Wrench,
-  HelpCircle,
-  Share2,
-  Video,
-  Radio,
-  Send,
-  Paperclip,
-  Mic,
-  FlaskConical,
-} from "lucide-react";
+import { useMemo, useState, type FormEvent } from "react";
 import {
   EDUCATION_STREAMS,
-  EducationStream,
-  DEMO_INSTITUTIONS,
+  DEMO_CREATORS,
+  DEMO_CREATOR_COURSES,
+  DEMO_LIVE_MEETINGS,
+  DEMO_LIVE_PARTICIPANTS,
+  DEMO_LIVE_CHAT_MESSAGES,
+  DEMO_TUTOR_CONTACTS,
   DEMO_SPROUTS_ACTIVITIES,
   DEMO_SPROUTS_TIMER,
   DEMO_SPROUTS_COPLAY,
@@ -55,7 +18,6 @@ import {
   DEMO_ACADEMY_TIMETABLE,
   DEMO_ACADEMY_EXAM,
   DEMO_ACADEMY_REPORT_CARD,
-  DEMO_CAMPUS_COURSE,
   DEMO_CAMPUS_PEER_REVIEW,
   DEMO_CAMPUS_CREDENTIAL,
   DEMO_SKILLS_COURSE,
@@ -63,1899 +25,2535 @@ import {
   DEMO_SKILLS_LOGBOOK,
   DEMO_TUITION_INVOICE,
   DEMO_SUBSCRIPTION_PASSES,
-  DEMO_GUARDIAN_ALERTS,
-  DEMO_LIVE_MEETINGS,
-  DEMO_TUTOR_CONTACTS,
-  DEMO_LIVE_CHAT_MESSAGES,
-  DEMO_CREATORS,
-  DEMO_CREATOR_COURSES,
-  isPracticeMode,
-  startPracticeMode,
-  exitPracticeMode,
+  type EducationStreamId,
+  type CreatorProfile,
+  type CreatorCourse,
+  type CourseLesson,
+  type EducationLiveMeeting,
 } from "@peebee/shared";
+import {
+  GraduationCap,
+  Search,
+  Video,
+  MessageSquare,
+  Star,
+  Users,
+  BookOpen,
+  CheckCircle2,
+  Award,
+  Sparkles,
+  FileText,
+  Clock,
+  ChevronRight,
+  ArrowLeft,
+  Send,
+  Mic,
+  MicOff,
+  VideoOff,
+  Hand,
+  MonitorUp,
+  Plus,
+  CreditCard,
+  ShieldCheck,
+  Volume2,
+  Camera,
+  Scissors,
+  X,
+  Download,
+  Play,
+  Lock,
+  Unlock,
+  Layers,
+} from "lucide-react";
 
-const ugx = (amount: number) => `UGX ${Math.round(amount).toLocaleString()}`;
+type WorkspaceTab = "explore" | "live" | "tutors" | "studio" | "tuition";
 
-export default function EducationHubPage() {
-  const [activeStream, setActiveStream] = useState<EducationStream>("sprouts");
-  const [userRole, setUserRole] = useState<"student" | "parent">("student");
-  const [isPractice, setIsPractice] = useState(false);
+const STREAM_LABELS: Record<EducationStreamId, string> = {
+  sprouts: "Sprouts · Ages 3–6",
+  foundations: "Foundations · Ages 6–12",
+  academy: "Academy · Ages 12–18",
+  campus: "Campus · Higher Ed & Business",
+  skills: "Skills · Vocational Trades",
+};
 
-  useEffect(() => {
-    setIsPractice(isPracticeMode());
-  }, []);
+const CREATOR_TYPE_LABELS: Record<CreatorProfile["type"], string> = {
+  school: "Primary School",
+  academy: "Academy & Institute",
+  vocational_guild: "Vocational Guild",
+  early_childhood_center: "Kindergarten Hub",
+  independent_tutor: "Independent Tutor",
+};
 
-  // Sprouts State
-  const [sproutsPlayingAudio, setSproutsPlayingAudio] = useState(false);
-  const [sproutsActiveActivityIndex, setSproutsActiveActivityIndex] = useState(0);
-  const [sproutsStickersUnlocked, setSproutsStickersUnlocked] = useState<string[]>([
-    "sticker_golden_lion",
-    "sticker_crowned_crane",
+function formatUgx(amount: number) {
+  return `UGX ${amount.toLocaleString()}`;
+}
+
+export default function CustomerLearnPage() {
+  // Navigation & filter state
+  const [activeTab, setActiveTab] = useState<WorkspaceTab>("explore");
+  const [streamFilter, setStreamFilter] = useState<EducationStreamId | "all">("all");
+  const [searchQuery, setSearchQuery] = useState("");
+
+  // Mutable state so creators can publish new courses/lessons/quizzes in sandbox
+  const [creators, setCreators] = useState<CreatorProfile[]>(DEMO_CREATORS);
+  const [courses, setCourses] = useState<CreatorCourse[]>(DEMO_CREATOR_COURSES);
+
+  // Drill-down selection state
+  const [selectedCreatorId, setSelectedCreatorId] = useState<string | null>(null);
+  const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null);
+  const [selectedLessonId, setSelectedLessonId] = useState<string | null>(null);
+  const [enrolledCourseIds, setEnrolledCourseIds] = useState<string[]>([
+    "course_greenwood_math4",
+    "course_fintech_101",
+    "course_little_stars_phonics",
   ]);
-  const [sproutsTimerRemaining, setSproutsTimerRemaining] = useState(DEMO_SPROUTS_TIMER.minutesRemainingToday);
-  const [sproutsTimerLocked, setSproutsTimerLocked] = useState(false);
-  const [parentPinInput, setParentPinInput] = useState("");
-  const [showPinModal, setShowPinModal] = useState(false);
-  const [pinError, setPinError] = useState("");
-  const [storybookPage, setStorybookPage] = useState(0);
+  const [completedLessonIds, setCompletedLessonIds] = useState<string[]>(["les_gw_1"]);
 
-  // Foundations State
-  const [activeWorksheet, setActiveWorksheet] = useState(DEMO_FOUNDATIONS_WORKSHEETS[0]);
-  const [showWorksheetModal, setShowWorksheetModal] = useState(false);
-  const [worksheetPhotoPreview, setWorksheetPhotoPreview] = useState<string | null>(null);
-  const [parentSignName, setParentSignName] = useState("Grace Mukasa");
-  const [parentSignPin, setParentSignPin] = useState("");
-  const [submissionSuccess, setSubmissionSuccess] = useState(false);
-  const [submissionsList, setSubmissionsList] = useState(DEMO_FOUNDATIONS_SUBMISSIONS);
-  const [totalMerits, setTotalMerits] = useState(DEMO_FOUNDATIONS_MERITS.totalMerits);
+  // Interactive Quiz state
+  const [quizAnswers, setQuizAnswers] = useState<Record<string, number>>({});
+  const [quizSubmittedLessonId, setQuizSubmittedLessonId] = useState<string | null>(null);
 
-  // Academy State
-  const [showExamModal, setShowExamModal] = useState(false);
-  const [examTabSwitches, setExamTabSwitches] = useState(0);
-  const [examSubmitted, setExamSubmitted] = useState(false);
-  const [examScoreResult, setExamScoreResult] = useState<number | null>(null);
-  const [examTimerSecs, setExamTimerSecs] = useState(5400); // 90 mins
-  const [examAnswers, setExamAnswers] = useState<Record<string, string>>({
-    q1: "x = 1, x = 1.5",
+  // Resource Viewer Modal (replaces dead /downloads/... links)
+  const [previewResource, setPreviewResource] = useState<{
+    name: string;
+    size: string;
+    courseTitle: string;
+    lessonTitle: string;
+  } | null>(null);
+
+  // Live Classroom state (replaces dead localhost:3011/live links)
+  const [activeLiveRoomId, setActiveLiveRoomId] = useState<string | null>(null);
+  const [micMuted, setMicMuted] = useState(true);
+  const [camOn, setCamOn] = useState(true);
+  const [handRaised, setHandRaised] = useState(false);
+  const [liveStageMode, setLiveStageMode] = useState<"slides" | "whiteboard" | "grid">("slides");
+  const [liveRoomMessages, setLiveRoomMessages] = useState(DEMO_LIVE_CHAT_MESSAGES);
+  const [liveChatInput, setLiveChatInput] = useState("");
+
+  // Direct Tutor Chat state (replaces dead localhost:3011/chat links)
+  const [selectedTutorId, setSelectedTutorId] = useState<string>(DEMO_TUTOR_CONTACTS[0].id);
+  const [tutorChatInput, setTutorChatInput] = useState("");
+  const [tutorThreads, setTutorThreads] = useState<
+    Record<string, Array<{ id: string; sender: "student" | "tutor"; text: string; time: string }>>
+  >({
+    tutor_ken: [
+      {
+        id: "tk1",
+        sender: "tutor",
+        text: "Welcome! Feel free to ask any questions on Mobile Money settlement or idempotency keys.",
+        time: "10:14 AM",
+      },
+    ],
+    tutor_brenda: [
+      {
+        id: "tb1",
+        sender: "tutor",
+        text: "Parent signature verified on Primary 4 Worksheet #1. Keep up the neat work!",
+        time: "Yesterday",
+      },
+    ],
+    tutor_alex: [
+      {
+        id: "ta1",
+        sender: "tutor",
+        text: "I reviewed your low skin fade video submission. Check timestamp 01:28 for blade angle feedback.",
+        time: "2 days ago",
+      },
+    ],
+    tutor_sharon: [
+      {
+        id: "ts1",
+        sender: "tutor",
+        text: "Kigo the Lion's vowel sound activity is ready! Tap the audio speaker icon with your child.",
+        time: "9:30 AM",
+      },
+    ],
+    tutor_patrick: [
+      {
+        id: "tp1",
+        sender: "tutor",
+        text: "Senior 4 Physics Paper 1 revision starts at 6:00 PM today.",
+        time: "11:20 AM",
+      },
+    ],
   });
 
-  // Campus State
-  const [campusPlaybackSpeed, setCampusPlaybackSpeed] = useState<number>(1.0);
-  const [campusActiveVideoSec, setCampusActiveVideoSec] = useState<number>(45);
-  const [campusNoteInput, setCampusNoteInput] = useState("");
-  const [campusNotes, setCampusNotes] = useState<{ id: string; timestamp: number; text: string }[]>([
-    { id: "n1", timestamp: 35, text: "Key insight: MTN MoMo open API operates on push USSD callback." },
+  // Stream-specific interactive tool states (inside courses)
+  // 1. Sprouts
+  const [activeAudioToast, setActiveAudioToast] = useState<string | null>(null);
+  const [unlockedStickers, setUnlockedStickers] = useState<string[]>(["sticker_golden_lion"]);
+  const [storyPageIndex, setStoryPageIndex] = useState(0);
+  const [screenTimerLocked, setScreenTimerLocked] = useState(DEMO_SPROUTS_TIMER.isLocked);
+  const [parentPinInput, setParentPinInput] = useState("");
+
+  // 2. Foundations
+  const [parentSignName, setParentSignName] = useState("Grace Mukasa (Parent)");
+  const [parentSignedOff, setParentSignedOff] = useState(false);
+  const [homeworkSubmitted, setHomeworkSubmitted] = useState(false);
+
+  // 3. Academy
+  const [examStarted, setExamStarted] = useState(false);
+  const [examSubmitted, setExamSubmitted] = useState(false);
+  const [examMcqChoice, setExamMcqChoice] = useState<number | null>(0);
+  const [examWorkings, setExamWorkings] = useState("d/dx [3x³ - 4sin(x) + e^(2x)] = 9x² - 4cos(x) + 2e^(2x)");
+
+  // 4. Campus
+  const [playbackSpeed, setPlaybackSpeed] = useState<number>(1);
+  const [videoNotes, setVideoNotes] = useState<Array<{ time: string; note: string }>>([
+    { time: "02:15", note: "Idempotency key must be stored in Redis/Postgres with 24h TTL." },
   ]);
-  const [showPeerReviewModal, setShowPeerReviewModal] = useState(false);
-  const [showCertModal, setShowCertModal] = useState(false);
+  const [newVideoNote, setNewVideoNote] = useState("");
+  const [certificateVerified, setCertificateVerified] = useState(false);
 
-  // Skills State
-  const [skillsSelectedCritiqueSec, setSkillsSelectedCritiqueSec] = useState<number | null>(42);
-  const [skillsVideoTime, setSkillsVideoTime] = useState(42);
-  const [skillsLogbookList, setSkillsLogbookList] = useState(DEMO_SKILLS_LOGBOOK);
-  const [showLogHoursModal, setShowLogHoursModal] = useState(false);
-  const [logHoursInput, setLogHoursInput] = useState("6.0");
-  const [logTaskInput, setLogTaskInput] = useState("Scissor over comb graduation and neck sanitation");
-  const [showUploadVideoModal, setShowUploadVideoModal] = useState(false);
+  // 5. Skills
+  const [checkedTools, setCheckedTools] = useState<Record<string, boolean>>({
+    "Professional Cordless Clipper": true,
+    "Guard Set (#0.5 to #4)": true,
+    "Barbicide & Clipper Spray": true,
+  });
+  const [selectedCritiqueSec, setSelectedCritiqueSec] = useState<number>(42);
+  const [logbookEntries, setLogbookEntries] = useState(DEMO_SKILLS_LOGBOOK);
+  const [newLogTask, setNewLogTask] = useState("");
+  const [newLogHours, setNewLogHours] = useState("4");
 
-  // Tuition & Invoicing State
-  const [showTuitionModal, setShowTuitionModal] = useState(false);
-  const [tuitionInvoice, setTuitionInvoice] = useState(DEMO_TUITION_INVOICE);
-  const [payAmountInput, setPayAmountInput] = useState("350000");
-  const [tuitionPaymentSuccess, setTuitionPaymentSuccess] = useState(false);
+  // Tuition & Passes state
+  const [tuitionPaidUgx, setTuitionPaidUgx] = useState(DEMO_TUITION_INVOICE.amountPaidUgx);
+  const [activeSubscriptionPassId, setActiveSubscriptionPassId] = useState<string | null>(null);
+  const [paymentSuccessNotice, setPaymentSuccessNotice] = useState<string | null>(null);
 
-  // Live Meetings & Tutor Chat State
-  const [showTutorChatDrawer, setShowTutorChatDrawer] = useState(false);
-  const [customerActiveTutor, setCustomerActiveTutor] = useState(DEMO_TUTOR_CONTACTS[0]);
-  const [customerChatInput, setCustomerChatInput] = useState("");
-  const [customerChatMessages, setCustomerChatMessages] = useState(DEMO_LIVE_CHAT_MESSAGES);
-  const [customerIsQuestion, setCustomerIsQuestion] = useState(false);
+  // Educator Studio (Creator Mode) state
+  const [studioCreatorId, setStudioCreatorId] = useState<string>(DEMO_CREATORS[0].id);
+  const [newCourseTitle, setNewCourseTitle] = useState("");
+  const [newCourseStream, setNewCourseStream] = useState<EducationStreamId>("foundations");
+  const [newCourseLevel, setNewCourseLevel] = useState("Primary 5");
+  const [newCoursePrice, setNewCoursePrice] = useState("280000");
+  const [newCourseSummary, setNewCourseSummary] = useState("");
+  const [newLessonCourseId, setNewLessonCourseId] = useState<string>(DEMO_CREATOR_COURSES[0].id);
+  const [newLessonTitle, setNewLessonTitle] = useState("");
+  const [newLessonDuration, setNewLessonDuration] = useState("25");
+  const [newLessonSummary, setNewLessonSummary] = useState("");
+  const [newQuizQuestion, setNewQuizQuestion] = useState("");
+  const [newQuizOptionA, setNewQuizOptionA] = useState("");
+  const [newQuizOptionB, setNewQuizOptionB] = useState("");
+  const [studioNotice, setStudioNotice] = useState<string | null>(null);
 
-  const handleCustomerSendMessage = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!customerChatInput.trim()) return;
+  // Filtered collections
+  const filteredCreators = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return creators.filter((c) => {
+      const matchesStream =
+        streamFilter === "all" || c.stream === streamFilter || c.supportedStreams.includes(streamFilter);
+      const matchesQuery =
+        !q ||
+        c.name.toLowerCase().includes(q) ||
+        c.leadInstructor.toLowerCase().includes(q) ||
+        c.tagline.toLowerCase().includes(q) ||
+        c.location.toLowerCase().includes(q);
+      return matchesStream && matchesQuery;
+    });
+  }, [creators, streamFilter, searchQuery]);
 
-    const newMsg = {
-      id: `c_msg_${Date.now()}`,
-      senderId: "customer_user",
-      senderName: userRole === "parent" ? "Grace Mukasa (Parent)" : "Denis Kigozi (Student)",
-      senderRole: userRole === "parent" ? ("parent" as const) : ("student" as const),
-      text: customerChatInput.trim(),
-      timestamp: "Just now",
-      isQuestion: customerIsQuestion,
-      upvotes: 0,
-    };
+  const filteredCourses = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return courses.filter((course) => {
+      const matchesStream = streamFilter === "all" || course.stream === streamFilter;
+      const matchesCreator = !selectedCreatorId || course.creatorId === selectedCreatorId;
+      const matchesQuery =
+        !q ||
+        course.title.toLowerCase().includes(q) ||
+        course.creatorName.toLowerCase().includes(q) ||
+        course.category.toLowerCase().includes(q) ||
+        course.level.toLowerCase().includes(q) ||
+        course.summary.toLowerCase().includes(q);
+      return matchesStream && matchesCreator && matchesQuery;
+    });
+  }, [courses, streamFilter, selectedCreatorId, searchQuery]);
 
-    setCustomerChatMessages((prev) => [...prev, newMsg]);
-    setCustomerChatInput("");
-    setCustomerIsQuestion(false);
+  const filteredLiveMeetings = useMemo(() => {
+    return DEMO_LIVE_MEETINGS.filter(
+      (m) => streamFilter === "all" || m.stream === streamFilter
+    );
+  }, [streamFilter]);
 
-    setTimeout(() => {
-      const replyMsg = {
-        id: `c_reply_${Date.now()}`,
-        senderId: customerActiveTutor.id,
-        senderName: customerActiveTutor.name,
-        senderRole: "tutor" as const,
-        text: `Hello ${userRole === "parent" ? "Mrs. Mukasa" : "Denis"}, I received your message. I am actively reviewing your academic inquiry right now!`,
-        timestamp: "Just now",
-      };
-      setCustomerChatMessages((prev) => [...prev, replyMsg]);
-    }, 1200);
-  };
+  const selectedCreator = useMemo(
+    () => creators.find((c) => c.id === selectedCreatorId) ?? null,
+    [creators, selectedCreatorId]
+  );
 
-  // Focus integrity listener for Academy Exam simulator
-  useEffect(() => {
-    if (!showExamModal || examSubmitted) return;
+  const selectedCourse = useMemo(
+    () => courses.find((c) => c.id === selectedCourseId) ?? null,
+    [courses, selectedCourseId]
+  );
 
-    const handleVisibilityChange = () => {
-      if (document.hidden) {
-        setExamTabSwitches((prev) => prev + 1);
-      }
-    };
+  const allLessonsInSelectedCourse = useMemo(() => {
+    if (!selectedCourse) return [];
+    return selectedCourse.modules.flatMap((m) => m.lessons);
+  }, [selectedCourse]);
 
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
-  }, [showExamModal, examSubmitted]);
-
-  // Sprouts Audio Guidance Simulator
-  const toggleSproutsAudio = () => {
-    setSproutsPlayingAudio((prev) => !prev);
-  };
-
-  const handleUnlockPin = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (parentPinInput === "1234" || parentPinInput === "0000") {
-      setSproutsTimerLocked(false);
-      setSproutsTimerRemaining(30);
-      setShowPinModal(false);
-      setParentPinInput("");
-      setPinError("");
-    } else {
-      setPinError("Incorrect 4-digit PIN. (Demo PIN: 1234)");
+  const activeLesson: CourseLesson | null = useMemo(() => {
+    if (!selectedCourse) return null;
+    if (selectedLessonId) {
+      const found = allLessonsInSelectedCourse.find((l) => l.id === selectedLessonId);
+      if (found) return found;
     }
-  };
+    return allLessonsInSelectedCourse[0] ?? null;
+  }, [selectedCourse, selectedLessonId, allLessonsInSelectedCourse]);
 
-  const handleWorksheetSubmit = (e: React.FormEvent) => {
+  const activeLiveMeeting: EducationLiveMeeting | null = useMemo(() => {
+    if (!activeLiveRoomId) return null;
+    return DEMO_LIVE_MEETINGS.find((m) => m.id === activeLiveRoomId) ?? DEMO_LIVE_MEETINGS[0];
+  }, [activeLiveRoomId]);
+
+  const selectedTutor = useMemo(
+    () => DEMO_TUTOR_CONTACTS.find((t) => t.id === selectedTutorId) ?? DEMO_TUTOR_CONTACTS[0],
+    [selectedTutorId]
+  );
+
+  // Handlers
+  function openCourse(course: CreatorCourse) {
+    setSelectedCourseId(course.id);
+    const firstLesson = course.modules[0]?.lessons[0];
+    setSelectedLessonId(firstLesson?.id ?? null);
+    setQuizAnswers({});
+    setQuizSubmittedLessonId(null);
+    setActiveTab("explore");
+  }
+
+  function openTutorChatForCreator(creatorName: string, stream: EducationStreamId) {
+    const match =
+      DEMO_TUTOR_CONTACTS.find((t) => creatorName.toLowerCase().includes(t.name.split(" ")[1]?.toLowerCase() ?? "")) ||
+      DEMO_TUTOR_CONTACTS.find((t) => t.stream === stream) ||
+      DEMO_TUTOR_CONTACTS[0];
+    setSelectedTutorId(match.id);
+    setActiveTab("tutors");
+  }
+
+  function handleSendLiveChat(e: FormEvent) {
     e.preventDefault();
-    if (!parentSignPin) {
-      alert("Parent digital signature PIN required for primary homework turn-in.");
-      return;
-    }
-
-    const newSub = {
-      id: `sub_${Date.now()}`,
-      worksheetId: activeWorksheet.id,
-      worksheetTitle: activeWorksheet.title,
-      subject: activeWorksheet.subject,
-      studentId: "stud_timothy",
-      studentName: "Timothy Mukasa",
-      scannedPhotoUrls: [worksheetPhotoPreview || activeWorksheet.samplePhotoUrl || ""],
-      parentSigned: true,
-      parentSignerName: parentSignName,
-      parentSignedAt: "Just now",
-      status: "graded" as const,
-      meritPointsEarned: activeWorksheet.maxMeritPoints,
-      teacherRemarks: "Great work! Parent signature verified.",
-      submittedAt: "Just now",
-    };
-
-    setSubmissionsList([newSub, ...submissionsList]);
-    setTotalMerits((prev) => prev + activeWorksheet.maxMeritPoints);
-    setSubmissionSuccess(true);
-    setTimeout(() => {
-      setSubmissionSuccess(false);
-      setShowWorksheetModal(false);
-      setWorksheetPhotoPreview(null);
-    }, 1800);
-  };
-
-  const handleExamSubmit = () => {
-    let finalScore = 88;
-    if (examTabSwitches > 0) {
-      finalScore = Math.max(50, finalScore - examTabSwitches * 6);
-    }
-    setExamScoreResult(finalScore);
-    setExamSubmitted(true);
-  };
-
-  const handleAddCampusNote = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!campusNoteInput.trim()) return;
-    setCampusNotes([
-      ...campusNotes,
+    if (!liveChatInput.trim() || !activeLiveMeeting) return;
+    setLiveRoomMessages((prev) => [
+      ...prev,
       {
-        id: `n_${Date.now()}`,
-        timestamp: campusActiveVideoSec,
-        text: campusNoteInput.trim(),
+        id: `msg_${Date.now()}`,
+        roomId: activeLiveMeeting.id,
+        senderId: "part_you",
+        senderName: "You (Student)",
+        senderRole: "student",
+        text: liveChatInput.trim(),
+        timestamp: "Just now",
       },
     ]);
-    setCampusNoteInput("");
-  };
+    setLiveChatInput("");
+  }
 
-  const handleAddLogbookHours = (e: React.FormEvent) => {
+  function handleSendTutorMessage(e: FormEvent) {
     e.preventDefault();
-    const hours = parseFloat(logHoursInput) || 4;
-    const newEntry = {
-      id: `log_${Date.now()}`,
-      studentId: "stud_denis",
-      studentName: "Denis Kigozi",
-      date: new Date().toISOString().slice(0, 10),
-      practicalHours: hours,
-      taskPerformed: logTaskInput,
-      workshopLocation: "Peebee Barber Studio, Kisementi",
-      masterSupervisorName: "Master Alex Mukasa",
-      supervisorSignatureRecorded: true,
-      supervisorSignedAt: "Just now",
+    if (!tutorChatInput.trim()) return;
+    const msgText = tutorChatInput.trim();
+    const tutor = selectedTutor;
+    setTutorThreads((prev) => ({
+      ...prev,
+      [tutor.id]: [
+        ...(prev[tutor.id] ?? []),
+        { id: `u_${Date.now()}`, sender: "student", text: msgText, time: "Just now" },
+        {
+          id: `r_${Date.now() + 1}`,
+          sender: "tutor",
+          text: `Thanks for reaching out! I have noted your question regarding "${msgText.slice(0, 40)}${msgText.length > 40 ? "..." : ""}" and attached the study reference in your course module.`,
+          time: "Just now",
+        },
+      ],
+    }));
+    setTutorChatInput("");
+  }
+
+  function handleCreateCourse(e: FormEvent) {
+    e.preventDefault();
+    if (!newCourseTitle.trim()) return;
+    const creator = creators.find((c) => c.id === studioCreatorId) ?? creators[0];
+    const created: CreatorCourse = {
+      id: `course_custom_${Date.now()}`,
+      creatorId: creator.id,
+      creatorName: creator.name,
+      creatorAvatar: creator.avatarUrl,
+      creatorRoleTitle: `${creator.leadInstructor} (${creator.leadInstructorTitle})`,
+      institutionName: creator.name,
+      title: newCourseTitle.trim(),
+      stream: newCourseStream,
+      category: STREAM_LABELS[newCourseStream],
+      level: newCourseLevel.trim() || "All Levels",
+      summary:
+        newCourseSummary.trim() ||
+        "Structured course with interactive lessons, downloadable study resources, and graded assessments.",
+      thumbnailUrl: creator.bannerUrl ?? creator.avatarUrl,
+      priceUgx: Number(newCoursePrice) || 150000,
+      enrolledStudentsCount: 1,
+      rating: 5.0,
+      reviewCount: 1,
+      modules: [
+        {
+          id: `mod_custom_${Date.now()}`,
+          title: "Module 1: Core Foundations & Practicals",
+          description: "First module published via Educator Studio.",
+          order: 1,
+          lessons: [
+            {
+              id: `les_custom_${Date.now()}`,
+              title: "Lesson 1: Welcome & Orientation",
+              durationMinutes: 20,
+              contentType: "video",
+              summary: "Course overview, learning objectives, and study schedule.",
+              quiz: {
+                id: `quiz_custom_${Date.now()}`,
+                title: "Orientation Checkpoint Quiz",
+                instructions: "Quick check to verify your course setup.",
+                timeLimitMinutes: 5,
+                passingScorePercent: 50,
+                questions: [
+                  {
+                    id: `q_custom_${Date.now()}`,
+                    questionText: `Which institution published "${newCourseTitle.trim()}"?`,
+                    options: [creator.name, "Other Institution"],
+                    correctOptionIndex: 0,
+                    explanation: `Published directly by ${creator.name} (${creator.leadInstructor}).`,
+                    points: 5,
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
     };
-    setSkillsLogbookList([newEntry, ...skillsLogbookList]);
-    setShowLogHoursModal(false);
-  };
 
-  const handleTuitionPayment = (e: React.FormEvent) => {
+    setCourses((prev) => [created, ...prev]);
+    setCreators((prev) =>
+      prev.map((c) => (c.id === creator.id ? { ...c, courses: [created, ...c.courses] } : c))
+    );
+    setNewLessonCourseId(created.id);
+    setNewCourseTitle("");
+    setNewCourseSummary("");
+    setStudioNotice(`Published "${created.title}" under ${creator.name}.`);
+  }
+
+  function handleAddLessonToCourse(e: FormEvent) {
     e.preventDefault();
-    const amount = parseInt(payAmountInput, 10) || 100000;
-    const newPaid = tuitionInvoice.amountPaidUgx + amount;
-    const newBal = Math.max(0, tuitionInvoice.totalTuitionUgx - newPaid);
-    setTuitionInvoice({
-      ...tuitionInvoice,
-      amountPaidUgx: newPaid,
-      balanceUgx: newBal,
-      status: newBal <= 0 ? "paid" : "partial",
-    });
-    setTuitionPaymentSuccess(true);
-    setTimeout(() => {
-      setTuitionPaymentSuccess(false);
-      setShowTuitionModal(false);
-    }, 1800);
-  };
+    if (!newLessonTitle.trim()) return;
+    const targetCourse = courses.find((c) => c.id === newLessonCourseId);
+    if (!targetCourse) return;
 
-  const currentStreamMeta = EDUCATION_STREAMS.find((s) => s.id === activeStream)!;
+    const lessonId = `les_${Date.now()}`;
+    const newLesson: CourseLesson = {
+      id: lessonId,
+      title: newLessonTitle.trim(),
+      durationMinutes: Number(newLessonDuration) || 20,
+      contentType: "video",
+      summary: newLessonSummary.trim() || "Interactive lesson with study notes and checkpoint quiz.",
+      quiz: newQuizQuestion.trim()
+        ? {
+            id: `quiz_${Date.now()}`,
+            title: `${newLessonTitle.trim()} — Checkpoint Quiz`,
+            instructions: "Complete the checkpoint question below.",
+            timeLimitMinutes: 10,
+            passingScorePercent: 70,
+            questions: [
+              {
+                id: `q_${Date.now()}`,
+                questionText: newQuizQuestion.trim(),
+                options: [
+                  newQuizOptionA.trim() || "Correct Answer",
+                  newQuizOptionB.trim() || "Alternative Option",
+                ],
+                correctOptionIndex: 0,
+                explanation: "Verified by course instructor.",
+                points: 10,
+              },
+            ],
+          }
+        : undefined,
+    };
+
+    setCourses((prev) =>
+      prev.map((c) => {
+        if (c.id !== newLessonCourseId) return c;
+        const firstMod = c.modules[0] ?? {
+          id: `mod_${Date.now()}`,
+          title: "Module 1",
+          description: "Core curriculum",
+          order: 1,
+          lessons: [],
+        };
+        const updatedMod = { ...firstMod, lessons: [...firstMod.lessons, newLesson] };
+        return {
+          ...c,
+          modules: [updatedMod, ...c.modules.slice(1)],
+        };
+      })
+    );
+
+    setNewLessonTitle("");
+    setNewLessonSummary("");
+    setNewQuizQuestion("");
+    setNewQuizOptionA("");
+    setNewQuizOptionB("");
+    setStudioNotice(`Added "${newLesson.title}" to ${targetCourse.title}.`);
+  }
 
   return (
-    <div className="mx-auto min-h-screen max-w-xl pb-32 pt-2 px-4 space-y-6">
-      {/* Platform Header */}
-      <header className="space-y-3">
-        <div className="flex items-center justify-between">
+    <div className="space-y-5 pb-10">
+      {/* ─── Clean, Mobile-First Header (matches Pharmacy & Stores) ─── */}
+      <header className="space-y-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <div className="flex items-center gap-1.5 text-xs font-bold text-gold uppercase tracking-wider">
-              <GraduationCap className="h-4 w-4 text-gold" />
-              <span>Education Marketplace & Infrastructure</span>
-            </div>
-            <h1 className="mt-1 text-2xl font-black text-ink">Schools & Creator Academies</h1>
-            <p className="text-xs text-ink-500 mt-0.5">
-              Explore courses, live classes and quizzes provided by independent partner schools and educators.
+            <p className="text-[11px] uppercase tracking-[0.2em] text-gold font-semibold">
+              Peebee Learn
+            </p>
+            <h1 className="font-display text-2xl sm:text-3xl font-semibold text-cream mt-0.5">
+              Schools, Tutors & Courses
+            </h1>
+            <p className="text-sm text-ink-500 mt-1">
+              Enroll in partner schools, vocational guilds, and tutor-led courses across every age group.
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
-            {/* Role switch toggle */}
-            <div className="flex rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] p-1 text-[11px] font-bold">
-              <button
-                type="button"
-                onClick={() => setUserRole("student")}
-                className={`rounded-xl px-2.5 py-1 transition ${
-                  userRole === "student" ? "bg-gold text-ink-gold font-black shadow-sm" : "text-ink-500"
-                }`}
-              >
-                Learner
-              </button>
-              <button
-                type="button"
-                onClick={() => setUserRole("parent")}
-                className={`rounded-xl px-2.5 py-1 transition ${
-                  userRole === "parent" ? "bg-gold text-ink-gold font-black shadow-sm" : "text-ink-500"
-                }`}
-              >
-                Parent / Guardian
-              </button>
-            </div>
+          {/* Primary Workspace Switcher (Scrollable on small screens, never squished) */}
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-1 self-start sm:self-auto max-w-full">
+            {(
+              [
+                { id: "explore", label: "Explore", icon: BookOpen },
+                { id: "live", label: "Live Classes", icon: Video },
+                { id: "tutors", label: "Tutor Chat", icon: MessageSquare },
+                { id: "tuition", label: "Tuition & Passes", icon: CreditCard },
+                { id: "studio", label: "Educator Studio", icon: Layers },
+              ] as const
+            ).map((tab) => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => {
+                    setActiveTab(tab.id);
+                    if (tab.id !== "explore") {
+                      setSelectedCourseId(null);
+                    }
+                  }}
+                  className={`flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                    isActive
+                      ? "bg-gold text-ink-gold"
+                      : "text-ink-500 hover:text-cream"
+                  }`}
+                >
+                  <Icon className="h-3.5 w-3.5 shrink-0" />
+                  <span>{tab.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
 
-            {/* Sandbox / Practice Mode Button */}
+        {/* Search Input (Single solid colour edge-to-edge via field-box per AGENTS.md) */}
+        {(activeTab === "explore" || activeTab === "live") && !selectedCourse && !activeLiveMeeting && (
+          <div className="field-box flex items-center gap-2.5 rounded-xl px-3.5 py-2.5">
+            <Search className="h-4 w-4 text-ink-500 shrink-0" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search schools, courses, subjects or tutors..."
+              className="w-full text-sm text-cream placeholder:text-ink-500 focus:outline-none"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                className="text-xs text-ink-500 hover:text-cream"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Education Stream Pills (Only shown when browsing Explore or Live rooms) */}
+        {(activeTab === "explore" || activeTab === "live") && !selectedCourse && !activeLiveMeeting && (
+          <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
             <button
               type="button"
               onClick={() => {
-                if (isPractice) {
-                  exitPracticeMode("learner");
-                  setIsPractice(false);
-                  window.location.reload();
-                } else {
-                  startPracticeMode("learner");
-                  setIsPractice(true);
-                  window.location.reload();
-                }
+                setStreamFilter("all");
+                setSelectedCreatorId(null);
               }}
-              className={`relative flex h-10 items-center gap-1.5 rounded-2xl px-3 text-xs font-black shadow-sm transition ${
-                isPractice
-                  ? "bg-sky-600 text-white hover:bg-sky-700"
-                  : "border border-sky-400/40 bg-sky-500/10 text-sky-700 hover:bg-sky-500/20 dark:text-sky-300"
+              className={`whitespace-nowrap rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${
+                streamFilter === "all"
+                  ? "bg-gold text-ink-gold"
+                  : "bg-[rgb(var(--surface-muted))] text-ink-500 hover:text-cream"
               }`}
-              title="Toggle Interactive Sandbox / Practice Mode"
             >
-              <FlaskConical className="h-4 w-4" />
-              <span className="hidden sm:inline">{isPractice ? "Sandbox On" : "Sandbox"}</span>
+              All Streams ({courses.length})
             </button>
-
-            {/* Tuition Balance Button */}
-            <button
-              type="button"
-              onClick={() => setShowTuitionModal(true)}
-              className="relative flex h-10 items-center gap-1.5 rounded-2xl border border-gold/40 bg-gold/10 px-3 text-xs font-black text-gold shadow-sm transition hover:bg-gold/20"
-              title="Tuition & Passes"
-            >
-              <CreditCard className="h-4 w-4" />
-              <span className="hidden sm:inline">Tuition</span>
-            </button>
+            {EDUCATION_STREAMS.map((s) => {
+              const active = streamFilter === s.id;
+              return (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => {
+                    setStreamFilter(s.id);
+                    setSelectedCreatorId(null);
+                  }}
+                  className={`whitespace-nowrap rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${
+                    active
+                      ? "bg-gold text-ink-gold"
+                      : "bg-[rgb(var(--surface-muted))] text-ink-500 hover:text-cream"
+                  }`}
+                >
+                  {s.title} · {s.ageBracket}
+                </button>
+              );
+            })}
           </div>
-        </div>
-
-        {/* Sandbox Active Banner */}
-        {isPractice && (
-          <aside
-            aria-label="Interactive Sandbox Notice"
-            className="flex items-center justify-between gap-3 rounded-2xl border border-sky-300/80 bg-sky-100/80 p-3.5 text-xs text-sky-950 dark:border-sky-800 dark:bg-sky-950/60 dark:text-sky-200"
-          >
-            <div className="flex min-w-0 items-center gap-2.5">
-              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-sky-200 text-sky-800 dark:bg-sky-900 dark:text-sky-300">
-                <FlaskConical className="h-4 w-4" />
-              </span>
-              <p className="truncate">
-                <strong className="font-black">Interactive Sandbox Active:</strong> All 5 learning tiers & live classrooms are loaded with simulated sample data.
-              </p>
-            </div>
-            <div className="flex shrink-0 items-center gap-2">
-              <a
-                href="http://localhost:3011/practice"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="rounded-xl bg-sky-600 px-3 py-1 font-black text-white transition hover:bg-sky-700"
-              >
-                7-Step Guide
-              </a>
-              <button
-                type="button"
-                onClick={() => {
-                  exitPracticeMode("learner");
-                  setIsPractice(false);
-                  window.location.reload();
-                }}
-                className="text-[11px] font-bold text-sky-800 hover:underline dark:text-sky-300"
-              >
-                Exit
-              </button>
-            </div>
-          </aside>
         )}
-
-        {/* 5-Tier Education Stream Tabs */}
-        <div className="no-scrollbar flex gap-2 overflow-x-auto pb-1">
-          {EDUCATION_STREAMS.map((st) => {
-            const active = activeStream === st.id;
-            return (
-              <button
-                key={st.id}
-                type="button"
-                onClick={() => setActiveStream(st.id)}
-                className={`flex shrink-0 items-center gap-2 rounded-2xl px-3.5 py-2.5 text-xs font-black transition active:scale-95 ${
-                  active
-                    ? "bg-gold text-ink-gold shadow-md font-black"
-                    : "border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] text-ink-500 hover:text-ink"
-                }`}
-              >
-                <span className="text-base">{st.icon}</span>
-                <div className="text-left leading-tight">
-                  <div className="font-black">{st.title}</div>
-                  <div className="text-[9px] opacity-80 font-medium">{st.ageBracket}</div>
-                </div>
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Stream Purpose Banner */}
-        <div className="rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] px-3.5 py-2.5 text-xs text-ink-500 flex items-start gap-2.5">
-          <span className="text-lg shrink-0 mt-0.5">{currentStreamMeta.icon}</span>
-          <div>
-            <span className="font-bold text-ink">{currentStreamMeta.tagline}:</span>{" "}
-            <span>{currentStreamMeta.pedagogicalFocus}</span>
-          </div>
-        </div>
       </header>
 
-      {/* Live Classroom Streaming Now Banner (Zoom-Style Integration) */}
-      <div className="relative overflow-hidden rounded-3xl border-2 border-red-500/30 bg-gradient-to-r from-red-500/10 via-[rgb(var(--surface-card))] to-[rgb(var(--surface-card))] p-5 shadow-sm">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="relative flex h-3 w-3">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75"></span>
-              <span className="relative inline-flex h-3 w-3 rounded-full bg-red-500"></span>
-            </span>
-            <span className="text-xs font-black uppercase tracking-wider text-red-600 dark:text-red-400">
-              Live Classroom Streaming Now
-            </span>
-          </div>
-          <span className="flex items-center gap-1 rounded-full bg-red-500/15 px-2.5 py-0.5 text-[11px] font-black text-red-600 dark:text-red-400">
-            <Users className="h-3 w-3" />
-            {DEMO_LIVE_MEETINGS[0].participantCount} in Room
-          </span>
-        </div>
-
-        <div className="mt-2.5">
-          <h2 className="text-base font-black text-ink">{DEMO_LIVE_MEETINGS[0].title}</h2>
-          <p className="mt-0.5 text-xs text-ink-500">
-            {DEMO_LIVE_MEETINGS[0].subject} • Hosted by{" "}
-            <span className="font-bold text-ink">{DEMO_LIVE_MEETINGS[0].hostTutorName}</span> (
-            {DEMO_LIVE_MEETINGS[0].hostTutorTitle})
-          </p>
-        </div>
-
-        <div className="mt-4 flex flex-wrap items-center gap-2.5">
-          <a
-            href="http://localhost:3011/live/live_fintech_101"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-2 rounded-2xl bg-gold px-4 py-2.5 text-xs font-black text-ink-gold shadow-sm transition hover:opacity-95 active:scale-95"
-          >
-            <Video className="h-4 w-4" />
-            Join Live Class (Zoom-Style)
-          </a>
-
-          <button
-            type="button"
-            onClick={() => setShowTutorChatDrawer(true)}
-            className="flex items-center gap-1.5 rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] px-4 py-2.5 text-xs font-bold text-ink transition hover:border-gold hover:text-gold"
-          >
-            <MessageSquare className="h-4 w-4 text-gold" />
-            Live Chat with Tutor
-          </button>
-        </div>
-      </div>
-
-      {/* ========================================================================= */}
-      {/* 1. SPROUTS STREAM (AGES 3-6: Non-text, tablet-first, audio guide, stickers) */}
-      {/* ========================================================================= */}
-      {activeStream === "sprouts" && (
-        <section className="space-y-4">
-          {/* Audio Character Guide Mascot Banner */}
-          <div className="relative overflow-hidden rounded-3xl border-2 border-emerald-400/40 bg-gradient-to-br from-emerald-500/15 via-[rgb(var(--surface-card))] to-emerald-500/5 p-5 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-500 text-3xl shadow-md">
-                  🦁
-                </div>
-                <div>
-                  <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-emerald-600">
-                    Spoken Audio Guide
-                  </span>
-                  <h2 className="text-lg font-black text-ink">Kigo the Lion Cub</h2>
-                  <p className="text-xs text-ink-500">
-                    &ldquo;Tap the big green button to hear your mission!&rdquo;
-                  </p>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={toggleSproutsAudio}
-                className={`flex h-12 w-12 items-center justify-center rounded-2xl shadow-lg transition active:scale-95 ${
-                  sproutsPlayingAudio
-                    ? "bg-emerald-600 text-white animate-pulse"
-                    : "bg-emerald-500 text-white"
-                }`}
-                aria-label="Play character voice instructions"
-              >
-                {sproutsPlayingAudio ? <Volume2 className="h-6 w-6" /> : <Play className="h-6 w-6 fill-current" />}
-              </button>
-            </div>
-
-            {sproutsPlayingAudio && (
-              <div className="mt-3 rounded-2xl bg-emerald-500/10 p-3 border border-emerald-500/30 flex items-center gap-2 text-xs font-bold text-emerald-800 dark:text-emerald-300 animate-fade-in">
-                <span className="flex h-2 w-2 rounded-full bg-emerald-500 animate-ping" />
-                <span>Audio Playing: &ldquo;Hello little friend! Tap the shiny vowels to feed Kigo!&rdquo;</span>
-              </div>
-            )}
-          </div>
-
-          {/* Screen Timer & Parental Supervision Bar */}
-          <div className="flex items-center justify-between rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-3.5 shadow-sm">
-            <div className="flex items-center gap-2.5">
-              <Clock className="h-4 w-4 text-emerald-500" />
-              <div>
-                <p className="text-xs font-bold text-ink">Screen Timer (Eye Rest Guard)</p>
-                <p className="text-[10px] text-ink-500">{sproutsTimerRemaining} minutes remaining today</p>
-              </div>
-            </div>
-
+      {/* =====================================================================
+          VIEW 1: INTERACTIVE COURSE, LESSON & QUIZ PLAYER (When a course is open)
+         ===================================================================== */}
+      {activeTab === "explore" && selectedCourse && (
+        <div className="space-y-5">
+          {/* Back bar */}
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <button
               type="button"
-              onClick={() => setShowPinModal(true)}
-              className="flex items-center gap-1 rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] px-2.5 py-1.5 text-[11px] font-bold text-ink-500 hover:text-ink"
+              onClick={() => setSelectedCourseId(null)}
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-gold hover:underline"
             >
-              <KeyRound className="h-3.5 w-3.5 text-gold" />
-              <span>Parent PIN</span>
+              <ArrowLeft className="h-4 w-4" />
+              Back to {selectedCreator ? selectedCreator.name : "Schools & Courses"}
             </button>
-          </div>
-
-          {/* Interactive Touch Activity: Drag & Drop Vowels */}
-          <div className="rounded-3xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-5 shadow-sm space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600">
-                  Touch & Sound Game
-                </span>
-                <h3 className="text-base font-black text-ink">
-                  {DEMO_SPROUTS_ACTIVITIES[sproutsActiveActivityIndex].title}
-                </h3>
-              </div>
-              <span className="rounded-full bg-emerald-500/15 px-2.5 py-1 text-xs font-black text-emerald-600">
-                ⭐ +1 Sticker
-              </span>
-            </div>
-
-            {/* Graphic Interactive Canvas Tap Area */}
-            <div className="rounded-2xl border-2 border-dashed border-emerald-400/50 bg-emerald-50/40 dark:bg-emerald-950/20 p-6 text-center space-y-4">
-              <p className="text-xs font-bold text-ink-500">
-                Tap matching sounds or drag the fruits into the basket!
-              </p>
-
-              <div className="grid grid-cols-5 gap-2 sm:gap-3">
-                {DEMO_SPROUTS_ACTIVITIES[0].gameConfig.matchingPairs?.map((pair, idx) => (
-                  <button
-                    key={idx}
-                    type="button"
-                    onClick={() => {
-                      alert(`Letter ${pair.match} matched! Great job!`);
-                      if (!sproutsStickersUnlocked.includes("sticker_super_boda")) {
-                        setSproutsStickersUnlocked([...sproutsStickersUnlocked, "sticker_super_boda"]);
-                      }
-                    }}
-                    className="flex flex-col items-center justify-center rounded-2xl border border-emerald-300/40 bg-[rgb(var(--surface-card))] p-3 shadow-md transition hover:scale-105 active:scale-90"
-                  >
-                    <span className="text-3xl">{pair.item}</span>
-                    <span className="mt-1 font-black text-lg text-emerald-600">{pair.match}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* Synchronized Read-Along Storybook */}
-          <div className="rounded-3xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-5 shadow-sm space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="text-xl">🛵</span>
-                <div>
-                  <h3 className="text-sm font-black text-ink">Read-Along: The Little Boda That Could</h3>
-                  <p className="text-[10px] text-ink-500">Page {storybookPage + 1} of 3 · Dual Audio & Text</p>
-                </div>
-              </div>
-
-              <div className="flex gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => setStorybookPage(Math.max(0, storybookPage - 1))}
-                  disabled={storybookPage === 0}
-                  className="rounded-xl border border-[var(--border-faint)] p-2 text-xs text-ink-500 hover:text-ink disabled:opacity-40"
-                >
-                  ←
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setStorybookPage(Math.min(2, storybookPage + 1))}
-                  disabled={storybookPage === 2}
-                  className="rounded-xl border border-[var(--border-faint)] p-2 text-xs text-ink-500 hover:text-ink disabled:opacity-40"
-                >
-                  →
-                </button>
-              </div>
-            </div>
-
-            <div className="overflow-hidden rounded-2xl border border-[var(--border-faint)] bg-black/5">
-              <img
-                src={DEMO_SPROUTS_ACTIVITIES[2].gameConfig.storyPages?.[storybookPage]?.imageUrl}
-                alt="Story illustration"
-                className="h-44 w-full object-cover"
-              />
-              <div className="p-4 bg-[rgb(var(--surface-card))]">
-                <p className="text-sm font-bold text-ink leading-relaxed">
-                  {DEMO_SPROUTS_ACTIVITIES[2].gameConfig.storyPages?.[storybookPage]?.text}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* Sticker Book Rewards Tray */}
-          <div className="rounded-3xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-5 shadow-sm space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-black text-ink">My Digital Sticker Album</h3>
-              <span className="text-xs font-bold text-emerald-600">{sproutsStickersUnlocked.length} Collected</span>
-            </div>
-
-            <div className="grid grid-cols-4 gap-2.5">
-              <div className="flex flex-col items-center justify-center rounded-2xl border border-emerald-400/40 bg-emerald-500/10 p-3 text-center">
-                <span className="text-3xl animate-bounce">🦁</span>
-                <span className="mt-1 text-[10px] font-black text-ink">Golden Lion</span>
-              </div>
-              <div className="flex flex-col items-center justify-center rounded-2xl border border-emerald-400/40 bg-emerald-500/10 p-3 text-center">
-                <span className="text-3xl">🦩</span>
-                <span className="mt-1 text-[10px] font-black text-ink">Crowned Crane</span>
-              </div>
-              <div className="flex flex-col items-center justify-center rounded-2xl border border-emerald-400/40 bg-emerald-500/10 p-3 text-center">
-                <span className="text-3xl">🛵</span>
-                <span className="mt-1 text-[10px] font-black text-ink">Super Boda</span>
-              </div>
-              <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] p-3 text-center opacity-60">
-                <span className="text-3xl">❓</span>
-                <span className="mt-1 text-[10px] font-medium text-ink-500">Locked</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Parental Co-Play Offline Prompt */}
-          <div className="rounded-3xl border border-gold/40 bg-gold/10 p-4 shadow-sm flex items-start gap-3">
-            <span className="text-2xl shrink-0">🏡</span>
-            <div className="space-y-1">
-              <h4 className="text-xs font-black text-ink">{DEMO_SPROUTS_COPLAY.promptTitle}</h4>
-              <p className="text-xs text-ink-500 leading-relaxed">{DEMO_SPROUTS_COPLAY.offlineActionPrompt}</p>
-              <p className="text-[10px] font-semibold text-gold pt-1">Parent tip: {DEMO_SPROUTS_COPLAY.parentTip}</p>
-            </div>
-          </div>
-        </section>
-      )}
-
-      {/* ========================================================================= */}
-      {/* 2. FOUNDATIONS STREAM (AGES 6-12: Primary worksheets, photo scan, merits) */}
-      {/* ========================================================================= */}
-      {activeStream === "foundations" && (
-        <section className="space-y-4">
-          {/* Merit Points & Habit Streak Wallet */}
-          <div className="rounded-3xl border border-amber-400/40 bg-gradient-to-br from-amber-500/15 via-[rgb(var(--surface-card))] to-amber-500/5 p-5 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-amber-600">
-                  Daily Habit & Merits Wallet
-                </span>
-                <h2 className="text-2xl font-black text-ink">{totalMerits} Stars</h2>
-                <p className="text-xs text-ink-500">🔥 14-Day Homework Punctuality Streak</p>
-              </div>
-
-              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-500 text-ink-gold shadow-md">
-                <Star className="h-7 w-7 fill-current" />
-              </div>
-            </div>
-
-            <div className="mt-3 flex items-center gap-2 pt-2 border-t border-[var(--border-faint)] text-[11px] font-bold text-ink-500">
-              <span className="text-amber-600">Recent: +25 Stars (Primary 4 Math homework turned in on time)</span>
-            </div>
-          </div>
-
-          {/* Active Homework Worksheets Section */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-black text-ink">Assigned Homework Worksheets</h3>
-              <span className="text-xs text-ink-500">{DEMO_FOUNDATIONS_WORKSHEETS.length} due this week</span>
-            </div>
-
-            <div className="space-y-2.5">
-              {DEMO_FOUNDATIONS_WORKSHEETS.map((ws) => (
-                <div
-                  key={ws.id}
-                  className="rounded-3xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-4 shadow-sm space-y-3"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-black text-amber-700 dark:text-amber-300">
-                          {ws.gradeLevel} · {ws.subject}
-                        </span>
-                        <span className="text-[11px] text-ink-500">{ws.dueDate}</span>
-                      </div>
-                      <h4 className="text-sm font-black text-ink leading-snug">{ws.title}</h4>
-                      <p className="text-xs text-ink-500 line-clamp-2">{ws.instructions}</p>
-                    </div>
-
-                    <span className="rounded-xl bg-amber-500/10 px-2 py-1 text-xs font-black text-amber-600 shrink-0">
-                      +{ws.maxMeritPoints} Stars
-                    </span>
-                  </div>
-
-                  <div className="flex items-center gap-2 pt-1 border-t border-[var(--border-faint)]">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setActiveWorksheet(ws);
-                        setShowWorksheetModal(true);
-                      }}
-                      className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-gold py-2.5 text-xs font-black text-ink-gold shadow transition hover:opacity-95 active:scale-98"
-                    >
-                      <Camera className="h-4 w-4" />
-                      Take Photo & Turn In (Parent Sign-Off)
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Submissions & Graded Exercise History */}
-          <div className="space-y-3">
-            <h3 className="text-sm font-black text-ink">Turned In Work & Teacher Feedback</h3>
-
-            <div className="space-y-2.5">
-              {submissionsList.map((sub) => (
-                <div
-                  key={sub.id}
-                  className="rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-3.5 shadow-sm space-y-2"
-                >
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h4 className="text-xs font-black text-ink">{sub.worksheetTitle}</h4>
-                      <p className="text-[10px] text-ink-500">
-                        {sub.subject} · Signed by {sub.parentSignerName}
-                      </p>
-                    </div>
-                    <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-black text-emerald-600">
-                      ✓ Graded: +{sub.meritPointsEarned} Stars
-                    </span>
-                  </div>
-
-                  {sub.teacherRemarks && (
-                    <div className="rounded-xl bg-[rgb(var(--surface-muted))] p-2.5 text-xs text-ink-500">
-                      <span className="font-bold text-ink">Teacher remarks:</span> {sub.teacherRemarks}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-      )}
-
-      {/* ========================================================================= */}
-      {/* 3. ACADEMY STREAM (AGES 12-18: Term pacing, timed exams, report cards)   */}
-      {/* ========================================================================= */}
-      {activeStream === "academy" && (
-        <section className="space-y-4">
-          {/* Term 1 2026 Academic Calendar & Homeroom Banner */}
-          <div className="rounded-3xl border border-indigo-400/40 bg-gradient-to-br from-indigo-500/15 via-[rgb(var(--surface-card))] to-indigo-500/5 p-5 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600">
-                  Greenwood International Academy
-                </span>
-                <h2 className="text-xl font-black text-ink">Senior 4 East — Term 1</h2>
-                <p className="text-xs text-ink-500">Homeroom Master: Mr. Kenneth Ochieng · 98.5% Attendance</p>
-              </div>
-
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-600 text-white shadow-md">
-                🏛️
-              </div>
-            </div>
-
-            <div className="mt-3 grid grid-cols-2 gap-2 pt-2 border-t border-[var(--border-faint)] text-xs">
-              <div>
-                <span className="text-ink-500">Midterm Exams:</span>{" "}
-                <span className="font-bold text-ink">March 16–20</span>
-              </div>
-              <div className="text-right">
-                <span className="text-ink-500">Terminal Reports:</span>{" "}
-                <span className="font-bold text-indigo-600">May 1, 2026</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Timed Examination Simulator Launcher */}
-          <div className="rounded-3xl border border-indigo-500/30 bg-[rgb(var(--surface-card))] p-5 shadow-sm space-y-3">
-            <div className="flex items-start justify-between gap-3">
-              <div className="space-y-1">
-                <span className="rounded-full bg-indigo-500/15 px-2 py-0.5 text-[10px] font-black text-indigo-600">
-                  Official UNEB Mock Examination
-                </span>
-                <h3 className="text-base font-black text-ink">{DEMO_ACADEMY_EXAM.title}</h3>
-                <p className="text-xs text-ink-500">
-                  Duration: {DEMO_ACADEMY_EXAM.durationMinutes} mins · {DEMO_ACADEMY_EXAM.questions.length} sections · Proctored with anti-cheat detection
-                </p>
-              </div>
-
-              <span className="rounded-2xl bg-indigo-600 px-3 py-2 text-xs font-black text-white shadow shrink-0">
-                100 Marks
-              </span>
-            </div>
-
-            <div className="pt-2 border-t border-[var(--border-faint)]">
+            <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => {
-                  setShowExamModal(true);
-                  setExamSubmitted(false);
-                  setExamTabSwitches(0);
-                  setExamScoreResult(null);
-                }}
-                className="flex w-full items-center justify-center gap-2 rounded-2xl bg-indigo-600 py-3 text-xs font-black text-white shadow transition hover:opacity-95 active:scale-98"
+                onClick={() => openTutorChatForCreator(selectedCourse.creatorRoleTitle, selectedCourse.stream)}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] px-3 py-1.5 text-xs font-semibold text-cream hover:border-gold/40"
               >
-                <ShieldCheck className="h-4 w-4" />
-                Enter Secure Exam Hall (Proctored)
+                <MessageSquare className="h-3.5 w-3.5 text-gold" />
+                Ask Instructor
               </button>
-            </div>
-          </div>
-
-          {/* Weekly Period Timetable Grid */}
-          <div className="rounded-3xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-5 shadow-sm space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-black text-ink">Weekly Class Timetable</h3>
-              <span className="text-xs font-bold text-indigo-600">Senior 4 East</span>
-            </div>
-
-            <div className="space-y-2">
-              {DEMO_ACADEMY_TIMETABLE[0].periods.map((period) => (
-                <div
-                  key={period.periodNumber}
-                  className="flex items-center justify-between rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] px-3.5 py-2.5 text-xs"
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="font-mono font-bold text-indigo-600 text-[11px]">
-                      {period.startTime} - {period.endTime}
-                    </span>
-                    <div>
-                      <p className="font-bold text-ink">{period.subject}</p>
-                      <p className="text-[10px] text-ink-500">{period.teacherName}</p>
-                    </div>
-                  </div>
-
-                  <span className="rounded-lg bg-[rgb(var(--surface-card))] px-2 py-1 text-[10px] font-bold text-ink-500 border border-[var(--border-faint)]">
-                    {period.roomOrLink}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Official Terminal Report Card Preview */}
-          <div className="rounded-3xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-5 shadow-sm space-y-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-sm font-black text-ink">Official Terminal Report Card</h3>
-                <p className="text-[10px] text-ink-500">Term 1 — 2026 · Class Rank: {DEMO_ACADEMY_REPORT_CARD.classRank}</p>
-              </div>
-              <span className="rounded-xl bg-gold/15 px-2.5 py-1 text-xs font-black text-gold">
-                Overall: {DEMO_ACADEMY_REPORT_CARD.overallWeightedAverage}% (D1)
-              </span>
-            </div>
-
-            <div className="divide-y divide-[var(--border-faint)]">
-              {DEMO_ACADEMY_REPORT_CARD.subjects.map((sub) => (
-                <div key={sub.code} className="py-2.5 flex items-center justify-between text-xs">
-                  <div>
-                    <p className="font-bold text-ink">{sub.subjectName}</p>
-                    <p className="text-[10px] text-ink-500">
-                      HW 20% ({sub.homeworkScorePercent}%) · Midterm 30% ({sub.midtermScorePercent}%) · Final 50% ({sub.finalExamScorePercent}%)
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <span className="font-black text-indigo-600 text-sm">{sub.finalGrade}</span>
-                    <span className="block text-[10px] text-ink-500">{sub.weightedTotalPercent}%</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="rounded-2xl bg-[rgb(var(--surface-muted))] p-3 text-xs text-ink-500">
-              <span className="font-bold text-ink">Principal remarks:</span> {DEMO_ACADEMY_REPORT_CARD.principalRemarks}
-            </div>
-          </div>
-        </section>
-      )}
-
-      {/* ========================================================================= */}
-      {/* 4. CAMPUS STREAM (HIGHER ED & SELF-PACED BUSINESS COURSES: edX/Udemy style) */}
-      {/* ========================================================================= */}
-      {activeStream === "campus" && (
-        <section className="space-y-4">
-          {/* Executive Course Spotlight */}
-          <div className="rounded-3xl border border-blue-400/40 bg-gradient-to-br from-blue-500/15 via-[rgb(var(--surface-card))] to-blue-500/5 p-5 shadow-sm space-y-3">
-            <span className="rounded-full bg-blue-500/20 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider text-blue-600">
-              Executive Higher Education
-            </span>
-            <h2 className="text-xl font-black text-ink">{DEMO_CAMPUS_COURSE.title}</h2>
-            <p className="text-xs text-ink-500 leading-relaxed">{DEMO_CAMPUS_COURSE.description}</p>
-
-            <div className="flex flex-wrap items-center gap-3 pt-1 text-xs text-ink-500">
-              <span>👨‍🏫 {DEMO_CAMPUS_COURSE.instructorName}</span>
-              <span>⭐ {DEMO_CAMPUS_COURSE.rating} ({DEMO_CAMPUS_COURSE.reviewCount} reviews)</span>
-              <span>🎓 {DEMO_CAMPUS_COURSE.enrolledStudentsCount} students enrolled</span>
-            </div>
-          </div>
-
-          {/* Interactive Fast-Paced Video Player with Speed & Notes */}
-          <div className="rounded-3xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-5 shadow-sm space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-black text-ink">Module 1.1: Mobile Money Architecture</h3>
-              <div className="flex items-center gap-1.5">
-                {[0.75, 1.0, 1.25, 1.5, 2.0].map((spd) => (
-                  <button
-                    key={spd}
-                    type="button"
-                    onClick={() => setCampusPlaybackSpeed(spd)}
-                    className={`rounded-lg px-2 py-0.5 text-[10px] font-black transition ${
-                      campusPlaybackSpeed === spd
-                        ? "bg-blue-600 text-white"
-                        : "border border-[var(--border-faint)] text-ink-500 hover:text-ink"
-                    }`}
-                  >
-                    {spd}x
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Video preview container */}
-            <div className="relative aspect-video w-full overflow-hidden rounded-2xl bg-black flex items-center justify-center">
-              <img
-                src={DEMO_CAMPUS_COURSE.thumbnailUrl}
-                alt="Video preview"
-                className="h-full w-full object-cover opacity-60"
-              />
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+              {enrolledCourseIds.includes(selectedCourse.id) ? (
+                <span className="inline-flex items-center gap-1 rounded-lg bg-gold/15 px-3 py-1.5 text-xs font-semibold text-gold">
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  Enrolled
+                </span>
+              ) : (
                 <button
                   type="button"
-                  onClick={() => alert("Simulating instant video playback at " + campusPlaybackSpeed + "x speed.")}
-                  className="flex h-14 w-14 items-center justify-center rounded-full bg-blue-600 text-white shadow-xl transition hover:scale-110 active:scale-95"
+                  onClick={() => setEnrolledCourseIds((prev) => [...prev, selectedCourse.id])}
+                  className="rounded-lg bg-gold px-3.5 py-1.5 text-xs font-semibold text-ink-gold"
                 >
-                  <Play className="h-6 w-6 fill-current ml-1" />
+                  Enroll · {formatUgx(selectedCourse.priceUgx)}
                 </button>
-                <span className="font-mono text-xs font-bold text-white/90 bg-black/60 px-2.5 py-1 rounded-full">
-                  00:45 / 12:20 · Speed {campusPlaybackSpeed}x
-                </span>
-              </div>
-            </div>
-
-            {/* Video Timestamp Note-Taking Tray */}
-            <div className="space-y-2 pt-2">
-              <form onSubmit={handleAddCampusNote} className="flex gap-2">
-                <div className="field-box flex-1 rounded-2xl border border-[var(--border-faint)]">
-                  <input
-                    type="text"
-                    value={campusNoteInput}
-                    onChange={(e) => setCampusNoteInput(e.target.value)}
-                    placeholder="Take a private study note pinned to 00:45..."
-                    className="w-full bg-transparent px-3 py-2.5 text-xs text-ink focus:outline-none"
-                  />
-                </div>
-                <button
-                  type="submit"
-                  className="rounded-2xl bg-blue-600 px-4 py-2.5 text-xs font-black text-white shadow"
-                >
-                  Save Note
-                </button>
-              </form>
-
-              {campusNotes.length > 0 && (
-                <div className="space-y-1.5 pt-1">
-                  {campusNotes.map((note) => (
-                    <div
-                      key={note.id}
-                      className="flex items-start gap-2 rounded-xl bg-[rgb(var(--surface-muted))] p-2.5 text-xs"
-                    >
-                      <span className="font-mono font-bold text-blue-600 text-[11px] shrink-0">
-                        {Math.floor(note.timestamp / 60)}:{(note.timestamp % 60).toString().padStart(2, "0")}
-                      </span>
-                      <p className="text-ink-500 flex-1">{note.text}</p>
-                    </div>
-                  ))}
-                </div>
               )}
             </div>
           </div>
 
-          {/* Modular Syllabus Tree Browser */}
-          <div className="rounded-3xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-5 shadow-sm space-y-3">
-            <h3 className="text-sm font-black text-ink">Curriculum Syllabus Tree</h3>
+          {/* Course Banner Card */}
+          <div className="rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-4 sm:p-5">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="space-y-1.5">
+                <div className="flex flex-wrap items-center gap-2 text-xs text-ink-500">
+                  <span className="rounded-md bg-[rgb(var(--surface-muted))] px-2 py-0.5 font-semibold text-gold">
+                    {STREAM_LABELS[selectedCourse.stream]}
+                  </span>
+                  <span>·</span>
+                  <span>{selectedCourse.level}</span>
+                  <span>·</span>
+                  <span>★ {selectedCourse.rating.toFixed(1)} ({selectedCourse.reviewCount} reviews)</span>
+                </div>
+                <h2 className="font-display text-xl sm:text-2xl font-semibold text-cream">
+                  {selectedCourse.title}
+                </h2>
+                <p className="text-xs sm:text-sm text-ink-500 max-w-3xl">
+                  {selectedCourse.summary}
+                </p>
+                <div className="flex items-center gap-2 pt-1">
+                  <img
+                    src={selectedCourse.creatorAvatar}
+                    alt={selectedCourse.creatorName}
+                    className="h-6 w-6 rounded-full object-cover"
+                  />
+                  <span className="text-xs font-medium text-cream">
+                    {selectedCourse.creatorName}
+                  </span>
+                  <span className="text-xs text-ink-500">
+                    — {selectedCourse.creatorRoleTitle}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
 
-            <div className="space-y-3">
-              {DEMO_CAMPUS_COURSE.syllabus.map((mod) => (
-                <div key={mod.id} className="rounded-2xl border border-[var(--border-faint)] p-3.5 space-y-2.5">
-                  <h4 className="text-xs font-black text-ink">{mod.title}</h4>
-                  <p className="text-[11px] text-ink-500">{mod.description}</p>
-
-                  <div className="space-y-1.5">
-                    {mod.sections[0].units.map((unit) => (
-                      <div
-                        key={unit.id}
-                        className="flex items-center justify-between rounded-xl bg-[rgb(var(--surface-muted))] p-2.5 text-xs"
-                      >
-                        <div className="flex items-center gap-2">
-                          <Play className="h-3.5 w-3.5 text-blue-600" />
-                          <span className="font-medium text-ink">{unit.title}</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-[10px] text-ink-500">
-                            {Math.floor(unit.durationSeconds / 60)}m
-                          </span>
-                          {unit.isPreview && (
-                            <span className="rounded-md bg-blue-500/15 px-1.5 py-0.5 text-[9px] font-bold text-blue-600">
-                              Free Preview
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    ))}
+          {/* Curriculum & Active Lesson Split */}
+          <div className="grid gap-4 lg:grid-cols-12">
+            {/* Left Sidebar: Modules & Lessons */}
+            <div className="lg:col-span-4 space-y-3">
+              <div className="rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-4 space-y-3">
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-ink-500">
+                  Course Curriculum ({allLessonsInSelectedCourse.length} Lessons)
+                </h3>
+                {selectedCourse.modules.map((mod) => (
+                  <div key={mod.id} className="space-y-2">
+                    <div className="text-xs font-semibold text-cream">{mod.title}</div>
+                    <div className="space-y-1.5">
+                      {mod.lessons.map((lesson, idx) => {
+                        const isSelected = activeLesson?.id === lesson.id;
+                        const isDone = completedLessonIds.includes(lesson.id);
+                        return (
+                          <button
+                            key={lesson.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedLessonId(lesson.id);
+                              setQuizAnswers({});
+                              setQuizSubmittedLessonId(null);
+                            }}
+                            className={`w-full text-left rounded-xl p-3 transition border ${
+                              isSelected
+                                ? "border-gold bg-gold/10"
+                                : "border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] hover:border-gold/30"
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <span className="text-xs font-semibold text-cream leading-snug">
+                                {idx + 1}. {lesson.title}
+                              </span>
+                              {isDone && (
+                                <CheckCircle2 className="h-4 w-4 text-gold shrink-0" />
+                              )}
+                            </div>
+                            <div className="mt-1.5 flex items-center gap-2 text-[11px] text-ink-500">
+                              <Clock className="h-3 w-3" />
+                              <span>{lesson.durationMinutes} min</span>
+                              {lesson.quiz && (
+                                <>
+                                  <span>·</span>
+                                  <span className="text-gold font-medium">Includes Quiz</span>
+                                </>
+                              )}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Double-Blind Peer Review & Verifiable Credential */}
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              type="button"
-              onClick={() => setShowPeerReviewModal(true)}
-              className="flex flex-col justify-between rounded-3xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-4 text-left shadow-sm hover:border-blue-500/50 transition active:scale-98"
-            >
-              <div>
-                <span className="text-2xl">👥</span>
-                <h4 className="mt-2 text-xs font-black text-ink">Peer Review Capstone</h4>
-                <p className="text-[10px] text-ink-500 mt-0.5">Grade 3 anonymous submissions using rubric</p>
-              </div>
-              <span className="mt-3 text-[11px] font-bold text-blue-600">Open Station →</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setShowCertModal(true)}
-              className="flex flex-col justify-between rounded-3xl border border-gold/40 bg-gold/10 p-4 text-left shadow-sm hover:border-gold transition active:scale-98"
-            >
-              <div>
-                <span className="text-2xl">📜</span>
-                <h4 className="mt-2 text-xs font-black text-ink">Verifiable Certificate</h4>
-                <p className="text-[10px] text-ink-500 mt-0.5">Cryptographic SHA-256 & QR Code</p>
-              </div>
-              <span className="mt-3 text-[11px] font-bold text-gold">View Certificate →</span>
-            </button>
-          </div>
-        </section>
-      )}
-
-      {/* ========================================================================= */}
-      {/* 5. SKILLS STREAM (VOCATIONAL, TRADES & PRACTICAL TRAINING)               */}
-      {/* ========================================================================= */}
-      {activeStream === "skills" && (
-        <section className="space-y-4">
-          {/* Trade Masterclass Spotlight */}
-          <div className="rounded-3xl border border-orange-400/40 bg-gradient-to-br from-orange-500/15 via-[rgb(var(--surface-card))] to-orange-500/5 p-5 shadow-sm space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="rounded-full bg-orange-500/20 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider text-orange-600">
-                {DEMO_SKILLS_COURSE.nationalTradeTestStandard}
-              </span>
-              <span className="text-2xl">💈</span>
-            </div>
-
-            <h2 className="text-xl font-black text-ink">{DEMO_SKILLS_COURSE.title}</h2>
-            <p className="text-xs text-ink-500">
-              Master Artisan: {DEMO_SKILLS_COURSE.masterArtisanName} · {DEMO_SKILLS_COURSE.workshopLocation}
-            </p>
-          </div>
-
-          {/* Practical Video Submission Station with Second-Mark Critiques */}
-          <div className="rounded-3xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-5 shadow-sm space-y-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <span className="text-[10px] font-bold text-orange-600 uppercase tracking-wider">
-                  Performance-Based Submission
-                </span>
-                <h3 className="text-sm font-black text-ink">{DEMO_SKILLS_SUBMISSION.taskTitle}</h3>
-              </div>
-              <span className="rounded-full bg-emerald-500/15 px-2.5 py-1 text-xs font-black text-emerald-600">
-                {DEMO_SKILLS_SUBMISSION.finalGrade}
-              </span>
-            </div>
-
-            {/* Video scrubbing simulator with critique pins */}
-            <div className="relative aspect-video w-full overflow-hidden rounded-2xl bg-black">
-              <img
-                src={DEMO_SKILLS_COURSE.thumbnailUrl}
-                alt="Practical submission"
-                className="h-full w-full object-cover opacity-70"
-              />
-              <div className="absolute inset-0 flex flex-col justify-between p-4 bg-gradient-to-t from-black/80 via-transparent to-black/40">
-                <div className="flex items-center justify-between text-white text-xs font-bold">
-                  <span>Student: {DEMO_SKILLS_SUBMISSION.studentName}</span>
-                  <span className="font-mono">00:42 / 02:45</span>
-                </div>
-
-                <div className="space-y-2">
-                  {/* Timeline bar with critique pins */}
-                  <div className="relative h-2 w-full rounded-full bg-white/30 cursor-pointer">
-                    <div className="h-2 rounded-full bg-orange-500 w-[25%]" />
-                    {/* Critique pins at specific seconds */}
-                    {DEMO_SKILLS_SUBMISSION.critiques.map((crit) => (
-                      <button
-                        key={crit.id}
-                        type="button"
-                        onClick={() => {
-                          setSkillsSelectedCritiqueSec(crit.timestampSeconds);
-                          setSkillsVideoTime(crit.timestampSeconds);
-                        }}
-                        className={`absolute -top-1 h-4 w-4 -translate-x-1/2 rounded-full border-2 border-white shadow transition hover:scale-125 ${
-                          crit.severity === "praise"
-                            ? "bg-emerald-500"
-                            : crit.severity === "safety_warning"
-                            ? "bg-red-500"
-                            : "bg-orange-500"
-                        }`}
-                        style={{ left: `${(crit.timestampSeconds / 165) * 100}%` }}
-                        title={`Critique at 00:${crit.timestampSeconds}`}
-                      />
-                    ))}
-                  </div>
-
-                  <p className="text-[11px] text-white/90">
-                    💡 Tap timeline pins above to jump to Master Artisan comments at specific seconds!
-                  </p>
-                </div>
+                ))}
               </div>
             </div>
 
-            {/* Selected Pin Critique Detail Card */}
-            <div className="space-y-2 pt-2">
-              <h4 className="text-xs font-black text-ink">Master Artisan Timestamp Critiques:</h4>
-              <div className="space-y-2">
-                {DEMO_SKILLS_SUBMISSION.critiques.map((crit) => {
-                  const isSelected = skillsSelectedCritiqueSec === crit.timestampSeconds;
-                  return (
-                    <div
-                      key={crit.id}
-                      onClick={() => setSkillsSelectedCritiqueSec(crit.timestampSeconds)}
-                      className={`cursor-pointer rounded-2xl p-3 border transition text-xs space-y-1 ${
-                        isSelected
-                          ? "border-orange-500 bg-orange-500/10 shadow-sm"
-                          : "border-[var(--border-faint)] bg-[rgb(var(--surface-muted))]"
+            {/* Right Column: Active Lesson Player, Quiz, and Stream-Specific Interactive Workspace */}
+            <div className="lg:col-span-8 space-y-4">
+              {activeLesson && (
+                <div className="rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-4 sm:p-5 space-y-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border-faint)] pb-3">
+                    <div>
+                      <span className="text-[11px] uppercase tracking-wider text-gold font-semibold">
+                        Active Lesson · {activeLesson.durationMinutes} Mins
+                      </span>
+                      <h3 className="font-display text-lg font-semibold text-cream mt-0.5">
+                        {activeLesson.title}
+                      </h3>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setCompletedLessonIds((prev) =>
+                          prev.includes(activeLesson.id)
+                            ? prev.filter((id) => id !== activeLesson.id)
+                            : [...prev, activeLesson.id]
+                        )
+                      }
+                      className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                        completedLessonIds.includes(activeLesson.id)
+                          ? "bg-gold text-ink-gold"
+                          : "border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] text-cream hover:border-gold/40"
                       }`}
                     >
-                      <div className="flex items-center justify-between">
-                        <span className="font-mono font-black text-orange-600 text-xs">
-                          ⏱️ 00:{crit.timestampSeconds}
-                        </span>
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-ink-500">
-                          {crit.severity.replace("_", " ")}
-                        </span>
+                      {completedLessonIds.includes(activeLesson.id)
+                        ? "✓ Completed"
+                        : "Mark Complete"}
+                    </button>
+                  </div>
+
+                  {/* Interactive Video / Audio Lesson Stage */}
+                  <div className="rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2.5">
+                        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gold text-ink-gold">
+                          <Play className="h-4 w-4 fill-current" />
+                        </div>
+                        <div>
+                          <div className="text-xs font-semibold text-cream">
+                            {selectedCourse.creatorName} Lesson Player
+                          </div>
+                          <div className="text-[11px] text-ink-500">
+                            Instructor: {selectedCourse.creatorRoleTitle}
+                          </div>
+                        </div>
                       </div>
-                      <p className="text-ink leading-relaxed">{crit.critiqueText}</p>
+                      <div className="flex items-center gap-1.5">
+                        {[0.75, 1, 1.25, 1.5, 2].map((spd) => (
+                          <button
+                            key={spd}
+                            type="button"
+                            onClick={() => setPlaybackSpeed(spd)}
+                            className={`rounded px-2 py-0.5 text-[11px] font-semibold ${
+                              playbackSpeed === spd
+                                ? "bg-gold text-ink-gold"
+                                : "bg-[rgb(var(--surface-card))] text-ink-500 hover:text-cream"
+                            }`}
+                          >
+                            {spd}x
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                  );
-                })}
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setShowUploadVideoModal(true)}
-                className="mt-2 flex w-full items-center justify-center gap-2 rounded-2xl bg-orange-500 py-3 text-xs font-black text-white shadow transition hover:opacity-95"
-              >
-                <Upload className="h-4 w-4" />
-                Upload New Practical Demonstration Video
-              </button>
-            </div>
-          </div>
-
-          {/* Visual Tool & Equipment Checklists */}
-          <div className="rounded-3xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-5 shadow-sm space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-black text-ink">Required Tool & Equipment Checklist</h3>
-              <span className="text-xs text-ink-500">{DEMO_SKILLS_COURSE.toolChecklist.length} Items</span>
-            </div>
-
-            <div className="space-y-2">
-              {DEMO_SKILLS_COURSE.toolChecklist.map((tool, idx) => (
-                <div
-                  key={idx}
-                  className="flex items-center justify-between rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] px-3.5 py-2.5 text-xs"
-                >
-                  <div className="flex items-center gap-2.5">
-                    <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
-                    <div>
-                      <p className="font-bold text-ink">{tool.name}</p>
-                      <p className="text-[10px] text-ink-500">{tool.specifications}</p>
-                    </div>
-                  </div>
-
-                  {tool.safetyEquipment && (
-                    <span className="rounded-md bg-red-500/15 px-1.5 py-0.5 text-[9px] font-bold text-red-600 shrink-0">
-                      Safety Gear
-                    </span>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Step-by-Step Procedure Cards (Laminated style) */}
-          <div className="rounded-3xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-5 shadow-sm space-y-3">
-            <h3 className="text-sm font-black text-ink">Step-by-Step Procedure Reference Cards</h3>
-
-            <div className="space-y-2.5">
-              {DEMO_SKILLS_COURSE.procedureCards.map((card) => (
-                <div
-                  key={card.stepNumber}
-                  className="rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-3.5 space-y-1.5 shadow-sm"
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-orange-500 text-[10px] font-black text-white">
-                      {card.stepNumber}
-                    </span>
-                    <h4 className="text-xs font-black text-ink">{card.stepTitle}</h4>
-                  </div>
-                  <p className="text-xs text-ink-500 pl-7">{card.instruction}</p>
-                  {card.criticalSafetyNote && (
-                    <p className="text-[10px] font-bold text-red-600 pl-7">
-                      ⚠️ Safety note: {card.criticalSafetyNote}
+                    <p className="text-xs sm:text-sm text-cream leading-relaxed">
+                      {activeLesson.summary}
                     </p>
+                  </div>
+
+                  {/* Study Resources (Opens In-App Preview Modal — ZERO dead links!) */}
+                  {activeLesson.downloadableResources &&
+                    activeLesson.downloadableResources.length > 0 && (
+                      <div className="space-y-2">
+                        <h4 className="text-xs font-semibold uppercase tracking-wider text-ink-500">
+                          Lesson Study Materials
+                        </h4>
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          {activeLesson.downloadableResources.map((res) => (
+                            <button
+                              key={res.name}
+                              type="button"
+                              onClick={() =>
+                                setPreviewResource({
+                                  name: res.name,
+                                  size: res.size,
+                                  courseTitle: selectedCourse.title,
+                                  lessonTitle: activeLesson.title,
+                                })
+                              }
+                              className="flex items-center justify-between rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] p-3 text-left hover:border-gold/40 transition"
+                            >
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <FileText className="h-4 w-4 text-gold shrink-0" />
+                                <div className="truncate">
+                                  <div className="truncate text-xs font-semibold text-cream">
+                                    {res.name}
+                                  </div>
+                                  <div className="text-[11px] text-ink-500">{res.size} · Click to open</div>
+                                </div>
+                              </div>
+                              <Download className="h-4 w-4 text-gold shrink-0 ml-2" />
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                  {/* Practical Checklist (For Vocational / Skills lessons) */}
+                  {activeLesson.practicalChecklist &&
+                    activeLesson.practicalChecklist.length > 0 && (
+                      <div className="space-y-2 rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] p-3.5">
+                        <h4 className="text-xs font-semibold text-gold">
+                          Required Workshop Tools & Hygiene Checklist
+                        </h4>
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          {activeLesson.practicalChecklist.map((item) => (
+                            <label
+                              key={item}
+                              className="flex items-center gap-2 text-xs text-cream cursor-pointer"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={!!checkedTools[item]}
+                                onChange={() =>
+                                  setCheckedTools((prev) => ({
+                                    ...prev,
+                                    [item]: !prev[item],
+                                  }))
+                                }
+                                className="h-4 w-4 accent-[rgb(var(--gold))]"
+                              />
+                              <span>{item}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                  {/* Interactive Lesson Quiz */}
+                  {activeLesson.quiz && (
+                    <div className="rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] p-4 space-y-4">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <span className="text-[11px] uppercase tracking-wider text-gold font-semibold">
+                            Interactive Assessment · {activeLesson.quiz.timeLimitMinutes} Min
+                          </span>
+                          <h4 className="text-sm font-semibold text-cream">
+                            {activeLesson.quiz.title}
+                          </h4>
+                          <p className="text-xs text-ink-500">{activeLesson.quiz.instructions}</p>
+                        </div>
+                      </div>
+
+                      <div className="space-y-3">
+                        {activeLesson.quiz.questions.map((q, qIdx) => {
+                          const chosen = quizAnswers[q.id];
+                          const isSubmitted = quizSubmittedLessonId === activeLesson.id;
+                          return (
+                            <div
+                              key={q.id}
+                              className="rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-3.5 space-y-2.5"
+                            >
+                              <div className="text-xs font-semibold text-cream">
+                                {qIdx + 1}. {q.questionText}
+                              </div>
+                              <div className="grid gap-1.5">
+                                {q.options.map((opt, oIdx) => {
+                                  const selected = chosen === oIdx;
+                                  const isCorrect = q.correctOptionIndex === oIdx;
+                                  let btnStyle =
+                                    "border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] text-cream hover:border-gold/40";
+                                  if (selected) {
+                                    btnStyle = "border-gold bg-gold text-ink-gold font-semibold";
+                                  }
+                                  if (isSubmitted) {
+                                    if (isCorrect) {
+                                      btnStyle = "border-gold bg-gold/20 text-gold font-semibold";
+                                    } else if (selected && !isCorrect) {
+                                      btnStyle =
+                                        "border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] text-ink-500 line-through";
+                                    }
+                                  }
+                                  return (
+                                    <button
+                                      key={opt}
+                                      type="button"
+                                      onClick={() => {
+                                        if (!isSubmitted) {
+                                          setQuizAnswers((prev) => ({ ...prev, [q.id]: oIdx }));
+                                        }
+                                      }}
+                                      className={`w-full text-left rounded-lg border px-3 py-2 text-xs transition ${btnStyle}`}
+                                    >
+                                      {opt}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                              {isSubmitted && (
+                                <p className="text-[11px] text-gold pt-1">
+                                  ✓ Explanation: {q.explanation}
+                                </p>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        {quizSubmittedLessonId === activeLesson.id ? (
+                          <div className="flex items-center gap-3">
+                            <span className="text-xs font-semibold text-gold">
+                              Score:{" "}
+                              {
+                                activeLesson.quiz.questions.filter(
+                                  (q) => quizAnswers[q.id] === q.correctOptionIndex
+                                ).length
+                              }{" "}
+                              / {activeLesson.quiz.questions.length} Correct
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setQuizAnswers({});
+                                setQuizSubmittedLessonId(null);
+                              }}
+                              className="text-xs text-ink-500 underline hover:text-cream"
+                            >
+                              Retry Quiz
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setQuizSubmittedLessonId(activeLesson.id);
+                              setCompletedLessonIds((prev) =>
+                                prev.includes(activeLesson.id) ? prev : [...prev, activeLesson.id]
+                              );
+                            }}
+                            className="rounded-lg bg-gold px-4 py-2 text-xs font-semibold text-ink-gold"
+                          >
+                            Submit Quiz Answers
+                          </button>
+                        )}
+                      </div>
+                    </div>
                   )}
                 </div>
-              ))}
-            </div>
-          </div>
+              )}
 
-          {/* Digital Apprenticeship Logbook */}
-          <div className="rounded-3xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-5 shadow-sm space-y-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-sm font-black text-ink">Apprenticeship Practical Logbook</h3>
-                <p className="text-[10px] text-ink-500">Mentor-Verified Workshop Hours</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowLogHoursModal(true)}
-                className="rounded-xl bg-orange-500 px-3 py-1.5 text-xs font-black text-white shadow"
-              >
-                + Log Hours
-              </button>
-            </div>
-
-            <div className="space-y-2">
-              {skillsLogbookList.map((entry) => (
-                <div
-                  key={entry.id}
-                  className="rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] p-3 text-xs space-y-1"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-ink">{entry.date} · {entry.practicalHours} Hours</span>
-                    <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-black text-emerald-600">
-                      ✓ Supervisor Signed
-                    </span>
+              {/* ─── STREAM-SPECIFIC INTERACTIVE TOOLS (Contextual to this course's stream) ─── */}
+              {selectedCourse.stream === "sprouts" && (
+                <div className="rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-4 sm:p-5 space-y-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <span className="text-[11px] uppercase tracking-wider text-gold font-semibold">
+                        Sprouts Early Childhood Mode (Ages 3–6)
+                      </span>
+                      <h3 className="font-display text-base font-semibold text-cream">
+                        Touch Phonics, Read-Along Storybook & Guardian Screen Timer
+                      </h3>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setScreenTimerLocked((prev) => !prev)}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] px-3 py-1.5 text-xs font-semibold text-cream"
+                    >
+                      {screenTimerLocked ? (
+                        <>
+                          <Lock className="h-3.5 w-3.5 text-gold" />
+                          Screen Locked (20m Limit)
+                        </>
+                      ) : (
+                        <>
+                          <Unlock className="h-3.5 w-3.5 text-gold" />
+                          {DEMO_SPROUTS_TIMER.minutesRemainingToday}m Left Today
+                        </>
+                      )}
+                    </button>
                   </div>
-                  <p className="text-ink-500">{entry.taskPerformed}</p>
-                  <p className="text-[10px] text-ink-500 font-medium">
-                    Verified by {entry.masterSupervisorName} ({entry.workshopLocation})
-                  </p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-      )}
 
-      {/* ========================================================================= */}
-      {/* MODALS & DRAWERS                                                          */}
-      {/* ========================================================================= */}
-
-      {/* 1. Sprouts Parent PIN Modal */}
-      {showPinModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
-          <div className="w-full max-w-sm rounded-3xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <KeyRound className="h-5 w-5 text-gold" />
-                <h3 className="text-base font-black text-ink">Parent Lock Override</h3>
-              </div>
-              <button type="button" onClick={() => setShowPinModal(false)} className="text-ink-500">
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <p className="text-xs text-ink-500">
-              Enter your 4-digit Parent Guardian PIN to adjust daily screen allowances or unlock early play.
-            </p>
-
-            <form onSubmit={handleUnlockPin} className="space-y-3">
-              <div className="field-box rounded-2xl border border-[var(--border-faint)]">
-                <input
-                  type="password"
-                  maxLength={4}
-                  value={parentPinInput}
-                  onChange={(e) => setParentPinInput(e.target.value)}
-                  placeholder="Enter 4-digit PIN (1234)"
-                  className="w-full bg-transparent px-4 py-3 text-center text-lg font-black tracking-widest text-ink focus:outline-none"
-                  autoFocus
-                />
-              </div>
-
-              {pinError && <p className="text-xs font-bold text-red-500">{pinError}</p>}
-
-              <button
-                type="submit"
-                className="w-full rounded-2xl bg-gold py-3 text-xs font-black text-ink-gold shadow"
-              >
-                Confirm & Unlock Extra 30 Mins
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* 2. Foundations Worksheet Camera Photo Upload Modal */}
-      {showWorksheetModal && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-0 sm:p-4 animate-fade-in">
-          <div className="w-full max-w-md rounded-t-3xl sm:rounded-3xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between pb-2 border-b border-[var(--border-faint)]">
-              <div className="flex items-center gap-2">
-                <Camera className="h-5 w-5 text-amber-500" />
-                <h3 className="text-base font-black text-ink">Turn In Worksheet</h3>
-              </div>
-              <button type="button" onClick={() => setShowWorksheetModal(false)} className="text-ink-500">
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            {submissionSuccess ? (
-              <div className="rounded-2xl bg-amber-500/15 p-6 text-center space-y-2">
-                <CheckCircle2 className="mx-auto h-12 w-12 text-amber-500 animate-bounce" />
-                <h4 className="text-base font-black text-ink">Homework Turned In!</h4>
-                <p className="text-xs text-ink-500">
-                  +{activeWorksheet.maxMeritPoints} Stars added to your Merit Wallet. Parent digital signature recorded.
-                </p>
-              </div>
-            ) : (
-              <form onSubmit={handleWorksheetSubmit} className="space-y-4">
-                <div className="space-y-1">
-                  <h4 className="text-xs font-bold text-ink">{activeWorksheet.title}</h4>
-                  <p className="text-[11px] text-ink-500">{activeWorksheet.instructions}</p>
-                </div>
-
-                {/* Photo Preview / Capture Box */}
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-ink-500">Homework Exercise Book Photo</label>
-                  {worksheetPhotoPreview ? (
-                    <div className="relative aspect-video w-full overflow-hidden rounded-2xl border border-[var(--border-faint)] bg-black">
-                      <img
-                        src={worksheetPhotoPreview}
-                        alt="Worksheet scan"
-                        className="h-full w-full object-cover"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setWorksheetPhotoPreview(null)}
-                        className="absolute right-2 top-2 rounded-full bg-black/70 p-1.5 text-white"
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
+                  {screenTimerLocked ? (
+                    <div className="rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] p-4 space-y-3">
+                      <p className="text-xs font-semibold text-cream">
+                        Session resting time reached to prevent child screen fatigue. Enter Guardian PIN (1234) to unlock:
+                      </p>
+                      <div className="flex items-center gap-2 max-w-xs">
+                        <input
+                          type="password"
+                          value={parentPinInput}
+                          onChange={(e) => setParentPinInput(e.target.value)}
+                          placeholder="Guardian PIN (e.g. 1234)"
+                          className="rounded-lg px-3 py-1.5 text-xs text-cream"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setScreenTimerLocked(false);
+                            setParentPinInput("");
+                          }}
+                          className="rounded-lg bg-gold px-3 py-1.5 text-xs font-semibold text-ink-gold shrink-0"
+                        >
+                          Unlock
+                        </button>
+                      </div>
                     </div>
                   ) : (
-                    <label className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-amber-400/50 bg-[rgb(var(--surface-muted))] p-6 text-center cursor-pointer transition hover:border-amber-500">
-                      <Camera className="h-8 w-8 text-amber-500 mb-2" />
-                      <span className="text-xs font-bold text-ink">Take top-down camera photo of page</span>
-                      <span className="mt-1 text-[11px] text-ink-500">Auto-contrast and perspective enhancement</span>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) {
-                            const reader = new FileReader();
-                            reader.onload = () => setWorksheetPhotoPreview(reader.result as string);
-                            reader.readAsDataURL(file);
-                          }
-                        }}
-                        className="hidden"
-                      />
-                    </label>
+                    <>
+                      {/* Audio Tap Phonics Cards */}
+                      <div className="grid gap-2.5 sm:grid-cols-3">
+                        {DEMO_SPROUTS_ACTIVITIES.map((act) => {
+                          const unlocked = unlockedStickers.includes(act.stickerRewardId);
+                          return (
+                            <button
+                              key={act.id}
+                              type="button"
+                              onClick={() => {
+                                setActiveAudioToast(
+                                  `${act.characterGuideAvatar} ${act.characterGuideName}: "${act.instructionsVoiceover}"`
+                                );
+                                if (!unlocked) {
+                                  setUnlockedStickers((prev) => [...prev, act.stickerRewardId]);
+                                }
+                              }}
+                              className="rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] p-3.5 text-left hover:border-gold/40 transition space-y-2"
+                            >
+                              <div className="flex items-center justify-between">
+                                <span className="text-2xl">{act.characterGuideAvatar}</span>
+                                <Volume2 className="h-4 w-4 text-gold" />
+                              </div>
+                              <div className="text-xs font-semibold text-cream">{act.title}</div>
+                              <div className="text-[11px] text-gold font-medium">
+                                {unlocked ? `★ Earned: ${act.stickerRewardTitle}` : "Tap to Play & Earn Sticker"}
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {activeAudioToast && (
+                        <div className="rounded-xl border border-gold/40 bg-gold/10 px-3.5 py-2.5 text-xs text-cream flex items-center justify-between">
+                          <span>🔊 {activeAudioToast}</span>
+                          <button
+                            type="button"
+                            onClick={() => setActiveAudioToast(null)}
+                            className="text-ink-500 hover:text-cream ml-2"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Read-Along Picture Book + Parent Co-Play Prompt */}
+                      {DEMO_SPROUTS_ACTIVITIES[2]?.gameConfig.storyPages && (
+                        <div className="rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] p-4 space-y-3">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-semibold text-gold">
+                              Read-Along Picture Book (Page {storyPageIndex + 1} of{" "}
+                              {DEMO_SPROUTS_ACTIVITIES[2].gameConfig.storyPages.length})
+                            </span>
+                            <div className="flex gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => setStoryPageIndex((i) => Math.max(0, i - 1))}
+                                className="rounded bg-[rgb(var(--surface-card))] px-2.5 py-1 text-xs text-cream"
+                              >
+                                Prev
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setStoryPageIndex((i) =>
+                                    Math.min(
+                                      (DEMO_SPROUTS_ACTIVITIES[2].gameConfig.storyPages?.length ?? 1) - 1,
+                                      i + 1
+                                    )
+                                  )
+                                }
+                                className="rounded bg-gold px-2.5 py-1 text-xs font-semibold text-ink-gold"
+                              >
+                                Next Page
+                              </button>
+                            </div>
+                          </div>
+                          <p className="text-sm font-medium text-cream">
+                            &ldquo;{DEMO_SPROUTS_ACTIVITIES[2].gameConfig.storyPages[storyPageIndex]?.text}&rdquo;
+                          </p>
+                          <div className="border-t border-[var(--border-faint)] pt-2.5 text-xs text-ink-500">
+                            <strong className="text-cream">{DEMO_SPROUTS_COPLAY.promptTitle}:</strong>{" "}
+                            {DEMO_SPROUTS_COPLAY.offlineActionPrompt}
+                          </div>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
+              )}
 
-                {/* Required Parent Signature Verification */}
-                <div className="rounded-2xl border border-amber-400/40 bg-amber-500/10 p-4 space-y-3">
-                  <div className="flex items-center gap-2">
-                    <ShieldCheck className="h-4 w-4 text-amber-600" />
-                    <h5 className="text-xs font-black text-ink">Parent Digital Sign-Off (Required)</h5>
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-bold text-ink-500">Parent / Guardian Name</label>
-                    <div className="field-box rounded-2xl border border-[var(--border-faint)]">
-                      <input
-                        type="text"
-                        value={parentSignName}
-                        onChange={(e) => setParentSignName(e.target.value)}
-                        className="w-full bg-transparent px-3 py-2 text-xs text-ink focus:outline-none"
-                        required
-                      />
+              {selectedCourse.stream === "foundations" && (
+                <div className="rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-4 sm:p-5 space-y-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <span className="text-[11px] uppercase tracking-wider text-gold font-semibold">
+                        Foundations Primary Workflow (Ages 6–12)
+                      </span>
+                      <h3 className="font-display text-base font-semibold text-cream">
+                        Handwritten Worksheet Turn-In & Parent Sign-Off
+                      </h3>
                     </div>
+                    <span className="rounded-lg bg-gold/15 px-3 py-1 text-xs font-semibold text-gold">
+                      ★ {DEMO_FOUNDATIONS_MERITS.totalMerits + (homeworkSubmitted ? 25 : 0)} Merit Stars
+                    </span>
                   </div>
 
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-bold text-ink-500">Parent Approval PIN</label>
-                    <div className="field-box rounded-2xl border border-[var(--border-faint)]">
-                      <input
-                        type="password"
-                        maxLength={4}
-                        value={parentSignPin}
-                        onChange={(e) => setParentSignPin(e.target.value)}
-                        placeholder="Enter 4-digit PIN (1234)"
-                        className="w-full bg-transparent px-3 py-2 text-xs text-ink focus:outline-none"
-                        required
-                      />
+                  <div className="rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] p-4 space-y-3">
+                    <div className="text-xs font-semibold text-cream">
+                      {DEMO_FOUNDATIONS_WORKSHEETS[0].title}
+                    </div>
+                    <p className="text-xs text-ink-500">
+                      {DEMO_FOUNDATIONS_WORKSHEETS[0].instructions}
+                    </p>
+                    <div className="grid gap-3 sm:grid-cols-2 pt-1">
+                      <div>
+                        <label className="block text-[11px] text-ink-500 mb-1">
+                          Parent / Guardian Full Name for Digital Sign-Off
+                        </label>
+                        <input
+                          type="text"
+                          value={parentSignName}
+                          onChange={(e) => setParentSignName(e.target.value)}
+                          className="w-full rounded-lg px-3 py-2 text-xs text-cream"
+                        />
+                      </div>
+                      <div className="flex items-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setParentSignedOff((v) => !v)}
+                          className={`rounded-lg px-3 py-2 text-xs font-semibold border transition ${
+                            parentSignedOff
+                              ? "border-gold bg-gold/15 text-gold"
+                              : "border-[var(--border-faint)] bg-[rgb(var(--surface-card))] text-cream"
+                          }`}
+                        >
+                          {parentSignedOff ? "✓ Parent Signed" : "Sign as Parent"}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={!parentSignedOff || homeworkSubmitted}
+                          onClick={() => setHomeworkSubmitted(true)}
+                          className="inline-flex items-center gap-1.5 rounded-lg bg-gold px-3.5 py-2 text-xs font-semibold text-ink-gold disabled:opacity-40"
+                        >
+                          <Camera className="h-3.5 w-3.5" />
+                          {homeworkSubmitted ? "Worksheet Uploaded (+25★)" : "Upload Photo"}
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
+              )}
 
-                <button
-                  type="submit"
-                  className="w-full rounded-2xl bg-gold py-3 text-xs font-black text-ink-gold shadow transition hover:opacity-95"
-                >
-                  Confirm Signature & Turn In
-                </button>
-              </form>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* 3. Academy Exam Hall Modal with Anti-Cheat Detection */}
-      {showExamModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-fade-in">
-          <div className="w-full max-w-lg rounded-3xl border border-indigo-500/40 bg-[rgb(var(--surface-card))] p-6 shadow-2xl space-y-4 max-h-[95vh] overflow-y-auto">
-            <div className="flex items-center justify-between pb-2 border-b border-[var(--border-faint)]">
-              <div className="flex items-center gap-2">
-                <ShieldCheck className="h-5 w-5 text-indigo-500" />
-                <h3 className="text-base font-black text-ink">Proctored Examination Hall</h3>
-              </div>
-              <button type="button" onClick={() => setShowExamModal(false)} className="text-ink-500">
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            {/* Anti-cheat tab switch warning banner */}
-            <div
-              className={`rounded-2xl p-3 text-xs font-bold flex items-center gap-2 transition ${
-                examTabSwitches > 0
-                  ? "bg-red-500/15 text-red-600 border border-red-500/30"
-                  : "bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 border border-indigo-500/20"
-              }`}
-            >
-              <AlertCircle className="h-4 w-4 shrink-0" />
-              <span>
-                {examTabSwitches > 0
-                  ? `Warning: ${examTabSwitches} browser tab switch events recorded and logged for exam proctor!`
-                  : "Anti-cheat active: Do not leave or switch browser tabs during this test."}
-              </span>
-            </div>
-
-            {examSubmitted ? (
-              <div className="rounded-2xl bg-indigo-500/15 p-6 text-center space-y-2">
-                <CheckCircle2 className="mx-auto h-12 w-12 text-indigo-600 animate-bounce" />
-                <h4 className="text-lg font-black text-ink">Exam Submitted!</h4>
-                <p className="text-sm font-black text-indigo-600">Calculated Score: {examScoreResult}%</p>
-                <p className="text-xs text-ink-500">
-                  Continuous Assessment grade has been recorded into your Greenwood terminal report card.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setShowExamModal(false)}
-                  className="mt-2 rounded-2xl bg-indigo-600 px-6 py-2.5 text-xs font-black text-white"
-                >
-                  Close Exam Hall
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <div className="space-y-3">
-                  {DEMO_ACADEMY_EXAM.questions.map((q, idx) => (
-                    <div
-                      key={q.id}
-                      className="rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] p-4 space-y-2.5"
+              {selectedCourse.stream === "academy" && (
+                <div className="rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-4 sm:p-5 space-y-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <span className="text-[11px] uppercase tracking-wider text-gold font-semibold">
+                        Academy Secondary Tools (Ages 12–18)
+                      </span>
+                      <h3 className="font-display text-base font-semibold text-cream">
+                        Proctored UNEB Mock Exam & Weighted Terminal Report Card
+                      </h3>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setExamStarted((prev) => !prev)}
+                      className="rounded-lg bg-gold px-3 py-1.5 text-xs font-semibold text-ink-gold"
                     >
-                      <div className="flex items-center justify-between text-xs font-bold text-ink-500">
-                        <span>Question {idx + 1} ({q.questionType.replace("_", " ")})</span>
-                        <span className="text-indigo-600">{q.maxPoints} Marks</span>
-                      </div>
-                      <p className="text-xs font-bold text-ink">{q.questionText}</p>
+                      {examStarted ? "View Terminal Report Card" : "Open Proctored Mock Exam"}
+                    </button>
+                  </div>
 
-                      {q.options && (
-                        <div className="grid grid-cols-2 gap-2 pt-1">
-                          {q.options.map((opt) => (
+                  {examStarted ? (
+                    <div className="rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] p-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold text-cream">
+                          {DEMO_ACADEMY_EXAM.title}
+                        </span>
+                        <span className="rounded bg-gold/15 px-2.5 py-0.5 text-[11px] font-semibold text-gold">
+                          Anti-Cheat Tab Guard Active · {DEMO_ACADEMY_EXAM.durationMinutes}m
+                        </span>
+                      </div>
+                      <div className="space-y-2">
+                        <div className="text-xs font-medium text-cream">
+                          Q1: {DEMO_ACADEMY_EXAM.questions[0].questionText}
+                        </div>
+                        <div className="grid gap-1.5 sm:grid-cols-2">
+                          {DEMO_ACADEMY_EXAM.questions[0].options?.map((opt, idx) => (
                             <button
                               key={opt}
                               type="button"
-                              onClick={() => setExamAnswers({ ...examAnswers, [q.id]: opt })}
-                              className={`rounded-xl p-2.5 text-xs font-bold text-left transition ${
-                                examAnswers[q.id] === opt
-                                  ? "bg-indigo-600 text-white font-black"
-                                  : "bg-[rgb(var(--surface-card))] border border-[var(--border-faint)] text-ink"
+                              onClick={() => setExamMcqChoice(idx)}
+                              className={`rounded-lg border px-3 py-1.5 text-left text-xs ${
+                                examMcqChoice === idx
+                                  ? "border-gold bg-gold text-ink-gold font-semibold"
+                                  : "border-[var(--border-faint)] bg-[rgb(var(--surface-card))] text-cream"
                               }`}
                             >
                               {opt}
                             </button>
                           ))}
                         </div>
-                      )}
-
-                      {q.questionType === "formula_math" && (
-                        <div className="field-box rounded-2xl border border-[var(--border-faint)]">
-                          <textarea
-                            rows={2}
-                            placeholder="Enter mathematical derivative working out..."
-                            className="w-full bg-transparent px-3 py-2 text-xs text-ink focus:outline-none resize-none font-mono"
-                          />
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-
-                <button
-                  type="button"
-                  onClick={handleExamSubmit}
-                  className="w-full rounded-2xl bg-indigo-600 py-3 text-xs font-black text-white shadow transition hover:opacity-95"
-                >
-                  Submit Final Examination
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* 4. Campus Verifiable Certificate Modal */}
-      {showCertModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-fade-in">
-          <div className="w-full max-w-md rounded-3xl border border-gold/40 bg-[rgb(var(--surface-card))] p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between pb-2 border-b border-[var(--border-faint)]">
-              <div className="flex items-center gap-2">
-                <Award className="h-5 w-5 text-gold" />
-                <h3 className="text-base font-black text-ink">Verifiable Certificate</h3>
-              </div>
-              <button type="button" onClick={() => setShowCertModal(false)} className="text-ink-500">
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <div className="rounded-2xl border-2 border-gold/50 bg-gradient-to-br from-gold/15 via-[rgb(var(--surface-card))] to-gold/5 p-6 text-center space-y-3">
-              <span className="text-xs font-black uppercase tracking-widest text-gold">
-                Peebee Global Institute
-              </span>
-              <h4 className="text-lg font-black text-ink">{DEMO_CAMPUS_CREDENTIAL.studentName}</h4>
-              <p className="text-xs text-ink-500">has successfully mastered and completed all capstones for</p>
-              <p className="text-sm font-black text-ink">{DEMO_CAMPUS_CREDENTIAL.courseTitle}</p>
-
-              <div className="my-2 flex justify-center">
-                <div className="p-3 bg-white rounded-2xl shadow">
-                  <QrCode className="h-20 w-20 text-ink" />
-                </div>
-              </div>
-
-              <div className="space-y-1">
-                <span className="block font-mono text-[10px] text-ink-500 break-all">
-                  SHA-256: {DEMO_CAMPUS_CREDENTIAL.verificationHash.slice(0, 24)}...
-                </span>
-                <span className="text-[10px] font-bold text-emerald-600">
-                  ✓ Cryptographically Signed & Verified
-                </span>
-              </div>
-            </div>
-
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => alert("Certificate link copied for LinkedIn Profile integration!")}
-                className="flex-1 rounded-2xl bg-gold py-2.5 text-xs font-black text-ink-gold shadow"
-              >
-                Add to LinkedIn Profile
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 5. Skills Log Practical Hours Modal */}
-      {showLogHoursModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
-          <div className="w-full max-w-sm rounded-3xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between pb-2 border-b border-[var(--border-faint)]">
-              <div className="flex items-center gap-2">
-                <Wrench className="h-5 w-5 text-orange-500" />
-                <h3 className="text-base font-black text-ink">Record Practical Hours</h3>
-              </div>
-              <button type="button" onClick={() => setShowLogHoursModal(false)} className="text-ink-500">
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleAddLogbookHours} className="space-y-3">
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-ink-500">Hours Executed</label>
-                <div className="field-box rounded-2xl border border-[var(--border-faint)]">
-                  <input
-                    type="number"
-                    step="0.5"
-                    value={logHoursInput}
-                    onChange={(e) => setLogHoursInput(e.target.value)}
-                    className="w-full bg-transparent px-3 py-2 text-xs text-ink focus:outline-none"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-ink-500">Skills / Practical Tasks Executed</label>
-                <div className="field-box rounded-2xl border border-[var(--border-faint)]">
-                  <textarea
-                    rows={2}
-                    value={logTaskInput}
-                    onChange={(e) => setLogTaskInput(e.target.value)}
-                    className="w-full bg-transparent px-3 py-2 text-xs text-ink focus:outline-none resize-none"
-                    required
-                  />
-                </div>
-              </div>
-
-              <button
-                type="submit"
-                className="w-full rounded-2xl bg-orange-500 py-3 text-xs font-black text-white shadow"
-              >
-                Submit for Master Supervisor Stamp
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* 6. Tuition Invoicing & Passes Drawer Modal */}
-      {showTuitionModal && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-0 sm:p-4 animate-fade-in">
-          <div className="w-full max-w-md rounded-t-3xl sm:rounded-3xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between pb-2 border-b border-[var(--border-faint)]">
-              <div className="flex items-center gap-2">
-                <CreditCard className="h-5 w-5 text-gold" />
-                <h3 className="text-base font-black text-ink">Tuition Invoicing & Passes</h3>
-              </div>
-              <button type="button" onClick={() => setShowTuitionModal(false)} className="text-ink-500">
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            {tuitionPaymentSuccess ? (
-              <div className="rounded-2xl bg-gold/15 p-6 text-center space-y-2">
-                <CheckCircle2 className="mx-auto h-12 w-12 text-gold animate-bounce" />
-                <h4 className="text-base font-black text-ink">Payment Successful!</h4>
-                <p className="text-xs text-ink-500">
-                  Tuition receipt generated and automated WhatsApp confirmation dispatched to parent.
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {/* Active Invoice Card */}
-                <div className="rounded-2xl border border-gold/40 bg-gold/10 p-4 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-black uppercase tracking-wider text-gold">
-                      {tuitionInvoice.institutionName}
-                    </span>
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-[10px] font-black uppercase ${
-                        tuitionInvoice.status === "paid"
-                          ? "bg-emerald-500/20 text-emerald-600"
-                          : "bg-amber-500/20 text-amber-600"
-                      }`}
-                    >
-                      {tuitionInvoice.status}
-                    </span>
-                  </div>
-
-                  <div className="flex items-baseline justify-between">
-                    <span className="text-sm font-black text-ink">Total Tuition:</span>
-                    <span className="font-mono text-base font-black text-ink">
-                      {ugx(tuitionInvoice.totalTuitionUgx)}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center justify-between text-xs text-ink-500">
-                    <span>Paid to date: {ugx(tuitionInvoice.amountPaidUgx)}</span>
-                    <span className="font-bold text-red-500">Balance: {ugx(tuitionInvoice.balanceUgx)}</span>
-                  </div>
-                </div>
-
-                {/* Pay Installment Form */}
-                {tuitionInvoice.balanceUgx > 0 && (
-                  <form onSubmit={handleTuitionPayment} className="space-y-3 pt-2">
-                    <div className="space-y-1">
-                      <label className="text-xs font-bold text-ink-500">Installment Payment Amount (UGX)</label>
-                      <div className="field-box rounded-2xl border border-[var(--border-faint)]">
-                        <input
-                          type="number"
-                          value={payAmountInput}
-                          onChange={(e) => setPayAmountInput(e.target.value)}
-                          className="w-full bg-transparent px-3 py-2 text-xs text-ink focus:outline-none"
-                          required
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-cream mb-1">
+                          Q2 Formula Workings ({DEMO_ACADEMY_EXAM.questions[1].questionText})
+                        </label>
+                        <textarea
+                          rows={2}
+                          value={examWorkings}
+                          onChange={(e) => setExamWorkings(e.target.value)}
+                          className="w-full rounded-lg p-2.5 text-xs text-cream"
                         />
                       </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2 text-xs font-bold">
                       <button
-                        type="submit"
-                        className="rounded-2xl bg-gold py-3 text-xs font-black text-ink-gold shadow transition hover:opacity-95"
+                        type="button"
+                        onClick={() => setExamSubmitted(true)}
+                        className="rounded-lg bg-gold px-4 py-1.5 text-xs font-semibold text-ink-gold"
                       >
-                        Pay via Peebee Wallet
-                      </button>
-                      <button
-                        type="submit"
-                        className="rounded-2xl border border-gold bg-transparent py-3 text-xs font-black text-gold transition hover:bg-gold/10"
-                      >
-                        MTN / Airtel MoMo
+                        {examSubmitted ? "✓ Exam Paper Submitted to Gradebook" : "Submit Exam Paper"}
                       </button>
                     </div>
-                  </form>
-                )}
-
-                {/* Guardian Alerts Feed */}
-                <div className="space-y-2 pt-2 border-t border-[var(--border-faint)]">
-                  <h4 className="text-xs font-black text-ink">Recent Guardian SMS / WhatsApp Alerts</h4>
-                  <div className="space-y-1.5">
-                    {DEMO_GUARDIAN_ALERTS.map((alert) => (
-                      <div
-                        key={alert.id}
-                        className="rounded-xl bg-[rgb(var(--surface-muted))] p-2.5 text-xs text-ink-500 space-y-0.5"
-                      >
-                        <div className="flex items-center justify-between text-[10px] font-bold text-ink">
-                          <span>{alert.channel.toUpperCase()} Dispatch</span>
-                          <span>{alert.sentAt}</span>
-                        </div>
-                        <p>{alert.bodyText}</p>
+                  ) : (
+                    <div className="rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] p-4 space-y-2.5">
+                      <div className="flex flex-wrap items-center justify-between text-xs">
+                        <span className="font-semibold text-cream">
+                          {DEMO_ACADEMY_REPORT_CARD.studentName} · {DEMO_ACADEMY_REPORT_CARD.homeroomClass}
+                        </span>
+                        <span className="text-gold font-semibold">
+                          Weighted Average: {DEMO_ACADEMY_REPORT_CARD.overallWeightedAverage}% (Rank{" "}
+                          {DEMO_ACADEMY_REPORT_CARD.classRank})
+                        </span>
                       </div>
-                    ))}
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {DEMO_ACADEMY_REPORT_CARD.subjects.map((sub) => (
+                          <div
+                            key={sub.code}
+                            className="rounded-lg border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-2.5 text-xs"
+                          >
+                            <div className="flex items-center justify-between font-semibold text-cream">
+                              <span>{sub.subjectName}</span>
+                              <span className="text-gold">{sub.finalGrade} ({sub.weightedTotalPercent}%)</span>
+                            </div>
+                            <div className="text-[11px] text-ink-500 mt-0.5">
+                              HW 20%: {sub.homeworkScorePercent}% · Mid 30%: {sub.midtermScorePercent}% · Final 50%: {sub.finalExamScorePercent}%
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {selectedCourse.stream === "campus" && (
+                <div className="rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-4 sm:p-5 space-y-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <span className="text-[11px] uppercase tracking-wider text-gold font-semibold">
+                        Campus Higher Ed & Executive Tools
+                      </span>
+                      <h3 className="font-display text-base font-semibold text-cream">
+                        Timestamped Lecture Notes & Verifiable Credential
+                      </h3>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setCertificateVerified((v) => !v)}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] px-3 py-1.5 text-xs font-semibold text-gold"
+                    >
+                      <Award className="h-3.5 w-3.5" />
+                      {certificateVerified ? "Hide Credential" : "View Verifiable Certificate"}
+                    </button>
+                  </div>
+
+                  {certificateVerified && (
+                    <div className="rounded-xl border border-gold/40 bg-gold/10 p-4 space-y-1.5 text-xs">
+                      <div className="font-semibold text-gold">
+                        ✓ Cryptographically Signed Certificate · {DEMO_CAMPUS_CREDENTIAL.certificateId}
+                      </div>
+                      <div className="text-cream">
+                        Awarded to <strong>{DEMO_CAMPUS_CREDENTIAL.studentName}</strong> by{" "}
+                        {DEMO_CAMPUS_CREDENTIAL.institutionName}
+                      </div>
+                      <div className="text-[11px] text-ink-500 break-all">
+                        SHA-256 Hash: {DEMO_CAMPUS_CREDENTIAL.verificationHash}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="space-y-2">
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={newVideoNote}
+                        onChange={(e) => setNewVideoNote(e.target.value)}
+                        placeholder="Pin a study note to current video timestamp (e.g. 04:12)..."
+                        className="w-full rounded-lg px-3 py-1.5 text-xs text-cream"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!newVideoNote.trim()) return;
+                          setVideoNotes((prev) => [
+                            ...prev,
+                            { time: "04:12", note: newVideoNote.trim() },
+                          ]);
+                          setNewVideoNote("");
+                        }}
+                        className="rounded-lg bg-gold px-3 py-1.5 text-xs font-semibold text-ink-gold shrink-0"
+                      >
+                        Pin Note
+                      </button>
+                    </div>
+                    <div className="space-y-1.5">
+                      {videoNotes.map((n, idx) => (
+                        <div
+                          key={idx}
+                          className="rounded-lg border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] px-3 py-2 text-xs text-cream"
+                        >
+                          <span className="font-semibold text-gold mr-2">[{n.time}]</span>
+                          {n.note}
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
+              )}
+
+              {selectedCourse.stream === "skills" && (
+                <div className="rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-4 sm:p-5 space-y-4">
+                  <div>
+                    <span className="text-[11px] uppercase tracking-wider text-gold font-semibold">
+                      Skills Vocational Trade Assessment
+                    </span>
+                    <h3 className="font-display text-base font-semibold text-cream">
+                      Video Timestamp Critique & Apprentice Logbook
+                    </h3>
+                  </div>
+
+                  {/* Timestamped Critique Pins */}
+                  <div className="rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] p-4 space-y-3">
+                    <div className="text-xs font-semibold text-cream">
+                      Practical Submission: {DEMO_SKILLS_SUBMISSION.taskTitle} ({DEMO_SKILLS_SUBMISSION.finalGrade})
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {DEMO_SKILLS_SUBMISSION.critiques.map((c) => (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() => setSelectedCritiqueSec(c.timestampSeconds)}
+                          className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition ${
+                            selectedCritiqueSec === c.timestampSeconds
+                              ? "bg-gold text-ink-gold"
+                              : "bg-[rgb(var(--surface-card))] text-cream"
+                          }`}
+                        >
+                          Pin @ 0{Math.floor(c.timestampSeconds / 60)}:
+                          {String(c.timestampSeconds % 60).padStart(2, "0")}
+                        </button>
+                      ))}
+                    </div>
+                    {DEMO_SKILLS_SUBMISSION.critiques
+                      .filter((c) => c.timestampSeconds === selectedCritiqueSec)
+                      .map((c) => (
+                        <div
+                          key={c.id}
+                          className="rounded-lg border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-3 text-xs space-y-1"
+                        >
+                          <div className="font-semibold text-gold">
+                            {c.instructorName} · {c.severity.replace("_", " ").toUpperCase()}
+                          </div>
+                          <p className="text-cream">{c.critiqueText}</p>
+                        </div>
+                      ))}
+                  </div>
+
+                  {/* Apprentice Logbook */}
+                  <div className="rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] p-4 space-y-3">
+                    <div className="text-xs font-semibold text-cream">
+                      Verified Apprentice Workshop Logbook ({logbookEntries.reduce((acc, e) => acc + e.practicalHours, 0)} hrs logged)
+                    </div>
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <input
+                        type="text"
+                        value={newLogTask}
+                        onChange={(e) => setNewLogTask(e.target.value)}
+                        placeholder="Practical task completed today..."
+                        className="w-full rounded-lg px-3 py-1.5 text-xs text-cream"
+                      />
+                      <div className="flex gap-2">
+                        <input
+                          type="number"
+                          value={newLogHours}
+                          onChange={(e) => setNewLogHours(e.target.value)}
+                          className="w-20 rounded-lg px-2.5 py-1.5 text-xs text-cream"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!newLogTask.trim()) return;
+                            setLogbookEntries((prev) => [
+                              {
+                                id: `log_${Date.now()}`,
+                                studentId: "stud_denis",
+                                studentName: "Denis Kigozi",
+                                date: "Today",
+                                practicalHours: Number(newLogHours) || 4,
+                                taskPerformed: newLogTask.trim(),
+                                workshopLocation: selectedCourse.creatorName,
+                                masterSupervisorName: selectedCourse.creatorRoleTitle,
+                                supervisorSignatureRecorded: true,
+                                supervisorSignedAt: "Just now",
+                              },
+                              ...prev,
+                            ]);
+                            setNewLogTask("");
+                          }}
+                          className="rounded-lg bg-gold px-3 py-1.5 text-xs font-semibold text-ink-gold shrink-0"
+                        >
+                          Log Hours
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
 
-      {/* Floating Quick Action: Live Tutor Chat Launcher */}
-      <div className="fixed bottom-24 right-4 z-40">
-        <button
-          type="button"
-          onClick={() => setShowTutorChatDrawer(true)}
-          className="flex items-center gap-2 rounded-full bg-gold px-4 py-2.5 text-xs font-black text-ink-gold shadow-lg transition hover:scale-105 active:scale-95"
-        >
-          <span className="relative flex h-2 w-2">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-black opacity-75"></span>
-            <span className="relative inline-flex h-2 w-2 rounded-full bg-black"></span>
-          </span>
-          <MessageSquare className="h-4 w-4" />
-          <span>Live Tutor Chat</span>
-        </button>
-      </div>
-
-      {/* Live Tutor Chat Slide-Up Drawer / Modal */}
-      {showTutorChatDrawer && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-0 sm:p-4 animate-in fade-in">
-          <div className="relative flex h-[85vh] sm:h-[620px] w-full max-w-lg flex-col rounded-t-[28px] sm:rounded-[28px] border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] shadow-2xl overflow-hidden">
-            {/* Drawer Header */}
-            <div className="flex items-center justify-between border-b border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] px-4 py-3">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <img
-                  src={customerActiveTutor.avatarUrl}
-                  alt={customerActiveTutor.name}
-                  className="h-9 w-9 rounded-full object-cover shrink-0"
-                />
-                <div className="min-w-0">
-                  <h3 className="truncate text-xs font-black text-ink">{customerActiveTutor.name}</h3>
-                  <p className="truncate text-[10px] text-ink-500">{customerActiveTutor.subject}</p>
+      {/* =====================================================================
+          VIEW 2: EXPLORE MARKETPLACE (Partner Schools, Tutors, Courses & Live)
+         ===================================================================== */}
+      {activeTab === "explore" && !selectedCourse && (
+        <div className="space-y-6">
+          {/* Stream-Matched Live Class Banner (Only shows rooms for the selected stream!) */}
+          {filteredLiveMeetings.length > 0 && (
+            <section className="rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-4 sm:p-5">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-gold/15 px-2.5 py-0.5 text-[11px] font-semibold text-gold">
+                      <span className="h-1.5 w-1.5 rounded-full bg-gold" />
+                      {filteredLiveMeetings[0].isLiveNow ? "Live Classroom In Progress" : "Upcoming Live Classroom"}
+                    </span>
+                    <span className="text-xs text-ink-500">
+                      Room {filteredLiveMeetings[0].roomCode} · {STREAM_LABELS[filteredLiveMeetings[0].stream]}
+                    </span>
+                  </div>
+                  <h2 className="font-display text-base sm:text-lg font-semibold text-cream">
+                    {filteredLiveMeetings[0].title}
+                  </h2>
+                  <p className="text-xs text-ink-500">
+                    Hosted by {filteredLiveMeetings[0].hostTutorName} ({filteredLiveMeetings[0].hostTutorTitle}) ·{" "}
+                    {filteredLiveMeetings[0].participantCount} learners in room
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 self-start sm:self-center shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveLiveRoomId(filteredLiveMeetings[0].id);
+                      setActiveTab("live");
+                    }}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-gold px-4 py-2 text-xs font-semibold text-ink-gold"
+                  >
+                    <Video className="h-3.5 w-3.5" />
+                    Join Live Class
+                  </button>
+                  {filteredLiveMeetings.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab("live")}
+                      className="rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] px-3 py-2 text-xs font-semibold text-cream hover:border-gold/40"
+                    >
+                      All ({filteredLiveMeetings.length})
+                    </button>
+                  )}
                 </div>
               </div>
+            </section>
+          )}
 
-              <div className="flex items-center gap-2">
-                <a
-                  href="http://localhost:3011/chat"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] px-2.5 py-1 text-[10px] font-bold text-gold hover:border-gold"
-                >
-                  Open in Learner App ↗
-                </a>
+          {/* Partner Schools, Academies & Independent Tutors Directory */}
+          <section className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="font-display text-lg font-semibold text-cream">
+                  Partner Schools, Academies & Tutors
+                </h2>
+                <p className="text-xs text-ink-500">
+                  Select an institution or educator to filter their published courses
+                </p>
+              </div>
+              {selectedCreatorId && (
                 <button
                   type="button"
-                  onClick={() => setShowTutorChatDrawer(false)}
-                  className="rounded-full bg-[rgb(var(--surface-card))] p-1 text-ink-500 hover:text-ink"
+                  onClick={() => setSelectedCreatorId(null)}
+                  className="text-xs font-semibold text-gold hover:underline"
                 >
-                  <X className="h-4 w-4" />
+                  Show All Schools
                 </button>
-              </div>
+              )}
             </div>
 
-            {/* Tutor Selector Pills */}
-            <div className="flex gap-1.5 border-b border-[var(--border-faint)] px-3 py-2 overflow-x-auto bg-[rgb(var(--surface-card))]">
-              {DEMO_TUTOR_CONTACTS.map((t) => (
-                <button
-                  key={t.id}
-                  onClick={() => setCustomerActiveTutor(t)}
-                  className={`shrink-0 rounded-xl px-2.5 py-1 text-[11px] font-bold transition ${
-                    customerActiveTutor.id === t.id
-                      ? "bg-gold text-ink-gold font-black shadow-sm"
-                      : "text-ink-500 hover:text-ink border border-[var(--border-faint)]"
-                  }`}
-                >
-                  {t.name.split(" ")[0]} ({t.stream})
-                </button>
-              ))}
-            </div>
-
-            {/* Safeguarding Alert */}
-            <div className="flex items-center gap-1.5 bg-green-500/10 px-3 py-1.5 text-[10px] font-medium text-green-700 dark:text-green-400">
-              <ShieldCheck className="h-3.5 w-3.5 shrink-0" />
-              <span>Safe Environment: Monitored for student protection & academic auditing.</span>
-            </div>
-
-            {/* Message Thread */}
-            <div className="flex-1 space-y-2.5 p-3.5 overflow-y-auto bg-[rgb(var(--surface-muted))]/30">
-              {customerChatMessages.map((msg) => {
-                const isUser = msg.senderRole === "student" || msg.senderRole === "parent";
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {filteredCreators.map((creator) => {
+                const isSelected = selectedCreatorId === creator.id;
+                const creatorCourseCount = courses.filter((c) => c.creatorId === creator.id).length;
                 return (
                   <div
-                    key={msg.id}
-                    className={`flex flex-col ${isUser ? "items-end" : "items-start"}`}
+                    key={creator.id}
+                    className={`rounded-2xl border p-4 transition flex flex-col justify-between gap-3 ${
+                      isSelected
+                        ? "border-gold bg-gold/10"
+                        : "border-[var(--border-faint)] bg-[rgb(var(--surface-card))] hover:border-gold/30"
+                    }`}
                   >
-                    <span className="text-[9px] text-ink-500 mb-0.5">
-                      {msg.senderName} • {msg.timestamp}
-                    </span>
-                    <div
-                      className={`max-w-[85%] rounded-2xl p-2.5 text-xs ${
-                        isUser
-                          ? "bg-ink text-cream font-medium dark:bg-gold dark:text-black"
-                          : "border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] text-ink"
-                      }`}
-                    >
-                      {msg.isQuestion && (
-                        <div className="mb-0.5 text-[9px] font-black uppercase text-gold">
-                          Academic Question
+                    <div className="space-y-2.5">
+                      <div className="flex items-start gap-3">
+                        <img
+                          src={creator.avatarUrl}
+                          alt={creator.name}
+                          className="h-12 w-12 rounded-xl object-cover shrink-0 border border-[var(--border-faint)]"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[11px] font-semibold text-gold">
+                              {CREATOR_TYPE_LABELS[creator.type]}
+                            </span>
+                            {creator.isVerified && (
+                              <ShieldCheck className="h-3.5 w-3.5 text-gold shrink-0" />
+                            )}
+                          </div>
+                          <h3 className="font-display text-base font-semibold text-cream truncate">
+                            {creator.name}
+                          </h3>
+                          <p className="text-xs text-ink-500 truncate">
+                            {creator.leadInstructor} · {creator.location}
+                          </p>
                         </div>
-                      )}
-                      <p>{msg.text}</p>
+                      </div>
+
+                      <p className="text-xs text-ink-500 line-clamp-2 leading-relaxed">
+                        {creator.bio}
+                      </p>
+                    </div>
+
+                    <div className="space-y-2.5 pt-2 border-t border-[var(--border-faint)]">
+                      <div className="flex items-center justify-between text-xs text-ink-500">
+                        <span>
+                          ★ <strong className="text-cream">{creator.rating.toFixed(1)}</strong> ({creator.reviewCount})
+                        </span>
+                        <span>{creator.enrolledStudents.toLocaleString()} students</span>
+                        <span className="text-gold font-semibold">
+                          {creatorCourseCount} {creatorCourseCount === 1 ? "course" : "courses"}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setSelectedCreatorId((prev) => (prev === creator.id ? null : creator.id))
+                          }
+                          className={`flex-1 rounded-xl px-3 py-2 text-xs font-semibold transition ${
+                            isSelected
+                              ? "bg-gold text-ink-gold"
+                              : "bg-[rgb(var(--surface-muted))] text-cream hover:border-gold/40"
+                          }`}
+                        >
+                          {isSelected ? "Showing Courses" : "View Courses"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => openTutorChatForCreator(creator.leadInstructor, creator.stream)}
+                          className="rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] px-3 py-2 text-xs font-semibold text-cream hover:border-gold/40"
+                          title="Message Instructor"
+                        >
+                          <MessageSquare className="h-3.5 w-3.5 text-gold" />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 );
               })}
             </div>
+          </section>
 
-            {/* Composer */}
-            <form onSubmit={handleCustomerSendMessage} className="border-t border-[var(--border-faint)] p-3 bg-[rgb(var(--surface-card))] space-y-2">
-              <div className="flex items-center justify-between text-[11px]">
-                <label className="flex items-center gap-1.5 cursor-pointer text-ink-500">
-                  <input
-                    type="checkbox"
-                    checked={customerIsQuestion}
-                    onChange={(e) => setCustomerIsQuestion(e.target.checked)}
-                    className="rounded text-gold focus:ring-0"
-                  />
-                  <span>Tag as question for tutor</span>
-                </label>
+          {/* Published Courses, Lessons & Quizzes Catalog */}
+          <section className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="font-display text-lg font-semibold text-cream">
+                  {selectedCreator
+                    ? `Courses by ${selectedCreator.name}`
+                    : "Published Courses, Lessons & Quizzes"}
+                </h2>
+                <p className="text-xs text-ink-500">
+                  Open any course to watch lessons, take interactive quizzes, or submit assignments
+                </p>
               </div>
+              <span className="text-xs text-ink-500">
+                {filteredCourses.length} {filteredCourses.length === 1 ? "course" : "courses"}
+              </span>
+            </div>
 
-              <div className="field-box px-3 py-1.5">
-                <input
-                  type="text"
-                  placeholder={`Message ${customerActiveTutor.name.split(" ")[0]}...`}
-                  value={customerChatInput}
-                  onChange={(e) => setCustomerChatInput(e.target.value)}
-                  className="w-full text-xs text-ink placeholder:text-ink-500/50"
-                />
+            {filteredCourses.length === 0 ? (
+              <div className="rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-8 text-center space-y-2">
+                <p className="text-sm font-semibold text-cream">No courses match your current filter</p>
+                <p className="text-xs text-ink-500">
+                  Try clearing your search query or switching to All Streams.
+                </p>
                 <button
-                  type="submit"
-                  disabled={!customerChatInput.trim()}
-                  className="ml-2 rounded-xl bg-gold px-3 py-1.5 text-xs font-black text-ink-gold disabled:opacity-40 transition hover:opacity-90"
+                  type="button"
+                  onClick={() => {
+                    setStreamFilter("all");
+                    setSelectedCreatorId(null);
+                    setSearchQuery("");
+                  }}
+                  className="mt-2 rounded-xl bg-gold px-4 py-2 text-xs font-semibold text-ink-gold"
                 >
-                  <Send className="h-3.5 w-3.5" />
+                  Reset Filters
                 </button>
               </div>
+            ) : (
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {filteredCourses.map((course) => {
+                  const lessonCount = course.modules.reduce((acc, m) => acc + m.lessons.length, 0);
+                  const quizCount = course.modules.reduce(
+                    (acc, m) => acc + m.lessons.filter((l) => l.quiz).length,
+                    0
+                  );
+                  const isEnrolled = enrolledCourseIds.includes(course.id);
+
+                  return (
+                    <div
+                      key={course.id}
+                      className="rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] overflow-hidden flex flex-col justify-between hover:border-gold/40 transition"
+                    >
+                      <div>
+                        <div className="relative h-36 w-full bg-[rgb(var(--surface-muted))]">
+                          <img
+                            src={course.thumbnailUrl}
+                            alt={course.title}
+                            className="h-full w-full object-cover"
+                          />
+                          <div className="absolute top-2.5 left-2.5 rounded-lg bg-[rgb(var(--surface-card))]/90 backdrop-blur px-2.5 py-1 text-[11px] font-semibold text-gold">
+                            {STREAM_LABELS[course.stream]}
+                          </div>
+                          {isEnrolled && (
+                            <div className="absolute top-2.5 right-2.5 rounded-lg bg-gold px-2.5 py-1 text-[11px] font-semibold text-ink-gold">
+                              Enrolled
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="p-4 space-y-2">
+                          <div className="flex items-center gap-2 text-xs text-ink-500">
+                            <span className="font-medium text-cream truncate">
+                              {course.creatorName}
+                            </span>
+                            <span>·</span>
+                            <span className="shrink-0">{course.level}</span>
+                          </div>
+
+                          <h3 className="font-display text-base font-semibold text-cream leading-snug">
+                            {course.title}
+                          </h3>
+
+                          <p className="text-xs text-ink-500 line-clamp-2 leading-relaxed">
+                            {course.summary}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="p-4 pt-0 space-y-3">
+                        <div className="flex items-center justify-between text-xs text-ink-500 border-t border-[var(--border-faint)] pt-3">
+                          <span>
+                            {lessonCount} {lessonCount === 1 ? "Lesson" : "Lessons"} · {quizCount}{" "}
+                            {quizCount === 1 ? "Quiz" : "Quizzes"}
+                          </span>
+                          <span className="font-semibold text-cream">
+                            {formatUgx(course.priceUgx)}
+                          </span>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => openCourse(course)}
+                          className="w-full rounded-xl bg-gold px-4 py-2.5 text-xs font-semibold text-ink-gold flex items-center justify-center gap-1.5"
+                        >
+                          <span>{isEnrolled ? "Continue Course & Quizzes" : "Open Course & Syllabus"}</span>
+                          <ChevronRight className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+        </div>
+      )}
+
+      {/* =====================================================================
+          VIEW 3: LIVE CLASSROOMS (Zoom-Style In-App Video & Whiteboard Stage)
+         ===================================================================== */}
+      {activeTab === "live" && (
+        <div className="space-y-5">
+          {activeLiveMeeting ? (
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <button
+                  type="button"
+                  onClick={() => setActiveLiveRoomId(null)}
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-gold hover:underline"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                  Back to All Live Classrooms
+                </button>
+                <span className="rounded-full bg-gold/15 px-3 py-1 text-xs font-semibold text-gold">
+                  Room {activeLiveMeeting.roomCode} · {activeLiveMeeting.participantCount} Participants
+                </span>
+              </div>
+
+              <div className="grid gap-4 lg:grid-cols-12">
+                {/* Main Video / Whiteboard Stage */}
+                <div className="lg:col-span-8 rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-4 sm:p-5 space-y-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <span className="text-[11px] uppercase tracking-wider text-gold font-semibold">
+                        {STREAM_LABELS[activeLiveMeeting.stream]} · Live Session
+                      </span>
+                      <h2 className="font-display text-lg font-semibold text-cream">
+                        {activeLiveMeeting.title}
+                      </h2>
+                      <p className="text-xs text-ink-500">
+                        Host: {activeLiveMeeting.hostTutorName} ({activeLiveMeeting.hostTutorTitle})
+                      </p>
+                    </div>
+                    <div className="flex gap-1.5 rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] p-1">
+                      {(["slides", "whiteboard", "grid"] as const).map((mode) => (
+                        <button
+                          key={mode}
+                          type="button"
+                          onClick={() => setLiveStageMode(mode)}
+                          className={`rounded-lg px-2.5 py-1 text-xs font-semibold capitalize ${
+                            liveStageMode === mode
+                              ? "bg-gold text-ink-gold"
+                              : "text-ink-500 hover:text-cream"
+                          }`}
+                        >
+                          {mode}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Stage Canvas */}
+                  <div className="rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] p-5 min-h-[260px] flex flex-col justify-between">
+                    {liveStageMode === "slides" && (
+                      <div className="space-y-3">
+                        <div className="inline-flex items-center gap-1.5 rounded bg-[rgb(var(--surface-card))] px-2.5 py-1 text-[11px] font-semibold text-gold">
+                          <MonitorUp className="h-3.5 w-3.5" />
+                          {activeLiveMeeting.hostTutorName} is sharing presentation slides
+                        </div>
+                        <h3 className="font-display text-base sm:text-lg font-semibold text-cream">
+                          {activeLiveMeeting.subject}: Live Walkthrough & Worked Examples
+                        </h3>
+                        <p className="text-xs sm:text-sm text-ink-500 leading-relaxed">
+                          Follow along with the live annotated diagram. Use the Raise Hand button below to ask a question on mic, or post in the room chat.
+                        </p>
+                      </div>
+                    )}
+
+                    {liveStageMode === "whiteboard" && (
+                      <div className="space-y-3">
+                        <div className="text-xs font-semibold text-gold">
+                          Interactive Collaborative Whiteboard
+                        </div>
+                        <div className="rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-4 font-mono text-xs text-cream space-y-1.5">
+                          <div>[Step 1] Verify input parameters & boundary conditions</div>
+                          <div>[Step 2] Apply curriculum formula & check units</div>
+                          <div>[Step 3] Live Q&A checkpoint with {activeLiveMeeting.hostTutorName}</div>
+                        </div>
+                      </div>
+                    )}
+
+                    {liveStageMode === "grid" && (
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                        {DEMO_LIVE_PARTICIPANTS.map((part) => (
+                          <div
+                            key={part.id}
+                            className="rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-3 flex items-center gap-2.5"
+                          >
+                            <img
+                              src={part.avatarUrl}
+                              alt={part.name}
+                              className="h-9 w-9 rounded-full object-cover shrink-0"
+                            />
+                            <div className="min-w-0">
+                              <div className="truncate text-xs font-semibold text-cream">
+                                {part.name}
+                              </div>
+                              <div className="text-[11px] text-ink-500 uppercase">
+                                {part.role} {part.hasHandRaised ? "· ✋" : ""}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Classroom Control Bar */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-4 mt-4 border-t border-[var(--border-faint)]">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setMicMuted((m) => !m)}
+                          className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold ${
+                            micMuted
+                              ? "bg-[rgb(var(--surface-card))] text-cream"
+                              : "bg-gold text-ink-gold"
+                          }`}
+                        >
+                          {micMuted ? <MicOff className="h-3.5 w-3.5" /> : <Mic className="h-3.5 w-3.5" />}
+                          <span>{micMuted ? "Unmute" : "Mic On"}</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setCamOn((c) => !c)}
+                          className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold ${
+                            !camOn
+                              ? "bg-[rgb(var(--surface-card))] text-cream"
+                              : "bg-gold text-ink-gold"
+                          }`}
+                        >
+                          {camOn ? <Video className="h-3.5 w-3.5" /> : <VideoOff className="h-3.5 w-3.5" />}
+                          <span>{camOn ? "Video On" : "Start Video"}</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setHandRaised((h) => !h)}
+                          className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold ${
+                            handRaised
+                              ? "bg-gold text-ink-gold"
+                              : "bg-[rgb(var(--surface-card))] text-cream"
+                          }`}
+                        >
+                          <Hand className="h-3.5 w-3.5" />
+                          <span>{handRaised ? "Hand Raised" : "Raise Hand"}</span>
+                        </button>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => setActiveLiveRoomId(null)}
+                        className="rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] px-3.5 py-2 text-xs font-semibold text-cream hover:border-gold/40"
+                      >
+                        Leave Room
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Live Room Q&A Chat */}
+                <div className="lg:col-span-4 rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-4 flex flex-col justify-between space-y-3">
+                  <div className="space-y-3">
+                    <h3 className="text-xs font-semibold uppercase tracking-wider text-ink-500">
+                      Live Classroom Chat & Q&A
+                    </h3>
+                    <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
+                      {liveRoomMessages.map((msg) => (
+                        <div
+                          key={msg.id}
+                          className="rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] p-3 space-y-1 text-xs"
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-semibold text-cream">{msg.senderName}</span>
+                            <span className="text-[10px] text-ink-500">{msg.timestamp}</span>
+                          </div>
+                          <p className="text-ink-500 leading-relaxed">{msg.text}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <form onSubmit={handleSendLiveChat} className="field-box flex items-center gap-2 rounded-xl px-3 py-2">
+                    <input
+                      type="text"
+                      value={liveChatInput}
+                      onChange={(e) => setLiveChatInput(e.target.value)}
+                      placeholder="Ask a question in the room..."
+                      className="w-full text-xs text-cream placeholder:text-ink-500 focus:outline-none"
+                    />
+                    <button
+                      type="submit"
+                      className="rounded-lg bg-gold p-1.5 text-ink-gold shrink-0"
+                    >
+                      <Send className="h-3.5 w-3.5" />
+                    </button>
+                  </form>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {filteredLiveMeetings.map((meeting) => (
+                <div
+                  key={meeting.id}
+                  className="rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-4 flex flex-col justify-between gap-4"
+                >
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="rounded-md bg-[rgb(var(--surface-muted))] px-2 py-0.5 font-semibold text-gold">
+                        {STREAM_LABELS[meeting.stream]}
+                      </span>
+                      <span className="text-ink-500">{meeting.scheduledFor}</span>
+                    </div>
+                    <h3 className="font-display text-base font-semibold text-cream">
+                      {meeting.title}
+                    </h3>
+                    <div className="flex items-center gap-2.5 pt-1">
+                      <img
+                        src={meeting.hostTutorAvatar}
+                        alt={meeting.hostTutorName}
+                        className="h-8 w-8 rounded-full object-cover"
+                      />
+                      <div>
+                        <div className="text-xs font-semibold text-cream">
+                          {meeting.hostTutorName}
+                        </div>
+                        <div className="text-[11px] text-ink-500">
+                          {meeting.hostTutorTitle} · Room {meeting.roomCode}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between border-t border-[var(--border-faint)] pt-3">
+                    <span className="text-xs text-ink-500">
+                      {meeting.participantCount} / {meeting.maxParticipants} Learners
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setActiveLiveRoomId(meeting.id)}
+                      className="inline-flex items-center gap-1.5 rounded-xl bg-gold px-4 py-2 text-xs font-semibold text-ink-gold"
+                    >
+                      <Video className="h-3.5 w-3.5" />
+                      Enter Classroom
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* =====================================================================
+          VIEW 4: DIRECT TUTOR CHAT (In-App Messaging with School Instructors)
+         ===================================================================== */}
+      {activeTab === "tutors" && (
+        <div className="grid gap-4 lg:grid-cols-12">
+          {/* Tutor Roster */}
+          <div className="lg:col-span-4 rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-3.5 space-y-2">
+            <h2 className="px-1 text-xs font-semibold uppercase tracking-wider text-ink-500">
+              Verified School Tutors & Mentors
+            </h2>
+            <div className="space-y-1.5">
+              {DEMO_TUTOR_CONTACTS.map((tutor) => {
+                const isSelected = tutor.id === selectedTutor.id;
+                return (
+                  <button
+                    key={tutor.id}
+                    type="button"
+                    onClick={() => setSelectedTutorId(tutor.id)}
+                    className={`w-full text-left rounded-xl p-3 transition flex items-start gap-3 border ${
+                      isSelected
+                        ? "border-gold bg-gold/10"
+                        : "border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] hover:border-gold/30"
+                    }`}
+                  >
+                    <img
+                      src={tutor.avatarUrl}
+                      alt={tutor.name}
+                      className="h-10 w-10 rounded-full object-cover shrink-0"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="truncate text-xs font-semibold text-cream">
+                          {tutor.name}
+                        </span>
+                        <span className="text-[10px] text-gold shrink-0">
+                          {tutor.isOnline ? "Online" : tutor.lastMessageTime}
+                        </span>
+                      </div>
+                      <div className="truncate text-[11px] text-ink-500">{tutor.subject}</div>
+                      <div className="truncate text-[11px] text-ink-500 mt-0.5">
+                        {tutor.lastMessage}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Active Conversation */}
+          <div className="lg:col-span-8 rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-4 sm:p-5 flex flex-col justify-between space-y-4">
+            <div className="space-y-4">
+              <div className="flex items-center justify-between border-b border-[var(--border-faint)] pb-3">
+                <div className="flex items-center gap-3">
+                  <img
+                    src={selectedTutor.avatarUrl}
+                    alt={selectedTutor.name}
+                    className="h-10 w-10 rounded-full object-cover"
+                  />
+                  <div>
+                    <div className="text-sm font-semibold text-cream">{selectedTutor.name}</div>
+                    <div className="text-xs text-ink-500">
+                      {selectedTutor.title} · {STREAM_LABELS[selectedTutor.stream]}
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const matchingRoom =
+                      DEMO_LIVE_MEETINGS.find((m) => m.stream === selectedTutor.stream) ??
+                      DEMO_LIVE_MEETINGS[0];
+                    setActiveLiveRoomId(matchingRoom.id);
+                    setActiveTab("live");
+                  }}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] px-3 py-1.5 text-xs font-semibold text-gold hover:border-gold/40"
+                >
+                  <Video className="h-3.5 w-3.5" />
+                  Live Call
+                </button>
+              </div>
+
+              <div className="space-y-2.5 max-h-80 overflow-y-auto pr-1">
+                {(tutorThreads[selectedTutor.id] ?? []).map((m) => (
+                  <div
+                    key={m.id}
+                    className={`rounded-xl p-3 text-xs max-w-lg ${
+                      m.sender === "student"
+                        ? "ml-auto bg-gold text-ink-gold font-medium"
+                        : "border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] text-cream"
+                    }`}
+                  >
+                    <p className="leading-relaxed">{m.text}</p>
+                    <div
+                      className={`text-[10px] mt-1 ${
+                        m.sender === "student" ? "text-ink-gold/75" : "text-ink-500"
+                      }`}
+                    >
+                      {m.time}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <form
+              onSubmit={handleSendTutorMessage}
+              className="field-box flex items-center gap-2 rounded-xl px-3.5 py-2.5"
+            >
+              <input
+                type="text"
+                value={tutorChatInput}
+                onChange={(e) => setTutorChatInput(e.target.value)}
+                placeholder={`Message ${selectedTutor.name}...`}
+                className="w-full text-xs sm:text-sm text-cream placeholder:text-ink-500 focus:outline-none"
+              />
+              <button
+                type="submit"
+                className="rounded-lg bg-gold px-3 py-1.5 text-xs font-semibold text-ink-gold shrink-0"
+              >
+                Send
+              </button>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* =====================================================================
+          VIEW 5: TUITION BILLING & SUBSCRIPTION PASSES
+         ===================================================================== */}
+      {activeTab === "tuition" && (
+        <div className="space-y-5">
+          {paymentSuccessNotice && (
+            <div className="rounded-xl border border-gold/40 bg-gold/10 px-4 py-3 text-xs text-gold flex items-center justify-between">
+              <span>✓ {paymentSuccessNotice}</span>
+              <button
+                type="button"
+                onClick={() => setPaymentSuccessNotice(null)}
+                className="text-cream"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          )}
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            {/* School Term Tuition Invoice Card */}
+            <div className="rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-4 sm:p-5 space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-[11px] uppercase tracking-wider text-gold font-semibold">
+                    Term Tuition Installments
+                  </span>
+                  <h2 className="font-display text-lg font-semibold text-cream">
+                    {DEMO_TUITION_INVOICE.institutionName}
+                  </h2>
+                  <p className="text-xs text-ink-500">
+                    Student: {DEMO_TUITION_INVOICE.studentName} · {DEMO_TUITION_INVOICE.termName}
+                  </p>
+                </div>
+                <span className="rounded-lg bg-gold/15 px-3 py-1 text-xs font-semibold text-gold">
+                  {tuitionPaidUgx >= DEMO_TUITION_INVOICE.totalTuitionUgx ? "Paid in Full" : "Installment Due"}
+                </span>
+              </div>
+
+              <div className="rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] p-3.5 grid grid-cols-3 gap-2 text-xs">
+                <div>
+                  <div className="text-ink-500">Total Tuition</div>
+                  <div className="font-semibold text-cream mt-0.5">
+                    {formatUgx(DEMO_TUITION_INVOICE.totalTuitionUgx)}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-ink-500">Paid So Far</div>
+                  <div className="font-semibold text-gold mt-0.5">
+                    {formatUgx(tuitionPaidUgx)}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-ink-500">Remaining</div>
+                  <div className="font-semibold text-cream mt-0.5">
+                    {formatUgx(Math.max(0, DEMO_TUITION_INVOICE.totalTuitionUgx - tuitionPaidUgx))}
+                  </div>
+                </div>
+              </div>
+
+              {tuitionPaidUgx < DEMO_TUITION_INVOICE.totalTuitionUgx && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTuitionPaidUgx(DEMO_TUITION_INVOICE.totalTuitionUgx);
+                    setPaymentSuccessNotice(
+                      `Tuition installment of ${formatUgx(DEMO_TUITION_INVOICE.balanceUgx)} paid to ${DEMO_TUITION_INVOICE.institutionName}. Official receipt issued.`
+                    );
+                  }}
+                  className="w-full rounded-xl bg-gold px-4 py-2.5 text-xs font-semibold text-ink-gold"
+                >
+                  Pay Remaining Balance ({formatUgx(DEMO_TUITION_INVOICE.balanceUgx)}) via Mobile Money
+                </button>
+              )}
+            </div>
+
+            {/* All-Access Subscription Passes */}
+            <div className="space-y-3">
+              {DEMO_SUBSCRIPTION_PASSES.map((pass) => {
+                const isSubbed = activeSubscriptionPassId === pass.id;
+                return (
+                  <div
+                    key={pass.id}
+                    className="rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-4 sm:p-5 space-y-3"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <span className="text-[11px] uppercase tracking-wider text-gold font-semibold">
+                          {pass.stream === "all_access" ? "All Streams" : STREAM_LABELS[pass.stream]}
+                        </span>
+                        <h3 className="font-display text-base font-semibold text-cream">
+                          {pass.name}
+                        </h3>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-sm font-semibold text-gold">
+                          {formatUgx(pass.monthlyPriceUgx)}/mo
+                        </div>
+                        <div className="text-[11px] text-ink-500">
+                          or {formatUgx(pass.annualPriceUgx)}/yr
+                        </div>
+                      </div>
+                    </div>
+
+                    <ul className="space-y-1 text-xs text-ink-500">
+                      {pass.benefits.map((b) => (
+                        <li key={b} className="flex items-center gap-2">
+                          <CheckCircle2 className="h-3.5 w-3.5 text-gold shrink-0" />
+                          <span>{b}</span>
+                        </li>
+                      ))}
+                    </ul>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveSubscriptionPassId(pass.id);
+                        setPaymentSuccessNotice(`Activated ${pass.name}. All stream courses unlocked!`);
+                      }}
+                      className={`w-full rounded-xl px-4 py-2 text-xs font-semibold ${
+                        isSubbed
+                          ? "border border-gold bg-gold/15 text-gold"
+                          : "bg-gold text-ink-gold"
+                      }`}
+                    >
+                      {isSubbed ? "✓ Pass Active" : "Activate Monthly Pass"}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =====================================================================
+          VIEW 6: EDUCATOR STUDIO (For Schools & Independent Tutors to Publish)
+         ===================================================================== */}
+      {activeTab === "studio" && (
+        <div className="space-y-5">
+          {studioNotice && (
+            <div className="rounded-xl border border-gold/40 bg-gold/10 px-4 py-3 text-xs text-gold flex items-center justify-between">
+              <span>✓ {studioNotice}</span>
+              <button
+                type="button"
+                onClick={() => setStudioNotice(null)}
+                className="text-cream"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          )}
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            {/* Publish New Course Form */}
+            <form
+              onSubmit={handleCreateCourse}
+              className="rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-4 sm:p-5 space-y-3.5"
+            >
+              <div>
+                <span className="text-[11px] uppercase tracking-wider text-gold font-semibold">
+                  Educator & School Studio
+                </span>
+                <h2 className="font-display text-lg font-semibold text-cream">
+                  Publish a New Course
+                </h2>
+                <p className="text-xs text-ink-500">
+                  Schools, academies, and independent tutors can launch new courses directly into the catalog.
+                </p>
+              </div>
+
+              <div className="space-y-1">
+                <label className="block text-xs text-ink-500">Publishing Institution / Tutor</label>
+                <select
+                  value={studioCreatorId}
+                  onChange={(e) => setStudioCreatorId(e.target.value)}
+                  className="w-full rounded-xl px-3 py-2.5 text-xs text-cream"
+                >
+                  {creators.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} ({c.leadInstructor})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1">
+                  <label className="block text-xs text-ink-500">Education Stream</label>
+                  <select
+                    value={newCourseStream}
+                    onChange={(e) => setNewCourseStream(e.target.value as EducationStreamId)}
+                    className="w-full rounded-xl px-3 py-2.5 text-xs text-cream"
+                  >
+                    {EDUCATION_STREAMS.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.title} ({s.ageBracket})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="block text-xs text-ink-500">Class / Grade Level</label>
+                  <input
+                    type="text"
+                    value={newCourseLevel}
+                    onChange={(e) => setNewCourseLevel(e.target.value)}
+                    placeholder="e.g. Primary 6, S.4 O-Level, Vocational"
+                    className="w-full rounded-xl px-3 py-2 text-xs text-cream"
+                  />
+                </div>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="sm:col-span-2 space-y-1">
+                  <label className="block text-xs text-ink-500">Course Title</label>
+                  <input
+                    type="text"
+                    required
+                    value={newCourseTitle}
+                    onChange={(e) => setNewCourseTitle(e.target.value)}
+                    placeholder="e.g. Primary 6 Social Studies: East African Trade"
+                    className="w-full rounded-xl px-3 py-2 text-xs text-cream"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="block text-xs text-ink-500">Tuition / Fee (UGX)</label>
+                  <input
+                    type="number"
+                    value={newCoursePrice}
+                    onChange={(e) => setNewCoursePrice(e.target.value)}
+                    className="w-full rounded-xl px-3 py-2 text-xs text-cream"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="block text-xs text-ink-500">Course Summary</label>
+                <textarea
+                  rows={2}
+                  value={newCourseSummary}
+                  onChange={(e) => setNewCourseSummary(e.target.value)}
+                  placeholder="Describe what students will learn..."
+                  className="w-full rounded-xl p-3 text-xs text-cream"
+                />
+              </div>
+
+              <button
+                type="submit"
+                className="w-full rounded-xl bg-gold px-4 py-2.5 text-xs font-semibold text-ink-gold"
+              >
+                Publish Course to Marketplace
+              </button>
+            </form>
+
+            {/* Add Lesson & Interactive Quiz Builder */}
+            <form
+              onSubmit={handleAddLessonToCourse}
+              className="rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-4 sm:p-5 space-y-3.5"
+            >
+              <div>
+                <span className="text-[11px] uppercase tracking-wider text-gold font-semibold">
+                  Curriculum & Assessment Builder
+                </span>
+                <h2 className="font-display text-lg font-semibold text-cream">
+                  Add Lesson & Checkpoint Quiz
+                </h2>
+                <p className="text-xs text-ink-500">
+                  Attach a new lesson and optional auto-graded quiz to any existing course.
+                </p>
+              </div>
+
+              <div className="space-y-1">
+                <label className="block text-xs text-ink-500">Target Course</label>
+                <select
+                  value={newLessonCourseId}
+                  onChange={(e) => setNewLessonCourseId(e.target.value)}
+                  className="w-full rounded-xl px-3 py-2.5 text-xs text-cream"
+                >
+                  {courses.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.title} ({c.creatorName})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="sm:col-span-2 space-y-1">
+                  <label className="block text-xs text-ink-500">Lesson Title</label>
+                  <input
+                    type="text"
+                    required
+                    value={newLessonTitle}
+                    onChange={(e) => setNewLessonTitle(e.target.value)}
+                    placeholder="e.g. Lesson 3: Worked Past Paper Examples"
+                    className="w-full rounded-xl px-3 py-2 text-xs text-cream"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="block text-xs text-ink-500">Duration (Min)</label>
+                  <input
+                    type="number"
+                    value={newLessonDuration}
+                    onChange={(e) => setNewLessonDuration(e.target.value)}
+                    className="w-full rounded-xl px-3 py-2 text-xs text-cream"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="block text-xs text-ink-500">Quiz Question (Optional)</label>
+                <input
+                  type="text"
+                  value={newQuizQuestion}
+                  onChange={(e) => setNewQuizQuestion(e.target.value)}
+                  placeholder="Enter a checkpoint question for students..."
+                  className="w-full rounded-xl px-3 py-2 text-xs text-cream"
+                />
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <input
+                  type="text"
+                  value={newQuizOptionA}
+                  onChange={(e) => setNewQuizOptionA(e.target.value)}
+                  placeholder="Correct Answer Option"
+                  className="w-full rounded-xl px-3 py-2 text-xs text-cream"
+                />
+                <input
+                  type="text"
+                  value={newQuizOptionB}
+                  onChange={(e) => setNewQuizOptionB(e.target.value)}
+                  placeholder="Distractor Option"
+                  className="w-full rounded-xl px-3 py-2 text-xs text-cream"
+                />
+              </div>
+
+              <button
+                type="submit"
+                className="w-full rounded-xl bg-gold px-4 py-2.5 text-xs font-semibold text-ink-gold"
+              >
+                Add Lesson & Quiz to Course
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ─── In-App Study Resource Preview Modal (No 404 /downloads links!) ─── */}
+      {previewResource && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-5 space-y-4">
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-center gap-2.5">
+                <FileText className="h-5 w-5 text-gold shrink-0" />
+                <div>
+                  <h3 className="text-sm font-semibold text-cream">{previewResource.name}</h3>
+                  <p className="text-xs text-ink-500">
+                    {previewResource.courseTitle} · {previewResource.size}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPreviewResource(null)}
+                className="text-ink-500 hover:text-cream"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] p-3.5 text-xs text-cream space-y-1.5">
+              <div className="font-semibold text-gold">Document Summary & Reference</div>
+              <p className="text-ink-500 leading-relaxed">
+                Official study sheet attached to <strong>{previewResource.lessonTitle}</strong>. Verified for offline revision and practice exercises.
+              </p>
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  const blob = new Blob(
+                    [
+                      `Peebee Learn Official Study Resource\nCourse: ${previewResource.courseTitle}\nLesson: ${previewResource.lessonTitle}\nFile: ${previewResource.name}\n`,
+                    ],
+                    { type: "text/plain;charset=utf-8" }
+                  );
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download = `${previewResource.name}.txt`;
+                  a.click();
+                  URL.revokeObjectURL(url);
+                  setPreviewResource(null);
+                }}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-gold px-4 py-2 text-xs font-semibold text-ink-gold"
+              >
+                <Download className="h-3.5 w-3.5" />
+                Save Copy to Device
+              </button>
+            </div>
           </div>
         </div>
       )}

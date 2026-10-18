@@ -7,7 +7,7 @@ import { BottomNav } from "./BottomNav";
 import { BrandLogo } from "./BrandLogo";
 import Link from "next/link";
 import { Radio, FlaskConical } from "lucide-react";
-import { exitPracticeMode, isPracticeMode } from "@peebee/shared";
+import { exitPracticeMode } from "@peebee/shared";
 import { PracticeModeFrame, usePracticeModeActive } from "@peebee/shared/practice-ui";
 
 export function AppShell({ children }: { children: ReactNode }) {
@@ -15,7 +15,6 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { user, activeStream } = useLearnAuth();
   const isPracticeActive = usePracticeModeActive();
 
-  // If in an active live meeting classroom (e.g. /live/live_fintech_101), provide full-width immersion
   const isMeetingRoom = pathname.startsWith("/live/") && pathname !== "/live";
 
   const handleExitPractice = () => {
@@ -30,29 +29,26 @@ export function AppShell({ children }: { children: ReactNode }) {
       {isPracticeActive && !isMeetingRoom && (
         <aside
           aria-label="Learner Practice and Sandbox Banner"
-          className="border-b border-sky-300/60 bg-sky-100/90 px-4 py-2 text-xs text-sky-950 backdrop-blur dark:border-sky-800 dark:bg-sky-950/80 dark:text-sky-200"
+          className="border-b border-[var(--border-faint)] bg-[rgb(var(--surface-card))] px-4 py-2 text-xs text-cream"
         >
-          <div className="mx-auto flex max-w-lg items-center justify-between gap-2">
+          <div className="mx-auto flex max-w-5xl items-center justify-between gap-2">
             <div className="flex min-w-0 items-center gap-2">
-              <span className="relative flex h-2 w-2 shrink-0">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-sky-400 opacity-75"></span>
-                <span className="relative inline-flex h-2 w-2 rounded-full bg-sky-600"></span>
-              </span>
-              <p className="truncate font-semibold">
-                <strong className="font-black">Sandbox Mode Active:</strong> Safe simulated classrooms & tutor chats
+              <span className="h-2 w-2 shrink-0 rounded-full bg-gold" />
+              <p className="truncate font-medium">
+                <strong className="font-semibold text-gold">Sandbox Mode Active:</strong> Simulated schools, courses & live classrooms
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
               <Link
                 href="/practice"
-                className="rounded-full bg-sky-600 px-2.5 py-0.5 text-[11px] font-black text-white transition hover:bg-sky-700"
+                className="rounded-lg bg-gold px-2.5 py-0.5 text-[11px] font-semibold text-ink-gold"
               >
                 Guide
               </Link>
               <button
                 type="button"
                 onClick={handleExitPractice}
-                className="text-[11px] font-bold text-sky-800 hover:underline dark:text-sky-300"
+                className="text-[11px] font-semibold text-ink-500 hover:text-cream"
               >
                 Exit
               </button>
@@ -63,42 +59,38 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       {!isMeetingRoom && (
         <header className="customer-header sticky top-0 z-30 border-b border-[var(--border-faint)] bg-cream/95 px-4 py-3 backdrop-blur">
-          <div className="mx-auto flex max-w-lg items-center justify-between">
-            <Link href="/" className="flex items-center gap-2">
-              <BrandLogo wordmark={false} className="[&_img]:h-9 [&_img]:w-9" />
-              <div className="min-w-0 flex-1 px-1">
-                <p className="text-[10px] font-black uppercase tracking-wider text-gold">Peebee Learn</p>
-                <h1 className="truncate text-sm font-black text-ink">{user?.name ?? "Student Portal"}</h1>
+          <div className="mx-auto flex max-w-5xl items-center justify-between gap-2">
+            <Link href="/" className="flex items-center gap-2 min-w-0">
+              <BrandLogo wordmark={false} className="[&_img]:h-9 [&_img]:w-9 shrink-0" />
+              <div className="min-w-0">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-gold">Peebee Learn</p>
+                <h1 className="truncate text-sm font-semibold text-cream">{user?.name ?? "Schools & Courses"}</h1>
               </div>
             </Link>
 
-            <div className="flex items-center gap-1.5 sm:gap-2">
+            <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
               <Link
                 href="/practice"
-                className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-black transition ${
+                className={`flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold transition ${
                   isPracticeActive
-                    ? "bg-sky-600 text-white hover:bg-sky-700"
-                    : "border border-sky-500/30 bg-sky-500/10 text-sky-700 hover:bg-sky-500/20 dark:text-sky-300"
+                    ? "bg-gold text-ink-gold"
+                    : "border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] text-cream hover:border-gold/40"
                 }`}
-                title="Open Sandbox & Practice Training Workstation"
               >
-                <FlaskConical className="h-3 w-3" />
+                <FlaskConical className="h-3.5 w-3.5 text-gold" />
                 <span className="hidden sm:inline">Sandbox</span>
               </Link>
 
               <Link
                 href="/live"
-                className="flex items-center gap-1.5 rounded-full bg-red-500/10 px-2.5 py-1 text-xs font-black text-red-600 transition hover:bg-red-500/20 dark:bg-red-500/20 dark:text-red-400"
+                className="flex items-center gap-1.5 rounded-lg border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] px-2.5 py-1 text-xs font-semibold text-cream hover:border-gold/40"
               >
-                <span className="relative flex h-2 w-2">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75"></span>
-                  <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500"></span>
-                </span>
-                <Radio className="h-3 w-3" />
-                <span className="hidden sm:inline">Live Now</span>
+                <span className="h-2 w-2 rounded-full bg-gold" />
+                <Radio className="h-3.5 w-3.5 text-gold" />
+                <span className="hidden sm:inline">Live Classes</span>
               </Link>
 
-              <span className="rounded-full bg-gold/15 px-2.5 py-1 text-[11px] font-black capitalize text-gold">
+              <span className="rounded-lg bg-gold/15 px-2.5 py-1 text-[11px] font-semibold capitalize text-gold">
                 {activeStream}
               </span>
             </div>
@@ -106,7 +98,11 @@ export function AppShell({ children }: { children: ReactNode }) {
         </header>
       )}
 
-      <main className={`mx-auto ${isMeetingRoom ? "max-w-4xl" : "max-w-lg px-4 py-4"} ${!isMeetingRoom ? "customer-nav-content-clearance" : ""}`}>
+      <main
+        className={`mx-auto ${
+          isMeetingRoom ? "max-w-5xl" : "max-w-5xl px-4 py-5"
+        } ${!isMeetingRoom ? "customer-nav-content-clearance" : ""}`}
+      >
         {children}
       </main>
 

@@ -9,6 +9,7 @@
  */
 
 export type EducationStream = "sprouts" | "foundations" | "academy" | "campus" | "skills";
+export type EducationStreamId = EducationStream;
 
 export type EducationRole =
   | "super_admin"
@@ -35,7 +36,7 @@ export const EDUCATION_STREAMS: EducationStreamMeta[] = [
     tagline: "Kindergarten & Early Play",
     ageBracket: "Ages 3–6",
     icon: "🌱",
-    accentColor: "text-emerald-500",
+    accentColor: "text-gold",
     pedagogicalFocus: "Audio-first, touch-friendly, visual storybooks, sticker rewards & parental co-play.",
   },
   {
@@ -44,7 +45,7 @@ export const EDUCATION_STREAMS: EducationStreamMeta[] = [
     tagline: "Primary & Elementary School",
     ageBracket: "Ages 6–12",
     icon: "🎒",
-    accentColor: "text-amber-500",
+    accentColor: "text-gold",
     pedagogicalFocus: "Worksheet photo uploads, parent homework sign-off, gamified flashcards & merit stars.",
   },
   {
@@ -53,7 +54,7 @@ export const EDUCATION_STREAMS: EducationStreamMeta[] = [
     tagline: "Secondary & High School",
     ageBracket: "Ages 12–18",
     icon: "🏛️",
-    accentColor: "text-indigo-500",
+    accentColor: "text-gold",
     pedagogicalFocus: "Academic term pacing, timed exams, tab-switch anti-cheat, UNEB grading & report cards.",
   },
   {
@@ -62,7 +63,7 @@ export const EDUCATION_STREAMS: EducationStreamMeta[] = [
     tagline: "Higher Ed & Business Courses",
     ageBracket: "Collegiate & Adult",
     icon: "🎓",
-    accentColor: "text-blue-500",
+    accentColor: "text-gold",
     pedagogicalFocus: "Modular syllabus trees, timestamped video notes, double-blind peer review & QR certs.",
   },
   {
@@ -71,7 +72,7 @@ export const EDUCATION_STREAMS: EducationStreamMeta[] = [
     tagline: "Vocational & Practical Trades",
     ageBracket: "Apprentices & Artisans",
     icon: "🛠️",
-    accentColor: "text-orange-500",
+    accentColor: "text-gold",
     pedagogicalFocus: "Hands-on video submissions, second-mark timestamp critiques, tool trays & apprentice logbooks.",
   },
 ];
