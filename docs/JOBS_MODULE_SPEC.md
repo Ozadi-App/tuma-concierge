@@ -1,6 +1,8 @@
-# Peebee Jobs — product & technical spec (draft)
+# Peebee Jobs — product & technical spec
 
-Status: draft for review. Nothing here is built yet.
+Status: **built** (API, customer app, admin app), switched off until `talent_enabled` is turned on. The module is named `talent_*` in code and tables because `work_*` already belongs to Clean/Fix/Laundry. Migration to apply by hand: `apps/api/src/db/migrations/0110_talent_jobs.sql`.
+
+Decisions since the first draft: employers are any customer (a Hire mode, plus a worker-search directory); escrow and direct payment are both built and admin picks which are live; illegal or unconstitutional work is screened against an admin-editable term list; monetization is fully data-driven (fee rules, plans, Pro features, free trial, free onboarding and a master free-access switch).
 Inspiration: WeWork-style flexible local workforce, Upwork/Freelancer mechanics (bids, escrow, reviews), a little LinkedIn (profile-as-CV, hiring).
 
 ## 1. Decisions so far

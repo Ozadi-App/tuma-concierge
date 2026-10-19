@@ -50,7 +50,7 @@ const landingContent: Record<LandingGroup, { eyebrow: string; title: string; des
     items: [
       { title: "Laundry", description: "Arrange laundry pickup and care.", icon: WashingMachine, href: "/services/laundry" },
       { title: "Fix", description: "Find help for repairs and maintenance.", icon: Wrench, href: "/services/fix" },
-      { title: "Jobs", description: "Find a skilled person or take up gig work.", icon: Briefcase, href: "/service" },
+      { title: "Jobs", description: "Find a skilled person or take up gig work.", icon: Briefcase, href: "/services/jobs" },
       { title: "Learn", description: "Sprouts, Foundations, Academy, Compass & Skills.", icon: BookOpen, href: "/learn" },
     ],
   },
@@ -63,7 +63,7 @@ const landingContent: Record<LandingGroup, { eyebrow: string; title: string; des
       { title: "Laundry", description: "Doorstep wash & fold, dry cleaning, ironing.", icon: WashingMachine, href: "/services/laundry" },
       { title: "Fix", description: "Home repairs, plumbing, electrical & handyman help.", icon: Wrench, href: "/services/fix" },
       { title: "My jobs", description: "Track your bookings, quotes and offers.", icon: ClipboardList, href: "/services/work" },
-      { title: "Jobs", description: "Post everyday gigs or hire skilled local pros.", icon: Briefcase, href: "/service" },
+      { title: "Jobs", description: "Post everyday gigs or hire skilled local pros.", icon: Briefcase, href: "/services/jobs" },
       { title: "Learn", description: "Early learning, K-12 schooling, compass degrees & vocational trades.", icon: BookOpen, href: "/learn" },
     ],
   },
