@@ -77,7 +77,7 @@ export function ProPlans() {
             {p.workerCommissionPercent != null ? <li className="flex gap-2"><Check className="mt-0.5 h-4 w-4 shrink-0 text-gold" aria-hidden />Only {p.workerCommissionPercent}% fee on jobs you do</li> : null}
             {p.employerCommissionPercent != null ? <li className="flex gap-2"><Check className="mt-0.5 h-4 w-4 shrink-0 text-gold" aria-hidden />Only {p.employerCommissionPercent}% fee on jobs you pay for</li> : null}
           </ul>
-          {p.subscribed ? <p className="rounded-xl bg-gold/10 p-2 text-center text-xs font-bold text-gold">You're on this plan</p> : (
+          {p.subscribed ? <p className="rounded-xl bg-gold/10 p-2 text-center text-xs font-bold text-gold">You&apos;re on this plan</p> : (
             <BusyButton busy={busy === p.id} className={primaryBtn} onClick={() => subscribe(p)}>{p.trialAvailable && p.priceUgx > 0 ? `Start ${p.trialDays}-day free trial` : p.priceUgx === 0 ? "Get this plan" : `Choose ${p.name}`}</BusyButton>
           )}
         </section>
