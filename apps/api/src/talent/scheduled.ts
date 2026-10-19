@@ -41,7 +41,7 @@ export async function sweepTalent(): Promise<{ autoReleased: number; expiredJobs
     const res = await db.execute({ sql: "UPDATE talent_jobs SET status = 'expired', closed_at = datetime('now'), updated_at = datetime('now') WHERE id = ? AND status IN ('open', 'pending_review')", args: [j.id] });
     if (res.rowsAffected) {
       await db.execute({ sql: "UPDATE talent_applications SET status = 'rejected', updated_at = datetime('now') WHERE job_id = ? AND status IN ('applied', 'shortlisted')", args: [j.id] });
-      tell(String(j.employer_id), "Job expired", `"${String(j.title)}" ran out of time. Post it again to keep looking.`, `/services/jobs/${j.id}`);
+      tell(String(j.employer_id), "Job expired", `"${String(j.title)}" ran out of time. Post it again to keep looking.`, `/services/hire/${j.id}`);
       result.expiredJobs += 1;
     }
   }

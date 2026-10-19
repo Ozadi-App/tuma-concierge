@@ -50,8 +50,8 @@ export function jobsFailure(err: unknown): JobsFailure {
   if (err instanceof ApiError) {
     const code = err.code;
     const message = errorMessage(err);
-    if (code === "talent_upgrade_pending") return { code, message: "Peebee Jobs is being set up. Please try again shortly.", topUp: false, pro: false, disabled: false, pending: true };
-    if (code === "service_disabled") return { code, message: "Peebee Jobs isn't available right now.", topUp: false, pro: false, disabled: true, pending: false };
+    if (code === "talent_upgrade_pending") return { code, message: "Peebee Hire is being set up. Please try again shortly.", topUp: false, pro: false, disabled: false, pending: true };
+    if (code === "service_disabled") return { code, message: "Peebee Hire isn't available right now.", topUp: false, pro: false, disabled: true, pending: false };
     if (code === "insufficient_funds") return { code, message, topUp: true, pro: false, disabled: false, pending: false };
     if (code === "pro_required") return { code, message, topUp: false, pro: true, disabled: false, pending: false };
     return { code, message, topUp: false, pro: false, disabled: false, pending: false };

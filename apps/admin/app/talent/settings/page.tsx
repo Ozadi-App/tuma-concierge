@@ -51,6 +51,7 @@ export default function TalentSettingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [sample, setSample] = useState<string | null>(null);
 
   const apply = useCallback((s: TalentAdminSettings) => {
     setForm(s);
@@ -92,7 +93,7 @@ export default function TalentSettingsPage() {
       {ro && <p className="text-xs text-ink-500">You can view these settings but not change them.</p>}
       <section className="home-card space-y-3 !p-3.5">
         <h2 className="text-sm font-bold text-ink">Availability</h2>
-        <Toggle label="Peebee Jobs is on" hint="Master switch for customers. Staff keep access to finish open work." checked={form.enabled} disabled={ro} onChange={(v) => set("enabled", v)} />
+        <Toggle label="Peebee Hire is on" hint="Master switch for customers. Staff keep access to finish open work." checked={form.enabled} disabled={ro} onChange={(v) => set("enabled", v)} />
         <div className="space-y-1.5"><p className="text-xs font-semibold text-ink-500">Kinds of job people can post</p><div className="flex flex-wrap gap-1.5">{TYPES.map((t) => <Chip key={t} on={form.jobTypes.includes(t)} disabled={ro} onClick={() => set("jobTypes", form.jobTypes.includes(t) ? form.jobTypes.filter((x) => x !== t) : TYPES.filter((x) => x === t || form.jobTypes.includes(x)))}>{label(t)}</Chip>)}</div></div>
         <Toggle label="Find-a-worker search" hint="The directory where anyone can search for workers." checked={form.workerSearchEnabled} disabled={ro} onChange={(v) => set("workerSearchEnabled", v)} />
         <Toggle label="Riders can offer other work" checked={form.ridersCanWork} disabled={ro} onChange={(v) => set("ridersCanWork", v)} />
@@ -149,6 +150,18 @@ export default function TalentSettingsPage() {
       <ErrorNote message={error} />
       {saved && <p className="rounded-xl bg-gold/10 px-3 py-2 text-sm text-ink">Saved.</p>}
       {!ro && <button type="submit" disabled={busy} className="min-h-11 w-full rounded-full bg-gold px-4 text-sm font-bold text-ink-gold disabled:opacity-50">{busy ? "Saving…" : "Save settings"}</button>}
+
+      <section className="home-card space-y-3 !p-3.5">
+        <h2 className="text-sm font-bold text-ink">Sample data (sandbox only)</h2>
+        <p className="text-xs text-ink-500">Adds sample workers, employers and jobs of every kind so you can see Jobs working. They only appear while the platform is in sandbox and can be removed any time. Customers can also explore the same samples in practice mode, which needs no setup.</p>
+        {sample && <p className="rounded-xl bg-gold/10 px-3 py-2 text-sm text-ink">{sample}</p>}
+        {!ro && (
+          <div className="grid grid-cols-2 gap-2">
+            <button type="button" onClick={async () => { setError(null); setSample(null); try { const r = await api.talentAdminSeedSandbox(); setSample(`Added ${r.workers} workers, ${r.employers} employers and ${r.jobs} jobs.`); } catch (err) { setError(errorMessage(err)); } }} className="min-h-11 rounded-full bg-gold px-4 text-sm font-bold text-ink-gold">Add sample jobs</button>
+            <button type="button" onClick={async () => { setError(null); setSample(null); try { const r = await api.talentAdminClearSandbox(); setSample(`Removed ${r.removed} sample accounts and their jobs.`); } catch (err) { setError(errorMessage(err)); } }} className="min-h-11 rounded-full border border-[var(--border-faint)] px-4 text-sm font-bold text-ink">Remove samples</button>
+          </div>
+        )}
+      </section>
 
       <section className="home-card space-y-3 !p-3.5">
         <h2 className="text-sm font-bold text-ink">Kinds of work</h2>

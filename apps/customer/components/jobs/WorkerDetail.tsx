@@ -49,9 +49,9 @@ export function WorkerDetail({ id }: { id: string }) {
 
   const w = data?.worker;
   return (
-    <JobsPage eyebrow="Peebee Jobs" title="Worker" backHref="/services/jobs/workers" backLabel="Back to search">
+    <JobsPage eyebrow="Peebee Hire" title="Worker" backHref="/services/hire/workers" backLabel="Back to search">
       {!data && !failure ? <Spinner label="Loading profile" /> : null}
-      {!data && failure ? <EmptyState title="Not available" text={failure.message} action={<Link href="/services/jobs/workers" className={secondaryBtn}>Back to search</Link>} /> : null}
+      {!data && failure ? <EmptyState title="Not available" text={failure.message} action={<Link href="/services/hire/workers" className={secondaryBtn}>Back to search</Link>} /> : null}
       {w ? (
         <>
           <section className={`${cardClass} space-y-3`}>
@@ -85,7 +85,7 @@ export function WorkerDetail({ id }: { id: string }) {
             {forJob ? (
               <BusyButton busy={busy} disabled={invited} className={primaryBtn} onClick={async () => { setBusy(true); setFailure(null); try { await api.talentInvite(forJob, id); setInvited(true); } catch (err) { setFailure(jobsFailure(err)); } finally { setBusy(false); } }}>{invited ? "Invited" : "Invite to my job"}</BusyButton>
             ) : (
-              <Link href={`/services/jobs/post?invite=${encodeURIComponent(w.id)}`} className={primaryBtn}>Post a job and invite them</Link>
+              <Link href={`/services/hire/post?invite=${encodeURIComponent(w.id)}`} className={primaryBtn}>Post a job and invite them</Link>
             )}
             {data.phoneLocked ? (
               <BusyButton busy={busy} onClick={unlock} className={secondaryBtn}><Phone className="h-4 w-4" aria-hidden />Show phone number</BusyButton>

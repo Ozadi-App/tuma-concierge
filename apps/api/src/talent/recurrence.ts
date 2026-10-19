@@ -97,7 +97,7 @@ recurrenceRoutes.post("/contracts/:id/repeat", async (c) => {
           VALUES (?, ?, 'rehire', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     args: [id, user.sub, ct.job_id, ct.worker_id, ct.title, ct.price_ugx, parsed.data.frequency, check.startsAt ?? addPeriod(toDb(), parsed.data.frequency), check.endsAt, Math.min(parsed.data.maxRuns ?? s.recurringMaxRuns, s.recurringMaxRuns), ct.environment],
   });
-  tell(String(ct.worker_id), "This job will repeat", `${String(ct.title)} will be booked with you ${parsed.data.frequency}.`, `/services/jobs/contracts/${ct.id}`);
+  tell(String(ct.worker_id), "This job will repeat", `${String(ct.title)} will be booked with you ${parsed.data.frequency}.`, `/services/hire/contracts/${ct.id}`);
   await logEvent({ jobId: String(ct.job_id), contractId: String(ct.id), actorId: user.sub, kind: "employer", action: "repeat_set", detail: { frequency: parsed.data.frequency } });
   return c.json({ id }, 201);
 });
@@ -162,7 +162,7 @@ for (const action of ["pause", "resume", "end"] as const) {
     } else {
       await db.execute({ sql: "UPDATE talent_recurrences SET status = 'ended', updated_at = datetime('now') WHERE id = ? AND status != 'ended'", args: [r.id] });
       const other = String(r.employer_id) === user.sub ? r.worker_id : r.employer_id;
-      if (other) tell(String(other), "A repeating job was ended", `"${String(r.title)}" won't repeat any more.`, "/services/jobs");
+      if (other) tell(String(other), "A repeating job was ended", `"${String(r.title)}" won't repeat any more.`, "/services/hire");
     }
     return c.json({ ok: true });
   });
@@ -204,7 +204,7 @@ async function runRehire(r: Row, s: TalentSettings, env: PlatformEnvironment): P
     return { ok: false, message: result.message };
   }
   await db.execute({ sql: "UPDATE talent_jobs SET application_count = 1 WHERE id = ?", args: [jobId] });
-  tell(String(r.employer_id), "Repeating job booked", `"${String(r.title)}" is booked again for ${ugx(Number(r.price_ugx))}.`, `/services/jobs/contracts/${result.contractId}`);
+  tell(String(r.employer_id), "Repeating job booked", `"${String(r.title)}" is booked again for ${ugx(Number(r.price_ugx))}.`, `/services/hire/contracts/${result.contractId}`);
   return { ok: true };
 }
 
@@ -227,7 +227,7 @@ async function runRepost(r: Row, s: TalentSettings, env: PlatformEnvironment): P
   await db.execute({ sql: "UPDATE talent_jobs SET listing_fee_ugx = ? WHERE id = ?", args: [fee.amount, jobId] });
   const fresh = (await db.execute({ sql: "SELECT * FROM talent_jobs WHERE id = ?", args: [jobId] })).rows[0] as Row;
   if (fresh.status === "open") void alertMatchingWorkers(fresh, s);
-  tell(employerId, "Repeating job posted", `"${String(r.title)}" is open again for applications.`, `/services/jobs/${jobId}`);
+  tell(employerId, "Repeating job posted", `"${String(r.title)}" is open again for applications.`, `/services/hire/${jobId}`);
   return { ok: true };
 }
 
@@ -268,7 +268,7 @@ export async function runRecurrences(): Promise<{ ran: number; failed: number; p
       const fails = Number(r.fail_count) + 1;
       const pause = fails >= s.recurringMaxFailures;
       await db.execute({ sql: "UPDATE talent_recurrences SET fail_count = ?, last_error = ?, status = CASE WHEN ? = 1 THEN 'paused' ELSE status END WHERE id = ?", args: [fails, result.message, pause ? 1 : 0, r.id] });
-      tell(String(r.employer_id), pause ? "Repeating job paused" : "A repeat was skipped", `"${String(r.title)}": ${result.message}${pause ? " It is paused until you resume it." : ""}`, "/services/jobs/mine");
+      tell(String(r.employer_id), pause ? "Repeating job paused" : "A repeat was skipped", `"${String(r.title)}": ${result.message}${pause ? " It is paused until you resume it." : ""}`, "/services/hire/mine");
       if (pause) out.paused += 1;
     }
   }

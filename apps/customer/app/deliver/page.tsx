@@ -1,7 +1,6 @@
-import { ServiceLanding } from "../../components/ServiceLanding";
+import { redirect } from "next/navigation";
 
-export const metadata = { title: "Send | Peebee" };
-
+// Send is no longer its own button: Parcel lives in Ride.
 export default function DeliverHomePage() {
-  return <ServiceLanding group="deliver" />;
+  redirect("/ride");
 }

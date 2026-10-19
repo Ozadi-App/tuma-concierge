@@ -45,8 +45,8 @@ export function ProPlans() {
   const pro = membership?.features.filter((f) => f.pro) ?? [];
 
   return (
-    <JobsPage eyebrow="Peebee Jobs" title="Plans & Pro" backHref="/services/jobs" backLabel="Back to Jobs">
-      {freeAccess ? <Notice tone="info" text="Everything on Jobs is free right now, so you don't need a plan. Plans will appear here if that changes." /> : null}
+    <JobsPage eyebrow="Peebee Hire" title="Plans & Pro" backHref="/services/hire" backLabel="Back to Hire">
+      {freeAccess ? <Notice tone="info" text="Everything on Hire is free right now, so you don't need a plan. Plans will appear here if that changes." /> : null}
       {membership?.worker.trial || membership?.employer.trial ? <Notice tone="info" text="Your free Pro trial is running. Every Pro feature is open to you." /> : null}
       {!plans && !failure ? <Spinner label="Loading plans" /> : null}
       <FailureNote failure={failure} />

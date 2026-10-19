@@ -86,8 +86,8 @@ export default {
     );
     ctx.waitUntil(
       sweepTalent()
-        .then((r) => console.log("Peebee Jobs sweep:", JSON.stringify(r)))
-        .catch((err) => console.error("Peebee Jobs sweep failed:", err)),
+        .then((r) => console.log("Peebee Hire sweep:", JSON.stringify(r)))
+        .catch((err) => console.error("Peebee Hire sweep failed:", err)),
     );
     ctx.waitUntil(
       expireStaleVouchers()

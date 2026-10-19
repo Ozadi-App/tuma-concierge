@@ -185,7 +185,7 @@ export function SettingsListContent({ onItemClick }: { onItemClick?: () => void 
     {
       href: "/talent",
       icon: Users,
-      label: "Peebee Jobs",
+      label: "Peebee Hire",
       value: "Workers, hiring & fees",
       show: hasPermission(role, "talent.view"),
     },
@@ -353,6 +353,13 @@ export function SettingsListContent({ onItemClick }: { onItemClick?: () => void 
       icon: Settings2,
       label: "Shopping units",
       value: "Measures",
+      show: hasPermission(role, "settings.manage"),
+    },
+    {
+      href: "/settings/home-menu",
+      icon: Settings2,
+      label: "Home menu",
+      value: "Names & Hive",
       show: hasPermission(role, "settings.manage"),
     },
   ];
