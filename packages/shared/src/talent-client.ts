@@ -1,5 +1,5 @@
 /**
- * Typed calls for Peebee Jobs (`/v1/talent`): finding workers, posting and finding
+ * Typed calls for Peebee Hire (`/v1/talent`): finding workers, posting and finding
  * work, contracts and payment, and plans. Mirrors apps/api/src/talent.
  */
 

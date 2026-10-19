@@ -1,7 +1,6 @@
-import { ServiceLanding } from "../../components/ServiceLanding";
+import { redirect } from "next/navigation";
 
-export const metadata = { title: "Jobs | Peebee" };
-
+// Older link to the services home.
 export default function ServiceHomePage() {
-  return <ServiceLanding group="service" />;
+  redirect("/services");
 }

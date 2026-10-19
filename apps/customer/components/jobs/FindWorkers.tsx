@@ -12,7 +12,7 @@ import { useJobsConfig } from "./useJobsConfig";
 
 export function WorkerCard({ w, forJob }: { w: TalentWorker; forJob?: string | null }) {
   return (
-    <Link href={`/services/jobs/workers/${encodeURIComponent(w.id)}${forJob ? `?forJob=${encodeURIComponent(forJob)}` : ""}`} className={`${cardClass} flex items-center gap-3 transition-transform active:scale-[0.99]`}>
+    <Link href={`/services/hire/workers/${encodeURIComponent(w.id)}${forJob ? `?forJob=${encodeURIComponent(forJob)}` : ""}`} className={`${cardClass} flex items-center gap-3 transition-transform active:scale-[0.99]`}>
       <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gold/15 text-base font-bold text-gold" aria-hidden>
         {w.name.slice(0, 1).toUpperCase()}
       </span>
@@ -96,7 +96,7 @@ export function FindWorkers() {
 
   if (configFailure) {
     return (
-      <JobsPage eyebrow="Peebee Jobs" title="Find a worker" backHref="/services/jobs" backLabel="Back to Jobs">
+      <JobsPage eyebrow="Peebee Hire" title="Find a worker" backHref="/services/hire" backLabel="Back to Hire">
         <Unavailable failure={configFailure} />
       </JobsPage>
     );
@@ -105,7 +105,7 @@ export function FindWorkers() {
   const cats = (config?.categories ?? []).filter((c) => !segment || c.segment === segment || c.segment === "both");
 
   return (
-    <JobsPage eyebrow="Peebee Jobs" title="Find a worker" backHref="/services/jobs" backLabel="Back to Jobs">
+    <JobsPage eyebrow="Peebee Hire" title="Find a worker" backHref="/services/hire" backLabel="Back to Hire">
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -170,7 +170,7 @@ export function FindWorkers() {
       <FailureNote failure={failure} />
       {!workers ? <Spinner label="Searching" /> : null}
       {workers && workers.length === 0 && !failure ? (
-        <EmptyState title="No one found" text="Try fewer filters, a wider area, or post the job and let workers come to you." action={<Link href="/services/jobs/post" className="flex min-h-[48px] items-center justify-center rounded-2xl bg-gold font-bold text-ink-gold">Post a job</Link>} />
+        <EmptyState title="No one found" text="Try fewer filters, a wider area, or post the job and let workers come to you." action={<Link href="/services/hire/post" className="flex min-h-[48px] items-center justify-center rounded-2xl bg-gold font-bold text-ink-gold">Post a job</Link>} />
       ) : null}
       <ul className="space-y-3">
         {workers?.map((w) => (

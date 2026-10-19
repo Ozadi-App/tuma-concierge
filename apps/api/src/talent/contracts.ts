@@ -45,7 +45,7 @@ export async function releaseMilestone(contract: Row, milestone: Row, actor: Act
   if (escrow) {
     stmts.push({
       sql: `INSERT OR IGNORE INTO talent_money (id, contract_id, user_id, kind, amount_ugx, status, note, environment) SELECT ?, ?, ?, 'payout', ?, 'pending', ?, ? WHERE changes() > 0`,
-      args: [moneyId, contract.id, contract.worker_id, payout, `Peebee Jobs payment — ${String(contract.title)}`, env],
+      args: [moneyId, contract.id, contract.worker_id, payout, `Peebee Hire payment — ${String(contract.title)}`, env],
     });
   }
   stmts.push(
@@ -79,10 +79,10 @@ export async function releaseMilestone(contract: Row, milestone: Row, actor: Act
     await chargeFixed({ userId: String(contract.worker_id), kind: "worker_commission", amount: wrkFee, jobId: String(contract.job_id), contractId: String(contract.id), idempotencyKey: `comm:${milestone.id}:wrk`, environment: env, allowDue: true });
   }
   await afterContractChange(contract);
-  tell(String(contract.worker_id), "Payment released", `${ugx(payout)} for "${String(contract.title)}".`, `/services/jobs/contracts/${contract.id}`);
+  tell(String(contract.worker_id), "Payment released", `${ugx(payout)} for "${String(contract.title)}".`, `/services/hire/contracts/${contract.id}`);
   if (settled) {
-    tell(String(contract.employer_id), "Job complete", `"${String(contract.title)}" is finished. Leave a rating.`, `/services/jobs/contracts/${contract.id}`);
-    tell(String(contract.worker_id), "Job complete", `"${String(contract.title)}" is finished. Leave a rating.`, `/services/jobs/contracts/${contract.id}`);
+    tell(String(contract.employer_id), "Job complete", `"${String(contract.title)}" is finished. Leave a rating.`, `/services/hire/contracts/${contract.id}`);
+    tell(String(contract.worker_id), "Job complete", `"${String(contract.title)}" is finished. Leave a rating.`, `/services/hire/contracts/${contract.id}`);
   }
   return { released: true, settled };
 }
@@ -153,14 +153,14 @@ export async function cancelContract(contract: Row, actor: Actor, reason: string
     {
       sql: `INSERT OR IGNORE INTO talent_money (id, contract_id, user_id, kind, amount_ugx, status, note, environment)
             SELECT ?, id, employer_id, 'refund', refunded_ugx, 'pending', ?, ? FROM talent_contracts WHERE id = ? AND status = ? AND refunded_ugx > 0 AND payment_mode = 'escrow' AND changes() > 0`,
-      args: [`refund:${contract.id}`, `Peebee Jobs refund — ${String(contract.title)}`, env, contract.id, status],
+      args: [`refund:${contract.id}`, `Peebee Hire refund — ${String(contract.title)}`, env, contract.id, status],
     },
   ];
   if (comp > 0) {
     stmts.push({
       sql: `INSERT OR IGNORE INTO talent_money (id, contract_id, user_id, kind, amount_ugx, status, note, environment)
             SELECT ?, id, worker_id, 'payout', cancel_compensation_ugx, 'pending', ?, ? FROM talent_contracts WHERE id = ? AND status = ? AND cancel_compensation_ugx > 0 AND payment_mode = 'escrow'`,
-      args: [`comp:${contract.id}`, `Peebee Jobs cancellation payment — ${String(contract.title)}`, env, contract.id, status],
+      args: [`comp:${contract.id}`, `Peebee Hire cancellation payment — ${String(contract.title)}`, env, contract.id, status],
     });
   }
   const changes = await executeBatch(stmts);
@@ -194,7 +194,7 @@ async function collectCancelFee(contract: Row, canceller: "employer" | "worker",
     if (compStatus === "paid") {
       await db.execute({
         sql: `INSERT OR IGNORE INTO talent_money (id, contract_id, user_id, kind, amount_ugx, status, note, environment) VALUES (?, ?, ?, 'payout', ?, 'pending', ?, ?)`,
-        args: [`comp:${contract.id}`, contract.id, other, quote.compensationUgx, `Peebee Jobs cancellation payment — ${String(contract.title)}`, env],
+        args: [`comp:${contract.id}`, contract.id, other, quote.compensationUgx, `Peebee Hire cancellation payment — ${String(contract.title)}`, env],
       });
       await applyPendingMoney(String(contract.id));
     }
@@ -254,11 +254,11 @@ export async function resolveDispute(contract: Row, outcome: DisputeOutcome, sta
     { sql: "UPDATE talent_milestones SET status = 'released', released_at = datetime('now') WHERE contract_id = ? AND status != 'released' AND changes() > 0", args: [contract.id] },
     {
       sql: `INSERT OR IGNORE INTO talent_money (id, contract_id, user_id, kind, amount_ugx, status, note, environment) SELECT ?, ?, ?, 'refund', ?, 'pending', ?, ? WHERE EXISTS (SELECT 1 FROM talent_contracts WHERE id = ? AND status = 'settled')`,
-      args: [`refund:${contract.id}`, contract.id, contract.employer_id, refund, `Peebee Jobs partial refund — ${String(contract.title)}`, env, contract.id],
+      args: [`refund:${contract.id}`, contract.id, contract.employer_id, refund, `Peebee Hire partial refund — ${String(contract.title)}`, env, contract.id],
     },
     {
       sql: `INSERT OR IGNORE INTO talent_money (id, contract_id, user_id, kind, amount_ugx, status, note, environment) SELECT ?, ?, ?, 'payout', ?, 'pending', ?, ? WHERE EXISTS (SELECT 1 FROM talent_contracts WHERE id = ? AND status = 'settled')`,
-      args: [`payout:${contract.id}:dispute`, contract.id, contract.worker_id, payout, `Peebee Jobs payment — ${String(contract.title)}`, env, contract.id],
+      args: [`payout:${contract.id}:dispute`, contract.id, contract.worker_id, payout, `Peebee Hire payment — ${String(contract.title)}`, env, contract.id],
     },
     {
       sql: `INSERT INTO talent_events (id, job_id, contract_id, actor_id, actor_kind, action, detail) SELECT ?, ?, ?, ?, 'admin', 'dispute_split', ? WHERE EXISTS (SELECT 1 FROM talent_contracts WHERE id = ? AND status = 'settled')`,
@@ -419,7 +419,7 @@ async function submitHandler(c: any, wantedMilestone?: string) {
   });
   if (!res.rowsAffected) return c.json({ error: "conflict", message: "That step was just changed. Refresh and try again." }, 409);
   await db.execute({ sql: "INSERT INTO talent_events (id, job_id, contract_id, actor_id, actor_kind, action, detail) VALUES (?, ?, ?, ?, 'worker', 'submitted', ?)", args: [newId("tev"), ct.job_id, ct.id, user.sub, JSON.stringify({ milestoneId: m.id })] });
-  tell(String(ct.employer_id), "Work submitted", `${String(ct.worker_name).split(" ")[0]} finished "${String(m.title)}". Check it and release payment.`, `/services/jobs/contracts/${ct.id}`);
+  tell(String(ct.employer_id), "Work submitted", `${String(ct.worker_name).split(" ")[0]} finished "${String(m.title)}". Check it and release payment.`, `/services/hire/contracts/${ct.id}`);
   return c.json({ ok: true, autoReleaseAt: inHours(s.autoConfirmHours) });
 }
 contractRoutes.post("/contracts/:id/submit", (c) => submitHandler(c));
@@ -457,7 +457,7 @@ contractRoutes.post("/contracts/:id/cancel", async (c) => {
   if (!feeFromHeld && quote.feeUgx > 0) feeStatus = (await collectCancelFee(ct, who, quote)).status;
   // The application is closed so the same person can't be accepted twice into the same job.
   await db.execute({ sql: "UPDATE talent_applications SET status = ?, updated_at = datetime('now') WHERE id = ?", args: [byWorker ? "withdrawn" : "rejected", ct.application_id] });
-  tell(byWorker ? String(ct.employer_id) : String(ct.worker_id), "Job cancelled", `"${String(ct.title)}" was cancelled.${!byWorker ? "" : " Your money is back in your wallet."}`, `/services/jobs/contracts/${ct.id}`);
+  tell(byWorker ? String(ct.employer_id) : String(ct.worker_id), "Job cancelled", `"${String(ct.title)}" was cancelled.${!byWorker ? "" : " Your money is back in your wallet."}`, `/services/hire/contracts/${ct.id}`);
   return c.json({ ok: true, lateFeeUgx: quote.feeUgx, lateFeeStatus: feeStatus });
 });
 
@@ -482,7 +482,7 @@ contractRoutes.post("/contracts/:id/dispute", async (c) => {
   });
   if (!res.rowsAffected) return c.json({ error: "not_disputable", message: "A problem can only be raised on a running job." }, 409);
   await db.execute({ sql: "INSERT INTO talent_events (id, job_id, contract_id, actor_id, actor_kind, action, detail) VALUES (?, ?, ?, ?, ?, 'disputed', ?)", args: [newId("tev"), ct.job_id, ct.id, user.sub, String(ct.worker_id) === user.sub ? "worker" : "employer", JSON.stringify({ reason: parsed.data.reason })] });
-  tell(String(ct.worker_id) === user.sub ? String(ct.employer_id) : String(ct.worker_id), "A problem was raised", `Peebee will review "${String(ct.title)}". Payment is paused until then.`, `/services/jobs/contracts/${ct.id}`);
+  tell(String(ct.worker_id) === user.sub ? String(ct.employer_id) : String(ct.worker_id), "A problem was raised", `Peebee will review "${String(ct.title)}". Payment is paused until then.`, `/services/hire/contracts/${ct.id}`);
   return c.json({ ok: true });
 });
 

@@ -37,18 +37,18 @@ export function ContractDetail({ id }: { id: string }) {
 
   if (!data) {
     return (
-      <JobsPage eyebrow="Peebee Jobs" title="Job" backHref="/services/jobs" backLabel="Back to Jobs">
-        {failure ? <EmptyState title="Not available" text={failure.message} action={<Link href="/services/jobs" className={secondaryBtn}>Back to Jobs</Link>} /> : <Spinner label="Loading" />}
+      <JobsPage eyebrow="Peebee Hire" title="Job" backHref="/services/hire" backLabel="Back to Hire">
+        {failure ? <EmptyState title="Not available" text={failure.message} action={<Link href="/services/hire" className={secondaryBtn}>Back to Hire</Link>} /> : <Spinner label="Loading" />}
       </JobsPage>
     );
   }
   const { contract: c, milestones, actions } = data;
   const worker = c.role === "worker";
   const single = milestones.length === 1;
-  const back = worker ? "/services/jobs/work" : "/services/jobs/mine";
+  const back = worker ? "/services/hire/work" : "/services/hire/mine";
 
   return (
-    <JobsPage eyebrow="Peebee Jobs" title={worker ? "My job" : "Hired job"} backHref={back} backLabel="Back">
+    <JobsPage eyebrow="Peebee Hire" title={worker ? "My job" : "Hired job"} backHref={back} backLabel="Back">
       <section className={`${cardClass} space-y-3`}>
         <div className="flex items-start justify-between gap-2"><h2 className="text-lg font-bold leading-snug">{c.title}</h2><Badge status={c.status} /></div>
         <p className="text-2xl font-bold text-gold">{formatUgx(worker ? milestones.reduce((t, m) => t + m.payoutUgx, 0) : c.priceUgx)}</p>

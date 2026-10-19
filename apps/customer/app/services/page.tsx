@@ -1,7 +1,7 @@
-import { ServiceLanding } from "../../components/ServiceLanding";
+import { HiveLanding } from "../../components/ServiceLanding";
 
-export const metadata = { title: "Services | Peebee" };
+export const metadata = { title: "Hive | Peebee" };
 
-export default function ServicesHomePage() {
-  return <ServiceLanding group="services" />;
+export default function HiveHomePage() {
+  return <HiveLanding />;
 }

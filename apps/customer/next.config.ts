@@ -9,6 +9,13 @@ const nextConfig: NextConfig = {
   images: {
     unoptimized: true,
   },
+  // Peebee Jobs is now Peebee Hire; links already sent (notifications, bookmarks) keep working.
+  async redirects() {
+    return [
+      { source: "/services/jobs", destination: "/services/hire", permanent: true },
+      { source: "/services/jobs/:path*", destination: "/services/hire/:path*", permanent: true },
+    ];
+  },
   async headers() {
     return securityHeaderRules({
       apiUrl: process.env.NEXT_PUBLIC_API_URL,

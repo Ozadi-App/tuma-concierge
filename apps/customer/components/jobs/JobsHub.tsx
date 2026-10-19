@@ -11,22 +11,22 @@ export function JobsHub() {
 
   if (failure && !config) {
     return (
-      <JobsPage eyebrow="Peebee Jobs" title="Jobs" backHref="/service" backLabel="Back">
+      <JobsPage eyebrow="Peebee Hire" title="Jobs" backHref="/service" backLabel="Back">
         <Unavailable failure={failure} />
       </JobsPage>
     );
   }
   if (failure) {
     return (
-      <JobsPage eyebrow="Peebee Jobs" title="Jobs" backHref="/service" backLabel="Back">
+      <JobsPage eyebrow="Peebee Hire" title="Jobs" backHref="/service" backLabel="Back">
         <Unavailable failure={failure} />
       </JobsPage>
     );
   }
   if (!config || !me) {
     return (
-      <JobsPage eyebrow="Peebee Jobs" title="Jobs" backHref="/service" backLabel="Back">
-        <Spinner label="Loading Jobs" />
+      <JobsPage eyebrow="Peebee Hire" title="Jobs" backHref="/service" backLabel="Back">
+        <Spinner label="Loading Hire" />
       </JobsPage>
     );
   }
@@ -36,18 +36,18 @@ export function JobsHub() {
   const trial = me.membership.worker.trial ?? me.membership.employer.trial;
 
   const big = [
-    { href: "/services/jobs/workers", icon: Users, title: "Find a worker", text: "Search people near you for any kind of work.", show: config.workerSearchEnabled },
-    { href: "/services/jobs/find", icon: Search, title: "Find work", text: "Browse gigs, projects and jobs and apply.", show: true },
-    { href: "/services/jobs/post", icon: FilePlus2, title: "Post a job", text: config.jobTypes.map((t) => (t === "gig" ? "a quick gig" : t === "project" ? "a project" : "a hiring ad")).join(", "), show: config.jobTypes.length > 0 },
+    { href: "/services/hire/workers", icon: Users, title: "Find a worker", text: "Search people near you for any kind of work.", show: config.workerSearchEnabled },
+    { href: "/services/hire/find", icon: Search, title: "Find work", text: "Browse gigs, projects and jobs and apply.", show: true },
+    { href: "/services/hire/post", icon: FilePlus2, title: "Post a job", text: config.jobTypes.map((t) => (t === "gig" ? "a quick gig" : t === "project" ? "a project" : "a hiring ad")).join(", "), show: config.jobTypes.length > 0 },
   ].filter((b) => b.show);
 
   return (
-    <JobsPage eyebrow="Peebee Jobs" title="Jobs" backHref="/service" backLabel="Back">
+    <JobsPage eyebrow="Peebee Hire" title="Jobs" backHref="/service" backLabel="Back">
       <p className="text-sm leading-relaxed text-ink-500">Hire skilled people nearby, or find work that suits you. Quick gigs, projects and longer-term jobs, all in one place.</p>
 
       {config.freeAccess ? (
         <div className="rounded-2xl border border-gold/40 bg-gold/10 p-3 text-sm">
-          <strong>Free for now.</strong> Everything on Jobs is free to use at the moment.
+          <strong>Free for now.</strong> Everything on Hire is free to use at the moment.
         </div>
       ) : trial ? (
         <div className="rounded-2xl border border-gold/40 bg-gold/10 p-3 text-sm">
@@ -70,14 +70,14 @@ export function JobsHub() {
         ))}
       </div>
 
-      <section aria-label="Your Jobs" className="space-y-2">
+      <section aria-label="Your activity" className="space-y-2">
         <h2 className="text-xs font-bold uppercase tracking-wider text-ink-500">Yours</h2>
         <ul className="divide-y divide-[var(--border-faint)] overflow-hidden rounded-3xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))]">
           {[
-            { href: "/services/jobs/mine", icon: Briefcase, title: "Jobs I posted", note: counts.openJobs ? `${counts.openJobs} open` : "", extra: counts.hiringInProgress ? `${counts.hiringInProgress} running` : "" },
-            { href: "/services/jobs/work", icon: Sparkles, title: "My work", note: counts.pendingApplications ? `${counts.pendingApplications} applied` : "", extra: counts.workInProgress ? `${counts.workInProgress} running` : counts.invites ? `${counts.invites} invites` : "" },
-            { href: "/services/jobs/profile", icon: UserRound, title: profile ? "My worker profile" : "Offer your work", note: profile ? (profile.status === "approved" ? "Live" : profile.status === "pending" ? "Waiting for approval" : profile.status) : "Create a profile to apply for work", extra: "" },
-            { href: "/services/jobs/plans", icon: Wallet, title: "Plans & Pro", note: config.freeAccess ? "Free for now" : "Upgrade for more", extra: "" },
+            { href: "/services/hire/mine", icon: Briefcase, title: "Jobs I posted", note: counts.openJobs ? `${counts.openJobs} open` : "", extra: counts.hiringInProgress ? `${counts.hiringInProgress} running` : "" },
+            { href: "/services/hire/work", icon: Sparkles, title: "My work", note: counts.pendingApplications ? `${counts.pendingApplications} applied` : "", extra: counts.workInProgress ? `${counts.workInProgress} running` : counts.invites ? `${counts.invites} invites` : "" },
+            { href: "/services/hire/profile", icon: UserRound, title: profile ? "My worker profile" : "Offer your work", note: profile ? (profile.status === "approved" ? "Live" : profile.status === "pending" ? "Waiting for approval" : profile.status) : "Create a profile to apply for work", extra: "" },
+            { href: "/services/hire/plans", icon: Wallet, title: "Plans & Pro", note: config.freeAccess ? "Free for now" : "Upgrade for more", extra: "" },
           ].map(({ href, icon: Icon, title, note, extra }) => (
             <li key={href}>
               <Link href={href} className="flex min-h-[60px] items-center gap-3 px-4 py-3 active:bg-[rgb(var(--surface-muted))]">
@@ -95,6 +95,7 @@ export function JobsHub() {
 
       {me.membership.owedUgx > 0 ? <FailureNote failure={{ message: `You owe Peebee ${formatUgx(me.membership.owedUgx)} in fees. Pay it from "My work" to keep taking jobs.`, topUp: false, pro: false, disabled: false, pending: false }} /> : null}
 
+      <Link href="/services/hire/practice" className="block text-center text-xs font-semibold text-gold underline">Try it with sample jobs (practice mode)</Link>
       <p className="text-center text-[11px] text-ink-500">Peebee does not allow illegal or unconstitutional work. Report anything that looks wrong.</p>
     </JobsPage>
   );

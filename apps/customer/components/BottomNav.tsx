@@ -1,10 +1,10 @@
 "use client";
 
-import { observeNotificationSnapshot } from "@peebee/shared";
+import { observeNotificationSnapshot, type HiveShortcutId, type HomeMenuSettings } from "@peebee/shared";
 
 import type { OrderRow } from "@peebee/shared";
 import {
-  Archive,
+  Ambulance,
   Bike,
   BookOpen,
   Briefcase,
@@ -17,6 +17,7 @@ import {
   Citrus,
   CookingPot,
   Croissant,
+  Crown,
   Flame,
   Home,
   ListChecks,
@@ -41,31 +42,51 @@ import { api } from "../lib/api";
 import { useAuth } from "../lib/auth-context";
 import { useTranslate } from "../lib/i18n";
 import { orderTitle, stageLabel } from "../lib/order-display";
+import { useHireAvailable, useHomeMenu } from "../lib/home-menu";
+import { useSpecialCarServices, type SpecialCarServices } from "../lib/special-car";
 import { useLivePolling } from "../lib/use-live-polling";
 import { BottomDrawer } from "./BottomDrawer";
 import { CartDrawer } from "./CartDrawer";
 import { useCart } from "../lib/cart";
 import { useNavBack, useNavPrimaryAction } from "../lib/nav-primary-action";
 
-type MenuGroup = "original" | "ride" | "shopping" | "food" | "deliver" | "services";
+type MenuGroup = "original" | "ride" | "shopping" | "food" | "hive";
 type MenuItem = { id: string; label: string; icon: LucideIcon; href?: string; group?: Exclude<MenuGroup, "original">; disabled?: boolean };
 
-const originalMenu: MenuItem[] = [
-  { id: "ride", label: "Ride", icon: Route, group: "ride" },
-  { id: "shopping", label: "Buy", icon: ShoppingBag, group: "shopping" },
-  { id: "food", label: "Eat", icon: UtensilsCrossed, group: "food" },
-  { id: "deliver", label: "Send", icon: Package, group: "deliver" },
-  { id: "services", label: "Services", icon: Sparkles, group: "services" },
+// Five main buttons: Ride, Buy, Eat, Learn and Hive. Learn goes straight to its own home; the others open a row of shortcuts.
+// The names come from the admin's home menu setting; these are the buttons' icons and where they lead.
+const originalMenu = (menu: HomeMenuSettings): MenuItem[] => [
+  { id: "ride", label: menu.clusters.ride.label, icon: Route, group: "ride" },
+  { id: "shopping", label: menu.clusters.shopping.label, icon: ShoppingBag, group: "shopping" },
+  { id: "food", label: menu.clusters.food.label, icon: UtensilsCrossed, group: "food" },
+  { id: "learn", label: menu.clusters.learn.label, icon: BookOpen, href: "/learn" },
+  { id: "hive", label: menu.clusters.hive.label, icon: Sparkles, group: "hive" },
 ];
 
-const submenuItems: Record<Exclude<MenuGroup, "original">, MenuItem[]> = {
-  ride: [
-    { id: "boda", label: "Boda", icon: Bike, href: "/ride/boda" },
-    { id: "car", label: "Car", icon: Car, href: "/ride/car" },
-    { id: "rideshare", label: "Rideshare", icon: UsersRound, href: "/carpool" },
-    { id: "selfdrive", label: "Selfdrive", icon: CarFront, href: "/rent" },
-    { id: "move", label: "Move", icon: Truck, href: "/ride/move" },
-  ],
+const HIVE_ITEM: Record<HiveShortcutId, { icon: LucideIcon; href: string }> = {
+  laundry: { icon: WashingMachine, href: "/services/laundry" },
+  clean: { icon: Sparkles, href: "/services/clean" },
+  fix: { icon: Wrench, href: "/services/fix" },
+  hire: { icon: Briefcase, href: "/services/hire" },
+};
+
+/** Hive's row of shortcuts: the admin's names and order, with any switched off left out. */
+const hiveItems = (menu: HomeMenuSettings, hireAvailable: boolean): MenuItem[] =>
+  menu.hive.shortcuts.filter((s) => s.enabled && (s.id !== "hire" || hireAvailable)).map((s) => ({ id: s.id, label: s.label, icon: HIVE_ITEM[s.id].icon, href: HIVE_ITEM[s.id].href }));
+
+/** Ride's shortcuts, in the order Peebee shows them. Luxury and Ambulance appear once there is an approved vehicle of that kind. */
+const rideItems = (special: SpecialCarServices): MenuItem[] => [
+  { id: "boda", label: "Boda", icon: Bike, href: "/ride/boda" },
+  { id: "car", label: "Car", icon: Car, href: "/ride/car" },
+  { id: "rideshare", label: "Rideshare", icon: UsersRound, href: "/carpool" },
+  { id: "selfdrive", label: "Selfdrive", icon: CarFront, href: "/rent" },
+  { id: "move", label: "Move", icon: Truck, href: "/ride/move" },
+  ...(special.luxury ? [{ id: "luxury", label: "Luxury", icon: Crown, href: "/ride/luxury" }] : []),
+  { id: "parcel", label: "Parcel", icon: Package, href: "/deliver/parcel" },
+  ...(special.ambulance ? [{ id: "ambulance", label: "Ambulance", icon: Ambulance, href: "/ride/ambulance" }] : []),
+];
+
+const staticSubmenuItems: Record<"shopping" | "food", MenuItem[]> = {
   shopping: [
     { id: "shoplist", label: "List", icon: ListChecks, href: "/shoplist" },
     { id: "markets", label: "Groceries", icon: Store, href: "/groceries" },
@@ -80,25 +101,15 @@ const submenuItems: Record<Exclude<MenuGroup, "original">, MenuItem[]> = {
     { id: "juices", label: "Juices", icon: Citrus, href: "/juices" },
     { id: "bakery", label: "Bakeries", icon: Croissant, href: "/bakeries" },
   ],
-  deliver: [
-    { id: "parcel", label: "Parcels", icon: Package, href: "/deliver/parcel" },
-    { id: "goods", label: "Goods", icon: ShoppingBasket, disabled: true },
-    { id: "storage", label: "Storage", icon: Archive, disabled: true },
-  ],
-  services: [
-    { id: "laundry", label: "Laundry", icon: WashingMachine, href: "/services/laundry" },
-    { id: "fix", label: "Fix", icon: Wrench, href: "/services/fix" },
-    { id: "jobs", label: "Jobs", icon: Briefcase, href: "/services/jobs" },
-    { id: "learn", label: "Learn", icon: BookOpen, href: "/learn" },
-  ],
 };
 
 function groupForPath(pathname: string): MenuGroup {
   if (["/food", "/restaurants", "/kitchens", "/streetfood", "/juices", "/bakeries"].some((path) => pathname === path || pathname.startsWith(`${path}/`))) return "food";
   if (pathname === "/ride" || pathname === "/rent" || pathname === "/carpool" || pathname.startsWith("/ride/") || pathname === "/move") return "ride";
+  // Parcel is part of Ride now (Send is no longer its own button).
+  if (pathname === "/deliver" || pathname.startsWith("/deliver/")) return "ride";
   if (["/shopping", "/shoplist", "/groceries", "/stores", "/store", "/pharmacy", "/spotlight"].some((path) => pathname === path || pathname.startsWith(`${path}/`)) || pathname.startsWith("/orders")) return "shopping";
-  if (pathname === "/deliver" || pathname.startsWith("/deliver/")) return "deliver";
-  if (["/services", "/service", "/learn"].some((path) => pathname === path || pathname.startsWith(`${path}/`))) return "services";
+  if (["/services", "/service"].some((path) => pathname === path || pathname.startsWith(`${path}/`))) return "hive";
   return "original";
 }
 
@@ -114,6 +125,9 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
   const [menuGroup, setMenuGroup] = useState<MenuGroup>(() => groupForPath(pathname));
   const [selectedItem, setSelectedItem] = useState<string | null>(null);
   const t = useTranslate();
+  const homeMenu = useHomeMenu();
+  const special = useSpecialCarServices();
+  const hireAvailable = useHireAvailable();
   const { totalQuantity: cartCount, total: cartTotal } = useCart();
   const primaryAction = useNavPrimaryAction();
   // A cart/checkout or a flow step is open: Home becomes a one-step Back.
@@ -133,6 +147,14 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
     primaryAction ? "action" : cartCount > 0 && inShopping ? "cart" : "links";
   const actionTone = primaryAction?.tone ?? "gold";
 
+  const menuItems: MenuItem[] =
+    menuGroup === "original" ? originalMenu(homeMenu)
+    : menuGroup === "ride" ? rideItems(special)
+    : menuGroup === "hive" ? hiveItems(homeMenu, hireAvailable)
+    : staticSubmenuItems[menuGroup];
+  // Ride can grow to eight; past five the row scrolls sideways instead of squeezing the names.
+  const scrolls = menuItems.length > 5;
+
   useEffect(() => {
     const group = groupForPath(pathname);
     setMenuGroup(group);
@@ -142,6 +164,8 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
     else if (pathname === "/juices" || pathname.startsWith("/juices/")) setSelectedItem("juices");
     else if (pathname === "/bakeries" || pathname.startsWith("/bakeries/")) setSelectedItem("bakery");
     else if (pathname === "/ride/boda") setSelectedItem("boda");
+    else if (pathname === "/ride/luxury") setSelectedItem("luxury");
+    else if (pathname === "/ride/ambulance") setSelectedItem("ambulance");
     else if (pathname === "/ride/car") setSelectedItem("car");
     else if (pathname === "/carpool") setSelectedItem("rideshare");
     else if (pathname === "/rent") setSelectedItem("selfdrive");
@@ -152,10 +176,11 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
     else if (pathname === "/pharmacy" || pathname.startsWith("/pharmacy/")) setSelectedItem("pharmacy");
     else if (pathname === "/spotlight") setSelectedItem("spotlight");
     else if (pathname === "/services/laundry") setSelectedItem("laundry");
+    else if (pathname === "/services/clean") setSelectedItem("clean");
     else if (pathname === "/services/fix") setSelectedItem("fix");
-    else if (pathname === "/service" || pathname === "/services/jobs" || pathname.startsWith("/services/jobs/")) setSelectedItem("jobs");
+    else if (pathname === "/service" || pathname === "/services/hire" || pathname.startsWith("/services/hire/")) setSelectedItem("hire");
     else if (pathname === "/services/learn" || pathname === "/learn" || pathname.startsWith("/learn/")) setSelectedItem("learn");
-    else if (pathname === "/deliver/parcel") setSelectedItem("parcel");
+    else if (pathname === "/deliver" || pathname.startsWith("/deliver/")) setSelectedItem("parcel");
     else setSelectedItem(null);
   }, [pathname]);
 
@@ -381,10 +406,10 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
             <div key="nav-links" className="customer-nav-swap customer-nav-capsule flex flex-1 min-w-0 items-center justify-around rounded-[24px] p-1.5 shadow-[var(--shadow-float-capsule)]">
               <ul
                 key={menuGroup}
-                className="customer-nav-items flex h-full w-full items-stretch justify-around gap-1"
+                className={`customer-nav-items flex h-full w-full items-stretch gap-1 ${scrolls ? "snap-x overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" : "justify-around"}`}
                 aria-label={menuGroup === "original" ? "Main menu" : `${menuGroup} menu`}
               >
-                {(menuGroup === "original" ? originalMenu : submenuItems[menuGroup]).map((item) => {
+                {menuItems.map((item) => {
                   const Icon = item.icon;
                   const active = item.id === selectedItem;
 
@@ -408,7 +433,7 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
                   } ${item.disabled ? "opacity-40 cursor-not-allowed" : ""}`;
 
                   return (
-                    <li key={item.id} className="flex-1 min-w-0">
+                    <li key={item.id} className={scrolls ? "w-[19%] shrink-0 snap-start" : "flex-1 min-w-0"}>
                       {item.group ? (
                         <button
                           type="button"
@@ -422,8 +447,7 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
                                 ride: "/ride",
                                 shopping: "/shopping",
                                 food: "/food",
-                                deliver: "/deliver",
-                                services: "/services",
+                                hive: "/services",
                               }[item.group!]
                             );
                           }}

@@ -2,7 +2,7 @@ import { z } from "zod";
 import { getSetting, setSetting } from "../lib/settings.js";
 
 /**
- * Peebee Jobs is controlled from Admin: which kinds of work are open, how they
+ * Peebee Hire is controlled from Admin: which kinds of work are open, how they
  * are paid for, who may work, whether charging is on at all, and every limit and
  * window. Nothing here is a constant in the code beyond structural safety rails.
  */

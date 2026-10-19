@@ -5,7 +5,7 @@ import type { CarCategory, CarConfig, FareCounter, FareOffer, OrderRow, RidePass
 import type { LucideIcon } from "lucide-react";
 import {
   Ambulance, ArrowUpDown, Bike, Check, HandCoins, Briefcase, CalendarClock, Car, CarFront, ChevronDown, ChevronRight, Clock, Crown, History,
-  Home as HomeIcon, MapPin, Route, Search, ShieldCheck, Share2, Truck, User, Users, UsersRound, Wallet,
+  Home as HomeIcon, MapPin, Package, Route, Search, ShieldCheck, Share2, Truck, User, Users, UsersRound, Wallet,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -414,6 +414,8 @@ export function RideHome() {
     { id: "selfdrive", label: "Selfdrive", icon: CarFront, sub: "Drive yourself", href: "/rent", onGo: () => route && saveSelfDriveRoute(route) },
     { id: "move", label: "Move", icon: Truck, sub: lightestCargo ? `from ${Math.round(lightestCargo.minimum_fare / 1000)}k` : "Vans & trucks", prefer: "move" },
     ...(special.luxury ? [{ id: "luxury", label: "Luxury", icon: Crown, sub: "By the hour", prefer: "luxury" as Prefer }] : []),
+    // Parcel moved here from the old Send button.
+    { id: "parcel", label: "Parcel", icon: Package, sub: "Send a package", href: "/deliver/parcel" },
   ];
 
   const sheetStyle = { height: expanded ? "calc(100% - 12px)" : "min(60%, 500px)" };

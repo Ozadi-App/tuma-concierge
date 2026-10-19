@@ -1160,3 +1160,42 @@ async function runningGig2(ctx: Awaited<ReturnType<typeof setup>>) {
 async function signTokenFor(id: string) {
   return signToken({ sub: id, role: "customer" });
 }
+
+// ---------------------------------------------------------------------------
+// Sandbox sample data
+// ---------------------------------------------------------------------------
+
+test("talent: sandbox sample data is only for sandbox, hidden from live, and removable", async () => {
+  const { call, mkUser, admin, client } = await setup();
+  const { setPlatformEnvironment } = await import("../lib/settings.js");
+  const viewer = await mkUser("viewer");
+  assert.equal((await call("/admin/sandbox/seed", { token: admin, body: {} })).status, 409, "refused while live");
+
+  await setPlatformEnvironment("sandbox");
+  const seeded = await call("/admin/sandbox/seed", { token: admin, body: {} });
+  assert.equal(seeded.status, 200, JSON.stringify(seeded.json));
+  assert.equal(seeded.json.jobs, 9);
+  const feed = await call("/jobs", { token: viewer });
+  assert.equal(feed.json.total, 9, "every sample job shows in sandbox");
+  assert.deepEqual([...new Set(feed.json.jobs.map((j: Json) => j.type))].sort(), ["gig", "hiring", "project"]);
+  const workers = await call("/workers", { token: viewer });
+  assert.equal(workers.json.total, 8);
+  assert.equal((await call(`/workers/${workers.json.workers[0].id}`, { token: viewer })).status, 200);
+  // Adding twice doesn't duplicate.
+  await call("/admin/sandbox/seed", { token: admin, body: {} });
+  assert.equal((await call("/jobs", { token: viewer })).json.total, 9);
+
+  await setPlatformEnvironment("live");
+  assert.equal((await call("/jobs", { token: viewer })).json.total, 0, "invisible while live");
+  assert.equal((await call("/workers", { token: viewer })).json.total, 0);
+  assert.equal((await call(`/jobs/${feed.json.jobs[0].id}`, { token: viewer })).status, 404);
+  assert.equal((await call(`/workers/${workers.json.workers[0].id}`, { token: viewer })).status, 404);
+
+  await setPlatformEnvironment("sandbox");
+  const cleared = await call("/admin/sandbox/clear", { token: admin, body: {} });
+  assert.equal(cleared.status, 200);
+  assert.ok(cleared.json.removed > 0);
+  assert.equal((await call("/jobs", { token: viewer })).json.total, 0);
+  assert.equal((await client.execute("SELECT COUNT(*) AS n FROM users WHERE id LIKE 'talent_demo_%'")).rows[0].n, 0);
+  assert.equal((await call("/admin/sandbox/seed", { token: viewer, body: {} })).status, 403, "staff only");
+});
