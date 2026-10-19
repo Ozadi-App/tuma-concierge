@@ -3,8 +3,8 @@
 import { EDUCATION_STREAMS, type EducationStream, type LearnEnrollment } from "@peebee/shared";
 import { ArrowRight, BookOpen, Radio, Receipt, Search, Sparkles } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useMemo, useState, type FormEvent } from "react";
 import { LearnThumb } from "@peebee/shared/learn-thumb";
 import { api, errorMessage } from "../../lib/api";
 
@@ -168,11 +168,16 @@ function MyLearning() {
   );
 }
 
-export default function LearnHomePage() {
+function LearnHome() {
+  const router = useRouter();
   const [courses, setCourses] = useState<CatalogCourse[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [stream, setStream] = useState<EducationStream | "all">("all");
+  // The level lives in the address (/learn?stream=skills) so the bottom menu, links and this page always agree.
+  const asked = useSearchParams().get("stream");
+  const stream: EducationStream | "all" = EDUCATION_STREAMS.some((s) => s.id === asked) ? (asked as EducationStream) : "all";
   const [school, setSchool] = useState<string | null>(null);
+  // A school belongs to one level, so changing level (from the menu or the chips) clears it.
+  useEffect(() => setSchool(null), [stream]);
   const [query, setQuery] = useState("");
 
   useEffect(() => {
@@ -247,7 +252,7 @@ export default function LearnHomePage() {
               role="radio"
               aria-checked={stream === o.id}
               onClick={() => {
-                setStream(o.id);
+                router.replace(o.id === "all" ? "/learn" : `/learn?stream=${o.id}`, { scroll: false });
                 setSchool(null);
               }}
               className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${stream === o.id ? "bg-gold text-ink-gold" : "border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] text-ink-500 hover:text-ink"}`}
@@ -339,5 +344,13 @@ export default function LearnHomePage() {
         </p>
       </footer>
     </div>
+  );
+}
+
+export default function LearnHomePage() {
+  return (
+    <Suspense fallback={null}>
+      <LearnHome />
+    </Suspense>
   );
 }
