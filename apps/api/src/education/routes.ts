@@ -37,7 +37,10 @@ import { requireAuth } from "../auth/middleware.js";
 import { db } from "../db/client.js";
 import { clearFailures, checkLockout, consume, recordFailure, tooManyRequests } from "../lib/ratelimit.js";
 import { catalogRoutes } from "./catalog.js";
-import { studioReady, studioRoutes } from "./studio.js";
+import { gradeExam } from "./exam-grading.js";
+import { learnRoutes, mediaRoutes, studioLearningRoutes } from "./learning.js";
+import { getLearnSettings } from "./settings.js";
+import { learningReady, studioReady, studioRoutes } from "./studio.js";
 
 /**
  * Peebee Learn API, mounted at /v1/education.
@@ -66,6 +69,7 @@ educationRoutes.get("/institutions/:slug", (c) => {
 });
 
 educationRoutes.route("/catalog", catalogRoutes);
+educationRoutes.route("/", mediaRoutes);
 
 // ----------------------------------------------------
 // Signed-in only from here
@@ -74,6 +78,8 @@ const authed = new Hono();
 authed.use("*", requireAuth);
 
 authed.route("/studio", studioRoutes);
+authed.route("/studio", studioLearningRoutes);
+authed.route("/learn", learnRoutes);
 
 // ---- Input helpers -------------------------------------------------------
 
@@ -310,32 +316,64 @@ authed.get("/academy/dashboard", (c) =>
   c.json({ ok: true, timetable: DEMO_ACADEMY_TIMETABLE, activeExam: DEMO_ACADEMY_EXAM, reportCard: DEMO_ACADEMY_REPORT_CARD }),
 );
 
+const examSubmit = z.object({
+  examId: clean(80).pipe(z.string().min(1)),
+  answers: z.record(z.string().max(40), clean(4000)).default({}),
+  tabSwitchCount: z.number().int().min(0).max(1000).default(0),
+  focusLossEventsCount: z.number().int().min(0).max(1000).default(0),
+});
+
+function examResponse(row: Record<string, unknown>) {
+  const graded = row.status === "graded";
+  return {
+    ok: true,
+    status: graded ? "graded" : "submitted",
+    scorePercent: row.score_percent === null || row.score_percent === undefined ? null : Number(row.score_percent),
+    passed: row.passed === null || row.passed === undefined ? null : Number(row.passed) === 1,
+    autoPoints: Number(row.auto_points),
+    autoOutOf: Number(row.auto_out_of),
+    tabSwitchCount: Number(row.tab_switch_count),
+    message: graded
+      ? "Your exam has been marked."
+      : "Your answers were received. Your teacher will mark the rest.",
+  };
+}
+
 authed.post("/academy/exam/submit", async (c) => {
   const slow = await writeBudget(c, "exam", 10);
   if (slow) return slow;
-  const parsed = await parse(
-    c,
-    z.object({
-      examId: clean(80).pipe(z.string().min(1)),
-      answers: z.record(z.string().max(40), clean(4000)).default({}),
-      tabSwitchCount: z.number().int().min(0).max(1000).default(0),
-      focusLossEventsCount: z.number().int().min(0).max(1000).default(0),
-    }),
-  );
+  const parsed = await parse(c, examSubmit);
   if (!parsed.ok) return parsed.res;
-  if (parsed.data.examId !== DEMO_ACADEMY_EXAM.id) return c.json({ error: "not_found", message: "That exam wasn't found." }, 404);
+  const d = parsed.data;
+  const user = c.get("user");
+  // The server marks what it holds an answer key for; the key never leaves the server.
+  const grade = gradeExam(d.examId, d.answers);
+  if (!grade) return c.json({ error: "not_found", message: "That exam wasn't found." }, 404);
+  if (!(await learningReady())) return c.json({ error: "learn_upgrade_pending", message: "Exams are being set up. Try again shortly." }, 503);
 
-  // The exam has no answer key on the server yet, so nothing is graded here.
-  // The teacher marks it; the focus-loss counts travel with it for their audit.
-  const flagged = parsed.data.tabSwitchCount + parsed.data.focusLossEventsCount;
-  return c.json({
-    ok: true,
-    status: "submitted",
-    scorePercent: null,
-    passed: null,
-    tabSwitchCount: parsed.data.tabSwitchCount,
-    message: flagged > 0 ? `Exam submitted. ${flagged} focus-loss events were flagged for your teacher.` : "Exam submitted. Your teacher will mark it.",
+  const settings = await getLearnSettings();
+  const percent = grade.autoOutOf > 0 ? Math.round((grade.autoPoints / grade.autoOutOf) * 100) : null;
+  const final = !grade.needsMarking && percent !== null;
+  const id = `exm_${shortId()}`;
+  const insert = await db.execute({
+    sql: `INSERT OR IGNORE INTO edu_exam_submissions
+            (id, user_id, exam_id, answers_json, auto_points, auto_out_of, total_points, needs_marking, score_percent, passed, tab_switch_count, focus_loss_count, status)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    args: [
+      id, user.sub, d.examId, JSON.stringify(d.answers), grade.autoPoints, grade.autoOutOf, grade.totalPoints, grade.needsMarking ? 1 : 0,
+      final ? percent : null, final ? (percent! >= settings.examPassPercent ? 1 : 0) : null, d.tabSwitchCount, d.focusLossEventsCount, final ? "graded" : "submitted",
+    ] as never,
   });
+  if ((insert.rowsAffected ?? 0) === 0) return c.json({ error: "already_submitted", message: "You have already submitted this exam." }, 409);
+  const row = await db.execute({ sql: "SELECT * FROM edu_exam_submissions WHERE id = ?", args: [id] });
+  return c.json(examResponse(row.rows[0] as Record<string, unknown>));
+});
+
+authed.get("/academy/exam/:id/result", async (c) => {
+  if (!(await learningReady())) return c.json({ error: "learn_upgrade_pending", message: "Exams are being set up. Try again shortly." }, 503);
+  const row = await db.execute({ sql: "SELECT * FROM edu_exam_submissions WHERE user_id = ? AND exam_id = ?", args: [c.get("user").sub, c.req.param("id")] });
+  if (!row.rows[0]) return c.json({ error: "not_found", message: "You haven't submitted this exam." }, 404);
+  return c.json(examResponse(row.rows[0] as Record<string, unknown>));
 });
 
 // ----------------------------------------------------
@@ -490,9 +528,9 @@ authed.post("/skills/logbook", async (c) => {
 // ----------------------------------------------------
 authed.get("/tuition", (c) => c.json({ ok: true, invoice: DEMO_TUITION_INVOICE, passes: DEMO_SUBSCRIPTION_PASSES, guardianAlerts: DEMO_GUARDIAN_ALERTS }));
 
-// No payment provider is connected to tuition yet, and a fee must never be marked paid without money moving.
+// The sample fee schedule above is demo data. Real fees are invoices a school sends you, paid from your Peebee wallet at /learn/invoices.
 authed.post("/tuition/pay", (c) =>
-  c.json({ error: "payments_not_connected", message: "Tuition payments aren't switched on yet. Nothing has been charged." }, 503),
+  c.json({ error: "use_invoices", message: "Pay school fees from your invoices. Nothing has been charged here." }, 410),
 );
 
 // ----------------------------------------------------

@@ -1,7 +1,7 @@
 "use client";
 
-import { CURRICULUM_FRAMEWORKS, LESSON_CONTENT_TYPES, type StudioClass, type StudioCourseDetail, type StudioLesson, type StudioSchool } from "@peebee/shared";
-import { Eye, EyeOff, HelpCircle, Layers, Pencil, Plus, Trash2 } from "lucide-react";
+import { CURRICULUM_FRAMEWORKS, LESSON_CONTENT_TYPES, type CourseStudent, type StudioClass, type StudioCourseDetail, type StudioLesson, type StudioSchool } from "@peebee/shared";
+import { Eye, EyeOff, HelpCircle, Layers, Pencil, Plus, Trash2, Upload, Users, Video } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CourseForm, LessonForm, ModuleForm, type CourseInput, type LessonInput } from "../../../components/studio/forms";
@@ -33,6 +33,8 @@ export default function CoursePage() {
   const [editing, setEditing] = useState<Editing>({ kind: "none" });
   const [busy, setBusy] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [students, setStudents] = useState<CourseStudent[]>([]);
+  const [uploading, setUploading] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -40,6 +42,7 @@ export default function CoursePage() {
       const owner = await api.studioClass(found.course.classId);
       const holder = await api.studioSchool(found.course.schoolId);
       setCourse(found.course);
+      api.studioCourseStudents(id).then((r) => setStudents(r.students)).catch(() => setStudents([]));
       setCls(owner.class);
       setSchool(holder.school);
       setError(null);
@@ -77,6 +80,25 @@ export default function CoursePage() {
       setFormError(errorMessage(err));
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function uploadMedia(lessonId: string, file: File) {
+    if (file.size > settings.maxVideoMb * 1024 * 1024) {
+      setFormError(`That file is ${(file.size / 1024 / 1024).toFixed(0)} MB. Files can be up to ${settings.maxVideoMb} MB.`);
+      return;
+    }
+    setUploading(lessonId);
+    setFormError(null);
+    setNotice(null);
+    try {
+      await api.studioUploadLessonMedia(lessonId, file);
+      await load();
+      setNotice("Video uploaded.");
+    } catch (err) {
+      setFormError(errorMessage(err));
+    } finally {
+      setUploading(null);
     }
   }
 
@@ -299,6 +321,47 @@ export default function CoursePage() {
                           )}
                         </p>
                         {lesson.summary && <p className="line-clamp-2 text-xs text-ink-500">{lesson.summary}</p>}
+                        {settings.videoUploadsEnabled && (lesson.media || (canBuild && editing.kind === "none")) && (
+                          <div className="flex flex-wrap items-center gap-2 pt-1">
+                            {lesson.media && (
+                              <span className="inline-flex items-center gap-1 text-xs font-semibold text-green">
+                                <Video className="h-3.5 w-3.5" aria-hidden /> {lesson.media.contentType.startsWith("audio") ? "Audio" : "Video"} uploaded · {lesson.media.sizeBytes < 1024 * 1024 ? `${Math.max(1, Math.round(lesson.media.sizeBytes / 1024))} KB` : `${(lesson.media.sizeBytes / 1024 / 1024).toFixed(1)} MB`}
+                              </span>
+                            )}
+                            {canBuild && editing.kind === "none" && (
+                              <>
+                                <label
+                                  className={`inline-flex min-h-8 cursor-pointer items-center gap-1.5 rounded-lg border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] px-3 text-xs font-semibold text-ink hover:border-gold/50 focus-within:border-gold ${uploading === lesson.id ? "pointer-events-none opacity-60" : ""}`}
+                                >
+                                  <Upload className="h-3.5 w-3.5" aria-hidden />
+                                  {uploading === lesson.id ? "Uploading…" : lesson.media ? "Replace file" : "Upload video or audio"}
+                                  <input
+                                    type="file"
+                                    accept="video/mp4,video/webm,video/quicktime,audio/mpeg,audio/mp4,.mp4,.mov,.webm,.m4a,.mp3"
+                                    className="sr-only"
+                                    disabled={uploading !== null}
+                                    onChange={(e) => {
+                                      const file = e.target.files?.[0];
+                                      e.target.value = "";
+                                      if (file) void uploadMedia(lesson.id, file);
+                                    }}
+                                  />
+                                </label>
+                                {lesson.media && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (window.confirm("Remove the uploaded file from this lesson?")) void run(() => api.studioDeleteLessonMedia(lesson.id), "File removed.");
+                                    }}
+                                    className="text-xs font-semibold text-ink-500 underline hover:text-red-600"
+                                  >
+                                    Remove
+                                  </button>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        )}
                       </div>
                       {canBuild && editing.kind === "none" && (
                         <div className="flex shrink-0 gap-1">
@@ -345,6 +408,31 @@ export default function CoursePage() {
           ))
         )}
       </section>
+
+      {published && (
+        <section aria-labelledby="students-heading" className={`${cardCls} space-y-3 p-4`}>
+          <div className="flex items-center gap-2">
+            <Users className="h-4 w-4 text-gold" aria-hidden />
+            <h3 id="students-heading" className="text-sm font-semibold text-ink">
+              Learners ({students.length})
+            </h3>
+          </div>
+          {students.length === 0 ? (
+            <p className="text-xs text-ink-500">Nobody has enrolled yet. Learners find published courses in the Peebee Learn catalogue.</p>
+          ) : (
+            <ul className="divide-y divide-[var(--border-faint)]">
+              {students.map((st) => (
+                <li key={st.userId} className="flex items-center justify-between gap-3 py-2 text-sm">
+                  <span className="min-w-0 truncate font-semibold text-ink">{st.name}</span>
+                  <span className="shrink-0 text-xs text-ink-500">
+                    {st.progressPercent}% done · {formatUgx(st.paidUgx)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
 
       {canBuild && (
         <section aria-labelledby="danger-heading" className={`${cardCls} flex flex-wrap items-center justify-between gap-3 p-4`}>

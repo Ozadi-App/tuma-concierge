@@ -1944,6 +1944,15 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
       const res = await f(`${root}/v1/pharmacy/uploads`, { method: "POST", headers: authHeaders(), body: form });
       return json<{ key: string }>(res);
     },
+    /** Uploads a lesson's video or audio. The file is sent as the request body so it streams straight to storage. */
+    async studioUploadLessonMedia(lessonId: string, file: Blob) {
+      const res = await f(`${root}/v1/education/studio/lessons/${encodeURIComponent(lessonId)}/media`, {
+        method: "PUT",
+        headers: { ...authHeaders(), "Content-Type": file.type || "application/octet-stream" },
+        body: file,
+      });
+      return json<{ ok: true; media: { contentType: string; sizeBytes: number } }>(res);
+    },
     async submitPrescription(input: {
       pharmacyId: string;
       prescriptionImageKey: string;

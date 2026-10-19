@@ -411,6 +411,13 @@ const DEFAULTS = {
   learn_max_lesson_minutes: "240",
   learn_creates_per_hour: "60",
   learn_publish_by_default: "0",
+  learn_enrolments_enabled: "1",
+  learn_commission_percent: "10",
+  learn_video_uploads_enabled: "1",
+  learn_max_video_mb: "50",
+  learn_quiz_attempts_per_hour: "30",
+  learn_fees_enabled: "1",
+  learn_exam_pass_percent: "50",
   /** Peebee Work: clean / fix / laundry jobs done by independent providers and companies */
   work_enabled: "1",
   work_service_types: "clean",

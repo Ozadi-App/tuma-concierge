@@ -26,6 +26,11 @@ import type {
   LiveChatMessage,
 } from "./education/types.js";
 import type {
+  CourseStudent,
+  FeeInvoice,
+  LearnEnrollment,
+  LearnerCourse,
+  QuizResult,
   LearnSettings,
   SchoolKind,
   SchoolStatus,
@@ -427,6 +432,50 @@ export function educationMethods(request: RequestFn) {
     },
     async studioDeleteLesson(id: string) {
       return request<{ ok: true }>(`/v1/education/studio/lessons/${encodeURIComponent(id)}`, { method: "DELETE" });
+    },
+
+    async studioDeleteLessonMedia(lessonId: string) {
+      return request<{ ok: true }>(`/v1/education/studio/lessons/${encodeURIComponent(lessonId)}/media`, { method: "DELETE" });
+    },
+    async studioCourseStudents(courseId: string) {
+      return request<{ ok: true; students: CourseStudent[] }>(`/v1/education/studio/courses/${encodeURIComponent(courseId)}/students`);
+    },
+    async studioInvoices(schoolId: string) {
+      return request<{ ok: true; invoices: FeeInvoice[] }>(`/v1/education/studio/schools/${encodeURIComponent(schoolId)}/invoices`);
+    },
+    async studioCreateInvoice(schoolId: string, data: { student: string; title: string; amountUgx: number; dueDate?: string }) {
+      return request<{ ok: true; invoice: FeeInvoice }>(`/v1/education/studio/schools/${encodeURIComponent(schoolId)}/invoices`, { method: "POST", body: JSON.stringify(data) });
+    },
+    async studioCancelInvoice(id: string) {
+      return request<{ ok: true }>(`/v1/education/studio/invoices/${encodeURIComponent(id)}/cancel`, { method: "POST", body: JSON.stringify({}) });
+    },
+
+    // ----------------------------------------------------
+    // Learner: enrolment, lessons, quizzes and fees
+    // ----------------------------------------------------
+    async learnEnrollments() {
+      return request<{ ok: true; enrollments: LearnEnrollment[] }>("/v1/education/learn/enrollments");
+    },
+    async learnEnroll(courseId: string) {
+      return request<{ ok: true; enrolled: true; paidUgx: number }>(`/v1/education/learn/courses/${encodeURIComponent(courseId)}/enroll`, { method: "POST", body: JSON.stringify({}) });
+    },
+    async learnCourse(courseId: string) {
+      return request<{ ok: true; owner: boolean; course: LearnerCourse }>(`/v1/education/learn/courses/${encodeURIComponent(courseId)}`);
+    },
+    async learnLessonMediaUrl(lessonId: string) {
+      return request<{ ok: true; url: string }>(`/v1/education/learn/lessons/${encodeURIComponent(lessonId)}/media-url`, { method: "POST", body: JSON.stringify({}) });
+    },
+    async learnSubmitQuiz(lessonId: string, answers: number[]) {
+      return request<{ ok: true } & QuizResult>(`/v1/education/learn/lessons/${encodeURIComponent(lessonId)}/quiz`, { method: "POST", body: JSON.stringify({ answers }) });
+    },
+    async learnCompleteLesson(lessonId: string) {
+      return request<{ ok: true }>(`/v1/education/learn/lessons/${encodeURIComponent(lessonId)}/complete`, { method: "POST", body: JSON.stringify({}) });
+    },
+    async learnInvoices() {
+      return request<{ ok: true; invoices: FeeInvoice[] }>("/v1/education/learn/invoices");
+    },
+    async learnPayInvoice(id: string, amountUgx: number) {
+      return request<{ ok: true; receiptId: string; invoice: FeeInvoice }>(`/v1/education/learn/invoices/${encodeURIComponent(id)}/pay`, { method: "POST", body: JSON.stringify({ amountUgx }) });
     },
 
     // ----------------------------------------------------

@@ -107,6 +107,8 @@ export interface StudioLesson {
   contentUrl: string;
   position: number;
   quiz: StudioQuiz | null;
+  /** The uploaded video or audio, if any. */
+  media: LessonMedia | null;
 }
 
 export interface StudioModule {
@@ -145,6 +147,26 @@ export interface LearnSettings {
   createsPerHour: number;
   /** A new course starts published. When off it starts as a draft and the educator publishes it. */
   publishByDefault: boolean;
+  /** Learners can enrol in published courses. */
+  enrolmentsEnabled: boolean;
+  /** Peebee's share of every course sale and fee payment, in percent. */
+  commissionPercent: number;
+  /** Educators can attach a video or audio file to a lesson. */
+  videoUploadsEnabled: boolean;
+  /** Largest lesson video or audio file, in megabytes. */
+  maxVideoMb: number;
+  /** Quiz attempts one learner may make per hour. */
+  quizAttemptsPerHour: number;
+  /** Schools can issue fee invoices and learners can pay them. */
+  feesEnabled: boolean;
+  /** Pass mark for exams that are marked automatically, in percent. */
+  examPassPercent: number;
+}
+
+/** A lesson's uploaded video or audio file. */
+export interface LessonMedia {
+  contentType: string;
+  sizeBytes: number;
 }
 
 export const STUDIO_TEXT_LIMITS = {
@@ -170,4 +192,88 @@ export const DEFAULT_LEARN_SETTINGS: LearnSettings = {
   maxLessonMinutes: 240,
   createsPerHour: 60,
   publishByDefault: false,
+  enrolmentsEnabled: true,
+  commissionPercent: 10,
+  videoUploadsEnabled: true,
+  maxVideoMb: 50,
+  quizAttemptsPerHour: 30,
+  feesEnabled: true,
+  examPassPercent: 50,
 };
+
+// ---------------------------------------------------------------------------
+// Learning: enrolment, progress, grading and school fees
+// ---------------------------------------------------------------------------
+
+export interface LearnEnrollment {
+  id: string;
+  courseId: string;
+  title: string;
+  stream: EducationStream;
+  schoolName: string;
+  enrolledAt: string;
+  lessonCount: number;
+  completedLessons: number;
+  progressPercent: number;
+}
+
+export interface LearnerQuiz {
+  title: string;
+  passingScorePercent: number;
+  /** Questions and choices only. The answers stay on the server. */
+  questions: { question: string; options: string[] }[];
+}
+
+export interface LearnerLesson {
+  id: string;
+  title: string;
+  contentType: LessonContentType;
+  durationMinutes: number;
+  summary: string;
+  contentUrl: string;
+  hasMedia: boolean;
+  completed: boolean;
+  bestScorePercent: number | null;
+  quiz: LearnerQuiz | null;
+}
+
+export interface LearnerCourse {
+  id: string;
+  title: string;
+  summary: string;
+  stream: EducationStream;
+  schoolName: string;
+  progressPercent: number;
+  modules: { id: string; title: string; description: string; lessons: LearnerLesson[] }[];
+}
+
+export interface QuizResult {
+  scorePercent: number;
+  passed: boolean;
+  passMark: number;
+  /** correctIndex and explanation are present only after a pass. */
+  results: { correct: boolean; correctIndex?: number; explanation?: string }[];
+}
+
+export interface FeeInvoice {
+  id: string;
+  schoolId: string;
+  schoolName?: string;
+  studentId: string;
+  studentName?: string;
+  title: string;
+  amountUgx: number;
+  paidUgx: number;
+  balanceUgx: number;
+  dueDate: string;
+  status: "unpaid" | "partial" | "paid" | "cancelled";
+  createdAt: string;
+}
+
+export interface CourseStudent {
+  userId: string;
+  name: string;
+  enrolledAt: string;
+  paidUgx: number;
+  progressPercent: number;
+}

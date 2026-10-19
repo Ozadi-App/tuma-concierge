@@ -113,6 +113,7 @@ function seed(): Store {
             contentUrl: "",
             position: li + 1,
             quiz,
+            media: null,
           });
         });
       });
@@ -216,6 +217,18 @@ export function handleStudioSandbox(path: string, method: string, body: Record<s
       });
     return json({ ok: true, courses });
   }
+
+  // Enrolment, payments, uploads and fees need the real service and real money, so the sandbox only lists nothing for them.
+  if (path.startsWith("/v1/education/learn/")) {
+    if (method === "GET" && path.endsWith("/enrollments")) return json({ ok: true, enrollments: [] });
+    if (method === "GET" && path.endsWith("/invoices")) return json({ ok: true, invoices: [] });
+    return problem(503, "sandbox_only", "This needs the live service. It isn't available in the sandbox.");
+  }
+  if (/^\/v1\/education\/studio\/(lessons\/[^/]+\/media|invoices\/|schools\/[^/]+\/invoices)/.test(path)) {
+    if (method === "GET") return json({ ok: true, invoices: [] });
+    return problem(503, "sandbox_only", "Uploads and fees need the live service. They aren't available in the sandbox.");
+  }
+  if (/^\/v1\/education\/studio\/courses\/[^/]+\/students$/.test(path)) return json({ ok: true, students: [] });
 
   const prefix = "/v1/education/studio";
   if (!path.startsWith(prefix)) return null;
@@ -423,7 +436,7 @@ export function handleStudioSandbox(path: string, method: string, body: Record<s
     if (existing >= S.maxLessonsPerModule) return problem(409, "limit_reached", `A module can have up to ${S.maxLessonsPerModule} lessons.`);
     const lesson: StudioLesson = {
       id: uid("les"), moduleId: mod.id, courseId: mod.courseId, title, contentType: (clean(body.contentType, 30) || "video") as StudioLesson["contentType"],
-      durationMinutes: minutes, summary: clean(body.summary, 2000), contentUrl: url, position: existing + 1, quiz: readQuiz(body.quiz) ?? null,
+      durationMinutes: minutes, summary: clean(body.summary, 2000), contentUrl: url, position: existing + 1, quiz: readQuiz(body.quiz) ?? null, media: null,
     };
     done({ ...st, lessons: [...st.lessons, lesson] });
     return json({ ok: true, lesson }, 201);
