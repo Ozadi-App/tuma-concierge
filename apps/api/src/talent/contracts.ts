@@ -6,7 +6,7 @@ import { getPlatformEnvironment, type PlatformEnvironment } from "../lib/setting
 import { blockedMessage, screenText } from "./moderation.js";
 import { chargeFixed, payDue } from "./monetization.js";
 import { applyPendingMoney, inHours, percentOf, tell, ugx, type ActorKind, type Row } from "./service.js";
-import { getTalentSettings } from "./settings.js";
+import { getTalentSettings, type TalentSettings } from "./settings.js";
 
 export const contractRoutes = new Hono();
 
@@ -107,20 +107,45 @@ async function afterContractChange(contract: Row) {
 // Cancelling and refunding
 // ---------------------------------------------------------------------------
 
-/** Ends a contract and gives back whatever escrow is still held. Refused once work has been submitted (that goes to a dispute). */
-export async function cancelContract(contract: Row, actor: Actor, reason: string, opts: { force?: boolean; to?: "cancelled" | "refunded" } = {}): Promise<boolean> {
+export type CancelQuote = { feeUgx: number; compensationUgx: number; baseUgx: number; free: boolean; percent: number; freeUntil: string | null };
+
+/**
+ * What it costs to walk away now. Free during the admin's grace window after the contract
+ * starts (and always while charging is off); after that a percentage of the work not yet
+ * paid for. Part of the fee goes to the person who was cancelled on.
+ */
+export function lateCancelQuote(contract: Row, milestones: Row[], settings: TalentSettings, who: "employer" | "worker", now = Date.now()): CancelQuote {
+  const started = new Date(`${String(contract.created_at).replace(" ", "T")}Z`).getTime();
+  const freeUntilMs = started + settings.cancelFreeMinutes * 60_000;
+  const freeUntil = new Date(freeUntilMs).toISOString().slice(0, 19).replace("T", " ");
+  const base = milestones.filter((m) => m.status !== "released").reduce((t, m) => t + Number(m.amount_ugx), 0);
+  const none: CancelQuote = { feeUgx: 0, compensationUgx: 0, baseUgx: base, free: true, percent: settings.lateCancelFeePercent, freeUntil };
+  if (settings.freeAccess || settings.lateCancelFeePercent <= 0 || now <= freeUntilMs || base <= 1) return none;
+  let fee = Math.min(percentOf(base, settings.lateCancelFeePercent), base - 1);
+  // An employer's fee comes out of the money held, so it can never be more than is held.
+  if (who === "employer" && contract.payment_mode === "escrow") fee = Math.min(fee, Math.max(0, Number(contract.held_ugx) - 1));
+  if (fee <= 0) return none;
+  return { ...none, feeUgx: fee, compensationUgx: percentOf(fee, settings.lateCancelPartySharePercent), free: false };
+}
+
+/** Ends a contract and gives back whatever escrow is still held (less a late-cancel fee, if one applies). Refused once work has been submitted (that goes to a dispute). */
+export async function cancelContract(contract: Row, actor: Actor, reason: string, opts: { force?: boolean; to?: "cancelled" | "refunded"; fee?: { feeUgx: number; compensationUgx: number } } = {}): Promise<boolean> {
   const env: PlatformEnvironment = contract.environment === "sandbox" ? "sandbox" : "live";
   const status = opts.to ?? "cancelled";
   const from = opts.force ? "('active', 'disputed')" : "('active')";
+  const fee = opts.fee?.feeUgx ?? 0;
+  const comp = opts.fee?.compensationUgx ?? 0;
   const stmts: DbStatement[] = [
     {
-      sql: `UPDATE talent_contracts SET status = ?, cancelled_at = datetime('now'), cancelled_by = ?, cancel_reason = ?, refunded_ugx = refunded_ugx + held_ugx, held_ugx = 0, updated_at = datetime('now')
+      sql: `UPDATE talent_contracts SET status = ?, cancelled_at = datetime('now'), cancelled_by = ?, cancel_reason = ?,
+              refunded_ugx = refunded_ugx + held_ugx - ?, paid_to_worker_ugx = paid_to_worker_ugx + ?, commission_ugx = commission_ugx + ?,
+              cancel_fee_ugx = ?, cancel_compensation_ugx = ?, held_ugx = 0, updated_at = datetime('now')
             WHERE id = ? AND status IN ${from} ${opts.force ? "" : "AND NOT EXISTS (SELECT 1 FROM talent_milestones WHERE contract_id = ? AND status = 'submitted')"}`,
-      args: [status, actor.id ?? actor.kind, reason, contract.id, ...(opts.force ? [] : [contract.id])],
+      args: [status, actor.id ?? actor.kind, reason, fee, comp, fee - comp, fee, comp, contract.id, ...(opts.force ? [] : [contract.id])],
     },
     {
       sql: `INSERT INTO talent_events (id, job_id, contract_id, actor_id, actor_kind, action, detail) SELECT ?, ?, ?, ?, ?, ?, ? WHERE changes() > 0`,
-      args: [newId("tev"), contract.job_id, contract.id, actor.id, actor.kind, status === "refunded" ? "refunded" : "cancelled", JSON.stringify({ reason })],
+      args: [newId("tev"), contract.job_id, contract.id, actor.id, actor.kind, status === "refunded" ? "refunded" : "cancelled", JSON.stringify({ reason, lateFee: fee })],
     },
     {
       sql: `INSERT OR IGNORE INTO talent_money (id, contract_id, user_id, kind, amount_ugx, status, note, environment)
@@ -128,11 +153,51 @@ export async function cancelContract(contract: Row, actor: Actor, reason: string
       args: [`refund:${contract.id}`, `Peebee Jobs refund — ${String(contract.title)}`, env, contract.id, status],
     },
   ];
+  if (comp > 0) {
+    stmts.push({
+      sql: `INSERT OR IGNORE INTO talent_money (id, contract_id, user_id, kind, amount_ugx, status, note, environment)
+            SELECT ?, id, worker_id, 'payout', cancel_compensation_ugx, 'pending', ?, ? FROM talent_contracts WHERE id = ? AND status = ? AND cancel_compensation_ugx > 0 AND payment_mode = 'escrow'`,
+      args: [`comp:${contract.id}`, `Peebee Jobs cancellation payment — ${String(contract.title)}`, env, contract.id, status],
+    });
+  }
   const changes = await executeBatch(stmts);
   if (changes[0] !== 1) return false;
+  if (fee - comp > 0 && contract.payment_mode === "escrow" && opts.fee) {
+    await db.execute({
+      sql: `INSERT OR IGNORE INTO talent_charges (id, user_id, kind, job_id, contract_id, amount_ugx, status, reason, idempotency_key, environment) VALUES (?, ?, 'late_cancel_fee', ?, ?, ?, 'paid', 'escrow', ?, ?)`,
+      args: [newId("tch"), contract.employer_id, contract.job_id, contract.id, fee - comp, `cancelfee:${contract.id}`, env],
+    });
+  }
   await applyPendingMoney(String(contract.id));
   await afterContractChange(contract);
   return true;
+}
+
+/**
+ * When the canceller's own wallet pays the fee (a worker cancelling, or any cancel of a
+ * directly-paid job): takes it, and pays the other side their share. Owed if the wallet can't cover it.
+ */
+async function collectCancelFee(contract: Row, canceller: "employer" | "worker", quote: CancelQuote): Promise<{ status: "paid" | "due" | "none" }> {
+  if (quote.feeUgx <= 0) return { status: "none" };
+  const env: PlatformEnvironment = contract.environment === "sandbox" ? "sandbox" : "live";
+  const payer = String(canceller === "worker" ? contract.worker_id : contract.employer_id);
+  const other = String(canceller === "worker" ? contract.employer_id : contract.worker_id);
+  const peebeePart = quote.feeUgx - quote.compensationUgx;
+  const base = { jobId: String(contract.job_id), contractId: String(contract.id), environment: env, allowDue: true };
+  const own = await chargeFixed({ ...base, userId: payer, kind: "late_cancel_fee", amount: peebeePart, idempotencyKey: `cancelfee:${contract.id}` });
+  let compStatus: "paid" | "due" | "none" = "none";
+  if (quote.compensationUgx > 0) {
+    compStatus = (await chargeFixed({ ...base, userId: payer, kind: "cancel_compensation", amount: quote.compensationUgx, idempotencyKey: `cancelcomp:${contract.id}` })).status;
+    if (compStatus === "paid") {
+      await db.execute({
+        sql: `INSERT OR IGNORE INTO talent_money (id, contract_id, user_id, kind, amount_ugx, status, note, environment) VALUES (?, ?, ?, 'payout', ?, 'pending', ?, ?)`,
+        args: [`comp:${contract.id}`, contract.id, other, quote.compensationUgx, `Peebee Jobs cancellation payment — ${String(contract.title)}`, env],
+      });
+      await applyPendingMoney(String(contract.id));
+    }
+  }
+  await db.execute({ sql: "UPDATE talent_contracts SET cancel_fee_ugx = ?, cancel_compensation_ugx = ? WHERE id = ?", args: [quote.feeUgx, compStatus === "paid" ? quote.compensationUgx : 0, contract.id] });
+  return { status: own.status === "none" ? compStatus : own.status };
 }
 
 // ---------------------------------------------------------------------------
@@ -273,6 +338,8 @@ contractRoutes.get("/contracts/:id", async (c) => {
   const anySubmitted = ms.some((m) => m.status === "submitted");
   const reviewed = (await db.execute({ sql: "SELECT 1 FROM talent_reviews WHERE contract_id = ? AND from_user = ?", args: [ct.id, user.sub] })).rows.length > 0;
   const s = await getTalentSettings();
+  const cancelQuote = lateCancelQuote(ct, ms, s, asWorker ? "worker" : "employer");
+  const repeat = (await db.execute({ sql: "SELECT id, frequency, status, next_run_at FROM talent_recurrences WHERE source_job_id = ? AND worker_id = ? AND kind = 'rehire' AND status IN ('active', 'paused') LIMIT 1", args: [ct.job_id, ct.worker_id] })).rows[0] as Row | undefined;
   const events = (await db.execute({ sql: "SELECT action, actor_kind, created_at FROM talent_events WHERE contract_id = ? ORDER BY created_at, rowid", args: [ct.id] })).rows as Row[];
   const theirReview = (await db.execute({ sql: "SELECT rating, comment FROM talent_reviews WHERE contract_id = ? AND to_user = ?", args: [ct.id, user.sub] })).rows[0] as Row | undefined;
   return c.json({
@@ -291,6 +358,13 @@ contractRoutes.get("/contracts/:id", async (c) => {
       dispute: active,
       review: s.reviewsEnabled && ct.status === "settled" && !reviewed,
     },
+    cancelQuote,
+    recurring: {
+      canRepeat: !asWorker && s.recurringEnabled && ct.job_type === "gig" && ["active", "settled"].includes(String(ct.status)) && !repeat,
+      frequencies: s.recurringFrequencies,
+      existing: repeat ? { id: String(repeat.id), frequency: String(repeat.frequency), status: String(repeat.status), nextRunAt: String(repeat.next_run_at) } : null,
+    },
+    cancelFeeUgx: Number(ct.cancel_fee_ugx ?? 0),
     disputeReason: ct.dispute_reason ? String(ct.dispute_reason) : null,
     resolutionNote: ct.resolution_note ? String(ct.resolution_note) : null,
     reviewReceived: theirReview ? { rating: Number(theirReview.rating), comment: String(theirReview.comment) } : null,
@@ -366,15 +440,31 @@ contractRoutes.post("/contracts/:id/cancel", async (c) => {
   const user = c.get("user");
   const ct = await loadContract(c.req.param("id"));
   if (!ct || (String(ct.worker_id) !== user.sub && String(ct.employer_id) !== user.sub)) return c.json({ error: "not_found" }, 404);
-  const parsed = z.object({ reason: z.string().trim().min(3).max(500).default("Cancelled") }).safeParse(await c.req.json().catch(() => ({})));
+  const parsed = z.object({ reason: z.string().trim().min(3).max(500).default("Cancelled"), acceptFee: z.boolean().default(false) }).safeParse(await c.req.json().catch(() => ({})));
   if (!parsed.success) return c.json({ error: "invalid_body", issues: parsed.error.issues }, 400);
   const byWorker = String(ct.worker_id) === user.sub;
-  const ok = await cancelContract(ct, { id: user.sub, kind: byWorker ? "worker" : "employer" }, parsed.data.reason);
+  const who = byWorker ? "worker" : "employer";
+  const s = await getTalentSettings();
+  const quote = lateCancelQuote(ct, await milestonesOf(String(ct.id)), s, who);
+  const feeFromHeld = who === "employer" && ct.payment_mode === "escrow";
+  if (quote.feeUgx > 0 && !parsed.data.acceptFee) return c.json({ error: "late_cancel_fee", message: `Cancelling now costs ${ugx(quote.feeUgx)}. Confirm to go ahead.`, feeUgx: quote.feeUgx, compensationUgx: quote.compensationUgx }, 409);
+  const ok = await cancelContract(ct, { id: user.sub, kind: who }, parsed.data.reason, feeFromHeld && quote.feeUgx > 0 ? { fee: quote } : {});
   if (!ok) return c.json({ error: "not_cancellable", message: "This can't be cancelled now. If work was submitted, release payment or raise a problem." }, 409);
+  let feeStatus: "paid" | "due" | "none" = feeFromHeld && quote.feeUgx > 0 ? "paid" : "none";
+  if (!feeFromHeld && quote.feeUgx > 0) feeStatus = (await collectCancelFee(ct, who, quote)).status;
   // The application is closed so the same person can't be accepted twice into the same job.
   await db.execute({ sql: "UPDATE talent_applications SET status = ?, updated_at = datetime('now') WHERE id = ?", args: [byWorker ? "withdrawn" : "rejected", ct.application_id] });
   tell(byWorker ? String(ct.employer_id) : String(ct.worker_id), "Job cancelled", `"${String(ct.title)}" was cancelled.${!byWorker ? "" : " Your money is back in your wallet."}`, `/services/jobs/contracts/${ct.id}`);
-  return c.json({ ok: true });
+  return c.json({ ok: true, lateFeeUgx: quote.feeUgx, lateFeeStatus: feeStatus });
+});
+
+contractRoutes.get("/contracts/:id/cancel-quote", async (c) => {
+  c.header("Cache-Control", "private, no-store");
+  const user = c.get("user");
+  const ct = await loadContract(c.req.param("id"));
+  if (!ct || (String(ct.worker_id) !== user.sub && String(ct.employer_id) !== user.sub)) return c.json({ error: "not_found" }, 404);
+  const who = String(ct.worker_id) === user.sub ? "worker" : "employer";
+  return c.json(lateCancelQuote(ct, await milestonesOf(String(ct.id)), await getTalentSettings(), who));
 });
 
 contractRoutes.post("/contracts/:id/dispute", async (c) => {

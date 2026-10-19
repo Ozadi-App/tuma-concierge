@@ -39,6 +39,9 @@ profileRoutes.get("/config", async (c) => {
       minJobUgx: s.minJobUgx, maxJobUgx: s.maxJobUgx, maxMilestones: s.maxMilestones, maxWorkersPerJob: s.maxWorkersPerJob, maxSkills: s.maxSkills,
       searchRadiusKm: s.searchRadiusKm, boostDays: s.boostDays, autoConfirmHours: s.autoConfirmHours, jobExpiryDays: s.jobExpiryDays,
     },
+    recurring: { enabled: s.recurringEnabled, frequencies: s.recurringFrequencies, maxRuns: s.recurringMaxRuns, maxActive: s.recurringMaxActive },
+    // Late-cancel fees only show while charging is on.
+    cancellation: { freeMinutes: s.cancelFreeMinutes, feePercent: s.freeAccess ? 0 : s.lateCancelFeePercent, partySharePercent: s.lateCancelPartySharePercent },
     categories: await categoriesList(),
     fees: await publicFeeSchedule(s),
   });

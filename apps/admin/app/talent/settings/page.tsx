@@ -5,7 +5,8 @@ import { useCallback, useEffect, useState } from "react";
 import { Chip, ErrorNote, Field, inputCls, label, Toggle, useTalentPermissions } from "../../../components/talent/ui";
 import { api, errorMessage } from "../../../lib/api";
 
-type NumKey = "maxOpenJobs" | "applicationsPerDay" | "postsPerHour" | "minJobUgx" | "maxJobUgx" | "jobExpiryDays" | "autoConfirmHours" | "maxMilestones" | "maxWorkersPerJob" | "searchRadiusKm" | "maxSkills" | "boostDays" | "unpaidCommissionLimitUgx" | "trialDays";
+type NumKey = "maxOpenJobs" | "applicationsPerDay" | "postsPerHour" | "minJobUgx" | "maxJobUgx" | "jobExpiryDays" | "autoConfirmHours" | "maxMilestones" | "maxWorkersPerJob" | "searchRadiusKm" | "maxSkills" | "boostDays" | "unpaidCommissionLimitUgx" | "trialDays"
+  | "recurringMaxActive" | "recurringMaxRuns" | "recurringMaxFailures" | "cancelFreeMinutes" | "lateCancelFeePercent" | "lateCancelPartySharePercent";
 
 /** Ranges are exactly those in apps/api/src/talent/settings.ts. */
 const NUM: Record<NumKey, { label: string; min: number; max: number; hint?: string }> = {
@@ -23,11 +24,19 @@ const NUM: Record<NumKey, { label: string; min: number; max: number; hint?: stri
   boostDays: { label: "A boost lasts (days)", min: 1, max: 90 },
   unpaidCommissionLimitUgx: { label: "Most unpaid fees before blocked (UGX)", min: 0, max: 1_000_000_000, hint: "For jobs paid directly: someone owing more can't take or post new work" },
   trialDays: { label: "Free Pro trial (days)", min: 0, max: 365, hint: "0 turns the trial off" },
+  recurringMaxActive: { label: "Repeating jobs per employer", min: 1, max: 100 },
+  recurringMaxRuns: { label: "Most times one job can repeat", min: 1, max: 520, hint: "A safety limit; employers can choose fewer" },
+  recurringMaxFailures: { label: "Pause after this many failed repeats in a row", min: 1, max: 20, hint: "A repeat fails when, for example, the wallet can't cover it" },
+  cancelFreeMinutes: { label: "Free cancellation for (minutes)", min: 0, max: 10080, hint: "After a job starts. Cancelling later can cost a fee" },
+  lateCancelFeePercent: { label: "Late-cancel fee (%)", min: 0, max: 50, hint: "Of the work not yet paid. 0 turns late fees off. Never charged while All free access is on" },
+  lateCancelPartySharePercent: { label: "Share of the fee paid to the other person (%)", min: 0, max: 100, hint: "The rest is Peebee's" },
 };
 const SECTIONS: { title: string; keys: NumKey[] }[] = [
   { title: "Job limits", keys: ["minJobUgx", "maxJobUgx", "maxOpenJobs", "postsPerHour", "maxWorkersPerJob", "maxMilestones", "jobExpiryDays"] },
   { title: "Workers", keys: ["applicationsPerDay", "maxSkills", "searchRadiusKm", "boostDays"] },
   { title: "Payment", keys: ["autoConfirmHours", "unpaidCommissionLimitUgx", "trialDays"] },
+  { title: "Cancellation", keys: ["cancelFreeMinutes", "lateCancelFeePercent", "lateCancelPartySharePercent"] },
+  { title: "Repeating jobs", keys: ["recurringMaxActive", "recurringMaxRuns", "recurringMaxFailures"] },
 ];
 const TYPES: TalentJobType[] = ["gig", "project", "hiring"];
 
@@ -89,6 +98,13 @@ export default function TalentSettingsPage() {
         <Toggle label="Ratings" checked={form.reviewsEnabled} disabled={ro} onChange={(v) => set("reviewsEnabled", v)} />
         <Toggle label="Messaging between employer and applicant" checked={form.chatEnabled} disabled={ro} onChange={(v) => set("chatEnabled", v)} />
         <Toggle label="Hide phone numbers until hired" hint="Otherwise numbers are shown to employers straight away." checked={form.hideContacts} disabled={ro} onChange={(v) => set("hideContacts", v)} />
+      </section>
+
+      <section className="home-card space-y-3 !p-3.5">
+        <h2 className="text-sm font-bold text-ink">Repeating jobs</h2>
+        <Toggle label="Employers can repeat jobs" hint="Rebook the same worker, or put the job up again, every day, week or month." checked={form.recurringEnabled} disabled={ro} onChange={(v) => set("recurringEnabled", v)} />
+        <div className="space-y-1.5"><p className="text-xs font-semibold text-ink-500">Repeat intervals offered</p><div className="flex flex-wrap gap-1.5">{(["daily", "weekly", "biweekly", "monthly"] as const).map((f) => <Chip key={f} on={form.recurringFrequencies.includes(f)} disabled={ro} onClick={() => set("recurringFrequencies", form.recurringFrequencies.includes(f) ? form.recurringFrequencies.filter((x) => x !== f) : (["daily", "weekly", "biweekly", "monthly"] as const).filter((x) => x === f || form.recurringFrequencies.includes(x)))}>{label(f)}</Chip>)}</div></div>
+        <p className="text-xs text-ink-500">To make repeating a Pro feature, mark &ldquo;Recurring jobs&rdquo; as Pro in the Money tab. The limits are further down.</p>
       </section>
 
       <section className="home-card space-y-3 !p-3.5">

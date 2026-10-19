@@ -7,6 +7,7 @@ import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../../lib/api";
 import { ApplicationChat } from "./ApplicationChat";
+import { RepeatForm } from "./Recurrences";
 import { Badge, BusyButton, cardClass, EmptyState, FailureNote, Field, JobsPage, Notice, primaryBtn, Rating, secondaryBtn, Spinner } from "./JobsUI";
 import { budgetLabel, EMPLOYMENT, fieldClass, formatUgx, formatWorkDate, JOB_TYPE, jobsFailure, type JobsFailure } from "./jobs-utils";
 
@@ -140,6 +141,8 @@ function EmployerPanel({ job, config, reload }: { job: TalentJob; config: Talent
   const [failure, setFailure] = useState<JobsFailure | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [open, setOpen] = useState<string | null>(null);
+  const [showRepeat, setShowRepeat] = useState(false);
+  const [repeated, setRepeated] = useState(false);
 
   const loadApplicants = useCallback(() => {
     api.talentApplicants(job.id).then((r) => setApplicants(r.applicants)).catch((err) => setFailure(jobsFailure(err)));
@@ -163,6 +166,16 @@ function EmployerPanel({ job, config, reload }: { job: TalentJob; config: Talent
   const canClose = ["open", "pending_review"].includes(job.status);
   return (
     <>
+      {config.recurring.enabled && (job.type === "gig" || job.type === "project") && ["open", "in_progress", "completed", "filled", "closed"].includes(job.status) ? (
+        <section className={`${cardClass} space-y-3`}>
+          {repeated ? <Notice tone="info" text={'This job will be posted again on schedule. Manage it from "Jobs I posted".'} /> : showRepeat ? (
+            <RepeatForm frequencies={config.recurring.frequencies} maxRuns={config.recurring.maxRuns} kind="repost" targetId={job.id} onDone={() => { setRepeated(true); setShowRepeat(false); }} />
+          ) : (
+            <><h3 className="text-sm font-bold">Need this regularly?</h3><button type="button" className={secondaryBtn} onClick={() => setShowRepeat(true)}>Post this job again on a schedule</button></>
+          )}
+        </section>
+      ) : null}
+
       {canClose ? (
       <section className={`${cardClass} space-y-3`}>
         <h3 className="text-sm font-bold">Manage this job</h3>

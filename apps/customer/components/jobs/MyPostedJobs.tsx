@@ -7,6 +7,7 @@ import { api } from "../../lib/api";
 import { Badge, cardClass, EmptyState, FailureNote, JobsPage, primaryBtn, Spinner } from "./JobsUI";
 import { formatUgx, jobsFailure, type JobsFailure } from "./jobs-utils";
 import { JobCard } from "./FindJobs";
+import { RecurrenceList } from "./Recurrences";
 
 export function MyPostedJobs() {
   const [jobs, setJobs] = useState<TalentJob[] | null>(null);
@@ -35,6 +36,7 @@ export function MyPostedJobs() {
           ))}
         </section>
       ) : null}
+      <RecurrenceList onChange={load} />
       {jobs?.length === 0 ? <EmptyState title="You haven't posted anything" text="Post a gig, a project or a hiring ad and workers near you will be told." action={<Link href="/services/jobs/post" className={primaryBtn}>Post a job</Link>} /> : null}
       {jobs && jobs.length > 0 ? (
         <section className="space-y-3" aria-label="Your posts">

@@ -27,7 +27,7 @@ export const ugx = (n: number) => `UGX ${Math.round(n).toLocaleString("en-UG")}`
 const REQUIRED_TABLES = [
   "talent_categories", "talent_profiles", "talent_profile_categories", "talent_employers", "talent_jobs", "talent_applications", "talent_contracts",
   "talent_milestones", "talent_money", "talent_events", "talent_messages", "talent_reviews", "talent_reports", "talent_prohibited_terms",
-  "talent_fee_rules", "talent_plans", "talent_subscriptions", "talent_features", "talent_charges", "talent_contact_unlocks", "talent_invites",
+  "talent_fee_rules", "talent_plans", "talent_subscriptions", "talent_features", "talent_charges", "talent_contact_unlocks", "talent_invites", "talent_recurrences",
 ];
 let readyCache: { at: number; ok: boolean } | null = null;
 export function resetTalentSchemaCache() {

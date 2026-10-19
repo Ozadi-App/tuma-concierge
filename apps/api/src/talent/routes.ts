@@ -5,6 +5,7 @@ import { contractRoutes } from "./contracts.js";
 import { jobRoutes } from "./jobs.js";
 import { membershipRoutes } from "./membership.js";
 import { profileRoutes } from "./profiles.js";
+import { recurrenceRoutes } from "./recurrence.js";
 import { talentReady } from "./service.js";
 import { getTalentSettings } from "./settings.js";
 
@@ -33,4 +34,5 @@ talentRoutes.route("/", profileRoutes);
 talentRoutes.route("/", jobRoutes);
 talentRoutes.route("/", contractRoutes);
 talentRoutes.route("/", membershipRoutes);
+talentRoutes.route("/", recurrenceRoutes);
 talentRoutes.route("/", adminRoutes);

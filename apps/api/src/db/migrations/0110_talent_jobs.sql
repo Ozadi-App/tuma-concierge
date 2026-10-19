@@ -111,6 +111,7 @@ CREATE TABLE IF NOT EXISTS talent_jobs (
   moderation_note TEXT,
   application_count INTEGER NOT NULL DEFAULT 0,
   idempotency_key TEXT,
+  recurrence_id TEXT,
   expires_at TEXT,
   published_at TEXT,
   closed_at TEXT,
@@ -163,6 +164,9 @@ CREATE TABLE IF NOT EXISTS talent_contracts (
   cancelled_at TEXT,
   cancelled_by TEXT,
   cancel_reason TEXT,
+  -- Late-cancellation fee charged to whoever cancelled, and the part of it paid to the other side.
+  cancel_fee_ugx INTEGER NOT NULL DEFAULT 0,
+  cancel_compensation_ugx INTEGER NOT NULL DEFAULT 0,
   dispute_reason TEXT,
   disputed_by TEXT,
   disputed_at TEXT,
@@ -230,6 +234,31 @@ CREATE TABLE IF NOT EXISTS talent_invites (
   PRIMARY KEY (job_id, worker_id)
 );
 CREATE INDEX IF NOT EXISTS idx_talent_invites_worker ON talent_invites(worker_id, created_at);
+
+-- A job that repeats. "rehire" books the same worker again each period (a new
+-- contract, funded when it starts); "repost" puts a fresh open job up each period.
+CREATE TABLE IF NOT EXISTS talent_recurrences (
+  id TEXT PRIMARY KEY,
+  employer_id TEXT NOT NULL REFERENCES users(id),
+  kind TEXT NOT NULL CHECK (kind IN ('rehire', 'repost')),
+  source_job_id TEXT NOT NULL REFERENCES talent_jobs(id),
+  worker_id TEXT REFERENCES users(id),
+  title TEXT NOT NULL,
+  price_ugx INTEGER NOT NULL CHECK (price_ugx > 0),
+  frequency TEXT NOT NULL CHECK (frequency IN ('daily', 'weekly', 'biweekly', 'monthly')),
+  next_run_at TEXT NOT NULL,
+  ends_at TEXT,
+  max_runs INTEGER NOT NULL DEFAULT 0,
+  runs_done INTEGER NOT NULL DEFAULT 0,
+  fail_count INTEGER NOT NULL DEFAULT 0,
+  last_error TEXT,
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'paused', 'ended')),
+  environment TEXT NOT NULL DEFAULT 'live' CHECK (environment IN ('live', 'sandbox')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_talent_recurrences_due ON talent_recurrences(status, next_run_at);
+CREATE INDEX IF NOT EXISTS idx_talent_recurrences_employer ON talent_recurrences(employer_id, status);
 
 CREATE TABLE IF NOT EXISTS talent_events (
   id TEXT PRIMARY KEY,
@@ -404,7 +433,7 @@ INSERT OR IGNORE INTO talent_fee_rules (id, kind, job_type, model, flat_ugx, per
 
 INSERT OR IGNORE INTO talent_plans (id, code, audience, name, description, price_ugx, period_days, trial_days, features, waived_kinds, worker_commission_percent, employer_commission_percent, sort_order) VALUES
   ('tpl_worker_pro', 'worker_pro', 'worker', 'Worker Pro', 'Unlimited applications, a featured profile and lower commission', 15000, 30, 14, '["unlimited_applications","featured_profile","job_alerts"]', '["application","boost"]', 5, NULL, 10),
-  ('tpl_employer_pro', 'employer_pro', 'employer', 'Employer Pro', 'Advanced worker search, contact unlock and free listings', 40000, 30, 14, '["advanced_worker_search","contact_unlock","hiring_pipeline"]', '["listing","contact_unlock"]', NULL, 2, 20);
+  ('tpl_employer_pro', 'employer_pro', 'employer', 'Employer Pro', 'Advanced worker search, contact unlock and free listings', 40000, 30, 14, '["advanced_worker_search","contact_unlock","hiring_pipeline","recurring_jobs"]', '["listing","contact_unlock"]', NULL, 2, 20);
 
 INSERT OR IGNORE INTO talent_features (key, label, description, audience, pro, sort_order) VALUES
   ('advanced_worker_search', 'Advanced worker search', 'Filter workers by rate, rating, verification and availability', 'employer', 0, 10),
@@ -412,7 +441,8 @@ INSERT OR IGNORE INTO talent_features (key, label, description, audience, pro, s
   ('hiring_pipeline', 'Hiring pipeline', 'Shortlist candidates on hiring posts', 'employer', 0, 40),
   ('unlimited_applications', 'Unlimited applications', 'No daily cap on applications', 'worker', 0, 50),
   ('featured_profile', 'Featured profile', 'Show higher in worker search', 'worker', 0, 60),
-  ('job_alerts', 'Job alerts', 'Be told first about new matching jobs', 'worker', 0, 70);
+  ('job_alerts', 'Job alerts', 'Be told first about new matching jobs', 'worker', 0, 70),
+  ('recurring_jobs', 'Recurring jobs', 'Repeat a job every day, week or month', 'employer', 0, 35);
 
 INSERT OR IGNORE INTO talent_categories (id, parent_id, name, segment, sort_order) VALUES
   ('tcat_cleaning', NULL, 'Cleaning & housekeeping', 'informal', 10),

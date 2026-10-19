@@ -7,6 +7,7 @@ import { consume } from "../lib/ratelimit.js";
 import { getPlatformEnvironment, type PlatformEnvironment } from "../lib/settings.js";
 import { blockedMessage, queueForReview, screenText } from "./moderation.js";
 import { charge, contractFees, allocate, hasFeature, hasProPerk, overDueLimit, proRequired, startTrial } from "./monetization.js";
+import { createContract } from "./engine.js";
 import { holdFromEmployer, inDays, logEvent, parseList, ratingOf, tell, toDb, ugx, type Row } from "./service.js";
 import { getTalentSettings, type TalentSettings } from "./settings.js";
 import { workerView } from "./profiles.js";
@@ -574,82 +575,10 @@ jobRoutes.post("/applications/:id/accept", async (c) => {
   if (!parsed.success) return c.json({ error: "invalid_body", issues: parsed.error.issues }, 400);
   const owned = await ownedApplication(c.req.param("id"), user.sub);
   if (!owned) return c.json({ error: "not_found" }, 404);
-  const { app, job } = owned;
-  if (job.type === "hiring") return c.json({ error: "use_hire", message: "Use 'hire' for hiring posts." }, 400);
-  if (job.status !== "open") return c.json({ error: "not_open", message: "This job isn't open." }, 409);
-  if (!["applied", "shortlisted"].includes(String(app.status))) return c.json({ error: "not_acceptable", message: "This application can't be accepted now." }, 409);
-
-  const taken = Number(((await db.execute({ sql: "SELECT COUNT(*) AS n FROM talent_contracts WHERE job_id = ? AND status NOT IN ('cancelled', 'refunded')", args: [job.id] })).rows[0] as Row).n);
-  if (taken >= Number(job.workers_needed)) return c.json({ error: "job_full", message: "You already have everyone you asked for." }, 409);
-
-  const worker = (await db.execute({ sql: "SELECT p.status, p.activated_at, u.status AS user_status FROM talent_profiles p JOIN users u ON u.id = p.user_id WHERE p.user_id = ?", args: [app.worker_id] })).rows[0] as Row | undefined;
-  if (!worker || worker.status !== "approved" || !worker.activated_at || worker.user_status !== "active") return c.json({ error: "worker_unavailable", message: "This worker isn't available any more." }, 409);
-  if (await overDueLimit(user.sub, s)) return c.json({ error: "fees_owed", message: "Settle the fees you owe before hiring." }, 403);
-  if (await overDueLimit(String(app.worker_id), s)) return c.json({ error: "worker_unavailable", message: "This worker can't take new work right now." }, 409);
-
-  const price = Number(app.bid_ugx) > 0 ? Number(app.bid_ugx) : Number(job.budget_max_ugx);
-  if (price < s.minJobUgx || price > s.maxJobUgx) return c.json({ error: "price_out_of_range", message: `A contract must be between ${ugx(s.minJobUgx)} and ${ugx(s.maxJobUgx)}.` }, 400);
-  if (job.type === "gig" && price !== Number(job.budget_max_ugx) && price > Number(job.budget_max_ugx)) return c.json({ error: "over_budget", message: "That's more than the job pays." }, 400);
-
-  const parts = parsed.data.milestones?.length ? parsed.data.milestones : [{ title: String(job.title), amountUgx: price }];
-  if (parts.length > s.maxMilestones) return c.json({ error: "too_many_milestones", message: `Use up to ${s.maxMilestones} milestones.` }, 400);
-  if (parts.reduce((t, m) => t + m.amountUgx, 0) !== price) return c.json({ error: "milestones_mismatch", message: `The milestones must add up to ${ugx(price)}.` }, 400);
-  const mode = String(job.payment_mode) === "direct" ? "direct" : "escrow";
-
-  const fees = await contractFees({ employerId: user.sub, workerId: String(app.worker_id), jobType: String(job.type), price, settings: s });
-  const weights = parts.map((m) => m.amountUgx);
-  const empParts = allocate(fees.employerFee, weights);
-  // No part of a milestone's pay can be eaten whole by the fee.
-  const wrkParts = allocate(fees.workerFee, weights).map((f, i) => Math.min(f, parts[i].amountUgx - 1));
-  const employerFee = empParts.reduce((a, b) => a + b, 0);
-  const workerFee = wrkParts.reduce((a, b) => a + b, 0);
-  const held = mode === "escrow" ? price + employerFee : 0;
-
-  const contractId = newId("tct");
-  const moneyId = `hold:${contractId}`;
-  // The application must still be open and the job not yet full, checked in the same statement that creates the contract.
-  const open = {
-    sql: `EXISTS (SELECT 1 FROM talent_applications WHERE id = ? AND status IN ('applied', 'shortlisted'))
-          AND (SELECT COUNT(*) FROM talent_contracts WHERE job_id = ? AND status NOT IN ('cancelled', 'refunded')) < (SELECT workers_needed FROM talent_jobs WHERE id = ?)`,
-    args: [app.id, job.id, job.id],
-  };
-  const gate = mode === "escrow" ? `EXISTS (SELECT 1 FROM talent_money WHERE id = ? AND status = 'done') AND ${open.sql}` : open.sql;
-  const gateArgs = mode === "escrow" ? [moneyId, ...open.args] : open.args;
-  const stmts: DbStatement[] = [
-    {
-      sql: `INSERT INTO talent_contracts (id, job_id, application_id, employer_id, worker_id, title, price_ugx, payment_mode, held_ugx, employer_fee_ugx, worker_fee_ugx, environment)
-            SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE ${gate}`,
-      args: [contractId, job.id, app.id, user.sub, app.worker_id, job.title, price, mode, held, employerFee, workerFee, env, ...gateArgs],
-    },
-    ...parts.map((m, i): DbStatement => ({
-      sql: `INSERT INTO talent_milestones (id, contract_id, position, title, amount_ugx, employer_fee_ugx, worker_fee_ugx)
-            SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM talent_contracts WHERE id = ?)`,
-      args: [newId("tms"), contractId, i, m.title, m.amountUgx, empParts[i], wrkParts[i], contractId],
-    })),
-    { sql: "UPDATE talent_applications SET status = 'accepted', updated_at = datetime('now') WHERE id = ? AND EXISTS (SELECT 1 FROM talent_contracts WHERE id = ?)", args: [app.id, contractId] },
-    {
-      sql: `UPDATE talent_jobs SET status = CASE WHEN (SELECT COUNT(*) FROM talent_contracts WHERE job_id = ? AND status NOT IN ('cancelled', 'refunded')) >= workers_needed THEN 'in_progress' ELSE status END,
-              updated_at = datetime('now') WHERE id = ? AND status = 'open' AND EXISTS (SELECT 1 FROM talent_contracts WHERE id = ?)`,
-      args: [job.id, job.id, contractId],
-    },
-  ];
-  try {
-    if (mode === "escrow") {
-      const { held: ok } = await holdFromEmployer({ moneyId, contractId, employerId: user.sub, amount: held, environment: env, note: `Peebee Jobs escrow — ${String(job.title)}`, guard: open, then: stmts });
-      if (!ok) return c.json({ error: "insufficient_funds", needed: held, message: `Your wallet needs ${ugx(held)} to hold for this job. Top up and try again.` }, 402);
-    } else {
-      await executeBatch(stmts);
-    }
-  } catch (err) {
-    console.error("[talent] accept failed:", err);
-    return c.json({ error: "conflict", message: "That application was just changed. Refresh and try again." }, 409);
-  }
-  const made = (await db.execute({ sql: "SELECT id FROM talent_contracts WHERE id = ?", args: [contractId] })).rows.length;
-  if (!made) return c.json({ error: "conflict", message: "That application was just changed. Refresh and try again." }, 409);
-
-  tell(String(app.worker_id), "You got the job!", `${employerName(job)} accepted you for "${String(job.title)}" at ${ugx(price)}.`, `/services/jobs/contracts/${contractId}`);
-  await logEvent({ jobId: String(job.id), contractId, actorId: user.sub, kind: "employer", action: "accepted", detail: { price, mode, held } });
-  return c.json({ contractId, priceUgx: price, heldUgx: held, paymentMode: mode, employerFeeUgx: employerFee, workerFeeUgx: workerFee }, 201);
+  const result = await createContract({ app: owned.app, job: owned.job, employerName: employerName(owned.job), milestones: parsed.data.milestones, settings: s, env });
+  if (!result.ok) return c.json({ error: result.error, message: result.message, ...(result.needed ? { needed: result.needed } : {}) }, result.status);
+  const { ok: _ok, ...body } = result;
+  return c.json(body, 201);
 });
 
 // ---------------------------------------------------------------------------

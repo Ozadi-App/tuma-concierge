@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "../../lib/api";
 import { Badge, BusyButton, cardClass, EmptyState, FailureNote, JobsPage, primaryBtn, secondaryBtn, Spinner } from "./JobsUI";
 import { formatUgx, JOB_TYPE, jobsFailure, type JobsFailure } from "./jobs-utils";
+import { RecurrenceList } from "./Recurrences";
 
 type Earnings = Awaited<ReturnType<typeof api.talentEarnings>>;
 
@@ -61,6 +62,8 @@ export function MyWork() {
           ))}
         </section>
       ) : null}
+
+      <RecurrenceList onChange={load} />
 
       {waiting.length > 0 ? (
         <section className="space-y-2" aria-label="Applications">

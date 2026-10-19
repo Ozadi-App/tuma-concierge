@@ -861,3 +861,258 @@ test("talent: staff controls — settings are validated and logged; overview add
   await call(`/admin/categories/${cat.json.id}`, { method: "PATCH", token: admin, body: { active: false } });
   assert.ok(!(await call("/config", { token: plain })).json.categories.some((c: Json) => c.name === "Pet care"));
 });
+
+// ---------------------------------------------------------------------------
+// Late-cancel fees
+// ---------------------------------------------------------------------------
+
+async function runningGig(ctx: Awaited<ReturnType<typeof setup>>, o: { paymentMode?: "escrow" | "direct"; workerWallet?: number; employerWallet?: number } = {}) {
+  const { call, mkWorker, mkUser, admin, gigBody } = ctx;
+  await startCommissions(call, admin);
+  const worker = await mkWorker("w1", { wallet: o.workerWallet ?? 0 });
+  const emp = await mkUser("emp1", { wallet: o.employerWallet ?? 200000 });
+  const jobId = (await call("/jobs", { token: emp, body: gigBody(o.paymentMode ? { paymentMode: o.paymentMode } : {}) })).json.job.id;
+  await call(`/jobs/${jobId}/apply`, { token: worker, body: {} });
+  const appId = (await call(`/jobs/${jobId}/applications`, { token: emp })).json.applicants[0].id;
+  const accepted = await call(`/applications/${appId}/accept`, { token: emp, body: {} });
+  assert.equal(accepted.status, 201, JSON.stringify(accepted.json));
+  return { worker, emp, jobId, contractId: accepted.json.contractId as string };
+}
+
+test("talent: cancelling is free inside the grace window and while the fee is 0", async () => {
+  const ctx = await setup();
+  const { call, wallet, totalMoney } = ctx;
+  await setTalentSettings({ lateCancelFeePercent: 20, cancelFreeMinutes: 30 });
+  const { emp, contractId } = await runningGig(ctx);
+  const before = await totalMoney();
+  const quote = await call(`/contracts/${contractId}/cancel-quote`, { token: emp });
+  assert.equal(quote.json.free, true);
+  assert.equal(quote.json.feeUgx, 0);
+  const res = await call(`/contracts/${contractId}/cancel`, { token: emp, body: { reason: "Changed plans" } });
+  assert.equal(res.status, 200, JSON.stringify(res.json));
+  assert.equal(res.json.lateFeeUgx, 0);
+  assert.equal(await wallet("emp1"), 200000, "everything refunded");
+  assert.equal(await totalMoney(), before);
+});
+
+test("talent: employer cancels late (escrow) — fee comes out of the refund, shared with the worker", async () => {
+  const ctx = await setup();
+  const { call, wallet, totalMoney, dbRow } = ctx;
+  await setTalentSettings({ lateCancelFeePercent: 20, cancelFreeMinutes: 0, lateCancelPartySharePercent: 70 });
+  const { emp, contractId, worker } = await runningGig(ctx);
+  const before = await totalMoney();
+  await dbRow("UPDATE talent_contracts SET created_at = datetime('now', '-2 hours') WHERE id = ?", [contractId]);
+
+  const quote = await call(`/contracts/${contractId}/cancel-quote`, { token: emp });
+  assert.equal(quote.json.feeUgx, 16000, "20% of the 80,000 not yet paid");
+  assert.equal(quote.json.compensationUgx, 11200);
+  const refused = await call(`/contracts/${contractId}/cancel`, { token: emp, body: { reason: "Changed plans" } });
+  assert.equal(refused.status, 409);
+  assert.equal(refused.json.error, "late_cancel_fee", "the person must agree to the fee first");
+  assert.equal(await wallet("emp1"), 116000, "nothing moved yet");
+
+  const res = await call(`/contracts/${contractId}/cancel`, { token: emp, body: { reason: "Changed plans", acceptFee: true } });
+  assert.equal(res.status, 200, JSON.stringify(res.json));
+  assert.equal(res.json.lateFeeUgx, 16000);
+  assert.equal(await wallet("emp1"), 116000 + 84000 - 16000);
+  assert.equal(await wallet("w1"), 11200, "the worker is compensated");
+  const ct = await dbRow("SELECT * FROM talent_contracts WHERE id = ?", [contractId]);
+  assert.equal(ct.status, "cancelled");
+  assert.equal(ct.cancel_fee_ugx, 16000);
+  assert.equal(ct.held_ugx, 0);
+  assert.equal(await totalMoney() + 4800, before, "Peebee kept its 30% share of the fee");
+  assert.equal((await dbRow("SELECT COALESCE(SUM(amount_ugx), 0) AS n FROM talent_charges WHERE kind = 'late_cancel_fee' AND status = 'paid'")).n, 4800);
+  const detail = await call(`/contracts/${contractId}`, { token: worker });
+  assert.equal(detail.json.cancelFeeUgx, 16000);
+  assert.equal((await call(`/contracts/${contractId}/cancel`, { token: emp, body: { reason: "again", acceptFee: true } })).status, 409, "only once");
+});
+
+test("talent: worker cancels late — fee from their wallet, employer refunded in full and compensated", async () => {
+  const ctx = await setup();
+  const { call, wallet, totalMoney, dbRow } = ctx;
+  await setTalentSettings({ lateCancelFeePercent: 20, cancelFreeMinutes: 0 });
+  const { worker, contractId } = await runningGig(ctx, { workerWallet: 20000 });
+  const before = await totalMoney();
+  await dbRow("UPDATE talent_contracts SET created_at = datetime('now', '-2 hours') WHERE id = ?", [contractId]);
+  const res = await call(`/contracts/${contractId}/cancel`, { token: worker, body: { reason: "I am unwell", acceptFee: true } });
+  assert.equal(res.status, 200, JSON.stringify(res.json));
+  assert.equal(res.json.lateFeeStatus, "paid");
+  assert.equal(await wallet("w1"), 4000, "paid 16,000");
+  assert.equal(await wallet("emp1"), 200000 + 11200, "full refund plus compensation");
+  assert.equal(await totalMoney() + 4800, before, "wallets plus Peebee's 4,800 equal the starting money");
+});
+
+test("talent: a worker who can't cover the late fee owes it", async () => {
+  const ctx = await setup();
+  const { call, wallet, dbRow } = ctx;
+  await setTalentSettings({ lateCancelFeePercent: 20, cancelFreeMinutes: 0 });
+  const { worker, contractId } = await runningGig(ctx, { workerWallet: 1000 });
+  await dbRow("UPDATE talent_contracts SET created_at = datetime('now', '-2 hours') WHERE id = ?", [contractId]);
+  const res = await call(`/contracts/${contractId}/cancel`, { token: worker, body: { reason: "I am unwell", acceptFee: true } });
+  assert.equal(res.status, 200);
+  assert.equal(res.json.lateFeeStatus, "due");
+  assert.equal(await wallet("w1"), 1000);
+  assert.equal(await wallet("emp1"), 200000, "the employer is still refunded");
+  assert.ok((await dbRow("SELECT COALESCE(SUM(amount_ugx), 0) AS n FROM talent_charges WHERE user_id = 'w1' AND status = 'due'")).n > 0);
+});
+
+test("talent: late fee on a directly-paid job, and none when charging is off", async () => {
+  const ctx = await setup();
+  const { call, wallet, dbRow } = ctx;
+  await setTalentSettings({ lateCancelFeePercent: 20, cancelFreeMinutes: 0 });
+  const { emp, contractId } = await runningGig(ctx, { paymentMode: "direct", employerWallet: 50000 });
+  await dbRow("UPDATE talent_contracts SET created_at = datetime('now', '-2 hours') WHERE id = ?", [contractId]);
+  assert.equal(await wallet("emp1"), 50000, "nothing held for direct pay");
+  const res = await call(`/contracts/${contractId}/cancel`, { token: emp, body: { reason: "Changed plans", acceptFee: true } });
+  assert.equal(res.status, 200, JSON.stringify(res.json));
+  assert.equal(await wallet("emp1"), 50000 - 16000);
+  assert.equal(await wallet("w1"), 11200);
+
+  await setTalentSettings({ freeAccess: true });
+  const q = await call(`/contracts/${contractId}/cancel-quote`, { token: emp });
+  assert.equal(q.json.feeUgx, 0, "free access means no late fees");
+});
+
+test("talent: a late fee never exceeds what is held, and is capped at 50% by admin", async () => {
+  const ctx = await setup();
+  const { call, admin } = ctx;
+  const bad = await call("/admin/settings", { method: "PUT", token: admin, body: { lateCancelFeePercent: 80 } });
+  assert.equal(bad.status, 400);
+  const bad2 = await call("/admin/settings", { method: "PUT", token: admin, body: { lateCancelPartySharePercent: 120 } });
+  assert.equal(bad2.status, 400);
+  const ok = await call("/admin/settings", { method: "PUT", token: admin, body: { lateCancelFeePercent: 50, cancelFreeMinutes: 10, lateCancelPartySharePercent: 100 } });
+  assert.equal(ok.json.settings.lateCancelFeePercent, 50);
+});
+
+// ---------------------------------------------------------------------------
+// Recurring jobs
+// ---------------------------------------------------------------------------
+
+test("talent: rehire the same worker each week — a new contract each period, money held at the start", async () => {
+  const ctx = await setup();
+  const { call, wallet, dbRow, client, totalMoney } = ctx;
+  const { emp, contractId, worker } = await runningGig(ctx);
+  void worker;
+  const before = await totalMoney();
+  assert.equal((await call(`/contracts/${contractId}/repeat`, { token: emp, body: { frequency: "yearly" } })).status, 400);
+  const made = await call(`/contracts/${contractId}/repeat`, { token: emp, body: { frequency: "weekly", maxRuns: 2 } });
+  assert.equal(made.status, 201, JSON.stringify(made.json));
+  assert.equal((await call(`/contracts/${contractId}/repeat`, { token: emp, body: { frequency: "weekly" } })).status, 409, "already repeating");
+  const detail = await call(`/contracts/${contractId}`, { token: emp });
+  assert.equal(detail.json.recurring.existing.frequency, "weekly");
+  assert.equal(detail.json.recurring.canRepeat, false);
+
+  assert.equal((await sweepTalent()).recurring.ran, 0, "not due yet");
+  await client.execute("UPDATE talent_recurrences SET next_run_at = datetime('now', '-1 minute')");
+  const heldBefore = await wallet("emp1");
+  const first = await sweepTalent();
+  assert.equal(first.recurring.ran, 1, JSON.stringify(first.recurring));
+  assert.equal((await dbRow("SELECT COUNT(*) AS n FROM talent_contracts")).n, 2);
+  assert.equal(await wallet("emp1"), heldBefore - 84000, "the second period's money is held");
+  const rec = await dbRow("SELECT * FROM talent_recurrences");
+  assert.equal(rec.runs_done, 1);
+  assert.ok(String(rec.next_run_at) > new Date().toISOString().slice(0, 19).replace("T", " "), "the schedule moved on");
+  assert.equal((await sweepTalent()).recurring.ran, 0, "the same period never runs twice");
+  assert.equal(await totalMoney(), before, "all money is accounted for: it moved from the wallet into escrow");
+
+  // The new contract is for the same worker and same price.
+  const newest = await dbRow("SELECT * FROM talent_contracts ORDER BY created_at DESC, rowid DESC LIMIT 1");
+  assert.equal(newest.worker_id, "w1");
+  assert.equal(newest.price_ugx, 80000);
+  assert.equal(newest.status, "active");
+
+  // maxRuns of 2: one more run then it ends.
+  await client.execute("UPDATE users SET wallet_balance = wallet_balance + 100000 WHERE id = 'emp1'");
+  await client.execute("UPDATE talent_recurrences SET next_run_at = datetime('now', '-1 minute')");
+  assert.equal((await sweepTalent()).recurring.ran, 1);
+  assert.equal((await dbRow("SELECT status FROM talent_recurrences")).status, "ended");
+  await client.execute("UPDATE talent_recurrences SET next_run_at = datetime('now', '-1 minute')");
+  assert.equal((await sweepTalent()).recurring.ran, 0);
+});
+
+test("talent: a repeat that can't be funded is skipped, then the schedule pauses, then resumes", async () => {
+  const ctx = await setup();
+  const { call, client, dbRow, wallet } = ctx;
+  await setTalentSettings({ recurringMaxFailures: 2, recurringFrequencies: ["daily", "weekly"] });
+  const { emp, contractId } = await runningGig(ctx, { employerWallet: 90000 });
+  assert.equal(await wallet("emp1"), 6000);
+  assert.equal((await call(`/contracts/${contractId}/repeat`, { token: emp, body: { frequency: "daily" } })).status, 201);
+  await client.execute("UPDATE talent_recurrences SET next_run_at = datetime('now', '-1 minute')");
+  const one = await sweepTalent();
+  assert.equal(one.recurring.failed, 1);
+  assert.equal((await dbRow("SELECT COUNT(*) AS n FROM talent_contracts")).n, 1, "nothing was created");
+  assert.equal((await dbRow("SELECT COUNT(*) AS n FROM talent_jobs")).n, 1, "no stray job is left behind");
+  assert.equal(await wallet("emp1"), 6000);
+  assert.match(String((await dbRow("SELECT last_error FROM talent_recurrences")).last_error), /wallet/i);
+  assert.equal((await dbRow("SELECT status FROM talent_recurrences")).status, "active");
+  await client.execute("UPDATE talent_recurrences SET next_run_at = datetime('now', '-1 minute')");
+  const two = await sweepTalent();
+  assert.equal(two.recurring.paused, 1);
+  assert.equal((await dbRow("SELECT status FROM talent_recurrences")).status, "paused");
+  await client.execute("UPDATE talent_recurrences SET next_run_at = datetime('now', '-1 minute')");
+  assert.equal((await sweepTalent()).recurring.ran, 0, "paused schedules don't run");
+
+  await client.execute("UPDATE users SET wallet_balance = 200000 WHERE id = 'emp1'");
+  const recId = (await call("/recurrences", { token: emp })).json.recurrences[0].id;
+  assert.equal((await call(`/recurrences/${recId}/resume`, { token: emp, body: {} })).status, 200);
+  const resumed = await dbRow("SELECT * FROM talent_recurrences");
+  assert.equal(resumed.status, "active");
+  assert.equal(resumed.fail_count, 0);
+  await client.execute("UPDATE talent_recurrences SET next_run_at = datetime('now', '-1 minute')");
+  assert.equal((await sweepTalent()).recurring.ran, 1);
+});
+
+test("talent: repost puts a fresh open job up each period and charges the listing fee", async () => {
+  const ctx = await setup();
+  const { call, mkUser, mkWorker, gigBody, client, dbRow, wallet, admin } = ctx;
+  await setTalentSettings({ freeAccess: false });
+  await call("/admin/fee-rules", { method: "PUT", token: admin, body: { kind: "listing", jobType: "gig", model: "flat", flatUgx: 3000, active: true } });
+  await mkWorker("w1");
+  const emp = await mkUser("emp1", { wallet: 10000 });
+  const jobId = (await call("/jobs", { token: emp, body: gigBody() })).json.job.id;
+  assert.equal(await wallet("emp1"), 7000);
+  const made = await call(`/jobs/${jobId}/repeat`, { token: emp, body: { frequency: "weekly" } });
+  assert.equal(made.status, 201, JSON.stringify(made.json));
+  await client.execute("UPDATE talent_recurrences SET next_run_at = datetime('now', '-1 minute')");
+  assert.equal((await sweepTalent()).recurring.ran, 1);
+  assert.equal((await dbRow("SELECT COUNT(*) AS n FROM talent_jobs WHERE status = 'open'")).n, 2);
+  assert.equal(await wallet("emp1"), 4000, "listing fee charged for the new post");
+  const mine = (await call("/jobs/mine", { token: emp })).json.jobs;
+  assert.equal(mine.length, 2);
+  // Not enough for another post: skipped.
+  await client.execute("UPDATE users SET wallet_balance = 100 WHERE id = 'emp1'");
+  await client.execute("UPDATE talent_recurrences SET next_run_at = datetime('now', '-1 minute')");
+  const r = await sweepTalent();
+  assert.equal(r.recurring.failed, 1);
+  assert.equal((await dbRow("SELECT COUNT(*) AS n FROM talent_jobs")).n, 2, "failed repost left nothing behind");
+});
+
+test("talent: recurring is switchable, limited, Pro-gatable and either side can end it", async () => {
+  const ctx = await setup();
+  const { call, admin } = ctx;
+  const { emp, contractId, worker } = await runningGig(ctx);
+  await setTalentSettings({ recurringFrequencies: ["weekly"] });
+  assert.equal((await call(`/contracts/${contractId}/repeat`, { token: emp, body: { frequency: "daily" } })).json.error, "frequency_unavailable");
+  await setTalentSettings({ recurringEnabled: false });
+  assert.equal((await call(`/contracts/${contractId}/repeat`, { token: emp, body: { frequency: "weekly" } })).json.error, "recurring_disabled");
+  assert.equal((await call(`/contracts/${contractId}`, { token: emp })).json.recurring.canRepeat, false);
+  await setTalentSettings({ recurringEnabled: true, freeAccess: false });
+  await call("/admin/features/recurring_jobs", { method: "PATCH", token: admin, body: { pro: true } });
+  const locked = await call(`/contracts/${contractId}/repeat`, { token: emp, body: { frequency: "weekly" } });
+  assert.equal(locked.status, 402);
+  assert.equal(locked.json.error, "pro_required");
+  await call("/admin/features/recurring_jobs", { method: "PATCH", token: admin, body: { pro: false } });
+  assert.equal((await call(`/contracts/${contractId}/repeat`, { token: worker, body: { frequency: "weekly" } })).status, 404, "only the employer sets it up");
+  await setTalentSettings({ recurringMaxActive: 1 });
+  const made = await call(`/contracts/${contractId}/repeat`, { token: emp, body: { frequency: "weekly" } });
+  assert.equal(made.status, 201);
+  const jobId2 = (await call("/jobs", { token: emp, body: { type: "gig", title: "Second", description: "Another small cleaning gig please.", categoryId: CLEANING, area: "Kololo", budgetMaxUgx: 10000, acceptRules: true } })).json.job?.id;
+  if (jobId2) assert.equal((await call(`/jobs/${jobId2}/repeat`, { token: emp, body: { frequency: "weekly" } })).json.error, "too_many_recurring");
+
+  const listed = await call("/recurrences", { token: worker });
+  assert.equal(listed.json.recurrences.length, 1, "the worker can see it");
+  assert.equal(listed.json.recurrences[0].role, "worker");
+  assert.equal((await call(`/recurrences/${made.json.id}/pause`, { token: worker, body: {} })).status, 404, "a worker can't pause it");
+  assert.equal((await call(`/recurrences/${made.json.id}/end`, { token: worker, body: {} })).status, 200, "but can leave it");
+  assert.equal((await call("/recurrences", { token: emp })).json.recurrences.length, 0);
+});

@@ -1,6 +1,7 @@
 import { db } from "../db/client.js";
 import { releaseMilestone } from "./contracts.js";
 import { renewOrExpireSubscriptions } from "./monetization.js";
+import { runRecurrences } from "./recurrence.js";
 import { applyPendingMoney, talentReady, tell, type Row } from "./service.js";
 
 /**
@@ -11,8 +12,8 @@ import { applyPendingMoney, talentReady, tell, type Row } from "./service.js";
  *  - lapsed plans end (and renew if the wallet can pay);
  *  - any refund or payout that didn't finish is applied.
  */
-export async function sweepTalent(): Promise<{ autoReleased: number; expiredJobs: number; renewed: number; endedPlans: number; moneyApplied: number }> {
-  const result = { autoReleased: 0, expiredJobs: 0, renewed: 0, endedPlans: 0, moneyApplied: 0 };
+export async function sweepTalent(): Promise<{ autoReleased: number; expiredJobs: number; renewed: number; endedPlans: number; moneyApplied: number; recurring: { ran: number; failed: number; paused: number; ended: number } }> {
+  const result = { autoReleased: 0, expiredJobs: 0, renewed: 0, endedPlans: 0, moneyApplied: 0, recurring: { ran: 0, failed: 0, paused: 0, ended: 0 } };
   if (!(await talentReady())) return result;
 
   const due = (
@@ -44,6 +45,8 @@ export async function sweepTalent(): Promise<{ autoReleased: number; expiredJobs
       result.expiredJobs += 1;
     }
   }
+
+  result.recurring = await runRecurrences();
 
   const subs = await renewOrExpireSubscriptions();
   result.renewed = subs.renewed;

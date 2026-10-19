@@ -25,7 +25,7 @@ import { getTalentSettings, type TalentSettings } from "./settings.js";
  */
 
 export type FeeKind =
-  | "worker_onboarding" | "employer_onboarding" | "listing" | "boost" | "application" | "hire_fee" | "contact_unlock" | "employer_commission" | "worker_commission";
+  | "worker_onboarding" | "employer_onboarding" | "listing" | "boost" | "application" | "hire_fee" | "contact_unlock" | "employer_commission" | "worker_commission" | "late_cancel_fee" | "cancel_compensation";
 export type Audience = "worker" | "employer";
 export const FEE_KINDS: readonly FeeKind[] = [
   "worker_onboarding", "employer_onboarding", "listing", "boost", "application", "hire_fee", "contact_unlock", "employer_commission", "worker_commission",

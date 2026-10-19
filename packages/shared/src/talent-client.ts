@@ -11,6 +11,7 @@ export type TalentApplicationStatus = "applied" | "shortlisted" | "accepted" | "
 export type TalentContractStatus = "active" | "settled" | "cancelled" | "disputed" | "refunded";
 export type TalentFeeKind =
   | "worker_onboarding" | "employer_onboarding" | "listing" | "boost" | "application" | "hire_fee" | "contact_unlock" | "employer_commission" | "worker_commission";
+export type TalentFrequency = "daily" | "weekly" | "biweekly" | "monthly";
 
 export type TalentCategory = { id: string; parentId: string | null; name: string; segment: TalentSegment; icon: string | null };
 
@@ -32,6 +33,8 @@ export type TalentConfig = {
     minJobUgx: number; maxJobUgx: number; maxMilestones: number; maxWorkersPerJob: number; maxSkills: number;
     searchRadiusKm: number; boostDays: number; autoConfirmHours: number; jobExpiryDays: number;
   };
+  recurring: { enabled: boolean; frequencies: TalentFrequency[]; maxRuns: number; maxActive: number };
+  cancellation: { freeMinutes: number; feePercent: number; partySharePercent: number };
   categories: TalentCategory[];
   fees: TalentFee[];
 };
@@ -206,7 +209,17 @@ export type TalentContractDetail = {
   disputeReason: string | null;
   resolutionNote: string | null;
   reviewReceived: { rating: number; comment: string } | null;
+  cancelQuote: TalentCancelQuote;
+  cancelFeeUgx: number;
+  recurring: { canRepeat: boolean; frequencies: TalentFrequency[]; existing: { id: string; frequency: TalentFrequency; status: string; nextRunAt: string } | null };
   timeline: { action: string; by: string; at: string }[];
+};
+
+export type TalentCancelQuote = { feeUgx: number; compensationUgx: number; baseUgx: number; free: boolean; percent: number; freeUntil: string | null };
+
+export type TalentRecurrence = {
+  id: string; kind: "rehire" | "repost"; title: string; priceUgx: number; frequency: TalentFrequency; nextRunAt: string; endsAt: string | null; maxRuns: number; runsDone: number;
+  status: "active" | "paused" | "ended"; lastError: string | null; sourceJobId: string; worker: { id: string; name: string } | null; role: "employer" | "worker";
 };
 
 export type TalentPlan = {
@@ -339,8 +352,25 @@ export function talentMethods(request: Request) {
     talentReleasePayment(contractId: string, milestoneId?: string) {
       return post<{ ok: true; settled: boolean }>(`/v1/talent/contracts/${enc(contractId)}${milestoneId ? `/milestones/${enc(milestoneId)}` : ""}/release`);
     },
-    talentCancelContract(contractId: string, reason: string) {
-      return post<{ ok: true }>(`/v1/talent/contracts/${enc(contractId)}/cancel`, { reason });
+    talentCancelContract(contractId: string, reason: string, acceptFee = false) {
+      return post<{ ok: true; lateFeeUgx: number; lateFeeStatus: "paid" | "due" | "none" }>(`/v1/talent/contracts/${enc(contractId)}/cancel`, { reason, acceptFee });
+    },
+    talentCancelQuote(contractId: string) {
+      return request<TalentCancelQuote>(`/v1/talent/contracts/${enc(contractId)}/cancel-quote`);
+    },
+
+    // ---- Recurring jobs ----
+    talentRecurrences() {
+      return request<{ recurrences: TalentRecurrence[]; enabled: boolean; frequencies: TalentFrequency[] }>("/v1/talent/recurrences");
+    },
+    talentRepeatContract(contractId: string, input: { frequency: TalentFrequency; maxRuns?: number; startsAt?: string; endsAt?: string }) {
+      return post<{ id: string }>(`/v1/talent/contracts/${enc(contractId)}/repeat`, input);
+    },
+    talentRepeatJob(jobId: string, input: { frequency: TalentFrequency; maxRuns?: number; startsAt?: string; endsAt?: string }) {
+      return post<{ id: string }>(`/v1/talent/jobs/${enc(jobId)}/repeat`, input);
+    },
+    talentRecurrenceAction(id: string, action: "pause" | "resume" | "end") {
+      return post<{ ok: true }>(`/v1/talent/recurrences/${enc(id)}/${action}`);
     },
     talentDispute(contractId: string, reason: string) {
       return post<{ ok: true }>(`/v1/talent/contracts/${enc(contractId)}/dispute`, { reason });

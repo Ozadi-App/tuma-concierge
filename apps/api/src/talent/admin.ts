@@ -35,7 +35,7 @@ adminRoutes.get("/admin/overview", requirePermission("talent.view"), async (c) =
   ]);
   const revenue = (
     await db.execute({
-      sql: `SELECT kind, COALESCE(SUM(amount_ugx), 0) AS total, COUNT(*) AS n FROM talent_charges WHERE status = 'paid' AND created_at >= datetime('now', '-30 days') GROUP BY kind ORDER BY total DESC`,
+      sql: `SELECT kind, COALESCE(SUM(amount_ugx), 0) AS total, COUNT(*) AS n FROM talent_charges WHERE status = 'paid' AND kind != 'cancel_compensation' AND created_at >= datetime('now', '-30 days') GROUP BY kind ORDER BY total DESC`,
       args: [],
     })
   ).rows as Row[];

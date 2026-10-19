@@ -32,6 +32,14 @@ export type TalentAdminSettings = {
   chatEnabled: boolean;
   hideContacts: boolean;
   unpaidCommissionLimitUgx: number;
+  recurringEnabled: boolean;
+  recurringFrequencies: ("daily" | "weekly" | "biweekly" | "monthly")[];
+  recurringMaxActive: number;
+  recurringMaxRuns: number;
+  recurringMaxFailures: number;
+  cancelFreeMinutes: number;
+  lateCancelFeePercent: number;
+  lateCancelPartySharePercent: number;
 };
 
 export type TalentAdminOverview = {

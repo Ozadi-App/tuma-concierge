@@ -8,6 +8,7 @@ import { api } from "../../lib/api";
 import { ApplicationChat } from "./ApplicationChat";
 import { Badge, BusyButton, cardClass, EmptyState, FailureNote, Field, JobsPage, Notice, primaryBtn, secondaryBtn, Spinner } from "./JobsUI";
 import { fieldClass, formatUgx, formatWorkDate, jobsFailure, type JobsFailure } from "./jobs-utils";
+import { FREQ_LABEL, RepeatForm } from "./Recurrences";
 
 export function ContractDetail({ id }: { id: string }) {
   const [data, setData] = useState<TalentContractDetail | null>(null);
@@ -15,6 +16,9 @@ export function ContractDetail({ id }: { id: string }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [note, setNote] = useState("");
   const [dialog, setDialog] = useState<"cancel" | "dispute" | null>(null);
+  const [feeOk, setFeeOk] = useState(false);
+  const [maxRuns, setMaxRuns] = useState(52);
+  const [showRepeat, setShowRepeat] = useState(false);
   const [reason, setReason] = useState("");
   const [rating, setRating] = useState(5);
   const [comment, setComment] = useState("");
@@ -23,11 +27,12 @@ export function ContractDetail({ id }: { id: string }) {
     api.talentContract(id).then((r) => { setData(r); setFailure(null); }).catch((err) => setFailure(jobsFailure(err)));
   }, [id]);
   useEffect(load, [load]);
+  useEffect(() => { api.talentConfig().then((c) => setMaxRuns(c.recurring.maxRuns)).catch(() => {}); }, []);
 
   async function act(key: string, fn: () => Promise<unknown>) {
     setBusy(key);
     setFailure(null);
-    try { await fn(); setDialog(null); setReason(""); setNote(""); load(); } catch (err) { setFailure(jobsFailure(err)); } finally { setBusy(null); }
+    try { await fn(); setDialog(null); setReason(""); setNote(""); setFeeOk(false); load(); } catch (err) { setFailure(jobsFailure(err)); } finally { setBusy(null); }
   }
 
   if (!data) {
@@ -101,16 +106,34 @@ export function ContractDetail({ id }: { id: string }) {
       ) : null}
       {data.reviewReceived ? <Notice tone="info" text={`${c.otherParty.name.split(" ")[0]} rated you ${data.reviewReceived.rating}/5${data.reviewReceived.comment ? `: "${data.reviewReceived.comment}"` : ""}`} /> : null}
 
+      {data.recurring.existing ? (
+        <Notice tone="info" text={`This job repeats ${FREQ_LABEL[data.recurring.existing.frequency].toLowerCase()}${data.recurring.existing.status === "paused" ? " (paused)" : ""}. Manage it from "Jobs I posted".`} />
+      ) : data.recurring.canRepeat ? (
+        <section className={`${cardClass} space-y-3`}>
+          {showRepeat ? <RepeatForm frequencies={data.recurring.frequencies} maxRuns={maxRuns} kind="rehire" targetId={c.id} onDone={() => { setShowRepeat(false); load(); }} /> : (
+            <><h3 className="text-sm font-bold">Need this again?</h3><p className="text-xs text-ink-500">Book {c.otherParty.name.split(" ")[0]} for this job again on a schedule.</p><button type="button" className={secondaryBtn} onClick={() => setShowRepeat(true)}>Repeat this job</button></>
+          )}
+        </section>
+      ) : null}
+
       <details className="rounded-2xl border border-[var(--border-faint)] p-3"><summary className="cursor-pointer text-sm font-semibold">Messages</summary><div className="pt-3"><ApplicationChat applicationId={c.applicationId} /></div></details>
 
       {actions.cancel || actions.dispute ? (
         <section className="space-y-2">
           {dialog ? (
             <div className={`${cardClass} space-y-3`}>
+              {dialog === "cancel" && !data.cancelQuote.free ? (
+                <div className="space-y-2 rounded-2xl border border-gold/40 bg-gold/10 p-3 text-sm">
+                  <p><strong>Cancelling now costs {formatUgx(data.cancelQuote.feeUgx)}.</strong> The free cancellation period has ended. {formatUgx(data.cancelQuote.compensationUgx)} of it goes to {c.otherParty.name.split(" ")[0]} for the lost work.</p>
+                  <label className="flex items-start gap-2 text-xs"><input type="checkbox" checked={feeOk} onChange={(e) => setFeeOk(e.target.checked)} className="mt-0.5 h-5 w-5 shrink-0" />I understand and want to cancel anyway.</label>
+                </div>
+              ) : dialog === "cancel" && data.cancelQuote.percent > 0 && data.cancelQuote.freeUntil ? (
+                <p className="rounded-2xl bg-[rgb(var(--surface-muted))] p-3 text-xs text-ink-500">Cancelling is free until {formatWorkDate(data.cancelQuote.freeUntil)}. After that it costs {data.cancelQuote.percent}% of the work not yet paid.</p>
+              ) : null}
               <Field label={dialog === "cancel" ? "Why are you cancelling?" : "What went wrong?"}><textarea rows={3} value={reason} onChange={(e) => setReason(e.target.value)} maxLength={500} className={fieldClass} /></Field>
               <div className="grid grid-cols-2 gap-2">
                 <button type="button" className={secondaryBtn} onClick={() => setDialog(null)}>Back</button>
-                <BusyButton busy={busy === dialog} disabled={reason.trim().length < (dialog === "cancel" ? 3 : 5)} className={primaryBtn} onClick={() => act(dialog, () => (dialog === "cancel" ? api.talentCancelContract(c.id, reason.trim()) : api.talentDispute(c.id, reason.trim())))}>{dialog === "cancel" ? "Cancel job" : "Report problem"}</BusyButton>
+                <BusyButton busy={busy === dialog} disabled={reason.trim().length < (dialog === "cancel" ? 3 : 5) || (dialog === "cancel" && !data.cancelQuote.free && !feeOk)} className={primaryBtn} onClick={() => act(dialog, () => (dialog === "cancel" ? api.talentCancelContract(c.id, reason.trim(), feeOk) : api.talentDispute(c.id, reason.trim())))}>{dialog === "cancel" ? "Cancel job" : "Report problem"}</BusyButton>
               </div>
             </div>
           ) : (
