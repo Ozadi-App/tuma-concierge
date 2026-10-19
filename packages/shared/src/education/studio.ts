@@ -192,6 +192,34 @@ export interface LearnSettings {
   proDays: number;
 }
 
+/** An educator's access to the TV classroom, and what Learn Pro costs. */
+export interface LearnProStatus {
+  ok: true;
+  tv: {
+    /** TV is a Pro feature right now. False means it is free for everyone. */
+    required: boolean;
+    /** This educator has Learn Pro. */
+    pro: boolean;
+    /** This educator may use the TV classroom. */
+    allowed: boolean;
+    expiresAt: string | null;
+  };
+  priceUgx: number;
+  days: number;
+}
+
+/** One educator with Learn Pro, as staff see it. */
+export interface LearnProEducator {
+  userId: string;
+  name: string;
+  contact: string;
+  source: string;
+  expiresAt: string | null;
+  active: boolean;
+  pricePaidUgx: number;
+  note: string;
+}
+
 /** What the admin sees about the demo content: whether it is installed and what it holds. */
 export interface LearnDemoStatus {
   ok: true;

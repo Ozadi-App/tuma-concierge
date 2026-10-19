@@ -4,6 +4,7 @@ import { EDUCATION_STREAMS, hasPermission, type EducationStream, type LearnSetti
 import { AlertCircle, CheckCircle2, GraduationCap, Layers, ShieldAlert, Wallet } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { DemoContentCard } from "../../../components/learn/DemoContentCard";
+import { ProEducatorsCard } from "../../../components/learn/ProEducatorsCard";
 import { SettingsPageShell } from "../../../components/SettingsPageShell";
 import { api, errorMessage } from "../../../lib/api";
 import { useAuth } from "../../../lib/auth-context";
@@ -33,6 +34,8 @@ const LIMITS: { key: NumberKey; label: string; hint: string; min: number; max: n
   { key: "liveMaxExamMinutes", label: "Longest live exam (minutes)", hint: "Upper limit for a timed exam on phones", min: 1, max: 600 },
   { key: "maxScreensPerUser", label: "TV screens per educator", hint: "Most screens one account can pair", min: 1, max: 50 },
   { key: "screenPairMinutes", label: "TV pairing code lifetime (minutes)", hint: "How long a code shown on a TV can be used", min: 1, max: 60 },
+  { key: "proPriceUgx", label: "Learn Pro price (UGX)", hint: "Taken from the educator's wallet for one period. 0 makes Pro free to claim.", min: 0, max: 100000000, step: 1000 },
+  { key: "proDays", label: "Learn Pro length (days)", hint: "How long one purchase lasts", min: 1, max: 3650 },
   { key: "createsPerHour", label: "Creations per hour", hint: "Schools, classes, courses, modules and lessons made by one educator per hour", min: 1, max: 1000 },
 ];
 
@@ -180,6 +183,7 @@ export default function LearnSettingsPage() {
             <SwitchRow title="Video and audio uploads" hint="Educators can attach a file to a lesson" on={settings.videoUploadsEnabled} disabled={!canManage} onChange={(v) => patch("videoUploadsEnabled", v)} />
             <SwitchRow title="School fees" hint="Schools can invoice learners, who pay from their wallet" on={settings.feesEnabled} disabled={!canManage} onChange={(v) => patch("feesEnabled", v)} />
             <SwitchRow title="Live classroom and TV" hint="Educators can run live sessions that push content to a TV and quizzes to students' phones" on={settings.liveEnabled} disabled={!canManage} onChange={(v) => patch("liveEnabled", v)} />
+            <SwitchRow title="TV is a Pro feature" hint="Off (the launch setting): every educator can use the TV classroom for free. On: connecting a screen and teaching on it needs Learn Pro, which educators can buy from their wallet or staff can grant. Teaching to phones and the practice classes stay free." on={settings.tvProRequired} disabled={!canManage} onChange={(v) => patch("tvProRequired", v)} />
             <SwitchRow title="Publish automatically" hint="A course goes live as soon as it has its first lesson. When off, the educator publishes it themselves." on={settings.publishByDefault} disabled={!canManage} onChange={(v) => patch("publishByDefault", v)} />
           </section>
 
@@ -312,6 +316,12 @@ export default function LearnSettingsPage() {
       {settings && (
         <div className="mb-6">
           <DemoContentCard canManage={canManage} trialCodes={[settings.trialCodeA, settings.trialCodeB]} />
+        </div>
+      )}
+
+      {settings && (
+        <div className="mb-6">
+          <ProEducatorsCard canManage={canManage} />
         </div>
       )}
 

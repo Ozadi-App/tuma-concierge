@@ -5,7 +5,9 @@ import { Eye, Hand, Monitor, Pause, Play, Plus, Smartphone, Square, Trash2, User
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useId, useMemo, useState, type FormEvent } from "react";
 import { Button, Chip, Crumbs, Field, Notice, Segmented, Skeleton, cardCls, controlCls } from "../../../components/ui";
+import { ProUpgrade } from "../../../components/ProNotice";
 import { api, errorMessage } from "../../../lib/api";
+import { useTvAccess } from "../../../lib/pro";
 
 const TARGET_LABEL: Record<CueTarget, string> = { screen: "TV", phones: "Phones", both: "TV + phones" };
 
@@ -37,6 +39,7 @@ export default function ClassroomConsolePage() {
   const [picks, setPicks] = useState<Record<string, CueTarget>>({});
   const [adding, setAdding] = useState(false);
   const [pending, setPending] = useState<string | null>(null);
+  const { status: pro, allowed: tvAllowed } = useTvAccess();
 
   const load = useCallback(async () => {
     try {
@@ -110,6 +113,7 @@ export default function ClassroomConsolePage() {
       </header>
 
       {error && <Notice tone="error">{error}</Notice>}
+      {pro && screen && <ProUpgrade status={pro} />}
 
       {live && (
         <div className="flex flex-wrap gap-2">
@@ -221,7 +225,7 @@ export default function ClassroomConsolePage() {
                               label={`Where to show ${CUE_LABELS[cue.kind]}`}
                               value={target}
                               onChange={(v) => setPicks((p) => ({ ...p, [cue.id]: v }))}
-                              options={targets.map((t) => ({ id: t, label: TARGET_LABEL[t], disabled: t !== "phones" && !screen }))}
+                              options={targets.map((t) => ({ id: t, label: TARGET_LABEL[t], disabled: t !== "phones" && (!screen || !tvAllowed) }))}
                             />
                           </div>
                         )}

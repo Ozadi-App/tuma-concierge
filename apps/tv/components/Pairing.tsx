@@ -1,6 +1,7 @@
 "use client";
 
 import { Qr } from "./JoinCard";
+import { TrialPicker } from "./TrialPicker";
 
 const LEARN_URL = (process.env.NEXT_PUBLIC_LEARN_URL ?? "https://learn.peebee.online").replace(/\/$/, "");
 
@@ -8,7 +9,7 @@ const LEARN_URL = (process.env.NEXT_PUBLIC_LEARN_URL ?? "https://learn.peebee.on
 export function Pairing({ code }: { code: string | null }) {
   const url = code ? `${LEARN_URL}/screens?code=${code}` : LEARN_URL;
   return (
-    <main className="tv-safe flex min-h-screen items-center justify-center">
+    <main className="tv-safe flex min-h-screen flex-col items-center justify-center gap-[2.4rem]">
       <div className="tv-fade-in grid w-full max-w-[84rem] grid-cols-[1fr_22rem] items-center gap-[4rem]">
         <section className="space-y-[2rem]">
           <p className="text-[1.1rem] font-bold uppercase tracking-[0.22em] text-gold">Peebee TV</p>
@@ -30,6 +31,9 @@ export function Pairing({ code }: { code: string | null }) {
           <p className="text-[1.1rem] text-ink-500">The code changes every few minutes. This screen connects by itself the moment you enter it.</p>
         </section>
         <Qr value={url} label="QR code that opens Peebee Learn's Add a screen page" className="aspect-square w-full" />
+      </div>
+      <div className="w-full max-w-[84rem]">
+        <TrialPicker />
       </div>
     </main>
   );
