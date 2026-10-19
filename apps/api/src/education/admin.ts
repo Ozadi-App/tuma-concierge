@@ -81,6 +81,13 @@ const settingsPatch = z
     badgeCoursesThreshold: z.number().int().min(1).max(100),
     assignmentsEnabled: z.boolean(),
     maxSubmissionChars: z.number().int().min(100).max(50000),
+    couponsEnabled: z.boolean(),
+    maxCouponPercent: z.number().int().min(1).max(100),
+    bundlesEnabled: z.boolean(),
+    maxBundleCourses: z.number().int().min(2).max(100),
+    subscriptionsEnabled: z.boolean(),
+    maxPlansPerSchool: z.number().int().min(1).max(50),
+    maxPlanDays: z.number().int().min(1).max(3650),
   })
   .partial();
 

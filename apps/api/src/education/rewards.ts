@@ -58,7 +58,15 @@ export async function computeLocks(
   if (settings.dripEnabled) {
     const days = await dripDays(courseId);
     const enrolled = ((await db.execute({ sql: "SELECT created_at FROM edu_enrollments WHERE course_id = ? AND user_id = ?", args: [courseId, userId] })).rows[0] as Row | undefined)?.created_at;
-    const start = enrolled ? Date.parse(`${String(enrolled).replace(" ", "T")}Z`) : now;
+    let startedAt = enrolled ? String(enrolled) : null;
+    if (!startedAt) {
+      // Someone on a school pass has no enrolment: their pass is when they began.
+      const sub = await db
+        .execute({ sql: "SELECT MIN(s.started_at) AS at FROM edu_subscriptions s JOIN edu_courses c ON c.school_id = s.school_id WHERE s.user_id = ? AND c.id = ?", args: [userId, courseId] })
+        .catch(() => ({ rows: [] as Row[] }));
+      startedAt = ((sub.rows[0] as Row | undefined)?.at as string | null) ?? null;
+    }
+    const start = startedAt ? Date.parse(`${startedAt.replace(" ", "T")}Z`) : now;
     for (const m of modules) {
       const d = days.get(String(m.id)) ?? 0;
       if (d <= 0) continue;

@@ -21,7 +21,7 @@ import { db } from "../db/client.js";
 import { newId } from "../lib/ids.js";
 import { getR2Bucket } from "../storage/r2.js";
 import { consume, tooManyRequests } from "../lib/ratelimit.js";
-import { hasColumn } from "../lib/schema.js";
+import { hasColumn, hasTable } from "../lib/schema.js";
 import { getLearnSettings } from "./settings.js";
 import { normaliseQuestion, parseQuiz as readQuiz } from "./quiz-engine.js";
 import { afterProgress, courseRules, dripDays, proReady } from "./rewards.js";
@@ -342,6 +342,9 @@ async function purgeCourseData(courseIds: string, args: unknown[]): Promise<void
   await db.execute({ sql: `UPDATE edu_course_rules SET prerequisite_course_id = NULL WHERE prerequisite_course_id IN (${courseIds})`, args: args as never }).catch(tolerate);
   await db.execute({ sql: `DELETE FROM edu_course_rules WHERE course_id IN (${courseIds})`, args: args as never }).catch(tolerate);
   await db.execute({ sql: `DELETE FROM edu_certificates WHERE course_id IN (${courseIds})`, args: args as never }).catch(tolerate);
+  await db.execute({ sql: `DELETE FROM edu_bundle_courses WHERE course_id IN (${courseIds})`, args: args as never }).catch(tolerate);
+  await db.execute({ sql: `DELETE FROM edu_coupon_redemptions WHERE coupon_id IN (SELECT id FROM edu_coupons WHERE course_id IN (${courseIds}))`, args: args as never }).catch(tolerate);
+  await db.execute({ sql: `DELETE FROM edu_coupons WHERE course_id IN (${courseIds})`, args: args as never }).catch(tolerate);
   await purgeLessonData(`SELECT id FROM edu_lessons WHERE course_id IN (${courseIds})`, args);
   if (await learningReady()) await db.execute({ sql: `DELETE FROM edu_enrollments WHERE course_id IN (${courseIds})`, args: args as never });
 }
@@ -597,6 +600,16 @@ studioRoutes.delete("/schools/:id", async (c) => {
   if ((await learnersIn(courses, [id])) > 0) return hasLearnersResponse(c);
   if ((await learningReady()) && (await count("SELECT COUNT(*) AS n FROM edu_fee_invoices WHERE school_id = ? AND status != 'cancelled'", [id])) > 0) {
     return fail(c, { status: 409, error: "has_invoices", message: "This school has fee invoices. Cancel the unpaid ones; a school with payments can't be deleted." });
+  }
+  if (await hasTable("edu_coupons")) {
+    const paid = await count("SELECT COUNT(*) AS n FROM edu_subscriptions WHERE school_id = ?", [id]);
+    const bought = await count("SELECT COUNT(*) AS n FROM edu_bundle_purchases WHERE bundle_id IN (SELECT id FROM edu_bundles WHERE school_id = ?)", [id]);
+    if (paid + bought > 0) return fail(c, { status: 409, error: "has_sales", message: "Learners have bought a bundle or pass from this school, so it can't be deleted. Unpublish its courses instead." });
+    await db.execute({ sql: "DELETE FROM edu_coupon_redemptions WHERE coupon_id IN (SELECT id FROM edu_coupons WHERE school_id = ?)", args: [id] });
+    await db.execute({ sql: "DELETE FROM edu_coupons WHERE school_id = ?", args: [id] });
+    await db.execute({ sql: "DELETE FROM edu_bundle_courses WHERE bundle_id IN (SELECT id FROM edu_bundles WHERE school_id = ?)", args: [id] });
+    await db.execute({ sql: "DELETE FROM edu_bundles WHERE school_id = ?", args: [id] });
+    await db.execute({ sql: "DELETE FROM edu_plans WHERE school_id = ?", args: [id] });
   }
   await purgeLiveSessions("school_id", "?", [id]);
   await purgeCourseData(courses, [id]);

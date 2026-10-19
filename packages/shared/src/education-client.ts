@@ -42,6 +42,8 @@ import type {
   LearnerLessonDetail,
   StudioLive,
   StudioCourseRules,
+  SalesOverview,
+  CourseOffers,
   StudioSubmission,
   StudioAssignment,
   Gradebook,
@@ -326,6 +328,8 @@ export function educationMethods(request: RequestFn) {
           id: string; stream: EducationStream; title: string; summary: string; priceUgx: number; framework: CurriculumFramework; outcomes: string[];
           schoolName: string; className: string;
           prerequisite?: { id: string; title: string } | null;
+          bundles?: CourseOffers["bundles"];
+          plans?: CourseOffers["plans"];
           modules: { id: string; title: string; description: string; lessons: { id: string; title: string; contentType: LessonContentType; durationMinutes: number; summary: string; questionCount: number }[] }[];
         };
       }>(`/v1/education/catalog/courses/${encodeURIComponent(id)}`);
@@ -516,8 +520,48 @@ export function educationMethods(request: RequestFn) {
     async learnEnrollments() {
       return request<{ ok: true; enrollments: LearnEnrollment[] }>("/v1/education/learn/enrollments");
     },
-    async learnEnroll(courseId: string) {
-      return request<{ ok: true; enrolled: true; paidUgx: number }>(`/v1/education/learn/courses/${encodeURIComponent(courseId)}/enroll`, { method: "POST", body: JSON.stringify({}) });
+    async learnEnroll(courseId: string, coupon?: string) {
+      return request<{ ok: true; enrolled: true; paidUgx: number; viaPass?: boolean }>(`/v1/education/learn/courses/${encodeURIComponent(courseId)}/enroll`, { method: "POST", body: JSON.stringify(coupon ? { coupon } : {}) });
+    },
+    async learnQuote(courseId: string, coupon: string) {
+      return request<{ ok: true; valid: boolean; message?: string; priceUgx: number; discountUgx: number; finalUgx: number }>(`/v1/education/learn/courses/${encodeURIComponent(courseId)}/quote`, { method: "POST", body: JSON.stringify({ coupon }) });
+    },
+    async learnBuyBundle(id: string) {
+      return request<{ ok: true; enrolledIn: number; paidUgx: number }>(`/v1/education/learn/bundles/${encodeURIComponent(id)}/buy`, { method: "POST", body: JSON.stringify({}) });
+    },
+    async learnSubscribe(planId: string) {
+      return request<{ ok: true; expiresAt: string | null; paidUgx: number }>(`/v1/education/learn/plans/${encodeURIComponent(planId)}/subscribe`, { method: "POST", body: JSON.stringify({}) });
+    },
+    async learnSubscriptions() {
+      return request<{ ok: true; subscriptions: { id: string; title: string; schoolId: string; schoolName: string; expiresAt: string }[] }>("/v1/education/learn/subscriptions");
+    },
+    async studioSales(schoolId: string) {
+      return request<{ ok: true } & SalesOverview>(`/v1/education/studio/schools/${encodeURIComponent(schoolId)}/sales`);
+    },
+    async studioCreateCoupon(schoolId: string, data: { code: string; percentOff: number | null; amountOffUgx: number | null; courseId: string | null; maxUses: number | null; expiresAt: string | null }) {
+      return request<{ ok: true; id: string }>(`/v1/education/studio/schools/${encodeURIComponent(schoolId)}/coupons`, { method: "POST", body: JSON.stringify(data) });
+    },
+    async studioSetCouponActive(id: string, active: boolean) {
+      return request<{ ok: true }>(`/v1/education/studio/coupons/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ active }) });
+    },
+    async studioDeleteCoupon(id: string) {
+      return request<{ ok: true }>(`/v1/education/studio/coupons/${encodeURIComponent(id)}`, { method: "DELETE" });
+    },
+    async studioSaveBundle(schoolId: string, id: string | null, data: { title: string; summary: string; priceUgx: number; courseIds: string[]; status: "draft" | "published" }) {
+      return id
+        ? request<{ ok: true }>(`/v1/education/studio/bundles/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(data) })
+        : request<{ ok: true; id: string }>(`/v1/education/studio/schools/${encodeURIComponent(schoolId)}/bundles`, { method: "POST", body: JSON.stringify(data) });
+    },
+    async studioDeleteBundle(id: string) {
+      return request<{ ok: true }>(`/v1/education/studio/bundles/${encodeURIComponent(id)}`, { method: "DELETE" });
+    },
+    async studioSavePlan(schoolId: string, id: string | null, data: { title: string; summary: string; priceUgx: number; days: number; status: "draft" | "published" }) {
+      return id
+        ? request<{ ok: true }>(`/v1/education/studio/plans/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(data) })
+        : request<{ ok: true; id: string }>(`/v1/education/studio/schools/${encodeURIComponent(schoolId)}/plans`, { method: "POST", body: JSON.stringify(data) });
+    },
+    async studioDeletePlan(id: string) {
+      return request<{ ok: true }>(`/v1/education/studio/plans/${encodeURIComponent(id)}`, { method: "DELETE" });
     },
     async learnCourse(courseId: string) {
       return request<{ ok: true; owner: boolean; course: LearnerCourse }>(`/v1/education/learn/courses/${encodeURIComponent(courseId)}`);

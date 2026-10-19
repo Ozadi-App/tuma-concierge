@@ -1,6 +1,6 @@
 "use client";
 
-import type { LearnerCourse, LearnerLesson } from "@peebee/shared";
+import type { CourseOffers, LearnerCourse, LearnerLesson } from "@peebee/shared";
 import { ApiError } from "@peebee/shared";
 import { LearnThumb } from "@peebee/shared/learn-thumb";
 import { ArrowLeft, CheckCircle2, ChevronRight, Lock, Play } from "lucide-react";
@@ -72,6 +72,9 @@ export default function LearnCoursePage() {
   const [busy, setBusy] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [prerequisite, setPrerequisite] = useState<{ id: string; title: string } | null>(null);
+  const [offers, setOffers] = useState<CourseOffers>({ bundles: [], plans: [] });
+  const [coupon, setCoupon] = useState("");
+  const [quote, setQuote] = useState<{ valid: boolean; message?: string; discountUgx: number; finalUgx: number } | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -86,6 +89,7 @@ export default function LearnCoursePage() {
           const info = await api.getCatalogCourse(id);
           const c = info.course;
           setPrerequisite(c.prerequisite ?? null);
+          setOffers({ bundles: c.bundles ?? [], plans: c.plans ?? [] });
           setPreview({ title: c.title, summary: c.summary, priceUgx: c.priceUgx, schoolName: c.schoolName, outcomes: c.outcomes, lessonCount: c.modules.reduce((n, m) => n + m.lessons.length, 0) });
           setError(null);
         } catch (inner) {
@@ -108,7 +112,34 @@ export default function LearnCoursePage() {
     setEnrolError(null);
     setNeedsFunds(false);
     try {
-      await api.learnEnroll(id);
+      await api.learnEnroll(id, quote?.valid ? coupon : undefined);
+      setLoaded(false);
+      await load();
+    } catch (err) {
+      setEnrolError(errorMessage(err));
+      setNeedsFunds(err instanceof ApiError && err.status === 402);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function applyCoupon() {
+    if (!coupon.trim()) return;
+    setEnrolError(null);
+    try {
+      setQuote(await api.learnQuote(id, coupon.trim()));
+    } catch (err) {
+      setEnrolError(errorMessage(err));
+    }
+  }
+
+  async function buy(kind: "bundle" | "plan", targetId: string) {
+    setBusy(true);
+    setEnrolError(null);
+    setNeedsFunds(false);
+    try {
+      if (kind === "bundle") await api.learnBuyBundle(targetId);
+      else await api.learnSubscribe(targetId);
       setLoaded(false);
       await load();
     } catch (err) {
@@ -176,9 +207,35 @@ export default function LearnCoursePage() {
                 )}
               </p>
             )}
+            {preview.priceUgx > 0 && (
+              <div className="space-y-1.5">
+                <div className="field-box flex items-center gap-2 rounded-xl px-3 py-1.5">
+                  <input aria-label="Coupon code" value={coupon} onChange={(e) => { setCoupon(e.target.value.toUpperCase()); setQuote(null); }} placeholder="Coupon code" maxLength={40} className="min-w-0 flex-1 text-sm" />
+                  <button type="button" onClick={applyCoupon} className="shrink-0 text-xs font-bold text-gold">Apply</button>
+                </div>
+                {quote && (quote.valid ? <p className="text-xs font-semibold text-green">Coupon applied: you save {ugx(quote.discountUgx)}.</p> : <p className="text-xs text-red-600 dark:text-red-400">{quote.message}</p>)}
+              </div>
+            )}
             <button type="button" onClick={enrol} disabled={busy} className="w-full rounded-xl bg-gold px-4 py-3 text-sm font-semibold text-ink-gold disabled:opacity-50">
-              {busy ? "Enrolling…" : preview.priceUgx > 0 ? `Enrol for ${ugx(preview.priceUgx)} from your wallet` : "Enrol for free"}
+              {busy ? "Enrolling…" : preview.priceUgx > 0 ? `Enrol for ${ugx(quote?.valid ? quote.finalUgx : preview.priceUgx)} from your wallet` : "Enrol for free"}
             </button>
+            {(offers.bundles.length > 0 || offers.plans.length > 0) && (
+              <div className="space-y-2 border-t border-[var(--border-faint)] pt-3">
+                <p className="text-xs font-bold uppercase tracking-wider text-ink-500">Better value</p>
+                {offers.bundles.map((b) => (
+                  <button key={b.id} type="button" disabled={busy} onClick={() => void buy("bundle", b.id)} className="flex w-full items-center justify-between gap-3 rounded-xl border border-[var(--border-faint)] px-3.5 py-3 text-left text-sm disabled:opacity-50">
+                    <span className="min-w-0"><span className="block truncate font-semibold text-ink">{b.title}</span><span className="block text-xs text-ink-500">{b.courseCount} courses together</span></span>
+                    <span className="shrink-0 font-bold text-gold">{ugx(b.priceUgx)}</span>
+                  </button>
+                ))}
+                {offers.plans.map((p) => (
+                  <button key={p.id} type="button" disabled={busy} onClick={() => void buy("plan", p.id)} className="flex w-full items-center justify-between gap-3 rounded-xl border border-[var(--border-faint)] px-3.5 py-3 text-left text-sm disabled:opacity-50">
+                    <span className="min-w-0"><span className="block truncate font-semibold text-ink">{p.title}</span><span className="block text-xs text-ink-500">Every course of this school for {p.days} days</span></span>
+                    <span className="shrink-0 font-bold text-gold">{ugx(p.priceUgx)}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </section>
       )}
