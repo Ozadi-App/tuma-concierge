@@ -42,6 +42,7 @@ import { classroomRoutes } from "./classroom.js";
 import { proRoutes } from "./pro.js";
 import { gradeExam } from "./exam-grading.js";
 import { learnRoutes, mediaRoutes, studioLearningRoutes } from "./learning.js";
+import { salesLearnRoutes, salesStudioRoutes } from "./sales.js";
 import { getLearnSettings } from "./settings.js";
 import { learningReady, studioReady, studioRoutes } from "./studio.js";
 
@@ -83,6 +84,8 @@ authed.use("*", requireAuth);
 
 authed.route("/studio", studioRoutes);
 authed.route("/studio", studioLearningRoutes);
+authed.route("/studio", salesStudioRoutes);
+authed.route("/learn", salesLearnRoutes);
 authed.route("/learn", learnRoutes);
 authed.route("/classroom", classroomRoutes);
 authed.route("/pro", proRoutes);

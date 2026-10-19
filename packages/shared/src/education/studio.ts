@@ -108,6 +108,51 @@ export interface StudioAssignment {
   allowResubmit: boolean;
 }
 
+export interface StudioCoupon {
+  id: string;
+  code: string;
+  percentOff: number | null;
+  amountOffUgx: number | null;
+  courseId: string | null;
+  maxUses: number | null;
+  usedCount: number;
+  expiresAt: string | null;
+  active: boolean;
+}
+
+export interface StudioBundle {
+  id: string;
+  title: string;
+  summary: string;
+  priceUgx: number;
+  status: "draft" | "published";
+  sold: number;
+  courseIds: string[];
+}
+
+export interface StudioPlan {
+  id: string;
+  title: string;
+  summary: string;
+  priceUgx: number;
+  days: number;
+  status: "draft" | "published";
+  sold: number;
+}
+
+export interface SalesOverview {
+  ready: boolean;
+  coupons: StudioCoupon[];
+  bundles: StudioBundle[];
+  plans: StudioPlan[];
+}
+
+/** What a learner sees next to a course: bundles that include it and the school's passes. */
+export interface CourseOffers {
+  bundles: { id: string; title: string; priceUgx: number; courseCount: number }[];
+  plans: { id: string; title: string; priceUgx: number; days: number }[];
+}
+
 export interface StudioLive {
   /** ISO time the lesson starts. */
   startsAt: string;
@@ -324,6 +369,20 @@ export interface LearnSettings {
   assignmentsEnabled: boolean;
   /** Longest written answer to an assignment, in characters. */
   maxSubmissionChars: number;
+  /** Educators can create coupon codes. */
+  couponsEnabled: boolean;
+  /** Largest percentage a coupon may take off, in percent. */
+  maxCouponPercent: number;
+  /** Educators can sell bundles of courses. */
+  bundlesEnabled: boolean;
+  /** Most courses in one bundle. */
+  maxBundleCourses: number;
+  /** Educators can sell school passes (access to every course for a time). */
+  subscriptionsEnabled: boolean;
+  /** Most passes one school can offer. */
+  maxPlansPerSchool: number;
+  /** Longest a pass can last, in days. */
+  maxPlanDays: number;
 }
 
 /** An educator's access to the TV classroom, and what Learn Pro costs. */
@@ -435,6 +494,13 @@ export const DEFAULT_LEARN_SETTINGS: LearnSettings = {
   badgeCoursesThreshold: 3,
   assignmentsEnabled: true,
   maxSubmissionChars: 5000,
+  couponsEnabled: true,
+  maxCouponPercent: 90,
+  bundlesEnabled: true,
+  maxBundleCourses: 20,
+  subscriptionsEnabled: true,
+  maxPlansPerSchool: 5,
+  maxPlanDays: 365,
 };
 
 // ---------------------------------------------------------------------------

@@ -5,6 +5,7 @@ import { clientIp, consume, tooManyRequests } from "../lib/ratelimit.js";
 import { hasColumn } from "../lib/schema.js";
 import { getLearnSettings } from "./settings.js";
 import { courseRules, proReady } from "./rewards.js";
+import { offersForCourse } from "./sales.js";
 import { studioReady } from "./studio.js";
 
 /**
@@ -95,10 +96,13 @@ catalogRoutes.get("/courses/:id", async (c) => {
     const row = need ? ((await db.execute({ sql: "SELECT id, title FROM edu_courses WHERE id = ?", args: [need] })).rows[0] as Row | undefined) : undefined;
     if (row) prerequisite = { id: String(row.id), title: String(row.title) };
   }
+  const offers = await offersForCourse(String(course.id), String(course.school_id));
   return c.json({
     ok: true,
     course: {
       prerequisite,
+      bundles: offers.bundles,
+      plans: offers.plans,
       id: String(course.id),
       stream: String(course.stream),
       title: String(course.title),

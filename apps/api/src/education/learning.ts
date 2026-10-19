@@ -10,6 +10,8 @@ import { getPlatformEnvironment, type PlatformEnvironment } from "../lib/setting
 import { getR2Bucket, uploadResponseHeaders } from "../storage/r2.js";
 import { creditWallet, debitWallet, resolveCustomerByIdentifier } from "../wallet/service.js";
 import { getLearnSettings } from "./settings.js";
+import { chargeAndPayOut, splitPayment } from "./payments.js";
+import { activeSubscription, quoteCoupon, releaseCoupon, reserveCoupon, salesReady, type Coupon } from "./sales.js";
 import { assignmentOf, assignmentsOfCourse, learnerAssignment, pastDue, submissionsOfUser, type SubmissionRow } from "./assignments.js";
 import { BADGES, afterProgress, computeLocks, courseFinished, courseRules, proReady, type Lock } from "./rewards.js";
 import { mark, newSeed, parseQuiz, readAttempt, serveQuestions, signAttempt, type Answer, type StoredQuiz } from "./quiz-engine.js";
@@ -43,36 +45,7 @@ async function ready(): Promise<boolean> {
   return (await studioReady()) && (await learningReady());
 }
 
-/** Splits a sale between the educator and Peebee. The commission is rounded down, so the educator never gets less than their share. */
-export function splitPayment(amount: number, commissionPercent: number): { commission: number; payout: number } {
-  const commission = Math.floor((amount * commissionPercent) / 100);
-  return { commission, payout: amount - commission };
-}
-
-/**
- * Takes `amount` from the payer's wallet and pays the educator their share.
- * If paying the educator fails after the payer was charged, the payer is refunded,
- * so money is never left half-moved.
- */
-async function chargeAndPayOut(input: {
-  payerId: string;
-  ownerId: string;
-  amount: number;
-  commissionPercent: number;
-  environment: PlatformEnvironment;
-  note: string;
-}): Promise<{ ok: true; commission: number } | { ok: false }> {
-  const balance = await debitWallet(input.payerId, input.amount, { type: "order_payment", environment: input.environment, counterpartyId: input.ownerId, note: input.note });
-  if (balance === null) return { ok: false };
-  const { commission, payout } = splitPayment(input.amount, input.commissionPercent);
-  try {
-    if (payout > 0) await creditWallet(input.ownerId, payout, { type: "adjustment", environment: input.environment, counterpartyId: input.payerId, note: input.note });
-  } catch (err) {
-    await creditWallet(input.payerId, input.amount, { type: "refund", environment: input.environment, note: `Refund: ${input.note}` });
-    throw err;
-  }
-  return { ok: true, commission };
-}
+export { splitPayment };
 
 const money = z.number().int().min(1);
 
@@ -435,7 +408,9 @@ async function courseAccess(userId: string, courseId: string): Promise<Access | 
   if (school.owner_id === userId) return { course, school, owner: true };
   if (course.status !== "published" || school.status !== "active") return null;
   const enrolled = await one("SELECT 1 AS yes FROM edu_enrollments WHERE course_id = ? AND user_id = ? AND status = 'active'", [courseId, userId]);
-  return enrolled ? { course, school, owner: false } : null;
+  if (enrolled) return { course, school, owner: false };
+  // A school pass opens every published course of that school while it lasts.
+  return (await activeSubscription(userId, String(school.id))) ? { course, school, owner: false } : null;
 }
 
 const quizOf = (raw: unknown): StoredQuiz | null => parseQuiz(raw);
@@ -551,9 +526,25 @@ learnRoutes.get("/enrollments", async (c) => {
           WHERE e.user_id = ? AND e.status = 'active' ORDER BY e.created_at DESC LIMIT 200`,
     args: [c.get("user").sub],
   });
+  const rows = res.rows as Row[];
+  // Courses reached through a school pass appear too, while the pass lasts.
+  if (await salesReady()) {
+    const have = new Set(rows.map((r) => String(r.course_id)));
+    const via = (
+      await db.execute({
+        sql: `SELECT c.id AS course_id, c.title, c.stream, c.status AS course_status, s.name AS school_name, sub.started_at AS created_at,
+                     (SELECT COUNT(*) FROM edu_lessons l WHERE l.course_id = c.id) AS lessons,
+                     (SELECT COUNT(*) FROM edu_lesson_progress p WHERE p.user_id = ? AND p.course_id = c.id) AS done
+              FROM edu_subscriptions sub JOIN edu_courses c ON c.school_id = sub.school_id AND c.status = 'published' JOIN edu_schools s ON s.id = c.school_id AND s.status = 'active'
+              WHERE sub.user_id = ? AND sub.expires_at > datetime('now') ORDER BY c.title ASC LIMIT 200`,
+        args: [c.get("user").sub, c.get("user").sub],
+      })
+    ).rows as Row[];
+    for (const r of via) if (!have.has(String(r.course_id))) { have.add(String(r.course_id)); rows.push({ ...r, id: `pass_${String(r.course_id)}` }); }
+  }
   return c.json({
     ok: true,
-    enrollments: (res.rows as Row[]).map((r) => ({
+    enrollments: rows.map((r) => ({
       id: String(r.id),
       courseId: String(r.course_id),
       title: String(r.title),
@@ -587,9 +578,22 @@ learnRoutes.post("/courses/:id/enroll", async (c) => {
     }
   }
 
-  const price = Number(course.price_ugx);
-  if (price > 0 && !settings.paidCoursesEnabled) {
+  const listPrice = Number(course.price_ugx);
+  if (listPrice > 0 && !settings.paidCoursesEnabled) {
     return fail(c, { status: 503, error: "paid_courses_off", message: "Paid courses aren't available right now." });
+  }
+  // A school pass already covers this course.
+  if (listPrice > 0 && (await activeSubscription(user.sub, String(school.id)))) {
+    return c.json({ ok: true, enrolled: true, paidUgx: 0, viaPass: true });
+  }
+  let coupon: Coupon | null = null;
+  let price = listPrice;
+  const asked = ((await c.req.json().catch(() => null)) as { coupon?: unknown } | null)?.coupon;
+  if (typeof asked === "string" && asked.trim() && listPrice > 0) {
+    const q = await quoteCoupon(asked, course, user.sub, listPrice, settings);
+    if (!q.ok) return fail(c, { status: 400, error: "coupon_invalid", message: q.message });
+    coupon = q.coupon;
+    price = listPrice - q.discount;
   }
   const environment = await getPlatformEnvironment();
 
@@ -612,6 +616,12 @@ learnRoutes.post("/courses/:id/enroll", async (c) => {
     }
   }
 
+  // The coupon is used up before any money moves, so two taps can't use its last place twice.
+  if (coupon && !(await reserveCoupon(coupon, user.sub, String(course.id), listPrice - price))) {
+    await db.execute({ sql: "DELETE FROM edu_enrollments WHERE course_id = ? AND user_id = ? AND status = 'pending'", args: [course.id as string, user.sub] });
+    return fail(c, { status: 409, error: "coupon_used_up", message: "That coupon was just used up. Try again without it." });
+  }
+
   let commission = 0;
   if (price > 0) {
     const paid = await chargeAndPayOut({
@@ -623,6 +633,7 @@ learnRoutes.post("/courses/:id/enroll", async (c) => {
       note: `Peebee Learn: ${String(course.title)}`,
     }).catch(() => null);
     if (!paid || !paid.ok) {
+      if (coupon) await releaseCoupon(coupon, user.sub);
       await db.execute({ sql: "DELETE FROM edu_enrollments WHERE course_id = ? AND user_id = ? AND status = 'pending'", args: [course.id as string, user.sub] });
       return c.json({ error: "insufficient_wallet", message: `Add UGX ${price.toLocaleString("en-UG")} to your Peebee wallet to enrol.` }, 402);
     }
