@@ -38,6 +38,7 @@ import { db } from "../db/client.js";
 import { clearFailures, checkLockout, consume, recordFailure, tooManyRequests } from "../lib/ratelimit.js";
 import { catalogRoutes } from "./catalog.js";
 import { classroomRoutes } from "./classroom.js";
+import { proRoutes } from "./pro.js";
 import { gradeExam } from "./exam-grading.js";
 import { learnRoutes, mediaRoutes, studioLearningRoutes } from "./learning.js";
 import { getLearnSettings } from "./settings.js";
@@ -82,6 +83,7 @@ authed.route("/studio", studioRoutes);
 authed.route("/studio", studioLearningRoutes);
 authed.route("/learn", learnRoutes);
 authed.route("/classroom", classroomRoutes);
+authed.route("/pro", proRoutes);
 
 // ---- Input helpers -------------------------------------------------------
 

@@ -5,8 +5,10 @@ import { requireAuth } from "../auth/middleware.js";
 import { newId } from "../lib/ids.js";
 import { randomInt } from "../lib/random.js";
 import { clientIp, consume, tooManyRequests } from "../lib/ratelimit.js";
+import { hasColumn } from "../lib/schema.js";
 import { getLearnSettings } from "./settings.js";
 import { syncAutopilot } from "./autopilot.js";
+import { tvProRequired } from "./pro.js";
 import { signMediaToken } from "./learning.js";
 import { body as readBody, count, fail, isResponse, notFound, one, studioReady } from "./studio.js";
 import type { LearnSettings } from "@peebee/shared";
@@ -66,6 +68,23 @@ function randomHex(bytes: number): string {
 const PAIR_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 const pairCode = () => Array.from({ length: 6 }, () => PAIR_ALPHABET[randomInt(PAIR_ALPHABET.length)]).join("");
 const sessionCode = () => String(100000 + randomInt(900000));
+
+/** The practice classes on offer: slot, the code that opens them, and who teaches. Empty when they are off or not installed. */
+async function trialClasses(settings: LearnSettings): Promise<{ slot: "a" | "b"; code: string; title: string; hostName: string; stream: string | null }[]> {
+  if (!settings.liveEnabled || !settings.trialClassesEnabled) return [];
+  const res = await db
+    .execute({
+      sql: `SELECT s.id, s.title, u.name AS host_name, k.stream
+            FROM edu_live_sessions s JOIN users u ON u.id = s.host_id LEFT JOIN edu_courses k ON k.id = s.course_id
+            WHERE s.autopilot = 1 AND s.status = 'live' AND s.id IN ('liv_demo_a', 'liv_demo_b') ORDER BY s.id`,
+      args: [],
+    })
+    .catch(() => ({ rows: [] as Row[] }));
+  return (res.rows as Row[]).map((r) => {
+    const slot = r.id === "liv_demo_a" ? "a" : "b";
+    return { slot, code: slot === "a" ? settings.trialCodeA : settings.trialCodeB, title: String(r.title), hostName: String(r.host_name), stream: r.stream ? String(r.stream) : null };
+  });
+}
 
 /** A fresh session code that isn't one of the reserved ones (the trial class codes), or null if the draws keep landing on them. */
 export function freeSessionCode(reserved: string[], draw: () => string = sessionCode): string | null {
@@ -176,7 +195,10 @@ const cueBody = z.object({ kind: z.enum(KINDS), target: z.enum(["screen", "phone
 
 export const tvRoutes = new Hono();
 
-type Device = { id: string; owner_id: string | null; name: string; status: string; pair_code: string | null; pair_expires_at: string | null };
+type Device = { id: string; owner_id: string | null; name: string; status: string; pair_code: string | null; pair_expires_at: string | null; trial_slot?: string | null };
+
+/** The practice class this TV is showing, if any ("a" or "b"). */
+const trialOf = (device: Device): "a" | "b" | null => (device.trial_slot === "a" || device.trial_slot === "b" ? device.trial_slot : null);
 
 async function deviceAuth(c: Context, next: Next) {
   const header = c.req.header("Authorization") ?? "";
@@ -224,7 +246,7 @@ tvRoutes.get("/me", deviceAuth, async (c) => {
   const settings = await getLearnSettings();
   if (device.status === "paired") {
     const owner = await one("SELECT name FROM users WHERE id = ?", [device.owner_id]);
-    return c.json({ ok: true, status: "paired", name: device.name, ownerName: owner ? String(owner.name) : "", pollSeconds: settings.livePollSeconds });
+    return c.json({ ok: true, status: "paired", name: device.name, ownerName: owner ? String(owner.name) : "", pollSeconds: settings.livePollSeconds, trial: trialOf(device) });
   }
   let code = device.pair_code;
   let expires = device.pair_expires_at;
@@ -241,7 +263,31 @@ tvRoutes.get("/me", deviceAuth, async (c) => {
       }
     }
   }
-  return c.json({ ok: true, status: "unpaired", code, expiresInSeconds: Math.max(0, Math.round(((parseTime(expires) ?? 0) - Date.now()) / 1000)), pollSeconds: settings.livePollSeconds });
+  return c.json({ ok: true, status: "unpaired", code, expiresInSeconds: Math.max(0, Math.round(((parseTime(expires) ?? 0) - Date.now()) / 1000)), pollSeconds: settings.livePollSeconds, trial: trialOf(device) });
+});
+
+/** The practice classes a TV can show, before it is paired or after. Public: nothing here is private. */
+tvRoutes.get("/trial", async (c) => {
+  const quota = await consume(`tv-trial-list:${clientIp(c)}`, 60, 60);
+  if (!quota.allowed) return tooManyRequests(c, quota, "Too many requests. Try again in a moment.");
+  return c.json({ ok: true, classes: await trialClasses(await getLearnSettings()) });
+});
+
+/** Put a practice class on this screen. Phones join the very same class with its code. */
+tvRoutes.post("/trial", deviceAuth, async (c) => {
+  const parsed = await readBody(c, z.object({ slot: z.enum(["a", "b"]) }));
+  if (!parsed.ok) return parsed.res;
+  if (!(await hasColumn("tv_devices", "trial_slot"))) return c.json({ error: "tv_trial_upgrade_pending", message: "Practice classes on the TV are being set up. Try again shortly." }, 503);
+  const classes = await trialClasses(await getLearnSettings());
+  if (!classes.some((k) => k.slot === parsed.data.slot)) return fail(c, { status: 404, error: "no_trial", message: "That practice class isn't available right now." });
+  await db.execute({ sql: "UPDATE tv_devices SET trial_slot = ? WHERE id = ?", args: [parsed.data.slot, getDevice(c).id] });
+  return c.json({ ok: true });
+});
+
+/** Stop showing the practice class. */
+tvRoutes.delete("/trial", deviceAuth, async (c) => {
+  if (await hasColumn("tv_devices", "trial_slot")) await db.execute({ sql: "UPDATE tv_devices SET trial_slot = NULL WHERE id = ?", args: [getDevice(c).id] });
+  return c.json({ ok: true });
 });
 
 /** A TV that is being handed on or sold removes itself, so nothing of the old owner's stays on it. */
@@ -259,6 +305,8 @@ userRoutes.post("/pair", async (c) => {
   const user = c.get("user");
   const settings = await getLearnSettings();
   if (!settings.liveEnabled) return fail(c, { status: 503, error: "service_disabled", message: "Live classroom is switched off right now." });
+  const needsPro = await tvProRequired(c, user.sub, settings);
+  if (needsPro) return needsPro;
   const quota = await consume(`tv-claim:${user.sub}`, 10, 10 * 60);
   if (!quota.allowed) return tooManyRequests(c, quota, "Too many tries. Wait a few minutes and check the code on the TV.");
   const parsed = await readBody(c, z.object({ code: z.string().trim().toUpperCase().regex(/^[A-Z0-9]{6}$/, "Enter the 6-character code shown on the TV"), name: text(60).default("") }));
@@ -445,7 +493,7 @@ async function screenView(session: Row, hostId: string) {
   const view: Row = {
     version: Number(session.version),
     serverNow: nowIso(),
-    session: { id: String(session.id), title: String(session.title), code, joinUrl: joinUrl(code), participants: members.total, present: members.present, hands: members.hands },
+    session: { id: String(session.id), title: String(session.title), code, joinUrl: joinUrl(code), participants: members.total, present: members.present, hands: members.hands, trial: Number(session.autopilot) === 1 },
     playback: json<Row>(session.playback_json, { playing: true }),
     cue: null,
   };
@@ -509,9 +557,21 @@ async function screenView(session: Row, hostId: string) {
 
 tvRoutes.get("/screen/state", deviceAuth, async (c) => {
   const device = getDevice(c);
+  const settings = await getLearnSettings();
+
+  // A practice class runs itself and needs no pairing: the TV just shows it, and phones join with the code.
+  const slot = trialOf(device);
+  if (slot && settings.liveEnabled && settings.trialClassesEnabled) {
+    const row = await one("SELECT * FROM edu_live_sessions WHERE id = ? AND status = 'live' AND autopilot = 1", [`liv_demo_${slot}`]).catch(() => null);
+    if (row) {
+      const synced = await syncAutopilot(row);
+      const code = slot === "a" ? settings.trialCodeA : settings.trialCodeB;
+      return c.json({ ok: true, device: { name: device.name }, pollSeconds: settings.livePollSeconds, ...(await screenView({ ...synced, code }, String(synced.host_id))) });
+    }
+  }
+
   if (device.status !== "paired") return c.json({ error: "not_paired", message: "This screen isn't paired yet." }, 409);
   const session = await one("SELECT * FROM edu_live_sessions WHERE screen_device_id = ? AND status = 'live' ORDER BY created_at DESC LIMIT 1", [device.id]);
-  const settings = await getLearnSettings();
   if (!session) return c.json({ ok: true, device: { name: device.name }, session: null, pollSeconds: settings.livePollSeconds });
   return c.json({ ok: true, device: { name: device.name }, pollSeconds: settings.livePollSeconds, ...(await screenView(session, String(session.host_id))) });
 });
@@ -581,6 +641,8 @@ classroomRoutes.post("/sessions", async (c) => {
 
   let deviceId: string | null = null;
   if (d.screenDeviceId) {
+    const needsPro = await tvProRequired(c, user.sub, settings);
+    if (needsPro) return needsPro;
     const device = await one("SELECT id FROM tv_devices WHERE id = ? AND owner_id = ? AND status = 'paired'", [d.screenDeviceId, user.sub]);
     if (!device) return notFound(c, "screen");
     if (await one("SELECT id FROM edu_live_sessions WHERE screen_device_id = ? AND status = 'live'", [device.id])) {
@@ -701,6 +763,8 @@ classroomRoutes.patch("/sessions/:id", async (c) => {
     if (parsed.data.screenDeviceId === null) {
       await db.execute({ sql: "UPDATE edu_live_sessions SET screen_device_id = NULL, screen_cue_id = NULL WHERE id = ?", args: [session.id as string] });
     } else {
+      const needsPro = await tvProRequired(c, user.sub, await getLearnSettings());
+      if (needsPro) return needsPro;
       const device = await one("SELECT id FROM tv_devices WHERE id = ? AND owner_id = ? AND status = 'paired'", [parsed.data.screenDeviceId, user.sub]);
       if (!device) return notFound(c, "screen");
       const busy = await one("SELECT id FROM edu_live_sessions WHERE screen_device_id = ? AND status = 'live' AND id != ?", [device.id, session.id]);
@@ -775,6 +839,10 @@ classroomRoutes.post("/cues/:id/push", async (c) => {
   const kind = cue.kind as Kind;
   const target = (parsed.data.target ?? cue.target) as Target;
   if (!ALLOWED_TARGETS[kind].includes(target)) return fail(c, { status: 400, error: "bad_target", message: `A ${kind} can go to: ${ALLOWED_TARGETS[kind].join(", ")}.` });
+  if (target !== "phones") {
+    const needsPro = await tvProRequired(c, c.get("user").sub, await getLearnSettings());
+    if (needsPro) return needsPro;
+  }
   if (target !== "phones" && !session.screen_device_id) return fail(c, { status: 409, error: "no_screen", message: "No TV is connected to this session. Pick a screen first, or send it to phones only." });
 
   const p = json<Row>(cue.payload_json, {});
@@ -867,25 +935,7 @@ classroomRoutes.post("/sessions/:id/hands/:userId/clear", async (c) => {
 // ---------------------------------------------------------------------------
 
 /** The trial classes anyone can try, with the codes that open them. Empty when trial classes are off or not installed. */
-classroomRoutes.get("/trial", async (c) => {
-  const settings = await getLearnSettings();
-  if (!settings.liveEnabled || !settings.trialClassesEnabled) return c.json({ ok: true, classes: [] });
-  const res = await db
-    .execute({
-      sql: `SELECT s.id, s.title, u.name AS host_name, k.stream
-            FROM edu_live_sessions s JOIN users u ON u.id = s.host_id LEFT JOIN edu_courses k ON k.id = s.course_id
-            WHERE s.autopilot = 1 AND s.status = 'live' AND s.id IN ('liv_demo_a', 'liv_demo_b') ORDER BY s.id`,
-      args: [],
-    })
-    .catch(() => ({ rows: [] as Row[] }));
-  const classes = (res.rows as Row[]).map((r) => ({
-    code: r.id === "liv_demo_a" ? settings.trialCodeA : settings.trialCodeB,
-    title: String(r.title),
-    hostName: String(r.host_name),
-    stream: r.stream ? String(r.stream) : null,
-  }));
-  return c.json({ ok: true, classes });
-});
+classroomRoutes.get("/trial", async (c) => c.json({ ok: true, classes: await trialClasses(await getLearnSettings()) }));
 
 classroomRoutes.post("/join", async (c) => {
   const settings = await enabled(c);
