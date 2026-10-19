@@ -1,7 +1,7 @@
 "use client";
 
 import type { LearnerCourse, LearnerLesson } from "@peebee/shared";
-import { AudioLines, BookOpenText, CheckCircle2, Circle, ClipboardCheck, GraduationCap, Play, Presentation, Radio, Video } from "lucide-react";
+import { AudioLines, PenLine, BookOpenText, CheckCircle2, Circle, ClipboardCheck, GraduationCap, Lock, Play, Presentation, Radio, Video } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState } from "react";
@@ -22,6 +22,7 @@ function lessonIcon(l: LearnerLesson) {
     case "slides": return Presentation;
     case "audio": return AudioLines;
     case "live": return Radio;
+    case "assignment": return PenLine;
     case "text": return BookOpenText;
     default: return Video;
   }
@@ -78,7 +79,7 @@ export default function CoursePage() {
       {data?.kind === "enrolled" && (() => {
         const course = data.course;
         const lessons = course.modules.flatMap((m) => m.lessons);
-        const next = lessons.find((l) => !l.completed) ?? lessons[0];
+        const next = lessons.find((l) => !l.completed && !l.locked) ?? lessons.find((l) => !l.locked);
         return (
           <div className="space-y-[1.6rem]">
             <div className="flex items-center gap-[1.6rem]">
@@ -112,6 +113,17 @@ export default function CoursePage() {
                 <ul className="grid grid-cols-2 gap-[0.7rem]">
                   {m.lessons.map((l) => {
                     const Icon = lessonIcon(l);
+                    if (l.locked) {
+                      return (
+                        <li key={l.id}>
+                          <div className="flex items-center gap-[0.9rem] rounded-[1rem] border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] px-[1.1rem] py-[0.8rem] opacity-60" aria-disabled="true">
+                            <Lock className="h-[1.5rem] w-[1.5rem] shrink-0" aria-label="Locked" />
+                            <span className="min-w-0 flex-1 truncate text-[1.2rem] font-bold">{l.title}</span>
+                            <span className="shrink-0 text-[0.95rem] opacity-80">{l.locked.message}</span>
+                          </div>
+                        </li>
+                      );
+                    }
                     return (
                       <li key={l.id}>
                         <Link

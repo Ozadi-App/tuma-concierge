@@ -1,7 +1,7 @@
 "use client";
 
 import type { EducationStream, StudioClass, StudioSchool } from "@peebee/shared";
-import { Layers, Pencil, Plus, Receipt, Trash2 } from "lucide-react";
+import { Layers, Pencil, Plus, Receipt, Ticket, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -125,6 +125,9 @@ export default function SchoolPage() {
           </div>
           {mode === "none" && (
             <div className="flex flex-wrap gap-2">
+              <LinkButton href={`/schools/${school.id}/sales`} variant="secondary">
+                <Ticket className="h-4 w-4" aria-hidden /> Sales tools
+              </LinkButton>
               <LinkButton href={`/schools/${school.id}/fees`} variant="secondary">
                 <Receipt className="h-4 w-4" aria-hidden /> School fees
               </LinkButton>

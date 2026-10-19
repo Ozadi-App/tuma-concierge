@@ -17,7 +17,7 @@ export const SCHOOL_KINDS: { id: SchoolKind; label: string }[] = [
 ];
 
 /** What one item in a class section is. Quizzes and exams are items of their own, placed wherever the creator likes. */
-export type LessonContentType = "text" | "slides" | "audio" | "video" | "live" | "quiz" | "exam";
+export type LessonContentType = "text" | "slides" | "audio" | "video" | "live" | "quiz" | "exam" | "assignment";
 
 export const LESSON_CONTENT_TYPES: { id: LessonContentType; label: string; hint: string }[] = [
   { id: "text", label: "Text", hint: "A written lesson" },
@@ -27,6 +27,7 @@ export const LESSON_CONTENT_TYPES: { id: LessonContentType; label: string; hint:
   { id: "live", label: "Live video", hint: "A scheduled live lesson on Zoom, Meet or Jitsi" },
   { id: "quiz", label: "Quiz", hint: "Questions that can be retaken" },
   { id: "exam", label: "Exam", hint: "A timed test, usually one attempt" },
+  { id: "assignment", label: "Assignment", hint: "Work the learner hands in and you mark" },
 ];
 
 export const isAssessment = (type: string): boolean => type === "quiz" || type === "exam";
@@ -97,6 +98,127 @@ export interface StudioSlide {
 }
 
 /** A live lesson on someone else's meeting tool. */
+/** What an educator sets for an assignment item. */
+export interface StudioAssignment {
+  maxPoints: number;
+  /** Percent of the points needed for the item to count as done. */
+  passPercent: number;
+  /** ISO time after which nothing can be handed in, or null. */
+  dueAt: string | null;
+  allowResubmit: boolean;
+}
+
+export interface StudioCoupon {
+  id: string;
+  code: string;
+  percentOff: number | null;
+  amountOffUgx: number | null;
+  courseId: string | null;
+  maxUses: number | null;
+  usedCount: number;
+  expiresAt: string | null;
+  active: boolean;
+}
+
+export interface StudioBundle {
+  id: string;
+  title: string;
+  summary: string;
+  priceUgx: number;
+  status: "draft" | "published";
+  sold: number;
+  courseIds: string[];
+}
+
+export interface StudioPlan {
+  id: string;
+  title: string;
+  summary: string;
+  priceUgx: number;
+  days: number;
+  status: "draft" | "published";
+  sold: number;
+}
+
+export interface SalesOverview {
+  ready: boolean;
+  coupons: StudioCoupon[];
+  bundles: StudioBundle[];
+  plans: StudioPlan[];
+}
+
+/** What a learner sees next to a course: bundles that include it and the school's passes. */
+export interface CourseOffers {
+  bundles: { id: string; title: string; priceUgx: number; courseCount: number }[];
+  plans: { id: string; title: string; priceUgx: number; days: number }[];
+}
+
+export interface CohortInfo {
+  id: string;
+  name: string;
+  startsAt: string;
+  enrolUntil: string | null;
+  seatsLeft: number | null;
+}
+
+export interface StudioCohort {
+  id: string;
+  name: string;
+  startsAt: string;
+  enrolUntil: string | null;
+  capacity: number | null;
+  members: number;
+}
+
+export interface CourseReview {
+  userId?: string;
+  name: string;
+  rating: number;
+  body: string;
+  reply: string;
+  createdAt: string;
+}
+
+export interface QaAnswer {
+  id: string;
+  by: string;
+  byTeacher: boolean;
+  body: string;
+  createdAt: string;
+  mine: boolean;
+  canDelete: boolean;
+}
+
+export interface QaQuestion {
+  id: string;
+  lessonId: string | null;
+  askedBy: string;
+  body: string;
+  createdAt: string;
+  mine: boolean;
+  canDelete: boolean;
+  answers: QaAnswer[];
+}
+
+export interface Announcement {
+  id: string;
+  title: string;
+  body: string;
+  createdAt: string;
+}
+
+/** Everything the educator manages for a course beyond its content. */
+export interface CourseCommunity {
+  ready: boolean;
+  owner: boolean;
+  instructors: { userId: string; name: string }[];
+  cohorts: StudioCohort[];
+  reviews: (CourseReview & { userId: string })[];
+  rating: { average: number | null; count: number };
+  announcements: Announcement[];
+  openQuestions: number;
+}
+
 export interface StudioLive {
   /** ISO time the lesson starts. */
   startsAt: string;
@@ -176,6 +298,8 @@ export interface StudioLesson {
   slides: StudioSlide[];
   /** Live lessons. */
   live: StudioLive | null;
+  /** Assignments. */
+  assignment?: StudioAssignment | null;
   /** Quizzes and exams. */
   quiz: StudioQuiz | null;
   /** The uploaded video or audio, if any. */
@@ -183,6 +307,8 @@ export interface StudioLesson {
 }
 
 export interface StudioModule {
+  /** Opens this many days after a learner enrols. 0 means straight away. */
+  dripDays?: number;
   id: string;
   courseId: string;
   title: string;
@@ -191,8 +317,20 @@ export interface StudioModule {
   lessons: StudioLesson[];
 }
 
+export interface StudioCourseRules {
+  /** Items must be finished in order. */
+  sequential: boolean;
+  /** A course the learner must finish before enrolling. */
+  prerequisiteCourseId: string | null;
+  /** Issue a certificate on completion. */
+  certificateEnabled: boolean;
+}
+
 export interface StudioCourseDetail extends StudioCourse {
   modules: StudioModule[];
+  rules: StudioCourseRules;
+  /** Other courses in the same school that can be a prerequisite. */
+  prerequisiteOptions: { id: string; title: string }[];
 }
 
 /** Every limit and switch the Learn Studio obeys. Set in Admin → Settings → Peebee Learn. */
@@ -283,6 +421,52 @@ export interface LearnSettings {
   liveLessonHosts: string;
   /** How many minutes before the start a learner can open a live lesson. */
   liveLessonEarlyMinutes: number;
+  /** Issue a certificate when a learner finishes a course. */
+  certificatesEnabled: boolean;
+  /** Award badges for milestones. */
+  badgesEnabled: boolean;
+  /** Educators can open sections some days after enrolment. */
+  dripEnabled: boolean;
+  /** Educators can require items in order, or another course first. */
+  prerequisitesEnabled: boolean;
+  /** Completed courses that earn the multi-course badge. */
+  badgeCoursesThreshold: number;
+  /** Educators can set assignments and mark what learners hand in. */
+  assignmentsEnabled: boolean;
+  /** Longest written answer to an assignment, in characters. */
+  maxSubmissionChars: number;
+  /** Educators can create coupon codes. */
+  couponsEnabled: boolean;
+  /** Largest percentage a coupon may take off, in percent. */
+  maxCouponPercent: number;
+  /** Educators can sell bundles of courses. */
+  bundlesEnabled: boolean;
+  /** Most courses in one bundle. */
+  maxBundleCourses: number;
+  /** Educators can sell school passes (access to every course for a time). */
+  subscriptionsEnabled: boolean;
+  /** Most passes one school can offer. */
+  maxPlansPerSchool: number;
+  /** Longest a pass can last, in days. */
+  maxPlanDays: number;
+  /** Learners can rate and review a course. */
+  reviewsEnabled: boolean;
+  /** Progress a learner needs before they can review, in percent. */
+  reviewMinProgressPercent: number;
+  /** Learners can ask questions on a course and lessons, and teachers answer. */
+  qaEnabled: boolean;
+  /** Longest question, answer or announcement, in characters. */
+  maxQaChars: number;
+  /** Questions and answers one person may post per hour. */
+  qaPostsPerHour: number;
+  /** Educators can post announcements to a course. */
+  announcementsEnabled: boolean;
+  /** Educators can run cohorts: intakes with a start date and a seat limit. */
+  cohortsEnabled: boolean;
+  /** Educators can add other teachers to a course. */
+  instructorsEnabled: boolean;
+  /** Most extra teachers on one course. */
+  maxInstructorsPerCourse: number;
 }
 
 /** An educator's access to the TV classroom, and what Learn Pro costs. */
@@ -387,6 +571,29 @@ export const DEFAULT_LEARN_SETTINGS: LearnSettings = {
   liveLessonsEnabled: true,
   liveLessonHosts: "zoom.us,meet.google.com,meet.jit.si,teams.microsoft.com,whereby.com",
   liveLessonEarlyMinutes: 15,
+  certificatesEnabled: true,
+  badgesEnabled: true,
+  dripEnabled: true,
+  prerequisitesEnabled: true,
+  badgeCoursesThreshold: 3,
+  assignmentsEnabled: true,
+  maxSubmissionChars: 5000,
+  couponsEnabled: true,
+  maxCouponPercent: 90,
+  bundlesEnabled: true,
+  maxBundleCourses: 20,
+  subscriptionsEnabled: true,
+  maxPlansPerSchool: 5,
+  maxPlanDays: 365,
+  reviewsEnabled: true,
+  reviewMinProgressPercent: 25,
+  qaEnabled: true,
+  maxQaChars: 1500,
+  qaPostsPerHour: 20,
+  announcementsEnabled: true,
+  cohortsEnabled: true,
+  instructorsEnabled: true,
+  maxInstructorsPerCourse: 5,
 };
 
 // ---------------------------------------------------------------------------
@@ -417,6 +624,67 @@ export interface LearnerQuiz {
   attemptsUsed: number;
 }
 
+export interface LearnerSubmission {
+  body: string;
+  link: string;
+  status: "submitted" | "graded";
+  score: number | null;
+  feedback: string;
+  submittedAt: string;
+}
+
+export interface LearnerAssignment {
+  maxPoints: number;
+  passPercent: number;
+  dueAt: string | null;
+  allowResubmit: boolean;
+  /** Whether it can still be handed in. */
+  open: boolean;
+  submission: LearnerSubmission | null;
+}
+
+/** An assignment as the educator sees one learner's work. */
+export interface StudioSubmission {
+  id: string;
+  userId: string;
+  learnerName: string;
+  body: string;
+  link: string;
+  status: "submitted" | "graded";
+  score: number | null;
+  feedback: string;
+  submittedAt: string;
+  gradedAt: string | null;
+}
+
+export interface GradebookItem {
+  lessonId: string;
+  title: string;
+  contentType: LessonContentType;
+}
+
+export interface GradebookCell {
+  lessonId: string;
+  done: boolean;
+  /** Percent, for quizzes, exams and graded assignments. */
+  scorePercent: number | null;
+  /** An assignment handed in and waiting to be marked. */
+  needsMarking?: boolean;
+}
+
+export interface GradebookRow {
+  userId: string;
+  name: string;
+  progressPercent: number;
+  averagePercent: number | null;
+  cells: GradebookCell[];
+}
+
+export interface Gradebook {
+  items: GradebookItem[];
+  rows: GradebookRow[];
+}
+
 export interface LearnerLive {
   startsAt: string;
   durationMinutes: number;
@@ -436,8 +704,11 @@ export interface LearnerLesson {
   completed: boolean;
   bestScorePercent: number | null;
   slideCount: number;
+  /** Set while the item can't be opened yet. */
+  locked: { reason: "drip" | "sequence"; opensAt: string | null; message: string } | null;
   quiz: LearnerQuiz | null;
   live: LearnerLive | null;
+  assignment?: LearnerAssignment | null;
 }
 
 /** One lesson in full, for the player. */
@@ -453,7 +724,28 @@ export interface LearnerCourse {
   stream: EducationStream;
   schoolName: string;
   progressPercent: number;
-  modules: { id: string; title: string; description: string; lessons: LearnerLesson[] }[];
+  /** The id of the certificate earned for this course, if any. */
+  certificateId?: string | null;
+  modules: { id: string; title: string; description: string; opensAt?: string | null; lessons: LearnerLesson[] }[];
+}
+
+export interface LearnerCertificate {
+  id: string;
+  code: string;
+  courseId: string;
+  courseTitle: string;
+  schoolName: string;
+  learnerName: string;
+  scorePercent: number | null;
+  issuedAt: string;
+}
+
+export interface LearnerBadge {
+  key: string;
+  title: string;
+  description: string;
+  icon: string;
+  awardedAt: string | null;
 }
 
 /** A question as served to a learner: no answers. Positions in `options`/`right` are what answers refer to. */

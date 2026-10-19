@@ -1,12 +1,14 @@
 "use client";
 
 import { CURRICULUM_FRAMEWORKS, LESSON_CONTENT_TYPES, isAssessment, type CourseStudent, type LessonContentType, type StudioClass, type StudioCourseDetail, type StudioLesson, type StudioSchool } from "@peebee/shared";
-import { ArrowDown, ArrowUp, AudioLines, BookOpenText, ClipboardCheck, Eye, EyeOff, GraduationCap, Layers, Pencil, Plus, Presentation, Radio, Trash2, Upload, Users, Video, type LucideIcon } from "lucide-react";
+import { ArrowDown, ArrowUp, AudioLines, PenLine, BookOpenText, ClipboardCheck, Eye, EyeOff, GraduationCap, Layers, Pencil, Plus, Presentation, Radio, Trash2, Upload, Users, Video, type LucideIcon } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CoverPicker } from "../../../components/studio/CoverPicker";
 import { CourseForm, ModuleForm, type CourseInput } from "../../../components/studio/forms";
 import { ItemForm, type ItemInput } from "../../../components/studio/ItemForm";
+import { Community } from "../../../components/studio/Community";
+import { GradebookTable, Marking } from "../../../components/studio/Marking";
 import { Button, Chip, Crumbs, EmptyState, Notice, Skeleton, cardCls } from "../../../components/ui";
 import { api, errorMessage } from "../../../lib/api";
 import { useStudioSettings } from "../../../lib/studio-config";
@@ -21,7 +23,7 @@ type Editing =
   | { kind: "lesson-edit"; id: string };
 
 const TYPE_LABEL = Object.fromEntries(LESSON_CONTENT_TYPES.map((t) => [t.id, t.label]));
-const TYPE_ICON: Record<LessonContentType, LucideIcon> = { text: BookOpenText, slides: Presentation, audio: AudioLines, video: Video, live: Radio, quiz: ClipboardCheck, exam: GraduationCap };
+const TYPE_ICON: Record<LessonContentType, LucideIcon> = { text: BookOpenText, slides: Presentation, audio: AudioLines, video: Video, live: Radio, quiz: ClipboardCheck, exam: GraduationCap, assignment: PenLine };
 
 const whenLabel = (iso: string) => new Date(iso).toLocaleString("en-UG", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
@@ -41,6 +43,8 @@ export default function CoursePage() {
   const [students, setStudents] = useState<CourseStudent[]>([]);
   const [uploading, setUploading] = useState<string | null>(null);
   const [attendance, setAttendance] = useState<Record<string, string>>({});
+  const [marking, setMarking] = useState<string | null>(null);
+  const [gradeKey, setGradeKey] = useState(0);
 
   const load = useCallback(async () => {
     try {
@@ -249,6 +253,65 @@ export default function CoursePage() {
         />
       )}
 
+      {canBuild && editing.kind === "none" && (
+        <section aria-labelledby="rules-heading" className={`${cardCls} space-y-3 p-4`}>
+          <h3 id="rules-heading" className="text-sm font-semibold text-ink">
+            Class rules
+          </h3>
+          {settings.prerequisitesEnabled && (
+            <label className="flex items-start gap-2 text-sm text-ink">
+              <input
+                type="checkbox"
+                checked={course.rules.sequential}
+                disabled={busy}
+                onChange={(e) => void run(() => api.studioSetCourseRules(id, { ...course.rules, sequential: e.target.checked }), "Rules saved.")}
+                className="mt-0.5 h-4 w-4 accent-[rgb(var(--color-gold))]"
+              />
+              <span>
+                Learners go in order
+                <span className="block text-xs text-ink-500">Each item opens when the ones before it are done. Live lessons never hold anyone back.</span>
+              </span>
+            </label>
+          )}
+          {settings.prerequisitesEnabled && (
+            <div className="space-y-1">
+              <label htmlFor="prereq" className="block text-xs font-semibold text-ink-500">
+                Learners must finish this course first
+              </label>
+              <select
+                id="prereq"
+                value={course.rules.prerequisiteCourseId ?? ""}
+                disabled={busy}
+                onChange={(e) => void run(() => api.studioSetCourseRules(id, { ...course.rules, prerequisiteCourseId: e.target.value || null }), "Rules saved.")}
+                className="w-full rounded-xl border border-[var(--border-faint)] text-sm text-ink"
+              >
+                <option value="">None</option>
+                {course.prerequisiteOptions.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.title}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+          {settings.certificatesEnabled && (
+            <label className="flex items-start gap-2 text-sm text-ink">
+              <input
+                type="checkbox"
+                checked={course.rules.certificateEnabled}
+                disabled={busy}
+                onChange={(e) => void run(() => api.studioSetCourseRules(id, { ...course.rules, certificateEnabled: e.target.checked }), "Rules saved.")}
+                className="mt-0.5 h-4 w-4 accent-[rgb(var(--color-gold))]"
+              />
+              <span>
+                Give a certificate when a learner finishes
+                <span className="block text-xs text-ink-500">Every item done, including quizzes and exams.</span>
+              </span>
+            </label>
+          )}
+        </section>
+      )}
+
       <section aria-labelledby="syllabus-heading" className="space-y-3">
         <div className="flex items-center justify-between gap-3">
           <h3 id="syllabus-heading" className="text-base font-semibold text-ink">
@@ -306,6 +369,26 @@ export default function CoursePage() {
                     <p className="text-[11px] font-bold uppercase tracking-wider text-gold">Section {mi + 1}</p>
                     <h4 className="text-sm font-semibold text-ink">{mod.title}</h4>
                     {mod.description && <p className="text-xs text-ink-500">{mod.description}</p>}
+                    {settings.dripEnabled && canBuild && (
+                      <label className="mt-1 flex items-center gap-2 text-xs text-ink-500">
+                        Opens
+                        <input
+                          type="number"
+                          min={0}
+                          max={730}
+                          inputMode="numeric"
+                          aria-label={`Days after enrolling that section ${mi + 1} opens`}
+                          defaultValue={mod.dripDays ?? 0}
+                          key={`${mod.id}-${mod.dripDays ?? 0}`}
+                          onBlur={(e) => {
+                            const days = Number(e.target.value);
+                            if (Number.isInteger(days) && days >= 0 && days !== (mod.dripDays ?? 0)) void run(() => api.studioSetModuleDrip(mod.id, days), "Release saved.");
+                          }}
+                          className="w-16 rounded-lg border border-[var(--border-faint)] px-2 py-1 text-xs text-ink"
+                        />
+                        days after a learner enrols (0 = straight away)
+                      </label>
+                    )}
                   </div>
                   {canBuild && editing.kind === "none" && (
                     <div className="flex shrink-0 gap-1">
@@ -384,8 +467,21 @@ export default function CoursePage() {
                             </button>
                           )}
                           {lesson.contentType === "slides" && <span>{lesson.slides.length} slides</span>}
+                          {lesson.contentType === "assignment" && lesson.assignment && (
+                            <>
+                              <span className="text-gold">{lesson.assignment.maxPoints} points{lesson.assignment.dueAt ? ` · due ${whenLabel(lesson.assignment.dueAt)}` : ""}</span>
+                              <button type="button" className="font-semibold underline" onClick={() => setMarking(marking === lesson.id ? null : lesson.id)}>
+                                {marking === lesson.id ? "Hide marking" : "Marking"}
+                              </button>
+                            </>
+                          )}
                         </p>
                         {lesson.summary && <p className="line-clamp-2 text-xs text-ink-500">{lesson.summary}</p>}
+                        {marking === lesson.id && (
+                          <div className="pt-2">
+                            <Marking lessonId={lesson.id} onChanged={() => setGradeKey((k) => k + 1)} />
+                          </div>
+                        )}
                         {settings.videoUploadsEnabled && (lesson.contentType === "video" || lesson.contentType === "audio") && (lesson.media || (canBuild && editing.kind === "none")) && (
                           <div className="flex flex-wrap items-center gap-2 pt-1">
                             {lesson.media && (
@@ -506,6 +602,10 @@ export default function CoursePage() {
           ))
         )}
       </section>
+
+      {published && <GradebookTable courseId={id} refreshKey={gradeKey} />}
+
+      {canBuild && <Community courseId={id} />}
 
       {published && (
         <section aria-labelledby="students-heading" className={`${cardCls} space-y-3 p-4`}>

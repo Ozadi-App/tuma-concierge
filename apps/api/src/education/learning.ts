@@ -10,6 +10,11 @@ import { getPlatformEnvironment, type PlatformEnvironment } from "../lib/setting
 import { getR2Bucket, uploadResponseHeaders } from "../storage/r2.js";
 import { creditWallet, debitWallet, resolveCustomerByIdentifier } from "../wallet/service.js";
 import { getLearnSettings } from "./settings.js";
+import { chargeAndPayOut, splitPayment } from "./payments.js";
+import { activeSubscription, quoteCoupon, releaseCoupon, reserveCoupon, salesReady, type Coupon } from "./sales.js";
+import { chooseCohort, releaseSeat, reserveSeat, type Cohort } from "./cohorts.js";
+import { assignmentOf, assignmentsOfCourse, learnerAssignment, pastDue, submissionsOfUser, type SubmissionRow } from "./assignments.js";
+import { BADGES, afterProgress, computeLocks, courseFinished, courseRules, proReady, type Lock } from "./rewards.js";
 import { mark, newSeed, parseQuiz, readAttempt, serveQuestions, signAttempt, type Answer, type StoredQuiz } from "./quiz-engine.js";
 import {
   body as readBody,
@@ -25,6 +30,7 @@ import {
   ownedSchool,
   studioReady,
   suspended,
+  isCoTeacher,
   throttle,
 } from "./studio.js";
 
@@ -41,36 +47,7 @@ async function ready(): Promise<boolean> {
   return (await studioReady()) && (await learningReady());
 }
 
-/** Splits a sale between the educator and Peebee. The commission is rounded down, so the educator never gets less than their share. */
-export function splitPayment(amount: number, commissionPercent: number): { commission: number; payout: number } {
-  const commission = Math.floor((amount * commissionPercent) / 100);
-  return { commission, payout: amount - commission };
-}
-
-/**
- * Takes `amount` from the payer's wallet and pays the educator their share.
- * If paying the educator fails after the payer was charged, the payer is refunded,
- * so money is never left half-moved.
- */
-async function chargeAndPayOut(input: {
-  payerId: string;
-  ownerId: string;
-  amount: number;
-  commissionPercent: number;
-  environment: PlatformEnvironment;
-  note: string;
-}): Promise<{ ok: true; commission: number } | { ok: false }> {
-  const balance = await debitWallet(input.payerId, input.amount, { type: "order_payment", environment: input.environment, counterpartyId: input.ownerId, note: input.note });
-  if (balance === null) return { ok: false };
-  const { commission, payout } = splitPayment(input.amount, input.commissionPercent);
-  try {
-    if (payout > 0) await creditWallet(input.ownerId, payout, { type: "adjustment", environment: input.environment, counterpartyId: input.payerId, note: input.note });
-  } catch (err) {
-    await creditWallet(input.payerId, input.amount, { type: "refund", environment: input.environment, note: `Refund: ${input.note}` });
-    throw err;
-  }
-  return { ok: true, commission };
-}
+export { splitPayment };
 
 const money = z.number().int().min(1);
 
@@ -425,15 +402,17 @@ learnRoutes.use("*", async (c, next) => {
 type Access = { course: Row; school: Row; owner: boolean };
 
 /** The course, if this person may study it: the owner, or someone enrolled in a published course from a school in good standing. */
-async function courseAccess(userId: string, courseId: string): Promise<Access | null> {
+export async function courseAccess(userId: string, courseId: string): Promise<Access | null> {
   const course = await one("SELECT * FROM edu_courses WHERE id = ?", [courseId]);
   if (!course) return null;
   const school = await one("SELECT * FROM edu_schools WHERE id = ?", [course.school_id]);
   if (!school) return null;
-  if (school.owner_id === userId) return { course, school, owner: true };
+  if (school.owner_id === userId || (await isCoTeacher(userId, courseId))) return { course, school, owner: true };
   if (course.status !== "published" || school.status !== "active") return null;
   const enrolled = await one("SELECT 1 AS yes FROM edu_enrollments WHERE course_id = ? AND user_id = ? AND status = 'active'", [courseId, userId]);
-  return enrolled ? { course, school, owner: false } : null;
+  if (enrolled) return { course, school, owner: false };
+  // A school pass opens every published course of that school while it lasts.
+  return (await activeSubscription(userId, String(school.id))) ? { course, school, owner: false } : null;
 }
 
 const quizOf = (raw: unknown): StoredQuiz | null => parseQuiz(raw);
@@ -464,7 +443,7 @@ function liveWindow(live: LiveInfo, settings: LearnSettings, now = Date.now()): 
   return { open: Number.isFinite(start) && now >= opensAt && now <= closesAt, opensAt };
 }
 
-type LessonState = { done: Map<string, number | null>; media: Set<string>; attempts: Map<string, { n: number; best: number }> };
+type LessonState = { done: Map<string, number | null>; media: Set<string>; attempts: Map<string, { n: number; best: number }>; locks?: Map<string, Lock>; assignments?: Map<string, import("@peebee/shared").StudioAssignment>; submissions?: Map<string, SubmissionRow> };
 
 function lessonView(l: Row, st: LessonState, settings: LearnSettings) {
   const id = String(l.id);
@@ -496,6 +475,8 @@ function lessonView(l: Row, st: LessonState, settings: LearnSettings) {
           attemptsUsed: tries?.n ?? 0,
         }
       : null,
+    locked: st.locks?.get(id) ?? null,
+    assignment: kind === "assignment" && st.assignments?.get(id) ? learnerAssignment(st.assignments.get(id)!, st.submissions?.get(id) ?? null) : null,
     // The meeting link is only handed out by /join, inside the join window.
     live: live ? { startsAt: live.startsAt, durationMinutes: live.durationMinutes, joinOpen: liveWindow(live, settings).open, notes: live.notes ?? "" } : null,
   };
@@ -509,13 +490,32 @@ async function lessonState(userId: string, courseId: string): Promise<LessonStat
     done: new Map(progress.map((p) => [String(p.lesson_id), p.best_score_percent === null ? null : Number(p.best_score_percent)])),
     media: new Set(media.map((r) => String(r.lesson_id))),
     attempts: new Map(tries.map((r) => [String(r.lesson_id), { n: Number(r.n), best: Number(r.best) }])),
+    assignments: await assignmentsOfCourse(courseId),
+    submissions: await submissionsOfUser(userId, courseId),
   };
 }
 
-async function lessonAccess(c: Context, lessonId: string, message: string): Promise<{ lesson: Row; access: Access } | Response> {
+/** The locks on a course for one learner. The educator previewing their own course sees nothing locked. */
+async function courseLocks(userId: string, access: Access, settings: LearnSettings, st: LessonState): Promise<{ locks: Map<string, Lock>; opens: Map<string, string>; modules: Row[]; lessons: Row[] }> {
+  const id = String(access.course.id);
+  const modules = (await db.execute({ sql: "SELECT * FROM edu_modules WHERE course_id = ? ORDER BY position ASC, created_at ASC LIMIT 500", args: [id] })).rows as Row[];
+  const lessons = (await db.execute({ sql: "SELECT * FROM edu_lessons WHERE course_id = ? ORDER BY position ASC, created_at ASC LIMIT 5000", args: [id] })).rows as Row[];
+  if (access.owner) return { locks: new Map(), opens: new Map(), modules, lessons };
+  const { locks, opens } = await computeLocks(userId, id, settings, modules, lessons, new Set(st.done.keys()));
+  return { locks, opens, modules, lessons };
+}
+
+async function lessonAccess(c: Context, lessonId: string, message: string, opts: { ignoreLock?: boolean } = {}): Promise<{ lesson: Row; access: Access } | Response> {
   const lesson = await one("SELECT * FROM edu_lessons WHERE id = ?", [lessonId]);
   const access = lesson ? await courseAccess(c.get("user").sub, String(lesson.course_id)) : null;
   if (!lesson || !access) return fail(c, { status: 403, error: "not_enrolled", message });
+  if (!access.owner && !opts.ignoreLock) {
+    const settings = await getLearnSettings();
+    const st = await lessonState(c.get("user").sub, String(lesson.course_id));
+    const { locks } = await courseLocks(c.get("user").sub, access, settings, st);
+    const lock = locks.get(String(lesson.id));
+    if (lock) return fail(c, { status: 403, error: "locked", message: lock.reason === "drip" ? `This isn't open yet. ${lock.message}.` : "Finish the earlier items in this class first." });
+  }
   return { lesson, access };
 }
 
@@ -528,9 +528,25 @@ learnRoutes.get("/enrollments", async (c) => {
           WHERE e.user_id = ? AND e.status = 'active' ORDER BY e.created_at DESC LIMIT 200`,
     args: [c.get("user").sub],
   });
+  const rows = res.rows as Row[];
+  // Courses reached through a school pass appear too, while the pass lasts.
+  if (await salesReady()) {
+    const have = new Set(rows.map((r) => String(r.course_id)));
+    const via = (
+      await db.execute({
+        sql: `SELECT c.id AS course_id, c.title, c.stream, c.status AS course_status, s.name AS school_name, sub.started_at AS created_at,
+                     (SELECT COUNT(*) FROM edu_lessons l WHERE l.course_id = c.id) AS lessons,
+                     (SELECT COUNT(*) FROM edu_lesson_progress p WHERE p.user_id = ? AND p.course_id = c.id) AS done
+              FROM edu_subscriptions sub JOIN edu_courses c ON c.school_id = sub.school_id AND c.status = 'published' JOIN edu_schools s ON s.id = c.school_id AND s.status = 'active'
+              WHERE sub.user_id = ? AND sub.expires_at > datetime('now') ORDER BY c.title ASC LIMIT 200`,
+        args: [c.get("user").sub, c.get("user").sub],
+      })
+    ).rows as Row[];
+    for (const r of via) if (!have.has(String(r.course_id))) { have.add(String(r.course_id)); rows.push({ ...r, id: `pass_${String(r.course_id)}` }); }
+  }
   return c.json({
     ok: true,
-    enrollments: (res.rows as Row[]).map((r) => ({
+    enrollments: rows.map((r) => ({
       id: String(r.id),
       courseId: String(r.course_id),
       title: String(r.title),
@@ -556,9 +572,34 @@ learnRoutes.post("/courses/:id/enroll", async (c) => {
   if (!course || !school) return notFound(c, "course");
   if (school.owner_id === user.sub) return fail(c, { status: 400, error: "own_course", message: "This is your own course. You can already open it." });
 
-  const price = Number(course.price_ugx);
-  if (price > 0 && !settings.paidCoursesEnabled) {
+  if (settings.prerequisitesEnabled) {
+    const rules = await courseRules(String(course.id));
+    if (rules.prerequisiteCourseId && !(await courseFinished(user.sub, rules.prerequisiteCourseId))) {
+      const need = await one("SELECT title FROM edu_courses WHERE id = ?", [rules.prerequisiteCourseId]);
+      return fail(c, { status: 409, error: "prereq_not_met", message: `Finish “${String(need?.title ?? "the earlier course")}” first, then you can join this one.` });
+    }
+  }
+
+  const listPrice = Number(course.price_ugx);
+  if (listPrice > 0 && !settings.paidCoursesEnabled) {
     return fail(c, { status: 503, error: "paid_courses_off", message: "Paid courses aren't available right now." });
+  }
+  // A school pass already covers this course.
+  if (listPrice > 0 && (await activeSubscription(user.sub, String(school.id)))) {
+    return c.json({ ok: true, enrolled: true, paidUgx: 0, viaPass: true });
+  }
+  let coupon: Coupon | null = null;
+  let price = listPrice;
+  const payload = (await c.req.json().catch(() => null)) as { coupon?: unknown; cohortId?: unknown } | null;
+  const asked = payload?.coupon;
+  const chosen = await chooseCohort(String(course.id), payload?.cohortId, settings);
+  if (!chosen.ok) return fail(c, { status: 409, error: "cohort_needed", message: chosen.message });
+  const cohort: Cohort | null = chosen.cohort;
+  if (typeof asked === "string" && asked.trim() && listPrice > 0) {
+    const q = await quoteCoupon(asked, course, user.sub, listPrice, settings);
+    if (!q.ok) return fail(c, { status: 400, error: "coupon_invalid", message: q.message });
+    coupon = q.coupon;
+    price = listPrice - q.discount;
   }
   const environment = await getPlatformEnvironment();
 
@@ -581,6 +622,19 @@ learnRoutes.post("/courses/:id/enroll", async (c) => {
     }
   }
 
+  // A seat is taken the same way: before any money moves.
+  if (cohort && !(await reserveSeat(cohort, user.sub))) {
+    await db.execute({ sql: "DELETE FROM edu_enrollments WHERE course_id = ? AND user_id = ? AND status = 'pending'", args: [course.id as string, user.sub] });
+    return fail(c, { status: 409, error: "cohort_full", message: "That intake just filled up. Choose another." });
+  }
+
+  // The coupon is used up before any money moves, so two taps can't use its last place twice.
+  if (coupon && !(await reserveCoupon(coupon, user.sub, String(course.id), listPrice - price))) {
+    if (cohort) await releaseSeat(cohort, user.sub);
+    await db.execute({ sql: "DELETE FROM edu_enrollments WHERE course_id = ? AND user_id = ? AND status = 'pending'", args: [course.id as string, user.sub] });
+    return fail(c, { status: 409, error: "coupon_used_up", message: "That coupon was just used up. Try again without it." });
+  }
+
   let commission = 0;
   if (price > 0) {
     const paid = await chargeAndPayOut({
@@ -592,6 +646,8 @@ learnRoutes.post("/courses/:id/enroll", async (c) => {
       note: `Peebee Learn: ${String(course.title)}`,
     }).catch(() => null);
     if (!paid || !paid.ok) {
+      if (coupon) await releaseCoupon(coupon, user.sub);
+      if (cohort) await releaseSeat(cohort, user.sub);
       await db.execute({ sql: "DELETE FROM edu_enrollments WHERE course_id = ? AND user_id = ? AND status = 'pending'", args: [course.id as string, user.sub] });
       return c.json({ error: "insufficient_wallet", message: `Add UGX ${price.toLocaleString("en-UG")} to your Peebee wallet to enrol.` }, 402);
     }
@@ -613,11 +669,18 @@ learnRoutes.get("/courses/:id", async (c) => {
   const modules = (await db.execute({ sql: "SELECT * FROM edu_modules WHERE course_id = ? ORDER BY position ASC, created_at ASC LIMIT 500", args: [id] })).rows as Row[];
   const lessons = (await db.execute({ sql: "SELECT * FROM edu_lessons WHERE course_id = ? ORDER BY position ASC, created_at ASC LIMIT 5000", args: [id] })).rows as Row[];
   const st = await lessonState(user.sub, id);
+  const lock = await courseLocks(user.sub, access, settings, st);
+  st.locks = lock.locks;
+  const finished = !access.owner && (await proReady()) && (await courseFinished(user.sub, id));
+  const certificate = finished
+    ? ((await db.execute({ sql: "SELECT id FROM edu_certificates WHERE course_id = ? AND user_id = ?", args: [id, user.sub] })).rows[0] as Row | undefined)
+    : undefined;
   return c.json({
     ok: true,
     owner: access.owner,
     course: {
       id,
+      certificateId: certificate ? String(certificate.id) : null,
       title: String(access.course.title),
       summary: String(access.course.summary ?? ""),
       stream: String(access.course.stream),
@@ -627,6 +690,7 @@ learnRoutes.get("/courses/:id", async (c) => {
         id: String(m.id),
         title: String(m.title),
         description: String(m.description ?? ""),
+        opensAt: lock.opens.get(String(m.id)) ?? null,
         lessons: lessons.filter((l) => l.module_id === m.id).map((l) => lessonView(l, st, settings)),
       })),
     },
@@ -652,9 +716,9 @@ learnRoutes.get("/lessons/:id", async (c) => {
 
 learnRoutes.post("/lessons/:id/media-url", async (c) => {
   const user = c.get("user");
-  const lesson = await one("SELECT id, course_id FROM edu_lessons WHERE id = ?", [c.req.param("id")]);
-  const access = lesson ? await courseAccess(user.sub, String(lesson.course_id)) : null;
-  if (!lesson || !access) return fail(c, { status: 403, error: "not_enrolled", message: "Enrol in this course to watch its lessons." });
+  const found = await lessonAccess(c, c.req.param("id"), "Enrol in this course to watch its lessons.");
+  if (isResponse(found)) return found;
+  const { lesson } = found;
   const has = await one("SELECT 1 AS yes FROM edu_lesson_media WHERE lesson_id = ?", [lesson.id]);
   if (!has) return notFound(c, "video");
   const base = (process.env.PUBLIC_API_URL ?? "").replace(/\/$/, "");
@@ -674,6 +738,7 @@ async function recordAttempt(userId: string, lesson: Row, owner: boolean, scoreP
             ON CONFLICT(user_id, lesson_id) DO UPDATE SET best_score_percent = MAX(COALESCE(best_score_percent, 0), excluded.best_score_percent)`,
       args: [userId, lesson.id as string, lesson.course_id as string, scorePercent],
     });
+    await afterProgress(userId, String(lesson.course_id), await getLearnSettings());
   }
 }
 
@@ -811,6 +876,7 @@ learnRoutes.post("/lessons/:id/join", async (c) => {
       sql: "INSERT OR IGNORE INTO edu_lesson_progress (user_id, lesson_id, course_id) VALUES (?, ?, ?)",
       args: [user.sub, lesson.id as string, lesson.course_id as string],
     });
+    await afterProgress(user.sub, String(lesson.course_id), settings);
   }
   return c.json({ ok: true, url: live.url });
 });
@@ -826,13 +892,101 @@ learnRoutes.post("/lessons/:id/complete", async (c) => {
   if (normaliseContentType(String(lesson.content_type)) === "live") {
     return fail(c, { status: 409, error: "join_first", message: "Join the live lesson to complete it." });
   }
+  if (normaliseContentType(String(lesson.content_type)) === "assignment") {
+    return fail(c, { status: 409, error: "hand_in_first", message: "Hand in your work. It counts as done once your tutor has marked it." });
+  }
   if (!access.owner) {
     await db.execute({
       sql: "INSERT OR IGNORE INTO edu_lesson_progress (user_id, lesson_id, course_id) VALUES (?, ?, ?)",
       args: [user.sub, lesson.id as string, lesson.course_id as string],
     });
+    await afterProgress(user.sub, String(lesson.course_id), await getLearnSettings());
   }
   return c.json({ ok: true });
+});
+
+// ---- Assignments ------------------------------------------------------------
+
+learnRoutes.post("/lessons/:id/submission", async (c) => {
+  const user = c.get("user");
+  const settings = await getLearnSettings();
+  if (!settings.assignmentsEnabled) return fail(c, { status: 503, error: "assignments_off", message: "Assignments are switched off right now." });
+  const quota = await consume(`learn-submit:${user.sub}`, 60, 60 * 60);
+  if (!quota.allowed) return tooManyRequests(c, quota, "You're handing in a lot of work. Try again in a little while.");
+  const found = await lessonAccess(c, c.req.param("id"), "Enrol in this course to hand in work.");
+  if (isResponse(found)) return found;
+  const { lesson, access } = found;
+  const a = await assignmentOf(String(lesson.id));
+  if (!a) return fail(c, { status: 404, error: "not_assignment", message: "This isn't an assignment." });
+  if (access.owner) return fail(c, { status: 400, error: "own_course", message: "This is your own course, so there's nothing to hand in." });
+
+  const parsed = await readBody(c, z.object({ body: z.string().max(settings.maxSubmissionChars).default(""), link: z.string().max(500).default("") }));
+  if (!parsed.ok) return parsed.res;
+  const text = (parsed.data.body as string).trim();
+  const link = (parsed.data.link as string).trim();
+  if (!text && !link) return fail(c, { status: 400, error: "empty", message: "Write your answer or add a link to your work." });
+  if (link && !/^https:\/\//i.test(link)) return fail(c, { status: 400, error: "bad_link", message: "Links must start with https://" });
+  if (pastDue(a)) return fail(c, { status: 409, error: "past_due", message: "The deadline for this has passed." });
+
+  const existing = ((await db.execute({ sql: "SELECT * FROM edu_submissions WHERE lesson_id = ? AND user_id = ?", args: [lesson.id as string, user.sub] })).rows[0] as Row | undefined) ?? null;
+  if (existing) {
+    const view = learnerAssignment(a, { body: String(existing.body), link: String(existing.link), status: existing.status === "graded" ? "graded" : "submitted", score: existing.score === null ? null : Number(existing.score), feedback: String(existing.feedback ?? ""), submittedAt: String(existing.submitted_at) });
+    if (!view.open) return fail(c, { status: 409, error: "closed", message: a.allowResubmit ? "You've already passed this." : "You've already handed this in." });
+    await db.execute({
+      sql: "UPDATE edu_submissions SET body = ?, link = ?, status = 'submitted', score = NULL, feedback = '', submitted_at = datetime('now'), graded_at = NULL, graded_by = NULL WHERE id = ?",
+      args: [text, link, existing.id as string],
+    });
+    // A new hand-in is not done until it is marked again.
+    await db.execute({ sql: "DELETE FROM edu_lesson_progress WHERE user_id = ? AND lesson_id = ?", args: [user.sub, lesson.id as string] });
+  } else {
+    await db.execute({
+      sql: "INSERT INTO edu_submissions (id, lesson_id, course_id, user_id, body, link) VALUES (?, ?, ?, ?, ?, ?)",
+      args: [newId("sub"), lesson.id as string, lesson.course_id as string, user.sub, text, link],
+    });
+  }
+  return c.json({ ok: true });
+});
+
+// ---- Certificates and badges ------------------------------------------------
+
+const certShape = (r: Row) => ({
+  id: String(r.id),
+  code: String(r.code),
+  courseId: String(r.course_id),
+  courseTitle: String(r.course_title),
+  schoolName: String(r.school_name),
+  learnerName: String(r.learner_name),
+  scorePercent: r.score_percent === null || r.score_percent === undefined ? null : Number(r.score_percent),
+  issuedAt: String(r.issued_at),
+});
+
+learnRoutes.get("/certificates", async (c) => {
+  if (!(await proReady())) return c.json({ ok: true, certificates: [] });
+  const rows = (await db.execute({ sql: "SELECT * FROM edu_certificates WHERE user_id = ? ORDER BY issued_at DESC LIMIT 200", args: [c.get("user").sub] })).rows as Row[];
+  return c.json({ ok: true, certificates: rows.map(certShape) });
+});
+
+learnRoutes.get("/certificates/:id", async (c) => {
+  if (!(await proReady())) return notFound(c, "certificate");
+  const row = await one("SELECT * FROM edu_certificates WHERE id = ? AND user_id = ?", [c.req.param("id"), c.get("user").sub]);
+  return row ? c.json({ ok: true, certificate: certShape(row) }) : notFound(c, "certificate");
+});
+
+learnRoutes.get("/badges", async (c) => {
+  const settings = await getLearnSettings();
+  const earned = (await proReady()) ? ((await db.execute({ sql: "SELECT badge, awarded_at FROM edu_badges WHERE user_id = ?", args: [c.get("user").sub] })).rows as Row[]) : [];
+  const got = new Map(earned.map((r) => [String(r.badge), String(r.awarded_at)]));
+  return c.json({
+    ok: true,
+    enabled: settings.badgesEnabled,
+    badges: BADGES.map((b) => ({
+      key: b.key,
+      title: b.title,
+      description: b.key === "multi_course" ? `Finish ${settings.badgeCoursesThreshold} courses` : b.description,
+      icon: b.icon,
+      awardedAt: got.get(b.key) ?? null,
+    })),
+  });
 });
 
 // ---- School fees, paid from the learner's wallet ---------------------------

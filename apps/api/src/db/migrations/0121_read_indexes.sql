@@ -1,4 +1,4 @@
--- Migration 0117: indexes for the queries that read the most D1 rows.
+-- Migration 0121: indexes for the queries that read the most D1 rows.
 -- APPLY BY HAND, once. Safe to apply before or after the matching code (it only adds indexes, and re-running does nothing).
 --
 -- GET /lists/recent looks up the newest order of each list with "WHERE list_id = ?", and orders had no index on

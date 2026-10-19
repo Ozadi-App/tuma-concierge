@@ -1,6 +1,6 @@
 import bcrypt from "bcryptjs";
 import { db, executeBatch, type DbStatement } from "../db/client.js";
-import { hasColumn } from "../lib/schema.js";
+import { hasColumn, hasTable } from "../lib/schema.js";
 import { getR2Bucket } from "../storage/r2.js";
 import { liveReady } from "./classroom.js";
 import { demoVideoBytes } from "./demo-media.js";
@@ -327,6 +327,20 @@ export async function removeDemo(): Promise<RemoveResult> {
   const keys = ((await db.execute({ sql: `SELECT r2_key FROM edu_lesson_media WHERE lesson_id IN (${lessons})`, args: [] })).rows as Row[]).map((r) => String(r.r2_key));
   const schoolCount = await count("SELECT COUNT(*) AS n FROM edu_schools WHERE is_demo = 1");
 
+  if (await hasTable("edu_reviews")) {
+    await db.execute({ sql: `DELETE FROM edu_answers WHERE question_id IN (SELECT id FROM edu_questions WHERE course_id IN (${courses}))`, args: [] });
+    await db.execute({ sql: `DELETE FROM edu_questions WHERE course_id IN (${courses})`, args: [] });
+    await db.execute({ sql: `DELETE FROM edu_reviews WHERE course_id IN (${courses})`, args: [] });
+    await db.execute({ sql: `DELETE FROM edu_announcements WHERE course_id IN (${courses})`, args: [] });
+    await db.execute({ sql: `DELETE FROM edu_cohort_members WHERE course_id IN (${courses})`, args: [] });
+    await db.execute({ sql: `DELETE FROM edu_cohorts WHERE course_id IN (${courses})`, args: [] });
+    await db.execute({ sql: `DELETE FROM edu_course_instructors WHERE course_id IN (${courses})`, args: [] });
+  }
+  if (await hasTable("edu_certificates")) {
+    await db.execute({ sql: `DELETE FROM edu_certificates WHERE course_id IN (${courses})`, args: [] });
+    await db.execute({ sql: `DELETE FROM edu_module_drip WHERE module_id IN (SELECT id FROM edu_modules WHERE course_id IN (${courses}))`, args: [] });
+    await db.execute({ sql: `DELETE FROM edu_course_rules WHERE course_id IN (${courses})`, args: [] });
+  }
   if (await hasColumn("edu_lessons", "body")) await db.execute({ sql: `DELETE FROM edu_live_attendance WHERE course_id IN (${courses})`, args: [] });
   await executeBatch([
     { sql: `DELETE FROM edu_live_responses WHERE session_id IN (${sessions})` },
