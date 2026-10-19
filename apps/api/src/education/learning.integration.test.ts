@@ -413,7 +413,7 @@ test("learning: answers 'upgrade pending' until migration 0111 is applied, and t
   const client = createClient({ url: "file::memory:" });
   const migrations = join(process.cwd(), "src/db/migrations");
   for (const file of readdirSync(migrations).filter((f) => f.endsWith(".sql")).sort()) {
-    if (file.startsWith("0111_")) continue;
+    if (file.startsWith("0111_") || file.startsWith("0116_")) continue;
     for (const sql of splitSqlStatements(readFileSync(join(migrations, file), "utf8"))) await client.execute(sql);
   }
   bindDatabase(client);

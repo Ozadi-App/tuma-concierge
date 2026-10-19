@@ -1,4 +1,4 @@
-import type { LearnEnrollment, LearnerCourse, QuizResult, ScreenState } from "@peebee/shared";
+import type { LearnEnrollment, LearnerCourse, LearnerLessonDetail, QuizAnswer, QuizAttemptStart, QuizResult, ScreenState } from "@peebee/shared";
 
 const BASE = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:10000").replace(/\/$/, "");
 export const SECRET_KEY = "peebee_tv_secret";
@@ -82,8 +82,10 @@ export const tvApi = {
   course: (secret: string, id: string) => call<{ ok: true; course: LearnerCourse }>(`/v1/tv/learn/courses/${encodeURIComponent(id)}`, secret),
   enrol: (secret: string, id: string) => call<{ ok: true }>(`/v1/tv/learn/courses/${encodeURIComponent(id)}/enroll`, secret, { method: "POST", body: "{}" }),
   mediaUrl: (secret: string, lessonId: string) => call<{ ok: true; url: string }>(`/v1/tv/learn/lessons/${encodeURIComponent(lessonId)}/media-url`, secret, { method: "POST", body: "{}" }),
-  quiz: (secret: string, lessonId: string, answers: number[]) =>
-    call<{ ok: true } & QuizResult>(`/v1/tv/learn/lessons/${encodeURIComponent(lessonId)}/quiz`, secret, { method: "POST", body: JSON.stringify({ answers }) }),
+  lesson: (secret: string, lessonId: string) => call<{ ok: true; lesson: LearnerLessonDetail }>(`/v1/tv/learn/lessons/${encodeURIComponent(lessonId)}`, secret),
+  startQuiz: (secret: string, lessonId: string) => call<{ ok: true } & QuizAttemptStart>(`/v1/tv/learn/lessons/${encodeURIComponent(lessonId)}/quiz/start`, secret, { method: "POST", body: "{}" }),
+  submitQuiz: (secret: string, lessonId: string, attemptToken: string, answers: Record<string, QuizAnswer>) =>
+    call<{ ok: true } & QuizResult>(`/v1/tv/learn/lessons/${encodeURIComponent(lessonId)}/quiz/submit`, secret, { method: "POST", body: JSON.stringify({ attemptToken, answers }) }),
   complete: (secret: string, lessonId: string) => call<{ ok: true }>(`/v1/tv/learn/lessons/${encodeURIComponent(lessonId)}/complete`, secret, { method: "POST", body: "{}" }),
 
   // ---- The public catalogue: anyone may look

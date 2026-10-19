@@ -335,8 +335,8 @@ tvLearn.use("*", async (c, next) => {
   const path = c.req.path.replace(/^.*\/v1\/tv\/learn/, "");
   const method = c.req.method;
   const allowed =
-    (method === "GET" && (path === "/enrollments" || /^\/courses\/[^/]+$/.test(path))) ||
-    (method === "POST" && (/^\/lessons\/[^/]+\/(media-url|quiz|complete)$/.test(path) || /^\/courses\/[^/]+\/enroll$/.test(path)));
+    (method === "GET" && (path === "/enrollments" || /^\/(courses|lessons)\/[^/]+$/.test(path))) ||
+    (method === "POST" && (/^\/lessons\/[^/]+\/(media-url|quiz|quiz\/start|quiz\/submit|complete)$/.test(path) || /^\/courses\/[^/]+\/enroll$/.test(path)));
   if (!allowed) return c.json({ error: "not_on_tv", message: "Do this in the Peebee app on your phone." }, 403);
   if (/^\/courses\/[^/]+\/enroll$/.test(path)) {
     const course = await one("SELECT price_ugx FROM edu_courses WHERE id = ?", [path.split("/")[2]]);

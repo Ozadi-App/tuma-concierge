@@ -18,6 +18,8 @@ export interface DemoLesson {
   minutes: number;
   /** Gets the placeholder video for its stream. */
   video?: boolean;
+  /** Slide lessons: the deck. */
+  slides?: { title: string; body: string }[];
   quiz?: { title: string; passingScorePercent: number; questions: DemoQuestion[] };
 }
 
@@ -101,8 +103,10 @@ type LessonOptions = { minutes?: number; quiz?: DemoLesson["quiz"] };
 /** A lesson with the placeholder video. */
 export const V = (title: string, summary: string, o: LessonOptions = {}): DemoLesson => ({ title, summary, type: "video", minutes: o.minutes ?? 8, video: true, quiz: o.quiz });
 /** A reading lesson. */
-export const R = (title: string, summary: string, o: LessonOptions = {}): DemoLesson => ({ title, summary, type: "reading", minutes: o.minutes ?? 6, quiz: o.quiz });
+export const R = (title: string, summary: string, o: LessonOptions = {}): DemoLesson => ({ title, summary, type: "text", minutes: o.minutes ?? 6, quiz: o.quiz });
+/** A slide lesson: the summary is the short description, the slides are the deck. */
+export const S = (title: string, summary: string, slides: { title: string; body: string }[], o: LessonOptions = {}): DemoLesson => ({ title, summary, type: "slides", minutes: o.minutes ?? 7, slides, quiz: o.quiz });
 /** A hands-on practical. */
-export const P = (title: string, summary: string, o: LessonOptions = {}): DemoLesson => ({ title, summary, type: "practical_demo", minutes: o.minutes ?? 12, quiz: o.quiz });
+export const P = (title: string, summary: string, o: LessonOptions = {}): DemoLesson => ({ title, summary, type: "text", minutes: o.minutes ?? 12, quiz: o.quiz });
 
 export const M = (title: string, description: string, ...lessons: DemoLesson[]): DemoModule => ({ title, description, lessons });

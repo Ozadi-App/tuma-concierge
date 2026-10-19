@@ -19,9 +19,9 @@ const LIMITS: { key: NumberKey; label: string; hint: string; min: number; max: n
   { key: "maxSchoolsPerUser", label: "Schools per educator", hint: "Most schools one account can run", min: 1, max: 100 },
   { key: "maxClassesPerSchool", label: "Classes per school", hint: "Classes and masterclasses together", min: 1, max: 500 },
   { key: "maxCoursesPerClass", label: "Courses per class", hint: "Courses taught in one class", min: 1, max: 200 },
-  { key: "maxModulesPerCourse", label: "Modules per course", hint: "Units or weeks in one course", min: 1, max: 200 },
-  { key: "maxLessonsPerModule", label: "Lessons per module", hint: "Lessons inside one module", min: 1, max: 200 },
-  { key: "maxQuizQuestionsPerLesson", label: "Quiz questions per lesson", hint: "0 turns lesson quizzes off", min: 0, max: 100 },
+  { key: "maxModulesPerCourse", label: "Sections per class", hint: "Units or weeks in one class", min: 1, max: 200 },
+  { key: "maxLessonsPerModule", label: "Items per section", hint: "Lessons, quizzes and exams inside one section", min: 1, max: 200 },
+  { key: "maxQuizQuestionsPerLesson", label: "Questions per quiz or exam", hint: "0 turns quizzes and exams off", min: 0, max: 100 },
   { key: "maxLessonMinutes", label: "Longest lesson (minutes)", hint: "Upper limit for one lesson", min: 1, max: 1440 },
   { key: "commissionPercent", label: "Peebee's share (%)", hint: "Taken from every course sale and fee payment", min: 0, max: 60 },
   { key: "maxVideoMb", label: "Largest lesson file (MB)", hint: "Video or audio an educator can upload (100 MB is the most the platform accepts)", min: 1, max: 100 },
@@ -37,6 +37,11 @@ const LIMITS: { key: NumberKey; label: string; hint: string; min: number; max: n
   { key: "screenPairMinutes", label: "TV pairing code lifetime (minutes)", hint: "How long a code shown on a TV can be used", min: 1, max: 60 },
   { key: "proPriceUgx", label: "Learn Pro price (UGX)", hint: "Taken from the educator's wallet for one period. 0 makes Pro free to claim.", min: 0, max: 100000000, step: 1000 },
   { key: "proDays", label: "Learn Pro length (days)", hint: "How long one purchase lasts", min: 1, max: 3650 },
+  { key: "maxSlidesPerLesson", label: "Slides per slide lesson", hint: "Most slides in one slide lesson", min: 1, max: 100 },
+  { key: "maxLessonBodyChars", label: "Longest text lesson (characters)", hint: "Upper limit for the written body of a text lesson", min: 500, max: 100000, step: 500 },
+  { key: "quizMaxAttempts", label: "Quiz attempts per learner", hint: "0 means as many as they like", min: 0, max: 50 },
+  { key: "examMaxAttempts", label: "Exam attempts per learner", hint: "0 means as many as they like. Educators can lower this on an exam but not raise it.", min: 0, max: 20 },
+  { key: "liveLessonEarlyMinutes", label: "Live lesson opens early (minutes)", hint: "How long before the start a learner can open the join button", min: 0, max: 240 },
   { key: "createsPerHour", label: "Creations per hour", hint: "Schools, classes, courses, modules and lessons made by one educator per hour", min: 1, max: 1000 },
 ];
 
@@ -186,6 +191,20 @@ export default function LearnSettingsPage() {
             <SwitchRow title="Live classroom and TV" hint="Educators can run live sessions that push content to a TV and quizzes to students' phones" on={settings.liveEnabled} disabled={!canManage} onChange={(v) => patch("liveEnabled", v)} />
             <SwitchRow title="Learn on a linked TV" hint="Learners can link a TV to their account with a code and watch lessons, take quizzes and follow their courses on it. Paying always happens on the phone." on={settings.tvLearnEnabled} disabled={!canManage} onChange={(v) => patch("tvLearnEnabled", v)} />
             <SwitchRow title="TV is a Pro feature" hint="Off (the launch setting): every educator can use the TV classroom for free. On: connecting a screen and teaching on it needs Learn Pro, which educators can buy from their wallet or staff can grant. Teaching to phones and the practice classes stay free." on={settings.tvProRequired} disabled={!canManage} onChange={(v) => patch("tvProRequired", v)} />
+            <SwitchRow title="Live video lessons" hint="Educators can schedule a live lesson with a Zoom, Meet or Jitsi link that learners join from the lesson" on={settings.liveLessonsEnabled} disabled={!canManage} onChange={(v) => patch("liveLessonsEnabled", v)} />
+            <div className="field-box flex flex-col rounded-2xl bg-[rgb(var(--surface-muted))] p-3">
+              <label htmlFor="liveLessonHosts" className="mb-1 text-xs font-bold text-ink-500">Allowed live lesson hosts</label>
+              <input
+                id="liveLessonHosts"
+                value={settings.liveLessonHosts}
+                disabled={!canManage}
+                onChange={(e) => patch("liveLessonHosts", e.target.value)}
+                className="w-full text-sm text-ink outline-none"
+              />
+              <span className="mt-1 text-[10px] text-ink-500">Comma separated. A live lesson link must point to one of these (subdomains allowed).</span>
+            </div>
+            <SwitchRow title="Show quiz answers" hint="After a quiz, learners see which answers were right and why" on={settings.revealQuizAnswers} disabled={!canManage} onChange={(v) => patch("revealQuizAnswers", v)} />
+            <SwitchRow title="Show exam answers" hint="After an exam, learners see which answers were right. Off keeps the paper reusable." on={settings.revealExamAnswers} disabled={!canManage} onChange={(v) => patch("revealExamAnswers", v)} />
             <SwitchRow title="Publish automatically" hint="A course goes live as soon as it has its first lesson. When off, the educator publishes it themselves." on={settings.publishByDefault} disabled={!canManage} onChange={(v) => patch("publishByDefault", v)} />
           </section>
 

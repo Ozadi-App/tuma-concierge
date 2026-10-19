@@ -1,6 +1,7 @@
 import { DEMO_CREATORS, DEMO_SCHOOL_CLASSES } from "./demo-data.js";
 import {
   DEFAULT_LEARN_SETTINGS,
+  normaliseContentType,
   type SchoolKind,
   type StudioClass,
   type StudioCourse,
@@ -107,11 +108,14 @@ function seed(): Store {
             moduleId: m.id,
             courseId: course.id,
             title: l.title,
-            contentType: l.contentType,
+            contentType: normaliseContentType(l.contentType),
             durationMinutes: l.durationMinutes,
             summary: l.summary,
             contentUrl: "",
             position: li + 1,
+            body: "",
+            slides: [],
+            live: null,
             quiz,
             media: null,
           });
@@ -185,8 +189,9 @@ function readQuiz(raw: unknown): StudioQuiz | null | undefined {
     passingScorePercent: Math.max(0, Math.min(100, num(q.passingScorePercent, 70))),
     questions: questions.slice(0, S.maxQuizQuestionsPerLesson).map((x) => {
       const options = (Array.isArray(x?.options) ? x.options : []).map((o: unknown) => clean(o, 200)).filter(Boolean).slice(0, 6);
-      return { question: clean(x?.question, 200), options, correctIndex: Math.max(0, Math.min(options.length - 1, num(x?.correctIndex, 0))), explanation: clean(x?.explanation, 2000) };
+      return { ...x, question: clean(x?.question, 200), options, correctIndex: Math.max(0, Math.min(options.length - 1, num(x?.correctIndex, 0))), explanation: clean(x?.explanation, 2000) };
     }),
+    settings: q.settings,
   };
 }
 
@@ -439,8 +444,10 @@ export function handleStudioSandbox(path: string, method: string, body: Record<s
     const existing = st.lessons.filter((l) => l.moduleId === mod.id).length;
     if (existing >= S.maxLessonsPerModule) return problem(409, "limit_reached", `A module can have up to ${S.maxLessonsPerModule} lessons.`);
     const lesson: StudioLesson = {
-      id: uid("les"), moduleId: mod.id, courseId: mod.courseId, title, contentType: (clean(body.contentType, 30) || "video") as StudioLesson["contentType"],
-      durationMinutes: minutes, summary: clean(body.summary, 2000), contentUrl: url, position: existing + 1, quiz: readQuiz(body.quiz) ?? null, media: null,
+      id: uid("les"), moduleId: mod.id, courseId: mod.courseId, title, contentType: normaliseContentType(clean(body.contentType, 30) || "video"),
+      durationMinutes: minutes, summary: clean(body.summary, 2000), contentUrl: url, position: existing + 1,
+      body: clean(body.body, S.maxLessonBodyChars), slides: Array.isArray(body.slides) ? (body.slides as StudioLesson["slides"]).slice(0, S.maxSlidesPerLesson) : [],
+      live: (body.live as StudioLesson["live"]) ?? null, quiz: readQuiz(body.quiz) ?? null, media: null,
     };
     done({ ...st, lessons: [...st.lessons, lesson] });
     return json({ ok: true, lesson }, 201);
@@ -460,6 +467,10 @@ export function handleStudioSandbox(path: string, method: string, body: Record<s
         summary: body.summary !== undefined ? clean(body.summary, 2000) : lesson.summary,
         durationMinutes: body.durationMinutes !== undefined ? Math.min(S.maxLessonMinutes, Math.max(1, num(body.durationMinutes, lesson.durationMinutes))) : lesson.durationMinutes,
         contentUrl: url,
+        contentType: body.contentType !== undefined ? normaliseContentType(clean(body.contentType, 30)) : lesson.contentType,
+        body: body.body !== undefined ? clean(body.body, S.maxLessonBodyChars) : lesson.body,
+        slides: Array.isArray(body.slides) ? (body.slides as StudioLesson["slides"]).slice(0, S.maxSlidesPerLesson) : lesson.slides,
+        live: body.live !== undefined ? (body.live as StudioLesson["live"]) : lesson.live,
         quiz: quiz === undefined ? lesson.quiz : quiz,
       };
       done({ ...st, lessons: st.lessons.map((l) => (l.id === lesson.id ? next : l)) });

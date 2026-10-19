@@ -3,8 +3,9 @@ import { z } from "zod";
 import {
   CURRICULUM_FRAMEWORKS,
   EDUCATION_STREAM_IDS,
-  LESSON_CONTENT_TYPES,
   SCHOOL_KINDS,
+  isAssessment,
+  normaliseContentType,
   STUDIO_TEXT_LIMITS,
   type EducationStream,
   type LearnSettings,
@@ -20,7 +21,9 @@ import { db } from "../db/client.js";
 import { newId } from "../lib/ids.js";
 import { getR2Bucket } from "../storage/r2.js";
 import { consume, tooManyRequests } from "../lib/ratelimit.js";
+import { hasColumn } from "../lib/schema.js";
 import { getLearnSettings } from "./settings.js";
+import { normaliseQuestion, parseQuiz as readQuiz } from "./quiz-engine.js";
 
 /**
  * The Learn Studio: school → class (or masterclass) → course → module → lesson.
@@ -37,7 +40,6 @@ const L = STUDIO_TEXT_LIMITS;
 const STREAMS = EDUCATION_STREAM_IDS as readonly [string, ...string[]];
 const FRAMEWORKS = CURRICULUM_FRAMEWORKS.map((f) => f.id) as [string, ...string[]];
 const SCHOOL_KIND_IDS = SCHOOL_KINDS.map((k) => k.id) as [string, ...string[]];
-const CONTENT_TYPES = LESSON_CONTENT_TYPES.map((t) => t.id) as [string, ...string[]];
 
 // ---------------------------------------------------------------------------
 // Readiness: the tables come from migration 0109, which is applied by hand.
@@ -136,19 +138,24 @@ const quizSchema = z
   .object({
     title: text(L.name, 1),
     passingScorePercent: z.number().int().min(0).max(100),
-    questions: z
-      .array(
-        z
-          .object({
-            question: text(L.short, 1),
-            options: z.array(text(L.short, 1)).min(2).max(6),
-            correctIndex: z.number().int().min(0),
-            explanation: text(L.long).optional(),
-          })
-          .refine((q) => q.correctIndex < q.options.length, { message: "correctIndex must point at one of the options" }),
-      )
-      .min(1),
+    questions: z.array(z.record(z.string(), z.unknown())).min(1).max(100),
+    settings: z
+      .object({
+        timeLimitMinutes: z.number().int().min(0).max(600),
+        maxAttempts: z.number().int().min(0).max(50),
+        shuffleQuestions: z.boolean(),
+        shuffleOptions: z.boolean(),
+        questionsPerAttempt: z.number().int().min(0).max(200),
+      })
+      .partial()
+      .optional(),
   })
+  .superRefine((q, ctx) => {
+    q.questions.forEach((x, i) => {
+      if (!normaliseQuestion(x, i)) ctx.addIssue({ code: "custom", path: ["questions", i], message: `Question ${i + 1} is incomplete, or its right answer isn't set` });
+    });
+  })
+  .transform((q) => readQuiz(q)!)
   .nullable();
 
 const schoolBody = z.object({
@@ -187,12 +194,25 @@ const courseBody = z.object({
 
 const moduleBody = z.object({ title: text(L.name, 2), description: text(L.long).default("") });
 
+const slideSchema = z.object({ title: text(L.name), body: text(4000).default(""), imageUrl: httpsUrl.default("") });
+
+const liveSchema = z.object({
+  startsAt: z.string().datetime({ offset: true }),
+  durationMinutes: z.number().int().min(5).max(1440),
+  url: httpsUrl.pipe(z.string().min(1, "Add the meeting link")),
+  notes: text(L.long).default(""),
+});
+
 const lessonBody = z.object({
   title: text(L.name, 2),
-  contentType: z.enum(CONTENT_TYPES).default("video"),
+  // Older clients still send the earlier type names; they're read as the current ones.
+  contentType: z.string().max(40).transform(normaliseContentType).default("video"),
   durationMinutes: z.number().int().min(1).default(10),
   summary: text(L.long).default(""),
   contentUrl: httpsUrl.default(""),
+  body: z.string().max(100_000).default(""),
+  slides: z.array(slideSchema).max(100).default([]),
+  live: liveSchema.nullable().optional(),
   quiz: quizSchema.optional(),
 });
 
@@ -276,6 +296,10 @@ async function purgeLessonData(lessonIds: string, args: unknown[]): Promise<void
   await db.execute({ sql: `DELETE FROM edu_lesson_media WHERE lesson_id IN (${lessonIds})`, args: args as never });
   await db.execute({ sql: `DELETE FROM edu_lesson_progress WHERE lesson_id IN (${lessonIds})`, args: args as never });
   await db.execute({ sql: `DELETE FROM edu_quiz_attempts WHERE lesson_id IN (${lessonIds})`, args: args as never });
+  // Live attendance comes with migration 0116.
+  await db.execute({ sql: `DELETE FROM edu_live_attendance WHERE lesson_id IN (${lessonIds})`, args: args as never }).catch((err) => {
+    if (!/no such table/i.test(String(err))) throw err;
+  });
   for (const key of keys) await getR2Bucket().delete(key).catch(() => undefined);
 }
 
@@ -308,12 +332,15 @@ function streamList(raw: unknown): StudioSchool["streams"] {
 }
 
 function parseQuiz(raw: unknown): StudioQuiz | null {
-  if (typeof raw !== "string" || !raw) return null;
+  return typeof raw === "string" && raw ? (readQuiz(raw) as StudioQuiz | null) : null;
+}
+
+function parseJson<T>(raw: unknown, fallback: T): T {
+  if (typeof raw !== "string" || !raw) return fallback;
   try {
-    const parsed = quizSchema.safeParse(JSON.parse(raw));
-    return parsed.success ? (parsed.data as StudioQuiz | null) : null;
+    return JSON.parse(raw) as T;
   } catch {
-    return null;
+    return fallback;
   }
 }
 
@@ -385,11 +412,14 @@ const lessonShape = (r: Row, media: StudioLesson["media"] = null): StudioLesson 
   moduleId: String(r.module_id),
   courseId: String(r.course_id),
   title: String(r.title),
-  contentType: String(r.content_type) as StudioLesson["contentType"],
+  contentType: normaliseContentType(String(r.content_type)),
   durationMinutes: Number(r.duration_minutes ?? 0),
   summary: String(r.summary ?? ""),
   contentUrl: String(r.content_url ?? ""),
   position: Number(r.position ?? 0),
+  body: String(r.body ?? ""),
+  slides: parseJson<StudioLesson["slides"]>(r.slides_json, []),
+  live: parseJson<StudioLesson["live"]>(r.live_json, null),
   quiz: parseQuiz(r.quiz_json),
   media,
 });
@@ -846,14 +876,59 @@ studioRoutes.delete("/modules/:id", async (c) => {
 // Lessons
 // ---------------------------------------------------------------------------
 
-function lessonProblem(settings: LearnSettings, d: { durationMinutes?: number; quiz?: StudioQuiz | null }): Fail | null {
+type LessonDraft = {
+  contentType?: StudioLesson["contentType"];
+  durationMinutes?: number;
+  body?: string;
+  slides?: unknown[];
+  live?: { url: string } | null;
+  quiz?: StudioQuiz | null;
+};
+
+/** Checks a lesson against the Admin limits. `kind` is the type it will have once saved. */
+function lessonProblem(settings: LearnSettings, d: LessonDraft, kind: StudioLesson["contentType"], creating: boolean): Fail | null {
   if (d.durationMinutes !== undefined && d.durationMinutes > settings.maxLessonMinutes) {
     return { status: 400, error: "lesson_too_long", message: `A lesson can run up to ${settings.maxLessonMinutes} minutes.` };
   }
   if (d.quiz && d.quiz.questions.length > settings.maxQuizQuestionsPerLesson) {
     return { status: 400, error: "quiz_too_long", message: `A quiz can have up to ${settings.maxQuizQuestionsPerLesson} questions.` };
   }
+  if (d.body !== undefined && d.body.length > settings.maxLessonBodyChars) {
+    return { status: 400, error: "body_too_long", message: `A text lesson can have up to ${settings.maxLessonBodyChars.toLocaleString("en-UG")} characters.` };
+  }
+  if (d.slides && d.slides.length > settings.maxSlidesPerLesson) {
+    return { status: 400, error: "too_many_slides", message: `A slide lesson can have up to ${settings.maxSlidesPerLesson} slides.` };
+  }
+  if (isAssessment(kind) && creating && !d.quiz) {
+    return { status: 400, error: "quiz_needed", message: `Add at least one question to this ${kind}.` };
+  }
+  if (kind === "live" && (creating || d.live)) {
+    if (!settings.liveLessonsEnabled) return { status: 403, error: "live_off", message: "Live video lessons are switched off right now." };
+    if (!d.live) return { status: 400, error: "live_needed", message: "Set when the live lesson starts and add its meeting link." };
+    if (!liveHostAllowed(d.live.url, settings.liveLessonHosts)) {
+      return { status: 400, error: "live_host", message: `Use a meeting link from one of: ${settings.liveLessonHosts.split(",").join(", ")}.` };
+    }
+  }
   return null;
+}
+
+/** A live lesson link must be https and point at an allowed meeting host (or one of its subdomains). */
+export function liveHostAllowed(url: string, hostsCsv: string): boolean {
+  try {
+    const u = new URL(url);
+    if (u.protocol !== "https:") return false;
+    const host = u.hostname.toLowerCase();
+    return hostsCsv.split(",").map((h) => h.trim()).filter(Boolean).some((h) => host === h || host.endsWith(`.${h}`));
+  } catch {
+    return false;
+  }
+}
+
+/** Items that need columns from migration 0116 can't be saved before it is applied. */
+async function needsUpgrade(c: Context, d: LessonDraft & { slides?: unknown[] }, kind: StudioLesson["contentType"]): Promise<Response | null> {
+  const wide = kind === "text" || kind === "slides" || kind === "live" || !!d.body || !!d.slides?.length || !!d.live;
+  if (!wide || (await hasColumn("edu_lessons", "body"))) return null;
+  return fail(c, { status: 503, error: "upgrade_pending", message: "Text, slide and live lessons need a platform update that hasn't finished yet. Try again shortly." });
 }
 
 studioRoutes.post("/modules/:id/lessons", async (c) => {
@@ -869,8 +944,11 @@ studioRoutes.post("/modules/:id/lessons", async (c) => {
   if (!parsed.ok) return parsed.res;
   const d = parsed.data;
 
-  const bad = lessonProblem(g.settings, d);
+  const bad = lessonProblem(g.settings, d, d.contentType, true);
   if (bad) return fail(c, bad);
+  const stale = await needsUpgrade(c, d, d.contentType);
+  if (stale) return stale;
+  const wide = await hasColumn("edu_lessons", "body");
   const existing = await count("SELECT COUNT(*) AS n FROM edu_lessons WHERE module_id = ?", [mod.id]);
   if (existing >= g.settings.maxLessonsPerModule) {
     return fail(c, { status: 409, error: "limit_reached", message: `A module can have up to ${g.settings.maxLessonsPerModule} lessons.` });
@@ -879,11 +957,20 @@ studioRoutes.post("/modules/:id/lessons", async (c) => {
   if (slow) return slow;
 
   const id = newId("les");
-  await db.execute({
-    sql: `INSERT INTO edu_lessons (id, module_id, course_id, title, content_type, duration_minutes, summary, content_url, position, quiz_json)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    args: [id, mod.id, mod.course_id, d.title, d.contentType, d.durationMinutes, d.summary, d.contentUrl, existing + 1, d.quiz ? JSON.stringify(d.quiz) : null] as never,
-  });
+  const quizJson = d.quiz ? JSON.stringify(d.quiz) : null;
+  await db.execute(
+    wide
+      ? {
+          sql: `INSERT INTO edu_lessons (id, module_id, course_id, title, content_type, duration_minutes, summary, content_url, position, quiz_json, body, slides_json, live_json)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          args: [id, mod.id, mod.course_id, d.title, d.contentType, d.durationMinutes, d.summary, d.contentUrl, existing + 1, quizJson, d.body, d.slides.length ? JSON.stringify(d.slides) : null, d.live ? JSON.stringify(d.live) : null] as never,
+        }
+      : {
+          sql: `INSERT INTO edu_lessons (id, module_id, course_id, title, content_type, duration_minutes, summary, content_url, position, quiz_json)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          args: [id, mod.id, mod.course_id, d.title, d.contentType, d.durationMinutes, d.summary, d.contentUrl, existing + 1, quizJson] as never,
+        },
+  );
   // With "publish by default" on, a course goes live as soon as it has something to teach.
   if (g.settings.publishByDefault && course.status !== "published") {
     await db.execute({ sql: "UPDATE edu_courses SET status = 'published', updated_at = datetime('now') WHERE id = ?", args: [course.id as string] });
@@ -892,7 +979,18 @@ studioRoutes.post("/modules/:id/lessons", async (c) => {
   return c.json({ ok: true, lesson: lessonShape(row!) }, 201);
 });
 
-const lessonPatch = lessonBody.partial();
+// A patch only changes what it mentions, so none of the defaults may fill in the rest.
+const lessonPatch = z.object({
+  title: lessonBody.shape.title.optional(),
+  contentType: z.string().max(40).transform(normaliseContentType).optional(),
+  durationMinutes: z.number().int().min(1).optional(),
+  summary: lessonBody.shape.summary.removeDefault().optional(),
+  contentUrl: lessonBody.shape.contentUrl.removeDefault().optional(),
+  body: z.string().max(100_000).optional(),
+  slides: z.array(slideSchema).max(100).optional(),
+  live: liveSchema.nullable().optional(),
+  quiz: quizSchema.optional(),
+});
 
 studioRoutes.patch("/lessons/:id", async (c) => {
   const g = await gate(c);
@@ -906,8 +1004,11 @@ studioRoutes.patch("/lessons/:id", async (c) => {
   if (!parsed.ok) return parsed.res;
   const d = parsed.data as z.infer<typeof lessonPatch>;
 
-  const bad = lessonProblem(g.settings, d);
+  const kind = d.contentType ?? normaliseContentType(String(lesson.content_type));
+  const bad = lessonProblem(g.settings, d, kind, false);
   if (bad) return fail(c, bad);
+  const stale = await needsUpgrade(c, d, kind);
+  if (stale) return stale;
 
   const sets: string[] = [];
   const args: unknown[] = [];
@@ -921,6 +1022,9 @@ studioRoutes.patch("/lessons/:id", async (c) => {
   if (d.summary !== undefined) put("summary", d.summary);
   if (d.contentUrl !== undefined) put("content_url", d.contentUrl);
   if (d.quiz !== undefined) put("quiz_json", d.quiz ? JSON.stringify(d.quiz) : null);
+  if (d.body !== undefined) put("body", d.body);
+  if (d.slides !== undefined) put("slides_json", d.slides.length ? JSON.stringify(d.slides) : null);
+  if (d.live !== undefined) put("live_json", d.live ? JSON.stringify(d.live) : null);
   if (sets.length) await db.execute({ sql: `UPDATE edu_lessons SET ${sets.join(", ")} WHERE id = ?`, args: [...args, lesson.id] as never });
   const row = await one("SELECT * FROM edu_lessons WHERE id = ?", [lesson.id]);
   return c.json({ ok: true, lesson: lessonShape(row!) });
@@ -935,4 +1039,68 @@ studioRoutes.delete("/lessons/:id", async (c) => {
   const left = await count("SELECT COUNT(*) AS n FROM edu_lessons WHERE course_id = ?", [lesson.course_id]);
   if (left === 0) await db.execute({ sql: "UPDATE edu_courses SET status = 'draft' WHERE id = ?", args: [lesson.course_id as string] });
   return c.json({ ok: true });
+});
+
+// ---------------------------------------------------------------------------
+// Order: sections and the items inside them, moved in one go
+// ---------------------------------------------------------------------------
+
+const orderBody = z.object({
+  modules: z.array(z.string().max(80)).max(500),
+  lessons: z.record(z.string().max(80), z.array(z.string().max(80)).max(500)),
+});
+
+/** Saves the whole running order of a course: section order, and which items sit in which section and in what order. */
+studioRoutes.post("/courses/:id/order", async (c) => {
+  const g = await gate(c);
+  if (isResponse(g)) return g;
+  const course = await ownedCourse(g.userId, c.req.param("id"));
+  if (!course) return notFound(c, "course");
+  const school = await ownedSchool(g.userId, String(course.school_id));
+  if (school?.status === "suspended") return suspended(c);
+  const parsed = await body(c, orderBody);
+  if (!parsed.ok) return parsed.res;
+  const d = parsed.data as z.infer<typeof orderBody>;
+
+  const moduleIds = ((await db.execute({ sql: "SELECT id FROM edu_modules WHERE course_id = ?", args: [course.id as string] })).rows as Row[]).map((r) => String(r.id));
+  const lessonIds = ((await db.execute({ sql: "SELECT id FROM edu_lessons WHERE course_id = ?", args: [course.id as string] })).rows as Row[]).map((r) => String(r.id));
+  const sameSet = (a: string[], b: string[]) => a.length === b.length && new Set(a).size === a.length && b.every((x) => a.includes(x));
+  const listed = Object.values(d.lessons).flat();
+  const bad =
+    !sameSet(d.modules, moduleIds) ||
+    !sameSet(listed, lessonIds) ||
+    Object.keys(d.lessons).some((m) => !moduleIds.includes(m)) ||
+    d.modules.some((m) => !d.lessons[m]);
+  if (bad) {
+    return fail(c, { status: 409, error: "order_stale", message: "This course changed while you were arranging it. Reload and try again." });
+  }
+  if (Object.values(d.lessons).some((list) => list.length > g.settings.maxLessonsPerModule)) {
+    return fail(c, { status: 409, error: "limit_reached", message: `A section can have up to ${g.settings.maxLessonsPerModule} items.` });
+  }
+  for (const [i, id] of d.modules.entries()) {
+    await db.execute({ sql: "UPDATE edu_modules SET position = ? WHERE id = ? AND course_id = ?", args: [i + 1, id, course.id as string] });
+    for (const [j, lid] of d.lessons[id].entries()) {
+      await db.execute({ sql: "UPDATE edu_lessons SET module_id = ?, position = ? WHERE id = ? AND course_id = ?", args: [id, j + 1, lid, course.id as string] });
+    }
+  }
+  return c.json({ ok: true });
+});
+
+/** Who joined a live lesson. */
+studioRoutes.get("/lessons/:id/attendance", async (c) => {
+  const lesson = await ownedLesson(c.get("user").sub, c.req.param("id"));
+  if (!lesson) return notFound(c, "lesson");
+  let rows: Row[] = [];
+  try {
+    rows = (
+      await db.execute({
+        sql: `SELECT a.user_id, a.joined_at, u.name FROM edu_live_attendance a JOIN users u ON u.id = a.user_id WHERE a.lesson_id = ? ORDER BY a.joined_at ASC LIMIT 1000`,
+        args: [lesson.id as string],
+      })
+    ).rows as Row[];
+  } catch (err) {
+    if (!/no such table/i.test(String(err))) throw err;
+  }
+  const enrolled = await count("SELECT COUNT(*) AS n FROM edu_enrollments WHERE course_id = ? AND status = 'active'", [lesson.course_id]).catch(() => 0);
+  return c.json({ ok: true, enrolled, attendees: rows.map((r) => ({ userId: String(r.user_id), name: String(r.name ?? ""), joinedAt: String(r.joined_at) })) });
 });

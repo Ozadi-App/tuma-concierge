@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { EDUCATION_STREAM_IDS } from "@peebee/shared";
+import { EDUCATION_STREAM_IDS, normaliseContentType } from "@peebee/shared";
 import { db } from "../db/client.js";
 import { clientIp, consume, tooManyRequests } from "../lib/ratelimit.js";
 import { hasColumn } from "../lib/schema.js";
@@ -116,7 +116,7 @@ catalogRoutes.get("/courses/:id", async (c) => {
             return {
               id: String(l.id),
               title: String(l.title),
-              contentType: String(l.content_type),
+              contentType: normaliseContentType(String(l.content_type)),
               durationMinutes: Number(l.duration_minutes ?? 0),
               summary: String(l.summary ?? ""),
               questionCount,

@@ -65,6 +65,15 @@ const settingsPatch = z
     tvLearnEnabled: z.boolean(),
     proPriceUgx: z.number().int().min(0).max(100_000_000),
     proDays: z.number().int().min(1).max(3650),
+    maxSlidesPerLesson: z.number().int().min(1).max(100),
+    maxLessonBodyChars: z.number().int().min(500).max(100000),
+    quizMaxAttempts: z.number().int().min(0).max(50),
+    examMaxAttempts: z.number().int().min(0).max(20),
+    revealQuizAnswers: z.boolean(),
+    revealExamAnswers: z.boolean(),
+    liveLessonsEnabled: z.boolean(),
+    liveLessonHosts: z.string().max(500),
+    liveLessonEarlyMinutes: z.number().int().min(0).max(240),
   })
   .partial();
 

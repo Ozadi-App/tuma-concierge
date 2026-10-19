@@ -1,7 +1,7 @@
 "use client";
 
 import type { LearnerCourse, LearnerLesson } from "@peebee/shared";
-import { CheckCircle2, Circle, FileText, Headphones, HelpCircle, Play } from "lucide-react";
+import { AudioLines, BookOpenText, CheckCircle2, Circle, ClipboardCheck, GraduationCap, Play, Presentation, Radio, Video } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState } from "react";
@@ -16,11 +16,18 @@ type View = { kind: "enrolled"; course: LearnerCourse } | { kind: "preview"; pre
 const ugx = (n: number) => `UGX ${n.toLocaleString("en-UG")}`;
 
 function lessonIcon(l: LearnerLesson) {
-  if (l.quiz) return HelpCircle;
-  if (l.contentType === "audio_story") return Headphones;
-  if (l.contentType === "video" || l.hasMedia) return Play;
-  return FileText;
+  switch (l.contentType) {
+    case "quiz": return ClipboardCheck;
+    case "exam": return GraduationCap;
+    case "slides": return Presentation;
+    case "audio": return AudioLines;
+    case "live": return Radio;
+    case "text": return BookOpenText;
+    default: return Video;
+  }
 }
+
+const meta = (l: LearnerLesson) => (l.quiz && (l.contentType === "quiz" || l.contentType === "exam") ? `${l.quiz.questionCount} questions` : `${l.durationMinutes} min`);
 
 function Picture({ id }: { id: string }) {
   const [broken, setBroken] = useState(false);
@@ -115,7 +122,7 @@ export default function CoursePage() {
                           {l.completed ? <CheckCircle2 className="h-[1.5rem] w-[1.5rem] shrink-0 text-green" aria-label="Done" /> : <Circle className="h-[1.5rem] w-[1.5rem] shrink-0 opacity-50" aria-label="Not done" />}
                           <span className="min-w-0 flex-1 truncate text-[1.2rem] font-bold">{l.title}</span>
                           <Icon className="h-[1.2rem] w-[1.2rem] shrink-0 opacity-70" aria-hidden />
-                          <span className="shrink-0 text-[0.95rem] opacity-70">{l.durationMinutes} min</span>
+                          <span className="shrink-0 text-[0.95rem] opacity-70">{meta(l)}</span>
                         </Link>
                       </li>
                     );
