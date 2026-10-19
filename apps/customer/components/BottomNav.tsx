@@ -100,7 +100,7 @@ const submenuItems: Record<Exclude<MenuGroup, "original">, MenuItem[]> = {
   learn: [
     { id: "skills", label: "Skills", icon: Hammer, href: "/learn?stream=skills" },
     { id: "sprouts", label: "Sprouts", icon: Sprout, href: "/learn?stream=sprouts" },
-    { id: "foundations", label: "Foundations", icon: Backpack, href: "/learn?stream=foundations" },
+    { id: "foundations", label: "Basics", icon: Backpack, href: "/learn?stream=foundations" },
     { id: "academy", label: "Academy", icon: Landmark, href: "/learn?stream=academy" },
     { id: "compass", label: "Campus", icon: GraduationCap, href: "/learn?stream=compass" },
   ],

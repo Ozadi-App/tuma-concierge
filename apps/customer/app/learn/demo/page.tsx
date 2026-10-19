@@ -73,7 +73,7 @@ type WorkspaceTab = "explore" | "live" | "tutors" | "tuition";
 
 const STREAM_LABELS: Record<EducationStreamId, string> = {
   sprouts: "Sprouts · Ages 3–6",
-  foundations: "Foundations · Ages 6–12",
+  foundations: "Basics · Ages 6–12",
   academy: "Academy · Ages 12–18",
   compass: "Compass · Higher Ed & Business",
   skills: "Skills · Vocational Trades",
@@ -1069,7 +1069,7 @@ export default function CustomerLearnPage() {
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
                       <span className="text-[11px] uppercase tracking-wider text-gold font-semibold">
-                        Foundations Primary Workflow (Ages 6–12)
+                        Basics Primary Workflow (Ages 6–12)
                       </span>
                       <h3 className="font-display text-base font-semibold text-ink">
                         Handwritten Worksheet Turn-In & Parent Sign-Off

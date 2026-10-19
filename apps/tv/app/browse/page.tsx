@@ -12,7 +12,7 @@ const LEVELS = [
   { id: "all", label: "All" },
   { id: "skills", label: "Skills" },
   { id: "sprouts", label: "Sprouts" },
-  { id: "foundations", label: "Foundations" },
+  { id: "foundations", label: "Basics" },
   { id: "academy", label: "Academy" },
   { id: "compass", label: "Campus" },
 ];

@@ -51,7 +51,7 @@ const landingContent: Record<LandingGroup, { eyebrow: string; title: string; des
       { title: "Laundry", description: "Arrange laundry pickup and care.", icon: WashingMachine, href: "/services/laundry" },
       { title: "Fix", description: "Find help for repairs and maintenance.", icon: Wrench, href: "/services/fix" },
       { title: "Jobs", description: "Find a skilled person or take up gig work.", icon: Briefcase, href: "/services/jobs" },
-      { title: "Learn", description: "Sprouts, Foundations, Academy, Compass & Skills.", icon: BookOpen, href: "/learn" },
+      { title: "Learn", description: "Sprouts, Basics, Academy, Compass & Skills.", icon: BookOpen, href: "/learn" },
     ],
   },
   services: {
