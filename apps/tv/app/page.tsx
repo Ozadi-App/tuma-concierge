@@ -9,6 +9,6 @@ export default function Home() {
   if (state.phase === "starting") {
     return <main className="tv-safe flex min-h-screen items-center justify-center text-[1.6rem] text-ink-500">Starting…</main>;
   }
-  if (state.phase === "pairing") return <Pairing code={state.code} />;
-  return <Launcher name={state.name} ownerName={state.ownerName} />;
+  if (state.phase === "pairing") return <Pairing code={state.code} linkUrl={state.linkUrl} />;
+  return <Launcher name={state.name} ownerName={state.ownerName} learnEnabled={state.learnEnabled} liveEnabled={state.liveEnabled} />;
 }

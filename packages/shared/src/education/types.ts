@@ -6,7 +6,7 @@
  *   School / academy / tutor  →  Class (or masterclass)  →  Course  →  Module  →  Lesson
  *
  * 1. Sprouts      — kindergarten and early childhood, ages 3–6
- * 2. Foundations  — primary school, ages 6–12
+ * 2. Foundations  — primary school, ages 6–12 (shown to people as "Basics"; the id stays "foundations")
  * 3. Academy      — secondary and senior high school, ages 12–18
  * 4. Compass      — university and college students
  * 5. Skills       — everyday learners: vocational and practical trades, tutorials
@@ -49,7 +49,7 @@ export const EDUCATION_STREAMS: EducationStreamMeta[] = [
   },
   {
     id: "foundations",
-    title: "Foundations",
+    title: "Basics",
     tagline: "Primary school",
     ageBracket: "Ages 6–12",
     icon: "🎒",

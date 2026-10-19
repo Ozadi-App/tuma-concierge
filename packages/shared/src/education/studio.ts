@@ -186,6 +186,8 @@ export interface LearnSettings {
   trialCodeB: string;
   /** Show the demo schools and courses in the catalogue next to real ones. */
   demoContentVisible: boolean;
+  /** Learners can link a TV to their account and study courses, lessons and quizzes on it. */
+  tvLearnEnabled: boolean;
   /** TV classroom is a Pro feature. Off (the default) means every educator can use it for free. */
   tvProRequired: boolean;
   /** What Learn Pro costs for one period, in UGX, taken from the educator's wallet. 0 makes it free to claim. */
@@ -283,6 +285,7 @@ export const DEFAULT_LEARN_SETTINGS: LearnSettings = {
   trialCodeA: "111222",
   trialCodeB: "222111",
   demoContentVisible: true,
+  tvLearnEnabled: true,
   tvProRequired: false,
   proPriceUgx: 50000,
   proDays: 30,

@@ -14,7 +14,7 @@ export const STREAM_UI: Record<
     unit: "Classes",
   },
   foundations: {
-    title: "Foundations",
+    title: "Basics",
     audience: "Primary school · ages 6–12",
     examples: "Mathematics, English, science, social studies",
     icon: Backpack,

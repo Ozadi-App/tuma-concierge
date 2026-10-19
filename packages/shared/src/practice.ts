@@ -105,7 +105,7 @@ export const PRACTICE_JOURNEYS: Record<PracticeRole, PracticeJourney> = {
         resultLabel: "Golden Lion sticker unlocked in album",
       },
       {
-        title: "Homework Photo Scan & Parent PIN Sign-Off (Foundations)",
+        title: "Homework Photo Scan & Parent PIN Sign-Off (Basics)",
         description: "Scan a handwritten exercise worksheet and verify the turn-in using parent digital signature PIN.",
         actionLabel: "Simulate homework sign-off",
         resultLabel: "Worksheet verified · +25 Merit Stars earned",
