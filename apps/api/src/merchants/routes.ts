@@ -9,7 +9,7 @@ import { newId } from "../lib/ids.js";
 import { baseMimeType, extensionForMime } from "../lib/mime.js";
 import { clientIp } from "../lib/ratelimit.js";
 import { decryptSecret, encryptSecret, isCredentialsEncryptionConfigured } from "../lib/crypto.js";
-import { getPlatformEnvironment } from "../lib/settings.js";
+import { getPlatformEnvironment, invalidateSettingsCache } from "../lib/settings.js";
 import {
   initiateDisbursement,
   paymentProviderErrorResponse,
@@ -920,6 +920,7 @@ merchantRoutes.post("/admin/merchant-payments/activation", requireAuth, requireR
           ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
     args: [settingKey, parsed.data.enabled ? "1" : "0"],
   });
+  invalidateSettingsCache();
   await logActivity({
     actor: { sub: admin.sub, name: admin.name, adminRole: isAdminRole(admin.adminRole) ? admin.adminRole : null },
     action: "merchant.activation", entityType: "merchant_payments", entityId: environment,
@@ -1256,6 +1257,7 @@ merchantRoutes.post("/admin/merchant-custody", requireAuth, requireRole("admin")
             ON CONFLICT(key) DO UPDATE SET value = '1'`,
     },
   ]);
+  invalidateSettingsCache();
   await logActivity({
     actor: { sub: admin.sub, name: admin.name, adminRole: isAdminRole(admin.adminRole) ? admin.adminRole : null },
     action: "merchant.custody_approved", entityType: "merchant_custody", entityId: id,
@@ -1273,6 +1275,7 @@ merchantRoutes.post("/admin/merchant-custody/:id/revoke", requireAuth, requireRo
     { sql: "UPDATE settings SET value = '0' WHERE key = 'merchant_live_custody_approved'" },
     { sql: "UPDATE settings SET value = '0' WHERE key = 'merchant_payments_enabled'" },
   ]);
+  invalidateSettingsCache();
   await logActivity({
     actor: { sub: admin.sub, name: admin.name, adminRole: isAdminRole(admin.adminRole) ? admin.adminRole : null },
     action: "merchant.custody_revoked", entityType: "merchant_custody", entityId: id,
@@ -1371,6 +1374,7 @@ merchantRoutes.post("/admin/merchant-reconciliation/freeze", requireAuth, requir
     sql: "UPDATE settings SET value = ? WHERE key = 'merchant_withdrawals_frozen'",
     args: [parsed.data.frozen ? "1" : "0"],
   });
+  invalidateSettingsCache();
   await logActivity({
     actor: { sub: admin.sub, name: admin.name, adminRole: isAdminRole(admin.adminRole) ? admin.adminRole : null },
     action: "merchant.withdrawal_freeze", entityType: "merchant_finance", entityId: "global",

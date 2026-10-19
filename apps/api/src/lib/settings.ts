@@ -881,9 +881,46 @@ export async function getTimeFeeSettings(): Promise<TimeFeeSettings> {
   return { ...DEFAULT_TIME_FEES, ...JSON.parse(await getSetting("time_fees")) };
 }
 
+/**
+ * Settings are read on almost every request (the app-wide /settings payload alone reads dozens of keys), and D1 bills
+ * every row read, so the whole table is loaded as one short-lived snapshot instead of one query per key. A save through
+ * setSetting() (or invalidateSettingsCache() after a raw write) drops it at once; other server instances pick a change
+ * up within SETTINGS_CACHE_TTL_MS. Money-safety flags that must never be stale (withdrawal freeze, custody approval,
+ * payments switches) are enforced with their own direct queries, not through here.
+ */
+/** Tests change settings through their own database client, so the cache stays off while node:test is running. */
+const SETTINGS_CACHE_TTL_MS = Number(process.env.SETTINGS_CACHE_TTL_MS ?? (process.env.NODE_TEST_CONTEXT ? 0 : 30_000)) || 0;
+let settingsSnapshot: { values: Map<string, string>; at: number } | null = null;
+let settingsLoading: Promise<Map<string, string>> | null = null;
+let settingsVersion = 0;
+
+export function invalidateSettingsCache(): void {
+  settingsSnapshot = null;
+  settingsVersion++;
+}
+
+async function loadSettings(): Promise<Map<string, string>> {
+  if (settingsSnapshot && Date.now() - settingsSnapshot.at < SETTINGS_CACHE_TTL_MS) return settingsSnapshot.values;
+  if (!settingsLoading) {
+    const version = settingsVersion;
+    settingsLoading = (async () => {
+      try {
+        const res = await db.execute("SELECT key, value FROM settings");
+        const values = new Map<string, string>();
+        for (const row of res.rows) values.set(String(row.key), String(row.value ?? ""));
+        // A save that landed while this read was in flight must not be hidden behind the older snapshot.
+        if (version === settingsVersion) settingsSnapshot = { values, at: Date.now() };
+        return values;
+      } finally {
+        settingsLoading = null;
+      }
+    })();
+  }
+  return settingsLoading;
+}
+
 export async function getSetting(key: SettingKey): Promise<string> {
-  const res = await db.execute({ sql: "SELECT value FROM settings WHERE key = ?", args: [key] });
-  return (res.rows[0]?.value as string | undefined) ?? DEFAULTS[key];
+  return (await loadSettings()).get(key) ?? DEFAULTS[key];
 }
 
 export async function setSetting(key: SettingKey, value: string): Promise<void> {
@@ -892,6 +929,7 @@ export async function setSetting(key: SettingKey, value: string): Promise<void> 
           ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`,
     args: [key, value],
   });
+  invalidateSettingsCache();
 }
 
 export type PlatformEnvironment = "live" | "sandbox";

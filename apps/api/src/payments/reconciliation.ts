@@ -1,7 +1,7 @@
 import { db, executeBatch, type DbStatement } from "../db/client.js";
 import { postLedgerTransaction } from "../ledger/service.js";
 import { newId } from "../lib/ids.js";
-import type { PlatformEnvironment } from "../lib/settings.js";
+import { invalidateSettingsCache, type PlatformEnvironment } from "../lib/settings.js";
 import { activateMerchantAllocationsForFundedOrder } from "../merchants/service.js";
 import { BUNDLE_CHILD_PROVIDER, finishBundleChildren } from "../orders/bundle-funding.js";
 import { checkPaymentStatus, type DbPaymentStatus } from "./service.js";
@@ -85,6 +85,7 @@ async function enforceMerchantReconciliationGuard(): Promise<void> {
   });
   if (mismatch.rows.length > 0) {
     await db.execute("UPDATE settings SET value = '1' WHERE key = 'merchant_withdrawals_frozen'");
+    invalidateSettingsCache();
     console.error("Merchant balance reconciliation mismatch; withdrawals frozen");
   }
 }
