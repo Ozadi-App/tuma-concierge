@@ -18,6 +18,7 @@ import {
 } from "@peebee/shared";
 import { db } from "../db/client.js";
 import { newId } from "../lib/ids.js";
+import { getR2Bucket } from "../storage/r2.js";
 import { consume, tooManyRequests } from "../lib/ratelimit.js";
 import { getLearnSettings } from "./settings.js";
 
@@ -62,6 +63,38 @@ export async function studioReady(): Promise<boolean> {
 
 export function resetStudioCache(): void {
   readyCache = null;
+  learningCache = null;
+}
+
+let learningCache: { at: number; ok: boolean } | null = null;
+
+/** Migration 0111 (media, enrolment, grading, fees). Those features answer "upgrade pending" until it is applied. */
+export async function learningReady(): Promise<boolean> {
+  if (learningCache && (learningCache.ok || Date.now() - learningCache.at < 30_000)) return learningCache.ok;
+  let ok = false;
+  try {
+    const res = await db.execute({
+      sql: "SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table' AND name IN ('edu_lesson_media', 'edu_enrollments', 'edu_lesson_progress', 'edu_quiz_attempts', 'edu_exam_submissions', 'edu_fee_invoices', 'edu_fee_payments')",
+      args: [],
+    });
+    ok = Number((res.rows[0] as Row).n) === 7;
+  } catch {
+    ok = false;
+  }
+  learningCache = { at: Date.now(), ok };
+  return ok;
+}
+
+/** The uploaded file for each lesson, when the table exists. */
+export async function mediaByLesson(courseId: string): Promise<Map<string, NonNullable<StudioLesson["media"]>>> {
+  const map = new Map<string, NonNullable<StudioLesson["media"]>>();
+  if (!(await learningReady())) return map;
+  const res = await db.execute({
+    sql: "SELECT m.lesson_id, m.content_type, m.size_bytes FROM edu_lesson_media m JOIN edu_lessons l ON l.id = m.lesson_id WHERE l.course_id = ?",
+    args: [courseId],
+  });
+  for (const r of res.rows as Row[]) map.set(String(r.lesson_id), { contentType: String(r.content_type), sizeBytes: Number(r.size_bytes) });
+  return map;
 }
 
 studioRoutes.use("*", async (c, next) => {
@@ -163,7 +196,7 @@ const lessonBody = z.object({
   quiz: quizSchema.optional(),
 });
 
-async function body<T extends z.ZodTypeAny>(c: Context, schema: T): Promise<{ ok: true; data: z.infer<T> } | { ok: false; res: Response }> {
+export async function body<T extends z.ZodTypeAny>(c: Context, schema: T): Promise<{ ok: true; data: z.infer<T> } | { ok: false; res: Response }> {
   const parsed = schema.safeParse(await c.req.json().catch(() => null));
   if (parsed.success) return { ok: true, data: parsed.data };
   const issue = parsed.error.issues[0];
@@ -171,15 +204,15 @@ async function body<T extends z.ZodTypeAny>(c: Context, schema: T): Promise<{ ok
   return { ok: false, res: c.json({ error: "invalid_body", message: `${where}${issue?.message ?? "Invalid request"}`, issues: parsed.error.issues }, 400) };
 }
 
-const fail = (c: Context, f: Fail) => c.json({ error: f.error, message: f.message }, f.status);
+export const fail = (c: Context, f: Fail) => c.json({ error: f.error, message: f.message }, f.status);
 
 /** Stops one educator creating things faster than Admin allows (all create endpoints share one budget). */
-async function throttle(c: Context, userId: string, settings: LearnSettings): Promise<Response | null> {
+export async function throttle(c: Context, userId: string, settings: LearnSettings): Promise<Response | null> {
   const quota = await consume(`learn-create:${userId}`, settings.createsPerHour, 60 * 60);
   return quota.allowed ? null : tooManyRequests(c, quota, "You're creating things very quickly. Take a short break and try again.");
 }
 
-async function gate(c: Context): Promise<{ settings: LearnSettings; userId: string } | Response> {
+export async function gate(c: Context): Promise<{ settings: LearnSettings; userId: string } | Response> {
   const settings = await getLearnSettings();
   if (!settings.enabled) {
     return fail(c, { status: 503, error: "service_disabled", message: "Peebee Learn Studio is switched off right now." });
@@ -187,39 +220,82 @@ async function gate(c: Context): Promise<{ settings: LearnSettings; userId: stri
   return { settings, userId: c.get("user").sub };
 }
 
-const isResponse = (v: unknown): v is Response => v instanceof Response;
+export const isResponse = (v: unknown): v is Response => v instanceof Response;
 
 // ---------------------------------------------------------------------------
 // Ownership. Every id from the URL is resolved *through* the signed-in owner.
 // A row that exists but belongs to someone else is reported as 404, not 403.
 // ---------------------------------------------------------------------------
 
-async function one(sql: string, args: unknown[]): Promise<Row | null> {
+export async function one(sql: string, args: unknown[]): Promise<Row | null> {
   return ((await db.execute({ sql, args: args as never })).rows[0] as Row | undefined) ?? null;
 }
 
-const ownedSchool = (userId: string, id: string) => one("SELECT * FROM edu_schools WHERE id = ? AND owner_id = ?", [id, userId]);
-const ownedClass = (userId: string, id: string) =>
+export const ownedSchool = (userId: string, id: string) => one("SELECT * FROM edu_schools WHERE id = ? AND owner_id = ?", [id, userId]);
+export const ownedClass = (userId: string, id: string) =>
   one("SELECT c.* FROM edu_classes c JOIN edu_schools s ON s.id = c.school_id WHERE c.id = ? AND s.owner_id = ?", [id, userId]);
-const ownedCourse = (userId: string, id: string) =>
+export const ownedCourse = (userId: string, id: string) =>
   one("SELECT c.* FROM edu_courses c JOIN edu_schools s ON s.id = c.school_id WHERE c.id = ? AND s.owner_id = ?", [id, userId]);
-const ownedModule = (userId: string, id: string) =>
+export const ownedModule = (userId: string, id: string) =>
   one(
     `SELECT m.* FROM edu_modules m JOIN edu_courses c ON c.id = m.course_id JOIN edu_schools s ON s.id = c.school_id WHERE m.id = ? AND s.owner_id = ?`,
     [id, userId],
   );
-const ownedLesson = (userId: string, id: string) =>
+export const ownedLesson = (userId: string, id: string) =>
   one(
     `SELECT l.* FROM edu_lessons l JOIN edu_courses c ON c.id = l.course_id JOIN edu_schools s ON s.id = c.school_id WHERE l.id = ? AND s.owner_id = ?`,
     [id, userId],
   );
 
-const notFound = (c: Context, what: string) => fail(c, { status: 404, error: "not_found", message: `That ${what} wasn't found.` });
-const suspended = (c: Context) =>
+export const notFound = (c: Context, what: string) => fail(c, { status: 404, error: "not_found", message: `That ${what} wasn't found.` });
+export const suspended = (c: Context) =>
   fail(c, { status: 403, error: "school_suspended", message: "This school has been suspended. Contact Peebee support to have it restored." });
 
-async function count(sql: string, args: unknown[]): Promise<number> {
+export async function count(sql: string, args: unknown[]): Promise<number> {
   return Number(((await one(sql, args)) ?? { n: 0 }).n);
+}
+
+
+// ---------------------------------------------------------------------------
+// Deleting content that learners may already use
+// ---------------------------------------------------------------------------
+
+/** Active learners in the courses selected by `courseIds` (a SELECT of course ids). Deleting would take away what they paid for. */
+async function learnersIn(courseIds: string, args: unknown[]): Promise<number> {
+  if (!(await learningReady())) return 0;
+  return count(`SELECT COUNT(*) AS n FROM edu_enrollments WHERE status = 'active' AND course_id IN (${courseIds})`, args);
+}
+
+const hasLearnersResponse = (c: Context) =>
+  fail(c, { status: 409, error: "has_learners", message: "Learners are enrolled here, so it can't be deleted. Unpublish the course instead and it will stop appearing in the catalogue." });
+
+/** Removes lesson media, progress, attempts and leftover claims for the given lessons (a SELECT of lesson ids), and the stored files. */
+async function purgeLessonData(lessonIds: string, args: unknown[]): Promise<void> {
+  if (!(await learningReady())) return;
+  const keys = ((await db.execute({ sql: `SELECT r2_key FROM edu_lesson_media WHERE lesson_id IN (${lessonIds})`, args: args as never })).rows as Row[]).map((r) => String(r.r2_key));
+  await db.execute({ sql: `DELETE FROM edu_lesson_media WHERE lesson_id IN (${lessonIds})`, args: args as never });
+  await db.execute({ sql: `DELETE FROM edu_lesson_progress WHERE lesson_id IN (${lessonIds})`, args: args as never });
+  await db.execute({ sql: `DELETE FROM edu_quiz_attempts WHERE lesson_id IN (${lessonIds})`, args: args as never });
+  for (const key of keys) await getR2Bucket().delete(key).catch(() => undefined);
+}
+
+/** Removes live classroom sessions (and their cues, members and answers) that point at the given rows; a no-op until migration 0112 is applied. */
+async function purgeLiveSessions(column: "school_id" | "class_id" | "course_id", values: string, args: unknown[]): Promise<void> {
+  const sessions = `SELECT id FROM edu_live_sessions WHERE ${column} IN (${values})`;
+  try {
+    for (const table of ["edu_live_responses", "edu_live_members", "edu_live_cues"]) {
+      await db.execute({ sql: `DELETE FROM ${table} WHERE session_id IN (${sessions})`, args: args as never });
+    }
+    await db.execute({ sql: `DELETE FROM edu_live_sessions WHERE ${column} IN (${values})`, args: args as never });
+  } catch (err) {
+    if (!/no such table/i.test(String(err))) throw err;
+  }
+}
+
+/** Same for whole courses: everything of the lessons, plus unfinished enrolment claims. */
+async function purgeCourseData(courseIds: string, args: unknown[]): Promise<void> {
+  await purgeLessonData(`SELECT id FROM edu_lessons WHERE course_id IN (${courseIds})`, args);
+  if (await learningReady()) await db.execute({ sql: `DELETE FROM edu_enrollments WHERE course_id IN (${courseIds})`, args: args as never });
 }
 
 // ---------------------------------------------------------------------------
@@ -304,7 +380,7 @@ const courseShape = (r: Row): StudioCourse => ({
   createdAt: String(r.created_at),
 });
 
-const lessonShape = (r: Row): StudioLesson => ({
+const lessonShape = (r: Row, media: StudioLesson["media"] = null): StudioLesson => ({
   id: String(r.id),
   moduleId: String(r.module_id),
   courseId: String(r.course_id),
@@ -315,6 +391,7 @@ const lessonShape = (r: Row): StudioLesson => ({
   contentUrl: String(r.content_url ?? ""),
   position: Number(r.position ?? 0),
   quiz: parseQuiz(r.quiz_json),
+  media,
 });
 
 const moduleShape = (r: Row, lessons: StudioLesson[] = []): StudioModule => ({
@@ -462,6 +539,14 @@ studioRoutes.delete("/schools/:id", async (c) => {
   const school = await ownedSchool(userId, c.req.param("id"));
   if (!school) return notFound(c, "school");
   const id = String(school.id);
+  const courses = "SELECT id FROM edu_courses WHERE school_id = ?";
+  if ((await learnersIn(courses, [id])) > 0) return hasLearnersResponse(c);
+  if ((await learningReady()) && (await count("SELECT COUNT(*) AS n FROM edu_fee_invoices WHERE school_id = ? AND status != 'cancelled'", [id])) > 0) {
+    return fail(c, { status: 409, error: "has_invoices", message: "This school has fee invoices. Cancel the unpaid ones; a school with payments can't be deleted." });
+  }
+  await purgeLiveSessions("school_id", "?", [id]);
+  await purgeCourseData(courses, [id]);
+  if (await learningReady()) await db.execute({ sql: "DELETE FROM edu_fee_invoices WHERE school_id = ?", args: [id] });
   await db.execute({ sql: "DELETE FROM edu_lessons WHERE course_id IN (SELECT id FROM edu_courses WHERE school_id = ?)", args: [id] });
   await db.execute({ sql: "DELETE FROM edu_modules WHERE course_id IN (SELECT id FROM edu_courses WHERE school_id = ?)", args: [id] });
   await db.execute({ sql: "DELETE FROM edu_courses WHERE school_id = ?", args: [id] });
@@ -574,6 +659,11 @@ studioRoutes.delete("/classes/:id", async (c) => {
   const cls = await ownedClass(c.get("user").sub, c.req.param("id"));
   if (!cls) return notFound(c, "class");
   const id = String(cls.id);
+  const courses = "SELECT id FROM edu_courses WHERE class_id = ?";
+  if ((await learnersIn(courses, [id])) > 0) return hasLearnersResponse(c);
+  await purgeLiveSessions("class_id", "?", [id]);
+  await purgeLiveSessions("course_id", courses, [id]);
+  await purgeCourseData(courses, [id]);
   await db.execute({ sql: "DELETE FROM edu_lessons WHERE course_id IN (SELECT id FROM edu_courses WHERE class_id = ?)", args: [id] });
   await db.execute({ sql: "DELETE FROM edu_modules WHERE course_id IN (SELECT id FROM edu_courses WHERE class_id = ?)", args: [id] });
   await db.execute({ sql: "DELETE FROM edu_courses WHERE class_id = ?", args: [id] });
@@ -641,9 +731,10 @@ studioRoutes.get("/courses/:id", async (c) => {
   const id = String(course.id);
   const modules = (await db.execute({ sql: "SELECT * FROM edu_modules WHERE course_id = ? ORDER BY position ASC, created_at ASC LIMIT 500", args: [id] })).rows as Row[];
   const lessons = (await db.execute({ sql: "SELECT * FROM edu_lessons WHERE course_id = ? ORDER BY position ASC, created_at ASC LIMIT 5000", args: [id] })).rows as Row[];
+  const media = await mediaByLesson(id);
   const detail: StudioCourseDetail = {
     ...(await loadCourse(id))!,
-    modules: modules.map((m) => moduleShape(m, lessons.filter((l) => l.module_id === m.id).map(lessonShape))),
+    modules: modules.map((m) => moduleShape(m, lessons.filter((l) => l.module_id === m.id).map((l) => lessonShape(l, media.get(String(l.id)) ?? null)))),
   };
   return c.json({ ok: true, course: detail });
 });
@@ -690,6 +781,10 @@ studioRoutes.delete("/courses/:id", async (c) => {
   const course = await ownedCourse(c.get("user").sub, c.req.param("id"));
   if (!course) return notFound(c, "course");
   const id = String(course.id);
+  const ids = "SELECT id FROM edu_courses WHERE id = ?";
+  if ((await learnersIn(ids, [id])) > 0) return hasLearnersResponse(c);
+  await purgeLiveSessions("course_id", ids, [id]);
+  await purgeCourseData(ids, [id]);
   await db.execute({ sql: "DELETE FROM edu_lessons WHERE course_id = ?", args: [id] });
   await db.execute({ sql: "DELETE FROM edu_modules WHERE course_id = ?", args: [id] });
   await db.execute({ sql: "DELETE FROM edu_courses WHERE id = ?", args: [id] });
@@ -741,6 +836,7 @@ studioRoutes.patch("/modules/:id", async (c) => {
 studioRoutes.delete("/modules/:id", async (c) => {
   const mod = await ownedModule(c.get("user").sub, c.req.param("id"));
   if (!mod) return notFound(c, "module");
+  await purgeLessonData("SELECT id FROM edu_lessons WHERE module_id = ?", [mod.id]);
   await db.execute({ sql: "DELETE FROM edu_lessons WHERE module_id = ?", args: [mod.id as string] });
   await db.execute({ sql: "DELETE FROM edu_modules WHERE id = ?", args: [mod.id as string] });
   return c.json({ ok: true });
@@ -833,6 +929,7 @@ studioRoutes.patch("/lessons/:id", async (c) => {
 studioRoutes.delete("/lessons/:id", async (c) => {
   const lesson = await ownedLesson(c.get("user").sub, c.req.param("id"));
   if (!lesson) return notFound(c, "lesson");
+  await purgeLessonData("SELECT ?", [lesson.id]);
   await db.execute({ sql: "DELETE FROM edu_lessons WHERE id = ?", args: [lesson.id as string] });
   // A published course with nothing left to teach goes back to draft.
   const left = await count("SELECT COUNT(*) AS n FROM edu_lessons WHERE course_id = ?", [lesson.course_id]);

@@ -39,7 +39,7 @@ jobs:
       - name: Typecheck apps
         run: |
           set -e
-          for app in api admin customer merchant partner restaurant rider web sales preview-hub work learn; do
+          for app in api admin customer merchant partner restaurant rider web sales preview-hub work learn tv; do
             echo "::group::tsc $app"
             (cd apps/$app && npx tsc --noEmit)
             echo "::endgroup::"
@@ -58,7 +58,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        app: [admin, customer, merchant, partner, restaurant, rider, web, sales, work, learn]
+        app: [admin, customer, merchant, partner, restaurant, rider, web, sales, work, learn, tv]
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4

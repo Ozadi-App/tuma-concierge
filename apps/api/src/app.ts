@@ -46,6 +46,7 @@ import { workRoutes } from "./work/routes.js";
 import { talentRoutes } from "./talent/routes.js";
 import { pharmacyRoutes } from "./pharmacy/routes.js";
 import { educationAdminRoutes } from "./education/admin.js";
+import { tvRoutes } from "./education/classroom.js";
 import { educationRoutes } from "./education/routes.js";
 
 /** Hono app shared by the Node entry (local dev) and the Cloudflare Worker entry. */
@@ -241,6 +242,7 @@ app.route("/v1/talent", talentRoutes);
 app.route("/v1/pharmacy", pharmacyRoutes);
 app.route("/v1/education", educationRoutes);
 app.route("/v1", educationAdminRoutes);
+app.route("/v1/tv", tvRoutes);
 app.route("/v1", orderRoutes);
 app.route("/v1", relayRoutes);
 app.route("/v1", paymentRoutes);

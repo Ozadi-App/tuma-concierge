@@ -7,6 +7,10 @@
 export type R2Object = {
   body: ReadableStream;
   httpMetadata?: { contentType?: string };
+  /** Whole-object size in bytes (present on real R2 bodies). */
+  size?: number;
+  /** The slice actually returned when a range was requested. */
+  range?: { offset: number; length: number };
 };
 
 export type R2Bucket = {
@@ -15,7 +19,7 @@ export type R2Bucket = {
     value: ArrayBuffer | ArrayBufferView | ReadableStream | string,
     options?: { httpMetadata?: { contentType?: string } },
   ): Promise<unknown>;
-  get(key: string): Promise<R2Object | null>;
+  get(key: string, options?: { range?: { offset: number; length?: number } }): Promise<R2Object | null>;
   delete(key: string): Promise<void>;
 };
 

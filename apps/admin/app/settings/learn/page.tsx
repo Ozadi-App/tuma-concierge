@@ -21,6 +21,17 @@ const LIMITS: { key: NumberKey; label: string; hint: string; min: number; max: n
   { key: "maxLessonsPerModule", label: "Lessons per module", hint: "Lessons inside one module", min: 1, max: 200 },
   { key: "maxQuizQuestionsPerLesson", label: "Quiz questions per lesson", hint: "0 turns lesson quizzes off", min: 0, max: 100 },
   { key: "maxLessonMinutes", label: "Longest lesson (minutes)", hint: "Upper limit for one lesson", min: 1, max: 1440 },
+  { key: "commissionPercent", label: "Peebee's share (%)", hint: "Taken from every course sale and fee payment", min: 0, max: 60 },
+  { key: "maxVideoMb", label: "Largest lesson file (MB)", hint: "Video or audio an educator can upload (100 MB is the most the platform accepts)", min: 1, max: 100 },
+  { key: "quizAttemptsPerHour", label: "Quiz attempts per hour", hint: "Per learner, across all quizzes", min: 1, max: 200 },
+  { key: "examPassPercent", label: "Exam pass mark (%)", hint: "For exams the server marks automatically", min: 0, max: 100 },
+  { key: "liveMaxParticipants", label: "Students per live session", hint: "Phones that can join one classroom session", min: 1, max: 500 },
+  { key: "livePollSeconds", label: "Live refresh (seconds)", hint: "How often a phone or TV checks for changes. Lower is snappier but costs more.", min: 1, max: 30 },
+  { key: "liveMaxCuesPerSession", label: "Run-sheet items per session", hint: "Slides, questions and exams prepared for one session", min: 5, max: 500 },
+  { key: "liveQuestionSeconds", label: "Default answer time (seconds)", hint: "For a live question when the tutor sets none", min: 5, max: 600 },
+  { key: "liveMaxExamMinutes", label: "Longest live exam (minutes)", hint: "Upper limit for a timed exam on phones", min: 1, max: 600 },
+  { key: "maxScreensPerUser", label: "TV screens per educator", hint: "Most screens one account can pair", min: 1, max: 50 },
+  { key: "screenPairMinutes", label: "TV pairing code lifetime (minutes)", hint: "How long a code shown on a TV can be used", min: 1, max: 60 },
   { key: "createsPerHour", label: "Creations per hour", hint: "Schools, classes, courses, modules and lessons made by one educator per hour", min: 1, max: 1000 },
 ];
 
@@ -160,6 +171,10 @@ export default function LearnSettingsPage() {
             </div>
             <SwitchRow title="Studio open" hint="When off, educators can't create or edit anything. Published courses stay visible." on={settings.enabled} disabled={!canManage} onChange={(v) => patch("enabled", v)} />
             <SwitchRow title="Masterclasses" hint="Short open programmes next to ordinary classes" on={settings.masterclassesEnabled} disabled={!canManage} onChange={(v) => patch("masterclassesEnabled", v)} />
+            <SwitchRow title="Enrolment" hint="Learners can join published courses, free or paid from their wallet" on={settings.enrolmentsEnabled} disabled={!canManage} onChange={(v) => patch("enrolmentsEnabled", v)} />
+            <SwitchRow title="Video and audio uploads" hint="Educators can attach a file to a lesson" on={settings.videoUploadsEnabled} disabled={!canManage} onChange={(v) => patch("videoUploadsEnabled", v)} />
+            <SwitchRow title="School fees" hint="Schools can invoice learners, who pay from their wallet" on={settings.feesEnabled} disabled={!canManage} onChange={(v) => patch("feesEnabled", v)} />
+            <SwitchRow title="Live classroom and TV" hint="Educators can run live sessions that push content to a TV and quizzes to students' phones" on={settings.liveEnabled} disabled={!canManage} onChange={(v) => patch("liveEnabled", v)} />
             <SwitchRow title="Publish automatically" hint="A course goes live as soon as it has its first lesson. When off, the educator publishes it themselves." on={settings.publishByDefault} disabled={!canManage} onChange={(v) => patch("publishByDefault", v)} />
           </section>
 

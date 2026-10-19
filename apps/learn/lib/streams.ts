@@ -57,3 +57,8 @@ export function formatMinutes(total: number) {
 export function plural(n: number, one: string, many = `${one}s`) {
   return `${n} ${n === 1 ? one : many}`;
 }
+
+/** An amount of money, never "Free": zero collected is UGX 0. */
+export function formatMoney(amount: number) {
+  return `UGX ${amount.toLocaleString("en-UG")}`;
+}

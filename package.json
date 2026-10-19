@@ -16,6 +16,7 @@
     "dev:pharmacy": "pnpm --filter pharmacy dev",
     "dev:work": "pnpm --filter work dev",
     "dev:learn": "pnpm --filter learn dev",
+    "dev:tv": "pnpm --filter tv dev",
     "build:customer": "pnpm --filter customer build",
     "build:rider": "pnpm --filter rider build",
     "build:admin": "pnpm --filter admin build",
@@ -29,6 +30,7 @@
     "build:pharmacy": "pnpm --filter pharmacy build",
     "build:work": "pnpm --filter work build",
     "build:learn": "pnpm --filter learn build",
+    "build:tv": "pnpm --filter tv build",
     "migrate:api": "pnpm --filter api migrate",
     "seed:api": "pnpm --filter api seed",
     "lint": "pnpm -r lint",
@@ -45,6 +47,7 @@
     "deploy:pharmacy:preview": "pnpm --filter pharmacy deploy:preview",
     "deploy:work:preview": "pnpm --filter work deploy:preview",
     "deploy:learn:preview": "pnpm --filter learn deploy:preview",
+    "deploy:tv:preview": "pnpm --filter tv deploy:preview",
     "deploy:preview-hub:preview": "pnpm --filter preview-hub deploy:preview",
     "deploy:preview-hub": "pnpm --filter preview-hub deploy"
   },
