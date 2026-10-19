@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { CoverPicker } from "../../../components/studio/CoverPicker";
 import { CourseForm, ModuleForm, type CourseInput } from "../../../components/studio/forms";
 import { ItemForm, type ItemInput } from "../../../components/studio/ItemForm";
+import { Community } from "../../../components/studio/Community";
 import { GradebookTable, Marking } from "../../../components/studio/Marking";
 import { Button, Chip, Crumbs, EmptyState, Notice, Skeleton, cardCls } from "../../../components/ui";
 import { api, errorMessage } from "../../../lib/api";
@@ -603,6 +604,8 @@ export default function CoursePage() {
       </section>
 
       {published && <GradebookTable courseId={id} refreshKey={gradeKey} />}
+
+      {canBuild && <Community courseId={id} />}
 
       {published && (
         <section aria-labelledby="students-heading" className={`${cardCls} space-y-3 p-4`}>

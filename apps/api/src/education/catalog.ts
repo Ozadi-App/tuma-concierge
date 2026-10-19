@@ -6,6 +6,7 @@ import { hasColumn } from "../lib/schema.js";
 import { getLearnSettings } from "./settings.js";
 import { courseRules, proReady } from "./rewards.js";
 import { offersForCourse } from "./sales.js";
+import { openCohorts, ratingOf, reviewsOf } from "./community.js";
 import { studioReady } from "./studio.js";
 
 /**
@@ -103,6 +104,9 @@ catalogRoutes.get("/courses/:id", async (c) => {
       prerequisite,
       bundles: offers.bundles,
       plans: offers.plans,
+      rating: await ratingOf(String(course.id)),
+      reviews: await reviewsOf(String(course.id), 10),
+      cohorts: (await getLearnSettings()).cohortsEnabled ? await openCohorts(String(course.id)) : [],
       id: String(course.id),
       stream: String(course.stream),
       title: String(course.title),

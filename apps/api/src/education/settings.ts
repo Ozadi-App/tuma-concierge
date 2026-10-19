@@ -44,6 +44,7 @@ export async function getLearnSettings(): Promise<LearnSettings> {
     "learn_live_lessons_enabled", "learn_live_lesson_hosts", "learn_live_lesson_early_minutes",
     "learn_certificates_enabled", "learn_badges_enabled", "learn_drip_enabled", "learn_prerequisites_enabled", "learn_badge_courses_threshold", "learn_assignments_enabled", "learn_max_submission_chars",
     "learn_coupons_enabled", "learn_max_coupon_percent", "learn_bundles_enabled", "learn_max_bundle_courses", "learn_subscriptions_enabled", "learn_max_plans_per_school", "learn_max_plan_days",
+    "learn_reviews_enabled", "learn_review_min_progress", "learn_qa_enabled", "learn_max_qa_chars", "learn_qa_posts_per_hour", "learn_announcements_enabled", "learn_cohorts_enabled", "learn_instructors_enabled", "learn_max_instructors",
   ] as const;
   const v = Object.fromEntries(await Promise.all(keys.map(async (k) => [k, await getSetting(k)]))) as Record<(typeof keys)[number], string>;
   return {
@@ -110,6 +111,15 @@ export async function getLearnSettings(): Promise<LearnSettings> {
     subscriptionsEnabled: v.learn_subscriptions_enabled !== "0",
     maxPlansPerSchool: int(v.learn_max_plans_per_school, 5, 1, 50),
     maxPlanDays: int(v.learn_max_plan_days, 365, 1, 3650),
+    reviewsEnabled: v.learn_reviews_enabled !== "0",
+    reviewMinProgressPercent: int(v.learn_review_min_progress, 25, 0, 100),
+    qaEnabled: v.learn_qa_enabled !== "0",
+    maxQaChars: int(v.learn_max_qa_chars, 1500, 100, 10000),
+    qaPostsPerHour: int(v.learn_qa_posts_per_hour, 20, 1, 500),
+    announcementsEnabled: v.learn_announcements_enabled !== "0",
+    cohortsEnabled: v.learn_cohorts_enabled !== "0",
+    instructorsEnabled: v.learn_instructors_enabled !== "0",
+    maxInstructorsPerCourse: int(v.learn_max_instructors, 5, 1, 50),
   };
 }
 
@@ -177,5 +187,14 @@ export async function setLearnSettings(next: Partial<LearnSettings>): Promise<vo
   if (next.subscriptionsEnabled != null) put("learn_subscriptions_enabled", next.subscriptionsEnabled ? "1" : "0");
   if (next.maxPlansPerSchool != null) put("learn_max_plans_per_school", String(next.maxPlansPerSchool));
   if (next.maxPlanDays != null) put("learn_max_plan_days", String(next.maxPlanDays));
+  if (next.reviewsEnabled != null) put("learn_reviews_enabled", next.reviewsEnabled ? "1" : "0");
+  if (next.reviewMinProgressPercent != null) put("learn_review_min_progress", String(next.reviewMinProgressPercent));
+  if (next.qaEnabled != null) put("learn_qa_enabled", next.qaEnabled ? "1" : "0");
+  if (next.maxQaChars != null) put("learn_max_qa_chars", String(next.maxQaChars));
+  if (next.qaPostsPerHour != null) put("learn_qa_posts_per_hour", String(next.qaPostsPerHour));
+  if (next.announcementsEnabled != null) put("learn_announcements_enabled", next.announcementsEnabled ? "1" : "0");
+  if (next.cohortsEnabled != null) put("learn_cohorts_enabled", next.cohortsEnabled ? "1" : "0");
+  if (next.instructorsEnabled != null) put("learn_instructors_enabled", next.instructorsEnabled ? "1" : "0");
+  if (next.maxInstructorsPerCourse != null) put("learn_max_instructors", String(next.maxInstructorsPerCourse));
   await Promise.all(writes);
 }

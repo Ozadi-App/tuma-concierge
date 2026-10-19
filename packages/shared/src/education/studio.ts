@@ -153,6 +153,72 @@ export interface CourseOffers {
   plans: { id: string; title: string; priceUgx: number; days: number }[];
 }
 
+export interface CohortInfo {
+  id: string;
+  name: string;
+  startsAt: string;
+  enrolUntil: string | null;
+  seatsLeft: number | null;
+}
+
+export interface StudioCohort {
+  id: string;
+  name: string;
+  startsAt: string;
+  enrolUntil: string | null;
+  capacity: number | null;
+  members: number;
+}
+
+export interface CourseReview {
+  userId?: string;
+  name: string;
+  rating: number;
+  body: string;
+  reply: string;
+  createdAt: string;
+}
+
+export interface QaAnswer {
+  id: string;
+  by: string;
+  byTeacher: boolean;
+  body: string;
+  createdAt: string;
+  mine: boolean;
+  canDelete: boolean;
+}
+
+export interface QaQuestion {
+  id: string;
+  lessonId: string | null;
+  askedBy: string;
+  body: string;
+  createdAt: string;
+  mine: boolean;
+  canDelete: boolean;
+  answers: QaAnswer[];
+}
+
+export interface Announcement {
+  id: string;
+  title: string;
+  body: string;
+  createdAt: string;
+}
+
+/** Everything the educator manages for a course beyond its content. */
+export interface CourseCommunity {
+  ready: boolean;
+  owner: boolean;
+  instructors: { userId: string; name: string }[];
+  cohorts: StudioCohort[];
+  reviews: (CourseReview & { userId: string })[];
+  rating: { average: number | null; count: number };
+  announcements: Announcement[];
+  openQuestions: number;
+}
+
 export interface StudioLive {
   /** ISO time the lesson starts. */
   startsAt: string;
@@ -383,6 +449,24 @@ export interface LearnSettings {
   maxPlansPerSchool: number;
   /** Longest a pass can last, in days. */
   maxPlanDays: number;
+  /** Learners can rate and review a course. */
+  reviewsEnabled: boolean;
+  /** Progress a learner needs before they can review, in percent. */
+  reviewMinProgressPercent: number;
+  /** Learners can ask questions on a course and lessons, and teachers answer. */
+  qaEnabled: boolean;
+  /** Longest question, answer or announcement, in characters. */
+  maxQaChars: number;
+  /** Questions and answers one person may post per hour. */
+  qaPostsPerHour: number;
+  /** Educators can post announcements to a course. */
+  announcementsEnabled: boolean;
+  /** Educators can run cohorts: intakes with a start date and a seat limit. */
+  cohortsEnabled: boolean;
+  /** Educators can add other teachers to a course. */
+  instructorsEnabled: boolean;
+  /** Most extra teachers on one course. */
+  maxInstructorsPerCourse: number;
 }
 
 /** An educator's access to the TV classroom, and what Learn Pro costs. */
@@ -501,6 +585,15 @@ export const DEFAULT_LEARN_SETTINGS: LearnSettings = {
   subscriptionsEnabled: true,
   maxPlansPerSchool: 5,
   maxPlanDays: 365,
+  reviewsEnabled: true,
+  reviewMinProgressPercent: 25,
+  qaEnabled: true,
+  maxQaChars: 1500,
+  qaPostsPerHour: 20,
+  announcementsEnabled: true,
+  cohortsEnabled: true,
+  instructorsEnabled: true,
+  maxInstructorsPerCourse: 5,
 };
 
 // ---------------------------------------------------------------------------
