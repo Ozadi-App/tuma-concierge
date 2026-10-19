@@ -74,6 +74,11 @@ const settingsPatch = z
     liveLessonsEnabled: z.boolean(),
     liveLessonHosts: z.string().max(500),
     liveLessonEarlyMinutes: z.number().int().min(0).max(240),
+    certificatesEnabled: z.boolean(),
+    badgesEnabled: z.boolean(),
+    dripEnabled: z.boolean(),
+    prerequisitesEnabled: z.boolean(),
+    badgeCoursesThreshold: z.number().int().min(1).max(100),
   })
   .partial();
 

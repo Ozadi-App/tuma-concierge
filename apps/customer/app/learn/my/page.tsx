@@ -118,6 +118,9 @@ export default function MyLearningPage() {
         <Link href="/learn/live" className="mt-2 inline-flex items-center gap-1.5 rounded-xl bg-gold px-3.5 py-2 text-xs font-semibold text-ink-gold">
           Join a live class
         </Link>
+        <Link href="/learn/certificates" className="mt-2 ml-2 inline-flex items-center gap-1.5 rounded-xl border border-[var(--border-faint)] px-3.5 py-2 text-xs font-semibold text-ink">
+          🎓 Certificates and badges
+        </Link>
       </div>
 
       {error && (

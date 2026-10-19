@@ -41,6 +41,9 @@ import type {
   QuizAttemptStart,
   LearnerLessonDetail,
   StudioLive,
+  StudioCourseRules,
+  LearnerCertificate,
+  LearnerBadge,
   StudioSlide,
   LearnDemoStatus,
   LearnProEducator,
@@ -319,6 +322,7 @@ export function educationMethods(request: RequestFn) {
         course: {
           id: string; stream: EducationStream; title: string; summary: string; priceUgx: number; framework: CurriculumFramework; outcomes: string[];
           schoolName: string; className: string;
+          prerequisite?: { id: string; title: string } | null;
           modules: { id: string; title: string; description: string; lessons: { id: string; title: string; contentType: LessonContentType; durationMinutes: number; summary: string; questionCount: number }[] }[];
         };
       }>(`/v1/education/catalog/courses/${encodeURIComponent(id)}`);
@@ -463,6 +467,12 @@ export function educationMethods(request: RequestFn) {
     async studioReorderCourse(courseId: string, order: { modules: string[]; lessons: Record<string, string[]> }) {
       return request<{ ok: true }>(`/v1/education/studio/courses/${encodeURIComponent(courseId)}/order`, { method: "POST", body: JSON.stringify(order) });
     },
+    async studioSetCourseRules(courseId: string, rules: StudioCourseRules) {
+      return request<{ ok: true; rules: StudioCourseRules }>(`/v1/education/studio/courses/${encodeURIComponent(courseId)}/rules`, { method: "PUT", body: JSON.stringify(rules) });
+    },
+    async studioSetModuleDrip(moduleId: string, days: number) {
+      return request<{ ok: true; days: number }>(`/v1/education/studio/modules/${encodeURIComponent(moduleId)}/drip`, { method: "PUT", body: JSON.stringify({ days }) });
+    },
     async studioLessonAttendance(lessonId: string) {
       return request<{ ok: true; enrolled: number; attendees: { userId: string; name: string; joinedAt: string }[] }>(`/v1/education/studio/lessons/${encodeURIComponent(lessonId)}/attendance`);
     },
@@ -500,6 +510,19 @@ export function educationMethods(request: RequestFn) {
     },
     async learnLessonMediaUrl(lessonId: string) {
       return request<{ ok: true; url: string }>(`/v1/education/learn/lessons/${encodeURIComponent(lessonId)}/media-url`, { method: "POST", body: JSON.stringify({}) });
+    },
+    async learnCertificates() {
+      return request<{ ok: true; certificates: LearnerCertificate[] }>("/v1/education/learn/certificates");
+    },
+    async learnCertificate(id: string) {
+      return request<{ ok: true; certificate: LearnerCertificate }>(`/v1/education/learn/certificates/${encodeURIComponent(id)}`);
+    },
+    async learnBadges() {
+      return request<{ ok: true; enabled: boolean; badges: LearnerBadge[] }>("/v1/education/learn/badges");
+    },
+    /** Anyone can check a certificate by its code. */
+    async verifyCertificate(code: string) {
+      return request<{ ok: true; certificate: { learnerName: string; courseTitle: string; schoolName: string; scorePercent: number | null; issuedAt: string } }>(`/v1/education/catalog/certificates/${encodeURIComponent(code)}`);
     },
     async learnLesson(lessonId: string) {
       return request<{ ok: true; lesson: LearnerLessonDetail }>(`/v1/education/learn/lessons/${encodeURIComponent(lessonId)}`);

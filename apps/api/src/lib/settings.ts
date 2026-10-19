@@ -446,6 +446,11 @@ const DEFAULTS = {
   learn_live_lessons_enabled: "1",
   learn_live_lesson_hosts: "zoom.us,meet.google.com,meet.jit.si,teams.microsoft.com,whereby.com",
   learn_live_lesson_early_minutes: "15",
+  learn_certificates_enabled: "1",
+  learn_badges_enabled: "1",
+  learn_drip_enabled: "1",
+  learn_prerequisites_enabled: "1",
+  learn_badge_courses_threshold: "3",
   /** Peebee Work: clean / fix / laundry jobs done by independent providers and companies */
   work_enabled: "1",
   work_service_types: "clean",

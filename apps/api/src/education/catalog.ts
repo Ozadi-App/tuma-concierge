@@ -4,6 +4,7 @@ import { db } from "../db/client.js";
 import { clientIp, consume, tooManyRequests } from "../lib/ratelimit.js";
 import { hasColumn } from "../lib/schema.js";
 import { getLearnSettings } from "./settings.js";
+import { courseRules, proReady } from "./rewards.js";
 import { studioReady } from "./studio.js";
 
 /**
@@ -88,9 +89,16 @@ catalogRoutes.get("/courses/:id", async (c) => {
 
   const modules = (await db.execute({ sql: "SELECT * FROM edu_modules WHERE course_id = ? ORDER BY position ASC LIMIT 500", args: [course.id as string] })).rows as Row[];
   const lessons = (await db.execute({ sql: "SELECT * FROM edu_lessons WHERE course_id = ? ORDER BY position ASC LIMIT 5000", args: [course.id as string] })).rows as Row[];
+  let prerequisite: { id: string; title: string } | null = null;
+  if ((await getLearnSettings()).prerequisitesEnabled) {
+    const need = (await courseRules(String(course.id))).prerequisiteCourseId;
+    const row = need ? ((await db.execute({ sql: "SELECT id, title FROM edu_courses WHERE id = ?", args: [need] })).rows[0] as Row | undefined) : undefined;
+    if (row) prerequisite = { id: String(row.id), title: String(row.title) };
+  }
   return c.json({
     ok: true,
     course: {
+      prerequisite,
       id: String(course.id),
       stream: String(course.stream),
       title: String(course.title),
@@ -125,4 +133,12 @@ catalogRoutes.get("/courses/:id", async (c) => {
       })),
     },
   });
+});
+
+/** Anyone can check a certificate by its code: it says who finished what, and when. */
+catalogRoutes.get("/certificates/:code", async (c) => {
+  if (!(await proReady())) return c.json({ error: "not_found", message: "No certificate has that code." }, 404);
+  const row = (await db.execute({ sql: "SELECT learner_name, course_title, school_name, score_percent, issued_at FROM edu_certificates WHERE code = ?", args: [c.req.param("code").toUpperCase().slice(0, 20)] })).rows[0] as Row | undefined;
+  if (!row) return c.json({ error: "not_found", message: "No certificate has that code." }, 404);
+  return c.json({ ok: true, certificate: { learnerName: String(row.learner_name), courseTitle: String(row.course_title), schoolName: String(row.school_name), scorePercent: row.score_percent === null ? null : Number(row.score_percent), issuedAt: String(row.issued_at) } });
 });
