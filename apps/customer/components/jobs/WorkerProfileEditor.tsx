@@ -80,7 +80,7 @@ function Editor({ config, me, reload }: { config: TalentConfig; me: TalentMe; re
       {p ? (
         <section className={`${cardClass} space-y-2`}>
           <div className="flex items-center justify-between"><strong className="text-sm">Profile status</strong><span className="rounded-full bg-gold/15 px-2.5 py-1 text-[11px] font-bold text-gold">{!p.activated ? "Not activated" : status === "approved" ? "Live" : status === "pending" ? "Waiting for approval" : status}</span></div>
-          {status === "pending" && p.activated ? <p className="text-xs text-ink-500">Our team checks every new profile. You'll be told when you're live.</p> : null}
+          {status === "pending" && p.activated ? <p className="text-xs text-ink-500">Our team checks every new profile. You&apos;ll be told when you&apos;re live.</p> : null}
           {status === "rejected" || status === "suspended" ? <p className="text-xs text-ink-500">{p.statusNote ?? "Contact support for help."}</p> : null}
           {!p.activated ? (
             <>
