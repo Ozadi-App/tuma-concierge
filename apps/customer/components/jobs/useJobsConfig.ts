@@ -16,7 +16,7 @@ export function useJobsConfig(opts: { needMe?: boolean } = {}) {
       const c = await api.talentConfig();
       setConfig(c);
       if (!c.enabled) {
-        setFailure({ message: "Peebee Jobs isn't available right now.", topUp: false, pro: false, disabled: true, pending: false });
+        setFailure({ message: "Peebee Hire isn't available right now.", topUp: false, pro: false, disabled: true, pending: false });
         return;
       }
       if (opts.needMe !== false) setMe(await api.talentMe());

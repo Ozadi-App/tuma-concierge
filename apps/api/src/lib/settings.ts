@@ -1,10 +1,12 @@
 import type { MatchingMode } from "@peebee/shared";
-import { DEFAULT_RIDE_TRACKING_SETTINGS, DEFAULT_SHOPPING_UNIT_SETTINGS, DEFAULT_TIME_FEES, type JobExpirySettings, type TimeFeeSettings } from "@peebee/shared";
+import { DEFAULT_HOME_MENU, DEFAULT_RIDE_TRACKING_SETTINGS, DEFAULT_SHOPPING_UNIT_SETTINGS, DEFAULT_TIME_FEES, type JobExpirySettings, type TimeFeeSettings } from "@peebee/shared";
 import { db } from "../db/client.js";
 
 const DEFAULTS = {
   ride_tracking: JSON.stringify(DEFAULT_RIDE_TRACKING_SETTINGS),
   shopping_units_config: JSON.stringify(DEFAULT_SHOPPING_UNIT_SETTINGS),
+  /** The customer app's main menu names, the Hive shortcuts and the Hire banner. */
+  home_menu_config: JSON.stringify(DEFAULT_HOME_MENU),
   time_fees: JSON.stringify(DEFAULT_TIME_FEES),
   /** Which dataset the whole platform — every customer, rider, and the
    * admin dashboard's default view — currently reads and writes against.
@@ -473,7 +475,7 @@ const DEFAULTS = {
   work_onsite_suspend_after_flags: "0",
   work_onsite_window_days: "30",
   work_location_retention_days: "30",
-  /** Peebee Jobs: a marketplace where customers find workers and workers find gigs, projects and hiring posts (tables talent_*). Off until admin turns it on. */
+  /** Peebee Hire: a marketplace where customers find workers and workers find gigs, projects and hiring posts (tables talent_*). Off until admin turns it on. */
   talent_enabled: "0",
   talent_gigs_enabled: "1",
   talent_projects_enabled: "1",

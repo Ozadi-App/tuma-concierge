@@ -1,8 +1,10 @@
-# Peebee Jobs — product & technical spec
+# Peebee Hire — product & technical spec
 
 Status: **built** (API, customer app, admin app), switched off until `talent_enabled` is turned on. The module is named `talent_*` in code and tables because `work_*` already belongs to Clean/Fix/Laundry. Migration to apply by hand: `apps/api/src/db/migrations/0110_talent_jobs.sql`.
 
 Decisions since the first draft: employers are any customer (a Hire mode, plus a worker-search directory); escrow and direct payment are both built and admin picks which are live; illegal or unconstitutional work is screened against an admin-editable term list; monetization is fully data-driven (fee rules, plans, Pro features, free trial, free onboarding and a master free-access switch).
+**Naming and where it lives in the customer app.** Customers see this module as **Peebee Hire** (route `/services/hire`; `/services/jobs` redirects there). It sits inside **Hive**, the fifth main button (Ride · Buy · Eat · Learn · Hive), but apart from the Peebee-delivered services (Laundry, Clean, Fix): those are things Peebee gets done at a standard price, while Hire is for finding a person. Hive lists, in order, Clean, Laundry, Fix, **Workers** (quick odd jobs: the worker search opened on everyday trades) and **Hire** (a project or longer contract). Workers and Hire are shown in a separate "Need a person instead?" section and as nav tabs, and only while `talent_enabled` is on (Workers also needs worker search on). Every name here (the five buttons, the Hive shortcuts and their order, the banner text) is the admin **Home menu** setting (`home_menu_config`, Admin > Settings > Home menu), so it can change without a release. The code keeps `talent_*` and `/v1/talent`.
+
 Inspiration: WeWork-style flexible local workforce, Upwork/Freelancer mechanics (bids, escrow, reviews), a little LinkedIn (profile-as-CV, hiring).
 
 ## 1. Decisions so far
@@ -17,7 +19,7 @@ Inspiration: WeWork-style flexible local workforce, Upwork/Freelancer mechanics 
 
 ## 2. Today's state
 
-- `/service` ("Jobs" landing) lists Laundry, Fix, Jobs, Learn; the **Jobs tile links back to `/service`** and `/services/jobs` redirects to it. Nothing exists behind it.
+- `/service` ("Jobs" landing) lists Laundry, Fix, Jobs, Learn; the **Jobs tile links back to `/service`** and `/services/hire` redirects to it. Nothing exists behind it.
 - `apps/partner/app/jobs` and the rider "jobs" screens mean *delivery jobs*. The new module must not reuse that name in the UI or API (use **Work** / `work_*`) to avoid confusion.
 - Reusable building blocks already in the repo: `ledger/service.ts` (double-entry), `wallet/`, `payments/` (MTN/Airtel/Flutterwave MoMo), `verify/` (OTP, email), `car/` apply-with-bid pattern, `push/`, `calls/`, `speech/` + `voice/`, `lib/service-gate.ts` and `service_*_enabled` settings, `hasTable()/hasColumn()` for hand-applied migrations.
 

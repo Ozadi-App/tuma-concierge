@@ -12,7 +12,7 @@ import { useJobsConfig } from "./useJobsConfig";
 export function JobCard({ job, showStatus }: { job: TalentJob; showStatus?: boolean }) {
   const mine = typeof job.myApplication === "string" ? job.myApplication : job.myApplication?.status;
   return (
-    <Link href={`/services/jobs/${encodeURIComponent(job.id)}`} className={`${cardClass} block space-y-2 transition-transform active:scale-[0.99]`}>
+    <Link href={`/services/hire/${encodeURIComponent(job.id)}`} className={`${cardClass} block space-y-2 transition-transform active:scale-[0.99]`}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <span className="text-[10px] font-bold uppercase tracking-wider text-gold">{JOB_TYPE[job.type].short}{job.employmentType ? ` · ${EMPLOYMENT[job.employmentType]}` : ""}</span>
@@ -82,7 +82,7 @@ export function FindJobs() {
 
   if (configFailure) {
     return (
-      <JobsPage eyebrow="Peebee Jobs" title="Find work" backHref="/services/jobs" backLabel="Back to Jobs">
+      <JobsPage eyebrow="Peebee Hire" title="Find work" backHref="/services/hire" backLabel="Back to Hire">
         <Unavailable failure={configFailure} />
       </JobsPage>
     );
@@ -90,7 +90,7 @@ export function FindJobs() {
   const cats = (config?.categories ?? []).filter((c) => !segment || c.segment === segment || c.segment === "both");
 
   return (
-    <JobsPage eyebrow="Peebee Jobs" title="Find work" backHref="/services/jobs" backLabel="Back to Jobs">
+    <JobsPage eyebrow="Peebee Hire" title="Find work" backHref="/services/hire" backLabel="Back to Hire">
       <form onSubmit={(e) => { e.preventDefault(); void load(); }} className="space-y-3">
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search jobs, e.g. cleaner, driver, accountant" aria-label="Search jobs" className={fieldClass} />
         <div className="flex gap-2 overflow-x-auto pb-1">
@@ -118,7 +118,7 @@ export function FindJobs() {
       </form>
       <FailureNote failure={failure} />
       {!jobs ? <Spinner label="Looking for work" /> : null}
-      {jobs && jobs.length === 0 && !failure ? <EmptyState title="No jobs match" text="Try different filters, or check back soon. New jobs are posted all the time." action={<Link href="/services/jobs/profile" className="flex min-h-[48px] items-center justify-center rounded-2xl bg-gold font-bold text-ink-gold">Set up my worker profile</Link>} /> : null}
+      {jobs && jobs.length === 0 && !failure ? <EmptyState title="No jobs match" text="Try different filters, or check back soon. New jobs are posted all the time." action={<Link href="/services/hire/profile" className="flex min-h-[48px] items-center justify-center rounded-2xl bg-gold font-bold text-ink-gold">Set up my worker profile</Link>} /> : null}
       {jobs && jobs.length > 0 ? <p className="text-xs text-ink-500">{total} {total === 1 ? "job" : "jobs"}</p> : null}
       <ul className="space-y-3">{jobs?.map((j) => <li key={j.id}><JobCard job={j} /></li>)}</ul>
     </JobsPage>

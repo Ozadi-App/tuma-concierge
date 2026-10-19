@@ -22,14 +22,14 @@ export function MyPostedJobs() {
 
   const running = contracts.filter((c) => c.status === "active" || c.status === "disputed");
   return (
-    <JobsPage eyebrow="Peebee Jobs" title="Jobs I posted" backHref="/services/jobs" backLabel="Back to Jobs">
+    <JobsPage eyebrow="Peebee Hire" title="Jobs I posted" backHref="/services/hire" backLabel="Back to Hire">
       <FailureNote failure={failure} />
       {!jobs && !failure ? <Spinner label="Loading" /> : null}
       {running.length > 0 ? (
         <section className="space-y-2" aria-label="Work in progress">
           <h2 className="text-xs font-bold uppercase tracking-wider text-ink-500">In progress</h2>
           {running.map((c) => (
-            <Link key={c.id} href={`/services/jobs/contracts/${c.id}`} className={`${cardClass} flex items-center justify-between gap-3`}>
+            <Link key={c.id} href={`/services/hire/contracts/${c.id}`} className={`${cardClass} flex items-center justify-between gap-3`}>
               <span className="min-w-0"><strong className="block truncate text-sm">{c.title}</strong><span className="block truncate text-xs text-ink-500">{c.otherParty.name} · {formatUgx(c.priceUgx)}</span></span>
               <Badge status={c.status} />
             </Link>
@@ -37,7 +37,7 @@ export function MyPostedJobs() {
         </section>
       ) : null}
       <RecurrenceList onChange={load} />
-      {jobs?.length === 0 ? <EmptyState title="You haven't posted anything" text="Post a gig, a project or a hiring ad and workers near you will be told." action={<Link href="/services/jobs/post" className={primaryBtn}>Post a job</Link>} /> : null}
+      {jobs?.length === 0 ? <EmptyState title="You haven't posted anything" text="Post a gig, a project or a hiring ad and workers near you will be told." action={<Link href="/services/hire/post" className={primaryBtn}>Post a job</Link>} /> : null}
       {jobs && jobs.length > 0 ? (
         <section className="space-y-3" aria-label="Your posts">
           <h2 className="text-xs font-bold uppercase tracking-wider text-ink-500">Your posts</h2>
@@ -49,7 +49,7 @@ export function MyPostedJobs() {
               </li>
             ))}
           </ul>
-          <Link href="/services/jobs/post" className={primaryBtn}>Post another job</Link>
+          <Link href="/services/hire/post" className={primaryBtn}>Post another job</Link>
         </section>
       ) : null}
     </JobsPage>

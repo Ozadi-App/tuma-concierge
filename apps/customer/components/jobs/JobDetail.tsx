@@ -24,11 +24,11 @@ export function JobDetail({ id }: { id: string }) {
   }, [id]);
   useEffect(() => { load(); api.talentConfig().then(setConfig).catch(() => {}); }, [load]);
 
-  const back = job?.isMine ? "/services/jobs/mine" : "/services/jobs/find";
+  const back = job?.isMine ? "/services/hire/mine" : "/services/hire/find";
   return (
-    <JobsPage eyebrow="Peebee Jobs" title={job ? JOB_TYPE[job.type].label : "Job"} backHref={back} backLabel="Back">
+    <JobsPage eyebrow="Peebee Hire" title={job ? JOB_TYPE[job.type].label : "Job"} backHref={back} backLabel="Back">
       {!job && !failure ? <Spinner label="Loading job" /> : null}
-      {!job && failure ? <EmptyState title="Not available" text={failure.message} action={<Link href="/services/jobs/find" className={secondaryBtn}>Find other work</Link>} /> : null}
+      {!job && failure ? <EmptyState title="Not available" text={failure.message} action={<Link href="/services/hire/find" className={secondaryBtn}>Find other work</Link>} /> : null}
       {job && config ? (
         <>
           {params.get("review") ? <Notice tone="info" text="Thanks. Your post is being checked by our team and will go live once approved." /> : null}
@@ -104,7 +104,7 @@ function WorkerPanel({ job, reload }: { job: TalentJob; reload: () => void }) {
         <div className="flex items-center justify-between"><h3 className="text-sm font-bold">Your application</h3><Badge status={mine.status} /></div>
         {mine.bidUgx > 0 ? <p className="text-sm">Your price: <strong>{formatUgx(mine.bidUgx)}</strong></p> : null}
         {mine.message ? <p className="text-sm text-ink-500">{mine.message}</p> : null}
-        {mine.contractId ? <Link href={`/services/jobs/contracts/${mine.contractId}`} className={primaryBtn}>Open the job</Link> : null}
+        {mine.contractId ? <Link href={`/services/hire/contracts/${mine.contractId}`} className={primaryBtn}>Open the job</Link> : null}
         {["applied", "shortlisted"].includes(mine.status) ? (
           <BusyButton busy={busy} className={secondaryBtn} onClick={async () => { setBusy(true); try { await api.talentWithdrawApplication(mine.id); reload(); } catch (err) { setFailure(jobsFailure(err)); } finally { setBusy(false); } }}>Withdraw application</BusyButton>
         ) : null}
@@ -126,7 +126,7 @@ function WorkerPanel({ job, reload }: { job: TalentJob; reload: () => void }) {
       ) : null}
       <Field label="Message (optional)"><textarea rows={4} value={message} onChange={(e) => setMessage(e.target.value)} maxLength={1500} placeholder="Tell them why you're a good fit." className={fieldClass} /></Field>
       <FailureNote failure={failure} />
-      {failure?.code === "profile_required" || failure?.code === "profile_not_live" ? <Link href="/services/jobs/profile" className={secondaryBtn}>Go to my worker profile</Link> : null}
+      {failure?.code === "profile_required" || failure?.code === "profile_not_live" ? <Link href="/services/hire/profile" className={secondaryBtn}>Go to my worker profile</Link> : null}
       <BusyButton busy={busy} onClick={apply} className={primaryBtn}>{job.type === "gig" ? "Apply for this gig" : job.type === "project" ? "Send offer" : "Apply"}</BusyButton>
     </section>
   );
@@ -183,7 +183,7 @@ function EmployerPanel({ job, config, reload }: { job: TalentJob; config: Talent
           {job.status === "open" ? (
             <BusyButton busy={busy === "boost"} className={secondaryBtn} onClick={() => act("boost", () => api.talentBoostJob(job.id))}><Rocket className="h-4 w-4" aria-hidden />Boost</BusyButton>
           ) : null}
-          {job.status === "open" ? <Link href={`/services/jobs/workers?forJob=${job.id}`} className={secondaryBtn}><UserPlus className="h-4 w-4" aria-hidden />Invite</Link> : null}
+          {job.status === "open" ? <Link href={`/services/hire/workers?forJob=${job.id}`} className={secondaryBtn}><UserPlus className="h-4 w-4" aria-hidden />Invite</Link> : null}
           {canClose ? <BusyButton busy={busy === "close"} className={secondaryBtn} onClick={() => act("close", () => api.talentCloseJob(job.id))}>Close job</BusyButton> : null}
         </div>
         {job.status === "open" && !config.freeAccess ? <p className="text-[11px] text-ink-500">Boosting shows your job first for {config.limits.boostDays} days.</p> : null}
@@ -198,7 +198,7 @@ function EmployerPanel({ job, config, reload }: { job: TalentJob; config: Talent
         {applicants?.map((a) => (
           <article key={a.id} className={`${cardClass} space-y-3`}>
             <div className="flex items-start justify-between gap-2">
-              <Link href={`/services/jobs/workers/${encodeURIComponent(a.worker.id)}`} className="min-w-0">
+              <Link href={`/services/hire/workers/${encodeURIComponent(a.worker.id)}`} className="min-w-0">
                 <strong className="flex items-center gap-1.5 text-sm">{a.worker.name}{a.worker.verified ? <BadgeCheck className="h-4 w-4 text-gold" aria-label="ID verified" /> : null}</strong>
                 <span className="block truncate text-xs text-ink">{a.worker.headline}</span>
                 <span className="flex items-center gap-2 text-[11px] text-ink-500"><Rating rating={a.worker.rating} count={a.worker.ratingCount} />{a.worker.jobsCompleted} jobs</span>
@@ -220,8 +220,8 @@ function EmployerPanel({ job, config, reload }: { job: TalentJob; config: Talent
                 {a.status === "applied" ? <BusyButton busy={busy === `r${a.id}`} className={`${secondaryBtn} col-span-2`} onClick={() => act(`r${a.id}`, () => api.talentReject(a.id))}>Decline</BusyButton> : null}
               </div>
             ) : null}
-            {a.contractId ? <Link href={`/services/jobs/contracts/${a.contractId}`} className={primaryBtn}>Open the job</Link> : null}
-            {open === a.id ? <AcceptPanel applicant={a} job={job} config={config} onDone={(contractId) => { setOpen(null); loadApplicants(); reload(); if (contractId) window.location.assign(`/services/jobs/contracts/${contractId}`); }} onError={setFailure} /> : null}
+            {a.contractId ? <Link href={`/services/hire/contracts/${a.contractId}`} className={primaryBtn}>Open the job</Link> : null}
+            {open === a.id ? <AcceptPanel applicant={a} job={job} config={config} onDone={(contractId) => { setOpen(null); loadApplicants(); reload(); if (contractId) window.location.assign(`/services/hire/contracts/${contractId}`); }} onError={setFailure} /> : null}
             {a.status !== "rejected" ? (
               <details className="rounded-2xl border border-[var(--border-faint)] p-3"><summary className="flex cursor-pointer items-center gap-2 text-sm font-semibold"><MessageCircle className="h-4 w-4 text-gold" aria-hidden />Messages</summary><div className="pt-3"><ApplicationChat applicationId={a.id} /></div></details>
             ) : null}
