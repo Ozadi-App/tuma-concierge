@@ -495,8 +495,9 @@ export function educationMethods(request: RequestFn) {
     async tvDevices() {
       return request<{ ok: true; devices: TvDevice[] }>("/v1/tv/devices");
     },
-    async tvPair(code: string, name?: string) {
-      return request<{ ok: true; device: { id: string; name: string } }>("/v1/tv/pair", { method: "POST", body: JSON.stringify({ code, name: name ?? "" }) });
+    /** `purpose` "learn" links a TV for studying on it (free for everyone); the default, "teach", is a classroom screen for educators. */
+    async tvPair(code: string, name?: string, purpose?: "learn" | "teach") {
+      return request<{ ok: true; device: { id: string; name: string } }>("/v1/tv/pair", { method: "POST", body: JSON.stringify({ code, name: name ?? "", ...(purpose ? { purpose } : {}) }) });
     },
     async tvRename(id: string, name: string) {
       return request<{ ok: true }>(`/v1/tv/devices/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ name }) });

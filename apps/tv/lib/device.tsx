@@ -5,8 +5,8 @@ import { SECRET_KEY, TvAuthError, tvApi, type TrialSlot } from "./api";
 
 export type DeviceState =
   | { phase: "starting" }
-  | { phase: "pairing"; code: string | null; expiresInSeconds: number }
-  | { phase: "paired"; name: string; ownerName: string };
+  | { phase: "pairing"; code: string | null; linkUrl: string | null; expiresInSeconds: number }
+  | { phase: "paired"; name: string; ownerName: string; learnEnabled: boolean; liveEnabled: boolean };
 
 type Ctx = {
   state: DeviceState;
@@ -76,7 +76,7 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
         secretRef.current = started.secret;
         setSecret(started.secret);
         setPollSeconds(started.pollSeconds);
-        setState({ phase: "pairing", code: started.code, expiresInSeconds: started.expiresInSeconds });
+        setState({ phase: "pairing", code: started.code, linkUrl: started.linkUrl, expiresInSeconds: started.expiresInSeconds });
         setOffline(false);
       } catch {
         if (cancelled) return;
@@ -102,7 +102,11 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
         setOffline(false);
         setPollSeconds(me.pollSeconds);
         setTrialState(me.trial ?? null);
-        setState(me.status === "paired" ? { phase: "paired", name: me.name, ownerName: me.ownerName } : { phase: "pairing", code: me.code, expiresInSeconds: me.expiresInSeconds });
+        setState(
+          me.status === "paired"
+            ? { phase: "paired", name: me.name, ownerName: me.ownerName, learnEnabled: me.learnEnabled, liveEnabled: me.liveEnabled }
+            : { phase: "pairing", code: me.code, linkUrl: me.linkUrl, expiresInSeconds: me.expiresInSeconds },
+        );
         timer = setTimeout(tick, Math.max(2, me.pollSeconds) * 1000);
       } catch (err) {
         if (cancelled) return;

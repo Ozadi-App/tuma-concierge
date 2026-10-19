@@ -63,16 +63,48 @@ export function useDpad(): void {
   }, []);
 }
 
-/** Runs `handler` when the remote's Back button is pressed. */
-export function useBack(handler: () => void): void {
+/**
+ * Runs `handler` when the remote's Back button is pressed.
+ * An `exclusive` handler (a quiz that closes itself, say) takes the press for itself, so the screen behind it doesn't also go back.
+ */
+export function useBack(handler: () => void, options: { exclusive?: boolean } = {}): void {
+  const exclusive = !!options.exclusive;
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (isBackKey(event)) {
         event.preventDefault();
+        if (exclusive) event.stopPropagation();
         handler();
       }
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [handler]);
+    // Capture phase, so an exclusive handler hears the key before any ordinary one.
+    window.addEventListener("keydown", onKey, exclusive);
+    return () => window.removeEventListener("keydown", onKey, exclusive);
+  }, [handler, exclusive]);
+}
+
+/**
+ * Puts the remote on the first thing worth pressing once a screen has its content, so the first press of OK does something.
+ * `ready` is false while the page is still loading; `selector` picks a different first target (the lesson to continue, say).
+ */
+export function useAutoFocus(ready: boolean, selector = "[data-focusable]"): void {
+  useEffect(() => {
+    if (!ready) return;
+    // The screen's content can arrive a moment after the page mounts (the TV may still be checking who it belongs to), so keep looking briefly.
+    let tries = 0;
+    const attempt = () => {
+      const active = document.activeElement as HTMLElement | null;
+      if (active && active !== document.body && active.hasAttribute("data-focusable")) return true;
+      const target = document.querySelector<HTMLElement>(selector) ?? visibleFocusables()[0];
+      if (!target) return false;
+      target.focus();
+      return true;
+    };
+    if (attempt()) return;
+    const timer = setInterval(() => {
+      tries += 1;
+      if (attempt() || tries >= 25) clearInterval(timer);
+    }, 120);
+    return () => clearInterval(timer);
+  }, [ready, selector]);
 }

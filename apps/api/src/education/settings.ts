@@ -33,7 +33,7 @@ export async function getLearnSettings(): Promise<LearnSettings> {
     "learn_enrolments_enabled", "learn_commission_percent", "learn_video_uploads_enabled", "learn_max_video_mb", "learn_max_cover_mb", "learn_quiz_attempts_per_hour", "learn_fees_enabled", "learn_exam_pass_percent",
     "learn_live_enabled", "learn_live_max_participants", "learn_live_poll_seconds", "learn_live_max_cues", "learn_live_question_seconds", "learn_live_max_exam_minutes", "learn_max_screens_per_user", "learn_screen_pair_minutes",
     "learn_trial_classes_enabled", "learn_trial_code_a", "learn_trial_code_b", "learn_demo_visible",
-    "learn_tv_pro_required", "learn_pro_price_ugx", "learn_pro_days",
+    "learn_tv_pro_required", "learn_tv_learn_enabled", "learn_pro_price_ugx", "learn_pro_days",
   ] as const;
   const v = Object.fromEntries(await Promise.all(keys.map(async (k) => [k, await getSetting(k)]))) as Record<(typeof keys)[number], string>;
   return {
@@ -74,6 +74,7 @@ export async function getLearnSettings(): Promise<LearnSettings> {
     demoContentVisible: v.learn_demo_visible !== "0",
     // Free for everyone unless staff turn it on.
     tvProRequired: v.learn_tv_pro_required === "1",
+    tvLearnEnabled: v.learn_tv_learn_enabled !== "0",
     proPriceUgx: int(v.learn_pro_price_ugx, 50000, 0, 100_000_000),
     proDays: int(v.learn_pro_days, 30, 1, 3650),
   };
@@ -116,6 +117,7 @@ export async function setLearnSettings(next: Partial<LearnSettings>): Promise<vo
   if (next.trialCodeA != null) put("learn_trial_code_a", next.trialCodeA);
   if (next.trialCodeB != null) put("learn_trial_code_b", next.trialCodeB);
   if (next.demoContentVisible != null) put("learn_demo_visible", next.demoContentVisible ? "1" : "0");
+  if (next.tvLearnEnabled != null) put("learn_tv_learn_enabled", next.tvLearnEnabled ? "1" : "0");
   if (next.tvProRequired != null) put("learn_tv_pro_required", next.tvProRequired ? "1" : "0");
   if (next.proPriceUgx != null) put("learn_pro_price_ugx", String(next.proPriceUgx));
   if (next.proDays != null) put("learn_pro_days", String(next.proDays));

@@ -1,7 +1,7 @@
 "use client";
 
 import { EDUCATION_STREAMS, type EducationStream, type LearnEnrollment } from "@peebee/shared";
-import { ArrowRight, BookOpen, Radio, Receipt, Search, Sparkles } from "lucide-react";
+import { ArrowRight, BookOpen, Radio, Receipt, Search, Sparkles, Tv } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState, type FormEvent } from "react";
@@ -225,6 +225,16 @@ function LearnHome() {
       </header>
 
       <JoinLiveClass />
+      <Link href="/learn/tv" className={`${card} flex items-center gap-3 p-3.5 transition hover:border-gold/50`}>
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gold/15 text-gold">
+          <Tv className="h-5 w-5" aria-hidden />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-semibold text-ink">Watch on your TV</span>
+          <span className="block text-xs text-ink-500">Link a TV with a code and study your courses on the big screen.</span>
+        </span>
+        <ArrowRight className="h-4 w-4 shrink-0 text-gold" aria-hidden />
+      </Link>
       <MyLearning />
 
       <section aria-labelledby="browse-h" className="space-y-3">

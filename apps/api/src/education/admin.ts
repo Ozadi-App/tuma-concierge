@@ -62,6 +62,7 @@ const settingsPatch = z
     trialCodeB: z.string().regex(/^\d{6}$/, "Use exactly 6 digits"),
     demoContentVisible: z.boolean(),
     tvProRequired: z.boolean(),
+    tvLearnEnabled: z.boolean(),
     proPriceUgx: z.number().int().min(0).max(100_000_000),
     proDays: z.number().int().min(1).max(3650),
   })

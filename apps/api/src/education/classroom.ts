@@ -9,7 +9,7 @@ import { hasColumn } from "../lib/schema.js";
 import { getLearnSettings } from "./settings.js";
 import { syncAutopilot } from "./autopilot.js";
 import { tvProRequired } from "./pro.js";
-import { signMediaToken } from "./learning.js";
+import { learnRoutes, signMediaToken } from "./learning.js";
 import { body as readBody, count, fail, isResponse, notFound, one, studioReady } from "./studio.js";
 import type { LearnSettings } from "@peebee/shared";
 
@@ -213,6 +213,12 @@ async function deviceAuth(c: Context, next: Next) {
 
 const getDevice = (c: Context) => c.get("device" as never) as Device;
 
+/** Where a phone goes to type in (or be sent straight to, from the TV's QR code) the code a TV is showing. */
+function linkUrl(code: string): string {
+  const base = (process.env.CUSTOMER_APP_URL ?? "").replace(/\/$/, "");
+  return `${base}/learn/tv?code=${code}`;
+}
+
 tvRoutes.use("*", async (c, next) => {
   if (!(await ready())) return pending(c);
   await next();
@@ -232,7 +238,7 @@ tvRoutes.post("/pair/start", async (c) => {
         sql: "INSERT INTO tv_devices (id, secret_hash, pair_code, pair_expires_at, name) VALUES (?, ?, ?, ?, 'TV')",
         args: [id, await sha256(secret), code, sqlite(plusSeconds(settings.screenPairMinutes * 60))],
       });
-      return c.json({ ok: true, deviceId: id, secret, code, expiresInSeconds: settings.screenPairMinutes * 60, pollSeconds: settings.livePollSeconds }, 201);
+      return c.json({ ok: true, deviceId: id, secret, code, linkUrl: linkUrl(code), expiresInSeconds: settings.screenPairMinutes * 60, pollSeconds: settings.livePollSeconds }, 201);
     } catch {
       /* a code collision: try another */
     }
@@ -246,7 +252,16 @@ tvRoutes.get("/me", deviceAuth, async (c) => {
   const settings = await getLearnSettings();
   if (device.status === "paired") {
     const owner = await one("SELECT name FROM users WHERE id = ?", [device.owner_id]);
-    return c.json({ ok: true, status: "paired", name: device.name, ownerName: owner ? String(owner.name) : "", pollSeconds: settings.livePollSeconds, trial: trialOf(device) });
+    return c.json({
+      ok: true,
+      status: "paired",
+      name: device.name,
+      ownerName: owner ? String(owner.name) : "",
+      pollSeconds: settings.livePollSeconds,
+      trial: trialOf(device),
+      learnEnabled: settings.tvLearnEnabled,
+      liveEnabled: settings.liveEnabled,
+    });
   }
   let code = device.pair_code;
   let expires = device.pair_expires_at;
@@ -263,7 +278,7 @@ tvRoutes.get("/me", deviceAuth, async (c) => {
       }
     }
   }
-  return c.json({ ok: true, status: "unpaired", code, expiresInSeconds: Math.max(0, Math.round(((parseTime(expires) ?? 0) - Date.now()) / 1000)), pollSeconds: settings.livePollSeconds, trial: trialOf(device) });
+  return c.json({ ok: true, status: "unpaired", code, linkUrl: code ? linkUrl(code) : null, expiresInSeconds: Math.max(0, Math.round(((parseTime(expires) ?? 0) - Date.now()) / 1000)), pollSeconds: settings.livePollSeconds, trial: trialOf(device) });
 });
 
 /** The practice classes a TV can show, before it is paired or after. Public: nothing here is private. */
@@ -298,19 +313,69 @@ tvRoutes.delete("/me", deviceAuth, async (c) => {
   return c.json({ ok: true });
 });
 
+/**
+ * Learning on the TV. A TV linked to someone's account acts as that person for the learner actions a living-room
+ * screen needs: see their courses, open one, play a lesson, take a quiz, tick a lesson off, and enrol in a free
+ * course. These are the very same handlers the phone uses, so progress is shared between the two.
+ *
+ * Anything that moves money (a paid course, school fees) is refused here and done on the phone, and so is
+ * everything else. A TV sits in a shared room; it never gets more than it needs.
+ */
+const tvLearn = new Hono();
+tvLearn.use("*", deviceAuth);
+tvLearn.use("*", async (c, next) => {
+  const device = getDevice(c);
+  if (device.status !== "paired" || !device.owner_id) return c.json({ error: "not_linked", message: "Link this TV to your Peebee account first." }, 403);
+  const settings = await getLearnSettings();
+  if (!settings.tvLearnEnabled) return fail(c, { status: 503, error: "service_disabled", message: "Learning on a TV is switched off right now." });
+  const owner = await one("SELECT id, name, role, status FROM users WHERE id = ?", [device.owner_id]);
+  if (!owner) return c.json({ error: "unauthorized", message: "This screen isn't registered." }, 401);
+  if (owner.status === "suspended") return c.json({ error: "account_suspended", message: "This account has been suspended" }, 403);
+
+  const path = c.req.path.replace(/^.*\/v1\/tv\/learn/, "");
+  const method = c.req.method;
+  const allowed =
+    (method === "GET" && (path === "/enrollments" || /^\/courses\/[^/]+$/.test(path))) ||
+    (method === "POST" && (/^\/lessons\/[^/]+\/(media-url|quiz|complete)$/.test(path) || /^\/courses\/[^/]+\/enroll$/.test(path)));
+  if (!allowed) return c.json({ error: "not_on_tv", message: "Do this in the Peebee app on your phone." }, 403);
+  if (/^\/courses\/[^/]+\/enroll$/.test(path)) {
+    const course = await one("SELECT price_ugx FROM edu_courses WHERE id = ?", [path.split("/")[2]]);
+    if (course && Number(course.price_ugx) > 0) {
+      return c.json({ error: "pay_on_phone", message: "This course isn't free. Enrol in the Peebee app on your phone, then it appears here." }, 403);
+    }
+  }
+  c.set("user", { sub: String(owner.id), role: String(owner.role), name: String(owner.name ?? ""), adminRole: null, forcePasswordChange: false, jti: `tv:${device.id}` } as never);
+  await next();
+});
+tvLearn.route("/", learnRoutes);
+tvRoutes.route("/learn", tvLearn);
+
 const userRoutes = new Hono();
 userRoutes.use("*", requireAuth);
 
 userRoutes.post("/pair", async (c) => {
   const user = c.get("user");
   const settings = await getLearnSettings();
-  if (!settings.liveEnabled) return fail(c, { status: 503, error: "service_disabled", message: "Live classroom is switched off right now." });
-  const needsPro = await tvProRequired(c, user.sub, settings);
-  if (needsPro) return needsPro;
   const quota = await consume(`tv-claim:${user.sub}`, 10, 10 * 60);
   if (!quota.allowed) return tooManyRequests(c, quota, "Too many tries. Wait a few minutes and check the code on the TV.");
-  const parsed = await readBody(c, z.object({ code: z.string().trim().toUpperCase().regex(/^[A-Z0-9]{6}$/, "Enter the 6-character code shown on the TV"), name: text(60).default("") }));
+  const parsed = await readBody(
+    c,
+    z.object({
+      code: z.string().trim().toUpperCase().regex(/^[A-Z0-9]{6}$/, "Enter the 6-character code shown on the TV"),
+      name: text(60).default(""),
+      // "learn": a learner linking their TV to study on it. "teach" (the default, what the educator console sends): a classroom screen.
+      purpose: z.enum(["learn", "teach"]).default("teach"),
+    }),
+  );
   if (!parsed.ok) return parsed.res;
+  const learning = parsed.data.purpose === "learn";
+  if (learning) {
+    if (!settings.tvLearnEnabled) return fail(c, { status: 503, error: "service_disabled", message: "Learning on a TV is switched off right now." });
+  } else {
+    if (!settings.liveEnabled) return fail(c, { status: 503, error: "service_disabled", message: "Live classroom is switched off right now." });
+    const needsPro = await tvProRequired(c, user.sub, settings);
+    if (needsPro) return needsPro;
+  }
   const owned = await count("SELECT COUNT(*) AS n FROM tv_devices WHERE owner_id = ?", [user.sub]);
   if (owned >= settings.maxScreensPerUser) return fail(c, { status: 409, error: "limit_reached", message: `You can pair up to ${settings.maxScreensPerUser} screens. Remove one first.` });
 
@@ -318,11 +383,13 @@ userRoutes.post("/pair", async (c) => {
   if (!device || (parseTime(device.pair_expires_at) ?? 0) < Date.now()) {
     return fail(c, { status: 404, error: "bad_code", message: "That code isn't right, or it has expired. Check the code on the TV." });
   }
-  const name = parsed.data.name || `Classroom screen ${owned + 1}`;
-  await db.execute({
+  const name = parsed.data.name || (learning ? (owned === 0 ? "My TV" : `My TV ${owned + 1}`) : `Classroom screen ${owned + 1}`);
+  const claimed = await db.execute({
     sql: "UPDATE tv_devices SET owner_id = ?, name = ?, status = 'paired', pair_code = NULL, pair_expires_at = NULL, paired_at = datetime('now') WHERE id = ? AND status = 'unpaired'",
     args: [user.sub, name, device.id as string],
   });
+  // Two people typing the same code at once: only the first claim counts.
+  if ((claimed.rowsAffected ?? 0) === 0) return fail(c, { status: 404, error: "bad_code", message: "That code isn't right, or it has expired. Check the code on the TV." });
   return c.json({ ok: true, device: { id: String(device.id), name } }, 201);
 });
 

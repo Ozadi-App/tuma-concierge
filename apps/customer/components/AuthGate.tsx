@@ -4,7 +4,7 @@ import { isUserVerified } from "@peebee/shared";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { useAuth } from "../lib/auth-context";
-import { takeReturnTo } from "../lib/return-to";
+import { rememberReturnTo, takeReturnTo } from "../lib/return-to";
 
 const PUBLIC_PATHS = ["/login", "/forgot-password"];
 // Always reachable for a signed-in but not-yet-verified customer —
@@ -29,11 +29,15 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (isUngated || !ready) return;
-    if (!user && !isPublic) router.replace("/login");
+    if (!user && !isPublic) {
+      // Someone who scanned the code on their TV lands here signed out: bring them back to the page, with the code, after signing in.
+      if (pathname === "/learn/tv") rememberReturnTo(`${pathname}${window.location.search}`);
+      router.replace("/login");
+    }
     if (user && isPublic) router.replace(takeReturnTo() ?? "/");
     if (user && needsVerification) router.replace("/verify");
     if (verifiedButOnVerifyPage) router.replace("/");
-  }, [isUngated, ready, user, isPublic, needsVerification, verifiedButOnVerifyPage, router]);
+  }, [isUngated, ready, user, isPublic, needsVerification, verifiedButOnVerifyPage, router, pathname]);
 
   if (isUngated) return <>{children}</>;
   if (!ready) return null;

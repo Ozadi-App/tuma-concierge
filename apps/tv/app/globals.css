@@ -21,7 +21,6 @@ html {
   /* 1rem is about 1% of a 1080p screen's height, so everything scales with the screen. */
   font-size: clamp(14px, 1.45vh + 0.4vw, 26px);
   background: rgb(var(--color-cream));
-  cursor: none;
 }
 
 body {
@@ -29,7 +28,10 @@ body {
   color: rgb(var(--color-ink));
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Google Sans", Inter, sans-serif;
   min-height: 100vh;
-  overflow: hidden;
+  /* A TV browser can leave less room than a full 1080p screen, so a page that is taller than the window scrolls (focus moves it) rather than being cut off. */
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: none;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -62,4 +64,13 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .tv-fade-in { animation: none; }
   [data-focusable] { transition: none; }
+}
+
+body::-webkit-scrollbar {
+  display: none;
+}
+
+/* The mouse pointer stays visible: many TVs are driven by an air mouse or a USB mouse, not only arrow keys. */
+button, a, [role="button"] {
+  cursor: pointer;
 }
