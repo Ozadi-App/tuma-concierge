@@ -1,4 +1,4 @@
-import { M, P, Q, quiz, R, V, type DemoEducator } from "./types.js";
+import { M, P, Q, quiz, R, S, V, type DemoEducator } from "./types.js";
 
 /** Sprouts (ages 3-6) and Foundations (primary): a nursery and primary school with several classes and tutors, and two individual tutors. */
 export const EARLY_EDUCATORS: DemoEducator[] = [
@@ -84,7 +84,12 @@ export const EARLY_EDUCATORS: DemoEducator[] = [
                   minutes: 6,
                   quiz: quiz("Colours", Q("What colour is a ripe banana?", ["Yellow", "Blue", "Purple"], 0), Q("What colour do you get from the leaves of a tree?", ["Red", "Green", "Pink"], 1)),
                 }),
-                R("Shape detectives", "A circle is round like a plate. A square has four equal sides like a window. A triangle has three corners like a roof. Walk around and find one of each.", { minutes: 7 }),
+                S("Shape detectives", "Meet three shapes and find them around you.", [
+                  { title: "Circle", body: "A circle is round like a plate. It has no corners." },
+                  { title: "Square", body: "A square has four equal sides, like a window." },
+                  { title: "Triangle", body: "A triangle has three corners, like a roof." },
+                  { title: "Your turn", body: "Walk around and find one of each shape." },
+                ], { minutes: 7 }),
               ),
               M(
                 "Counting to ten",

@@ -2,7 +2,6 @@
 
 import {
   EDUCATION_STREAMS,
-  LESSON_CONTENT_TYPES,
   SCHOOL_KINDS,
   STREAM_LEVELS,
   frameworksForStream,
@@ -10,15 +9,11 @@ import {
   type CurriculumFramework,
   type EducationStream,
   type LearnSettings,
-  type LessonContentType,
   type SchoolKind,
   type StudioClass,
   type StudioCourse,
-  type StudioLesson,
-  type StudioQuiz,
   type StudioSchool,
 } from "@peebee/shared";
-import { Plus, Trash2 } from "lucide-react";
 import { useId, useState, type FormEvent, type ReactNode } from "react";
 import { STREAM_UI } from "../../lib/streams";
 import { Button, Field, Notice, Segmented, cardCls, controlCls } from "../ui";
@@ -473,202 +468,6 @@ export function ModuleForm({
       <Field label="What it covers (optional)" htmlFor={`${id}-desc`}>
         <textarea id={`${id}-desc`} rows={2} maxLength={2000} value={description} onChange={(e) => setDescription(e.target.value)} className={controlCls} />
       </Field>
-    </FormShell>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Lesson (with an optional quiz)
-// ---------------------------------------------------------------------------
-
-export type LessonInput = {
-  title: string;
-  contentType: LessonContentType;
-  durationMinutes: number;
-  summary: string;
-  contentUrl: string;
-  quiz: StudioQuiz | null;
-};
-
-type QuestionDraft = { question: string; options: string[]; correctIndex: number; explanation: string };
-
-const blankQuestion = (): QuestionDraft => ({ question: "", options: ["", ""], correctIndex: 0, explanation: "" });
-
-export function LessonForm({
-  settings,
-  initial,
-  title,
-  submitLabel,
-  busy,
-  error,
-  onSubmit,
-  onCancel,
-}: {
-  settings: LearnSettings;
-  initial?: StudioLesson;
-  title: string;
-  submitLabel: string;
-  busy: boolean;
-  error: string | null;
-  onSubmit: (input: LessonInput) => void;
-  onCancel?: () => void;
-}) {
-  const id = useId();
-  const [lessonTitle, setLessonTitle] = useState(initial?.title ?? "");
-  const [contentType, setContentType] = useState<LessonContentType>(initial?.contentType ?? "video");
-  const [minutes, setMinutes] = useState(String(initial?.durationMinutes ?? 15));
-  const [summary, setSummary] = useState(initial?.summary ?? "");
-  const [contentUrl, setContentUrl] = useState(initial?.contentUrl ?? "");
-  const [withQuiz, setWithQuiz] = useState(Boolean(initial?.quiz));
-  const [quizTitle, setQuizTitle] = useState(initial?.quiz?.title ?? "");
-  const [passing, setPassing] = useState(String(initial?.quiz?.passingScorePercent ?? 70));
-  const [questions, setQuestions] = useState<QuestionDraft[]>(
-    initial?.quiz ? initial.quiz.questions.map((q) => ({ question: q.question, options: q.options, correctIndex: q.correctIndex, explanation: q.explanation ?? "" })) : [blankQuestion()],
-  );
-  const [localError, setLocalError] = useState<string | null>(null);
-  const quizAllowed = settings.maxQuizQuestionsPerLesson > 0;
-
-  function patchQuestion(i: number, patch: Partial<QuestionDraft>) {
-    setQuestions((prev) => prev.map((q, idx) => (idx === i ? { ...q, ...patch } : q)));
-  }
-
-  function submit(e: FormEvent) {
-    e.preventDefault();
-    if (lessonTitle.trim().length < 2) return setLocalError("Give the lesson a title of at least 2 characters.");
-    const duration = Number(minutes);
-    if (!Number.isInteger(duration) || duration < 1) return setLocalError("Lesson length must be a whole number of minutes.");
-    if (duration > settings.maxLessonMinutes) return setLocalError(`A lesson can run up to ${settings.maxLessonMinutes} minutes.`);
-    const url = contentUrl.trim();
-    if (url && !/^https:\/\//i.test(url)) return setLocalError("Lesson links must start with https://");
-
-    let quiz: StudioQuiz | null = null;
-    if (withQuiz && quizAllowed) {
-      const cleaned = questions
-        .map((q) => ({ ...q, question: q.question.trim(), options: q.options.map((o) => o.trim()) }))
-        .filter((q) => q.question || q.options.some(Boolean));
-      if (cleaned.length === 0) return setLocalError("Add at least one question, or turn the quiz off.");
-      if (cleaned.length > settings.maxQuizQuestionsPerLesson) return setLocalError(`A quiz can have up to ${settings.maxQuizQuestionsPerLesson} questions.`);
-      for (const [i, q] of cleaned.entries()) {
-        if (!q.question) return setLocalError(`Question ${i + 1} needs its text.`);
-        if (q.options.some((o) => !o)) return setLocalError(`Question ${i + 1} has an empty answer. Fill it in or remove it.`);
-      }
-      const pass = Number(passing);
-      if (!Number.isInteger(pass) || pass < 0 || pass > 100) return setLocalError("The pass mark is a percentage from 0 to 100.");
-      quiz = {
-        title: quizTitle.trim() || `${lessonTitle.trim()} quiz`,
-        passingScorePercent: pass,
-        questions: cleaned.map((q) => ({ question: q.question, options: q.options, correctIndex: q.correctIndex, ...(q.explanation.trim() ? { explanation: q.explanation.trim() } : {}) })),
-      };
-    }
-    setLocalError(null);
-    onSubmit({ title: lessonTitle, contentType, durationMinutes: duration, summary, contentUrl: url, quiz });
-  }
-
-  return (
-    <FormShell title={title} onSubmit={submit} error={localError ?? error} busy={busy} submitLabel={submitLabel} onCancel={onCancel}>
-      <Field label="Lesson title" htmlFor={`${id}-title`}>
-        <input id={`${id}-title`} required maxLength={120} value={lessonTitle} onChange={(e) => setLessonTitle(e.target.value)} className={controlCls} placeholder="e.g. Lesson 1: Halves and quarters" />
-      </Field>
-      <div className="grid gap-3 sm:grid-cols-3">
-        <Field label="Type" htmlFor={`${id}-type`}>
-          <select id={`${id}-type`} value={contentType} onChange={(e) => setContentType(e.target.value as LessonContentType)} className={controlCls}>
-            {LESSON_CONTENT_TYPES.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.label}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field label="Length (minutes)" htmlFor={`${id}-min`}>
-          <input id={`${id}-min`} type="number" min={1} max={settings.maxLessonMinutes} inputMode="numeric" value={minutes} onChange={(e) => setMinutes(e.target.value)} className={controlCls} />
-        </Field>
-        <Field label="Link to the material (optional)" htmlFor={`${id}-url`} className="sm:col-span-1">
-          <input id={`${id}-url`} type="url" inputMode="url" maxLength={500} value={contentUrl} onChange={(e) => setContentUrl(e.target.value)} className={controlCls} placeholder="https://…" />
-        </Field>
-      </div>
-      <Field label="Lesson notes" htmlFor={`${id}-sum`}>
-        <textarea id={`${id}-sum`} rows={3} maxLength={2000} value={summary} onChange={(e) => setSummary(e.target.value)} className={controlCls} placeholder="Key ideas, instructions and any homework" />
-      </Field>
-
-      {quizAllowed && (
-        <div className="space-y-3 border-t border-[var(--border-faint)] pt-3">
-          <label className="flex items-center gap-2 text-sm font-semibold text-ink">
-            <input type="checkbox" checked={withQuiz} onChange={(e) => setWithQuiz(e.target.checked)} className="h-4 w-4 accent-[rgb(var(--color-gold))]" />
-            Add a quiz to this lesson
-          </label>
-          {withQuiz && (
-            <div className="space-y-4">
-              <div className="grid gap-3 sm:grid-cols-3">
-                <Field label="Quiz title" htmlFor={`${id}-qt`} className="sm:col-span-2">
-                  <input id={`${id}-qt`} maxLength={120} value={quizTitle} onChange={(e) => setQuizTitle(e.target.value)} className={controlCls} placeholder="Optional" />
-                </Field>
-                <Field label="Pass mark (%)" htmlFor={`${id}-pass`}>
-                  <input id={`${id}-pass`} type="number" min={0} max={100} inputMode="numeric" value={passing} onChange={(e) => setPassing(e.target.value)} className={controlCls} />
-                </Field>
-              </div>
-              {questions.map((q, i) => (
-                <fieldset key={i} className="space-y-2 rounded-xl border border-[var(--border-faint)] p-3">
-                  <legend className="px-1 text-xs font-semibold text-gold">Question {i + 1}</legend>
-                  <Field label="Question" htmlFor={`${id}-q${i}`}>
-                    <input id={`${id}-q${i}`} maxLength={200} value={q.question} onChange={(e) => patchQuestion(i, { question: e.target.value })} className={controlCls} />
-                  </Field>
-                  <p className="text-[11px] text-ink-500">Choose the circle next to the correct answer.</p>
-                  {q.options.map((o, oi) => (
-                    <div key={oi} className="flex items-center gap-2">
-                      <input
-                        type="radio"
-                        name={`${id}-correct${i}`}
-                        aria-label={`Answer ${oi + 1} is correct`}
-                        checked={q.correctIndex === oi}
-                        onChange={() => patchQuestion(i, { correctIndex: oi })}
-                        className="h-4 w-4 shrink-0 accent-[rgb(var(--color-gold))]"
-                      />
-                      <input
-                        aria-label={`Answer ${oi + 1}`}
-                        maxLength={200}
-                        value={o}
-                        onChange={(e) => patchQuestion(i, { options: q.options.map((x, xi) => (xi === oi ? e.target.value : x)) })}
-                        className={controlCls}
-                        placeholder={`Answer ${oi + 1}`}
-                      />
-                      {q.options.length > 2 && (
-                        <button
-                          type="button"
-                          aria-label={`Remove answer ${oi + 1}`}
-                          onClick={() => patchQuestion(i, { options: q.options.filter((_, xi) => xi !== oi), correctIndex: q.correctIndex === oi ? 0 : q.correctIndex > oi ? q.correctIndex - 1 : q.correctIndex })}
-                          className="shrink-0 text-ink-500 hover:text-red-600"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                  <div className="flex flex-wrap gap-2">
-                    {q.options.length < 6 && (
-                      <Button variant="secondary" className="!min-h-8 !px-3 !text-xs" onClick={() => patchQuestion(i, { options: [...q.options, ""] })}>
-                        <Plus className="h-3.5 w-3.5" /> Add answer
-                      </Button>
-                    )}
-                    {questions.length > 1 && (
-                      <Button variant="danger" className="!min-h-8 !px-3 !text-xs" onClick={() => setQuestions((prev) => prev.filter((_, xi) => xi !== i))}>
-                        Remove question
-                      </Button>
-                    )}
-                  </div>
-                  <Field label="Why is it correct? (optional)" htmlFor={`${id}-e${i}`}>
-                    <input id={`${id}-e${i}`} maxLength={2000} value={q.explanation} onChange={(e) => patchQuestion(i, { explanation: e.target.value })} className={controlCls} />
-                  </Field>
-                </fieldset>
-              ))}
-              {questions.length < settings.maxQuizQuestionsPerLesson && (
-                <Button variant="secondary" onClick={() => setQuestions((prev) => [...prev, blankQuestion()])}>
-                  <Plus className="h-4 w-4" /> Add question
-                </Button>
-              )}
-            </div>
-          )}
-        </div>
-      )}
     </FormShell>
   );
 }

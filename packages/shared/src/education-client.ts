@@ -37,6 +37,11 @@ import type {
   LearnEnrollment,
   LearnerCourse,
   QuizResult,
+  QuizAnswer,
+  QuizAttemptStart,
+  LearnerLessonDetail,
+  StudioLive,
+  StudioSlide,
   LearnDemoStatus,
   LearnProEducator,
   LearnProStatus,
@@ -427,6 +432,9 @@ export function educationMethods(request: RequestFn) {
         durationMinutes?: number;
         summary?: string;
         contentUrl?: string;
+        body?: string;
+        slides?: StudioSlide[];
+        live?: StudioLive | null;
         quiz?: StudioQuiz | null;
       },
     ) {
@@ -437,9 +445,26 @@ export function educationMethods(request: RequestFn) {
     },
     async studioUpdateLesson(
       id: string,
-      data: { title?: string; contentType?: LessonContentType; durationMinutes?: number; summary?: string; contentUrl?: string; quiz?: StudioQuiz | null },
+      data: {
+        title?: string;
+        contentType?: LessonContentType;
+        durationMinutes?: number;
+        summary?: string;
+        contentUrl?: string;
+        body?: string;
+        slides?: StudioSlide[];
+        live?: StudioLive | null;
+        quiz?: StudioQuiz | null;
+      },
     ) {
       return request<{ ok: true; lesson: StudioLesson }>(`/v1/education/studio/lessons/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(data) });
+    },
+    /** Saves the running order of a whole course: section order, and which items sit in which section. */
+    async studioReorderCourse(courseId: string, order: { modules: string[]; lessons: Record<string, string[]> }) {
+      return request<{ ok: true }>(`/v1/education/studio/courses/${encodeURIComponent(courseId)}/order`, { method: "POST", body: JSON.stringify(order) });
+    },
+    async studioLessonAttendance(lessonId: string) {
+      return request<{ ok: true; enrolled: number; attendees: { userId: string; name: string; joinedAt: string }[] }>(`/v1/education/studio/lessons/${encodeURIComponent(lessonId)}/attendance`);
     },
     async studioDeleteLesson(id: string) {
       return request<{ ok: true }>(`/v1/education/studio/lessons/${encodeURIComponent(id)}`, { method: "DELETE" });
@@ -476,7 +501,21 @@ export function educationMethods(request: RequestFn) {
     async learnLessonMediaUrl(lessonId: string) {
       return request<{ ok: true; url: string }>(`/v1/education/learn/lessons/${encodeURIComponent(lessonId)}/media-url`, { method: "POST", body: JSON.stringify({}) });
     },
+    async learnLesson(lessonId: string) {
+      return request<{ ok: true; lesson: LearnerLessonDetail }>(`/v1/education/learn/lessons/${encodeURIComponent(lessonId)}`);
+    },
+    async learnStartQuiz(lessonId: string) {
+      return request<{ ok: true } & QuizAttemptStart>(`/v1/education/learn/lessons/${encodeURIComponent(lessonId)}/quiz/start`, { method: "POST", body: JSON.stringify({}) });
+    },
+    async learnSubmitAttempt(lessonId: string, attemptToken: string, answers: Record<string, QuizAnswer>) {
+      return request<{ ok: true } & QuizResult>(`/v1/education/learn/lessons/${encodeURIComponent(lessonId)}/quiz/submit`, { method: "POST", body: JSON.stringify({ attemptToken, answers }) });
+    },
+    /** Opens a live lesson: returns the meeting link and marks the learner as attending. */
+    async learnJoinLive(lessonId: string) {
+      return request<{ ok: true; url: string }>(`/v1/education/learn/lessons/${encodeURIComponent(lessonId)}/join`, { method: "POST", body: JSON.stringify({}) });
+    },
     async learnSubmitQuiz(lessonId: string, answers: number[]) {
+      // The first version of the quiz call. Kept for apps that haven't moved to learnStartQuiz.
       return request<{ ok: true } & QuizResult>(`/v1/education/learn/lessons/${encodeURIComponent(lessonId)}/quiz`, { method: "POST", body: JSON.stringify({ answers }) });
     },
     async learnCompleteLesson(lessonId: string) {

@@ -1,11 +1,12 @@
 "use client";
 
-import { CURRICULUM_FRAMEWORKS, LESSON_CONTENT_TYPES, type CourseStudent, type StudioClass, type StudioCourseDetail, type StudioLesson, type StudioSchool } from "@peebee/shared";
-import { Eye, EyeOff, HelpCircle, Layers, Pencil, Plus, Trash2, Upload, Users, Video } from "lucide-react";
+import { CURRICULUM_FRAMEWORKS, LESSON_CONTENT_TYPES, isAssessment, type CourseStudent, type LessonContentType, type StudioClass, type StudioCourseDetail, type StudioLesson, type StudioSchool } from "@peebee/shared";
+import { ArrowDown, ArrowUp, AudioLines, BookOpenText, ClipboardCheck, Eye, EyeOff, GraduationCap, Layers, Pencil, Plus, Presentation, Radio, Trash2, Upload, Users, Video, type LucideIcon } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CoverPicker } from "../../../components/studio/CoverPicker";
-import { CourseForm, LessonForm, ModuleForm, type CourseInput, type LessonInput } from "../../../components/studio/forms";
+import { CourseForm, ModuleForm, type CourseInput } from "../../../components/studio/forms";
+import { ItemForm, type ItemInput } from "../../../components/studio/ItemForm";
 import { Button, Chip, Crumbs, EmptyState, Notice, Skeleton, cardCls } from "../../../components/ui";
 import { api, errorMessage } from "../../../lib/api";
 import { useStudioSettings } from "../../../lib/studio-config";
@@ -16,10 +17,13 @@ type Editing =
   | { kind: "course" }
   | { kind: "module-new" }
   | { kind: "module-edit"; id: string }
-  | { kind: "lesson-new"; moduleId: string }
+  | { kind: "lesson-new"; moduleId: string; type: LessonContentType }
   | { kind: "lesson-edit"; id: string };
 
 const TYPE_LABEL = Object.fromEntries(LESSON_CONTENT_TYPES.map((t) => [t.id, t.label]));
+const TYPE_ICON: Record<LessonContentType, LucideIcon> = { text: BookOpenText, slides: Presentation, audio: AudioLines, video: Video, live: Radio, quiz: ClipboardCheck, exam: GraduationCap };
+
+const whenLabel = (iso: string) => new Date(iso).toLocaleString("en-UG", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
 export default function CoursePage() {
   const { id } = useParams<{ id: string }>();
@@ -36,6 +40,7 @@ export default function CoursePage() {
   const [loaded, setLoaded] = useState(false);
   const [students, setStudents] = useState<CourseStudent[]>([]);
   const [uploading, setUploading] = useState<string | null>(null);
+  const [attendance, setAttendance] = useState<Record<string, string>>({});
 
   const load = useCallback(async () => {
     try {
@@ -61,7 +66,7 @@ export default function CoursePage() {
 
   const totals = useMemo(() => {
     const lessons = course?.modules.flatMap((m) => m.lessons) ?? [];
-    return { lessons: lessons.length, minutes: lessons.reduce((n, l) => n + l.durationMinutes, 0), quizzes: lessons.filter((l) => l.quiz).length };
+    return { lessons: lessons.length, minutes: lessons.reduce((n, l) => n + l.durationMinutes, 0), quizzes: lessons.filter((l) => isAssessment(l.contentType)).length };
   }, [course]);
 
   const suspended = school?.status === "suspended";
@@ -124,11 +129,42 @@ export default function CoursePage() {
   const editingLesson: StudioLesson | undefined =
     editing.kind === "lesson-edit" ? course.modules.flatMap((m) => m.lessons).find((l) => l.id === editing.id) : undefined;
 
-  function saveLesson(input: LessonInput, existing?: StudioLesson, moduleId?: string) {
+  function saveLesson(input: ItemInput, existing?: StudioLesson, moduleId?: string) {
     return run(
       () => (existing ? api.studioUpdateLesson(existing.id, input) : api.studioCreateLesson(moduleId as string, input)),
-      existing ? "Lesson saved." : "Lesson added.",
+      existing ? "Saved." : "Added.",
     );
+  }
+
+  /** The order as it is now: sections, and the items in each. Every move below edits a copy of this and saves it. */
+  function currentOrder() {
+    return { modules: course!.modules.map((m) => m.id), lessons: Object.fromEntries(course!.modules.map((m) => [m.id, m.lessons.map((l) => l.id)])) as Record<string, string[]> };
+  }
+
+  function moveItem(moduleId: string, lessonId: string, by: number) {
+    const order = currentOrder();
+    const list = order.lessons[moduleId];
+    const from = list.indexOf(lessonId);
+    const to = from + by;
+    if (to < 0 || to >= list.length) return;
+    [list[from], list[to]] = [list[to], list[from]];
+    void run(() => api.studioReorderCourse(id, order));
+  }
+
+  function moveToSection(fromModule: string, lessonId: string, toModule: string) {
+    const order = currentOrder();
+    order.lessons[fromModule] = order.lessons[fromModule].filter((x) => x !== lessonId);
+    order.lessons[toModule] = [...order.lessons[toModule], lessonId];
+    void run(() => api.studioReorderCourse(id, order), "Moved.");
+  }
+
+  function moveSection(moduleId: string, by: number) {
+    const order = currentOrder();
+    const from = order.modules.indexOf(moduleId);
+    const to = from + by;
+    if (to < 0 || to >= order.modules.length) return;
+    [order.modules[from], order.modules[to]] = [order.modules[to], order.modules[from]];
+    void run(() => api.studioReorderCourse(id, order));
   }
 
   return (
@@ -183,9 +219,9 @@ export default function CoursePage() {
           </div>
         )}
         <p className="border-t border-[var(--border-faint)] pt-3 text-xs text-ink-500">
-          {plural(course.modules.length, "module")} · {plural(totals.lessons, "lesson")} · {formatMinutes(totals.minutes)} · {plural(totals.quizzes, "quiz", "quizzes")}
+          {plural(course.modules.length, "section")} · {plural(totals.lessons, "item")} · {formatMinutes(totals.minutes)} · {plural(totals.quizzes, "quiz or exam", "quizzes and exams")}
         </p>
-        {!published && totals.lessons === 0 && canBuild && <p className="text-xs text-ink-500">Add at least one lesson to be able to publish.</p>}
+        {!published && totals.lessons === 0 && canBuild && <p className="text-xs text-ink-500">Add at least one item to be able to publish.</p>}
       </header>
 
       {suspended && <Notice tone="error">This school has been suspended by Peebee, so it can&apos;t be edited and its courses are hidden.</Notice>}
@@ -216,22 +252,22 @@ export default function CoursePage() {
       <section aria-labelledby="syllabus-heading" className="space-y-3">
         <div className="flex items-center justify-between gap-3">
           <h3 id="syllabus-heading" className="text-base font-semibold text-ink">
-            Syllabus
+            Class outline
           </h3>
           {canBuild && editing.kind === "none" && course.modules.length > 0 && course.modules.length < settings.maxModulesPerCourse && (
             <Button onClick={() => setEditing({ kind: "module-new" })}>
-              <Plus className="h-4 w-4" aria-hidden /> Add module
+              <Plus className="h-4 w-4" aria-hidden /> Add section
             </Button>
           )}
         </div>
 
         {editing.kind === "module-new" && (
           <ModuleForm
-            title="Add a module"
-            submitLabel="Add module"
+            title="Add a section"
+            submitLabel="Add section"
             busy={busy}
             error={formError}
-            onSubmit={(input) => run(() => api.studioCreateModule(id, input), "Module added.")}
+            onSubmit={(input) => run(() => api.studioCreateModule(id, input), "Section added.")}
             onCancel={cancel}
           />
         )}
@@ -240,12 +276,12 @@ export default function CoursePage() {
           editing.kind !== "module-new" && (
             <EmptyState
               icon={Layers}
-              title="Start with a module"
-              body="Modules are the units or weeks of your syllabus. Each one holds lessons."
+              title="Start with a section"
+              body="A class has sections: units or weeks. Each holds lessons (text, slides, audio, video or live video) and, usually at the end, a quiz or exam."
               action={
                 canBuild ? (
                   <Button onClick={() => setEditing({ kind: "module-new" })}>
-                    <Plus className="h-4 w-4" aria-hidden /> Add the first module
+                    <Plus className="h-4 w-4" aria-hidden /> Add the first section
                   </Button>
                 ) : undefined
               }
@@ -257,30 +293,36 @@ export default function CoursePage() {
               {editing.kind === "module-edit" && editing.id === mod.id ? (
                 <ModuleForm
                   initial={mod}
-                  title="Edit module"
-                  submitLabel="Save module"
+                  title="Edit section"
+                  submitLabel="Save section"
                   busy={busy}
                   error={formError}
-                  onSubmit={(input) => run(() => api.studioUpdateModule(mod.id, input), "Module saved.")}
+                  onSubmit={(input) => run(() => api.studioUpdateModule(mod.id, input), "Section saved.")}
                   onCancel={cancel}
                 />
               ) : (
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="text-[11px] font-bold uppercase tracking-wider text-gold">Module {mi + 1}</p>
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-gold">Section {mi + 1}</p>
                     <h4 className="text-sm font-semibold text-ink">{mod.title}</h4>
                     {mod.description && <p className="text-xs text-ink-500">{mod.description}</p>}
                   </div>
                   {canBuild && editing.kind === "none" && (
                     <div className="flex shrink-0 gap-1">
-                      <button type="button" aria-label={`Edit module ${mi + 1}`} onClick={() => setEditing({ kind: "module-edit", id: mod.id })} className="rounded-lg p-2 text-ink-500 hover:bg-[rgb(var(--surface-muted))] hover:text-ink">
+                      <button type="button" aria-label={`Move section ${mi + 1} up`} disabled={mi === 0 || busy} onClick={() => moveSection(mod.id, -1)} className="rounded-lg p-2 text-ink-500 hover:bg-[rgb(var(--surface-muted))] hover:text-ink disabled:opacity-30">
+                        <ArrowUp className="h-4 w-4" />
+                      </button>
+                      <button type="button" aria-label={`Move section ${mi + 1} down`} disabled={mi === course.modules.length - 1 || busy} onClick={() => moveSection(mod.id, 1)} className="rounded-lg p-2 text-ink-500 hover:bg-[rgb(var(--surface-muted))] hover:text-ink disabled:opacity-30">
+                        <ArrowDown className="h-4 w-4" />
+                      </button>
+                      <button type="button" aria-label={`Edit section ${mi + 1}`} onClick={() => setEditing({ kind: "module-edit", id: mod.id })} className="rounded-lg p-2 text-ink-500 hover:bg-[rgb(var(--surface-muted))] hover:text-ink">
                         <Pencil className="h-4 w-4" />
                       </button>
                       <button
                         type="button"
-                        aria-label={`Delete module ${mi + 1}`}
+                        aria-label={`Delete section ${mi + 1}`}
                         onClick={() => {
-                          if (window.confirm(`Delete “${mod.title}” and its ${mod.lessons.length} lessons?`)) void run(() => api.studioDeleteModule(mod.id), "Module deleted.");
+                          if (window.confirm(`Delete “${mod.title}” and its ${mod.lessons.length} items?`)) void run(() => api.studioDeleteModule(mod.id), "Section deleted.");
                         }}
                         className="rounded-lg p-2 text-ink-500 hover:bg-[rgb(var(--surface-muted))] hover:text-red-600"
                       >
@@ -295,11 +337,12 @@ export default function CoursePage() {
                 {mod.lessons.map((lesson, li) =>
                   editing.kind === "lesson-edit" && editing.id === lesson.id && editingLesson ? (
                     <li key={lesson.id}>
-                      <LessonForm
+                      <ItemForm
                         settings={settings}
+                        kind={editingLesson.contentType}
                         initial={editingLesson}
-                        title={`Edit lesson ${li + 1}`}
-                        submitLabel="Save lesson"
+                        title={`Edit ${(TYPE_LABEL[editingLesson.contentType] ?? "item").toLowerCase()}`}
+                        submitLabel="Save"
                         busy={busy}
                         error={formError}
                         onSubmit={(input) => saveLesson(input, editingLesson)}
@@ -309,21 +352,41 @@ export default function CoursePage() {
                   ) : (
                     <li key={lesson.id} className="flex items-start justify-between gap-3 rounded-xl border border-[var(--border-faint)] px-3.5 py-3">
                       <div className="min-w-0 space-y-0.5">
-                        <p className="text-sm font-semibold text-ink">
-                          {li + 1}. {lesson.title}
+                        <p className="flex items-center gap-2 text-sm font-semibold text-ink">
+                          {(() => {
+                            const Icon = TYPE_ICON[lesson.contentType];
+                            return <Icon className={`h-4 w-4 shrink-0 ${isAssessment(lesson.contentType) ? "text-gold" : "text-ink-500"}`} aria-hidden />;
+                          })()}
+                          <span className="min-w-0">{lesson.title}</span>
                         </p>
                         <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-500">
                           <span>{TYPE_LABEL[lesson.contentType] ?? lesson.contentType}</span>
                           <span aria-hidden>·</span>
                           <span>{formatMinutes(lesson.durationMinutes)}</span>
-                          {lesson.quiz && (
-                            <span className="inline-flex items-center gap-1 text-gold">
-                              <HelpCircle className="h-3 w-3" aria-hidden /> Quiz · {lesson.quiz.questions.length} {lesson.quiz.questions.length === 1 ? "question" : "questions"}
+                          {lesson.quiz && isAssessment(lesson.contentType) && (
+                            <span className="text-gold">
+                              {lesson.quiz.questions.length} {lesson.quiz.questions.length === 1 ? "question" : "questions"} · pass {lesson.quiz.passingScorePercent}%
                             </span>
                           )}
+                          {lesson.live && <span className="text-gold">{whenLabel(lesson.live.startsAt)}</span>}
+                          {lesson.live && (
+                            <button
+                              type="button"
+                              className="font-semibold underline"
+                              onClick={() =>
+                                api
+                                  .studioLessonAttendance(lesson.id)
+                                  .then((r) => setAttendance((a) => ({ ...a, [lesson.id]: `${r.attendees.length} of ${r.enrolled} joined` })))
+                                  .catch((err) => setFormError(errorMessage(err)))
+                              }
+                            >
+                              {attendance[lesson.id] ?? "Who joined?"}
+                            </button>
+                          )}
+                          {lesson.contentType === "slides" && <span>{lesson.slides.length} slides</span>}
                         </p>
                         {lesson.summary && <p className="line-clamp-2 text-xs text-ink-500">{lesson.summary}</p>}
-                        {settings.videoUploadsEnabled && (lesson.media || (canBuild && editing.kind === "none")) && (
+                        {settings.videoUploadsEnabled && (lesson.contentType === "video" || lesson.contentType === "audio") && (lesson.media || (canBuild && editing.kind === "none")) && (
                           <div className="flex flex-wrap items-center gap-2 pt-1">
                             {lesson.media && (
                               <span className="inline-flex items-center gap-1 text-xs font-semibold text-green">
@@ -366,15 +429,37 @@ export default function CoursePage() {
                         )}
                       </div>
                       {canBuild && editing.kind === "none" && (
-                        <div className="flex shrink-0 gap-1">
-                          <button type="button" aria-label={`Edit lesson ${li + 1}`} onClick={() => setEditing({ kind: "lesson-edit", id: lesson.id })} className="rounded-lg p-2 text-ink-500 hover:bg-[rgb(var(--surface-muted))] hover:text-ink">
+                        <div className="flex shrink-0 flex-wrap justify-end gap-1">
+                          {course.modules.length > 1 && (
+                            <select
+                              aria-label={`Move “${lesson.title}” to another section`}
+                              value=""
+                              disabled={busy}
+                              onChange={(e) => e.target.value && moveToSection(mod.id, lesson.id, e.target.value)}
+                              className="max-w-[7rem] rounded-lg border border-[var(--border-faint)] px-2 py-1 text-xs text-ink-500"
+                            >
+                              <option value="">Move to…</option>
+                              {course.modules.filter((m) => m.id !== mod.id).map((m) => (
+                                <option key={m.id} value={m.id}>
+                                  {m.title}
+                                </option>
+                              ))}
+                            </select>
+                          )}
+                          <button type="button" aria-label={`Move “${lesson.title}” up`} disabled={li === 0 || busy} onClick={() => moveItem(mod.id, lesson.id, -1)} className="rounded-lg p-2 text-ink-500 hover:bg-[rgb(var(--surface-muted))] hover:text-ink disabled:opacity-30">
+                            <ArrowUp className="h-4 w-4" />
+                          </button>
+                          <button type="button" aria-label={`Move “${lesson.title}” down`} disabled={li === mod.lessons.length - 1 || busy} onClick={() => moveItem(mod.id, lesson.id, 1)} className="rounded-lg p-2 text-ink-500 hover:bg-[rgb(var(--surface-muted))] hover:text-ink disabled:opacity-30">
+                            <ArrowDown className="h-4 w-4" />
+                          </button>
+                          <button type="button" aria-label={`Edit ${lesson.title}`} onClick={() => setEditing({ kind: "lesson-edit", id: lesson.id })} className="rounded-lg p-2 text-ink-500 hover:bg-[rgb(var(--surface-muted))] hover:text-ink">
                             <Pencil className="h-4 w-4" />
                           </button>
                           <button
                             type="button"
-                            aria-label={`Delete lesson ${li + 1}`}
+                            aria-label={`Delete ${lesson.title}`}
                             onClick={() => {
-                              if (window.confirm(`Delete the lesson “${lesson.title}”?`)) void run(() => api.studioDeleteLesson(lesson.id), "Lesson deleted.");
+                              if (window.confirm(`Delete “${lesson.title}”?`)) void run(() => api.studioDeleteLesson(lesson.id), "Deleted.");
                             }}
                             className="rounded-lg p-2 text-ink-500 hover:bg-[rgb(var(--surface-muted))] hover:text-red-600"
                           >
@@ -388,10 +473,11 @@ export default function CoursePage() {
               </ol>
 
               {editing.kind === "lesson-new" && editing.moduleId === mod.id ? (
-                <LessonForm
+                <ItemForm
                   settings={settings}
-                  title="Add a lesson"
-                  submitLabel="Add lesson"
+                  kind={editing.type}
+                  title={`Add ${(TYPE_LABEL[editing.type] ?? "item").toLowerCase()}`}
+                  submitLabel="Add"
                   busy={busy}
                   error={formError}
                   onSubmit={(input) => saveLesson(input, undefined, mod.id)}
@@ -400,12 +486,22 @@ export default function CoursePage() {
               ) : (
                 canBuild &&
                 editing.kind === "none" && (
-                  <Button variant="secondary" disabled={!lessonRoomLeft(mod.id)} onClick={() => setEditing({ kind: "lesson-new", moduleId: mod.id })}>
-                    <Plus className="h-4 w-4" aria-hidden /> Add lesson
-                  </Button>
+                  <div className="space-y-1.5 border-t border-[var(--border-faint)] pt-3">
+                    <p className="text-xs font-semibold text-ink-500">Add to this section</p>
+                    <div className="flex flex-wrap gap-2">
+                      {LESSON_CONTENT_TYPES.filter((t) => (t.id !== "live" || settings.liveLessonsEnabled) && (!isAssessment(t.id) || settings.maxQuizQuestionsPerLesson > 0)).map((t) => {
+                        const Icon = TYPE_ICON[t.id];
+                        return (
+                          <Button key={t.id} variant="secondary" className="!min-h-9 !px-3 !text-xs" disabled={!lessonRoomLeft(mod.id)} onClick={() => setEditing({ kind: "lesson-new", moduleId: mod.id, type: t.id })}>
+                            <Icon className="h-3.5 w-3.5" aria-hidden /> {t.label}
+                          </Button>
+                        );
+                      })}
+                    </div>
+                  </div>
                 )
               )}
-              {!lessonRoomLeft(mod.id) && <p className="text-xs text-ink-500">A module can have up to {settings.maxLessonsPerModule} lessons.</p>}
+              {!lessonRoomLeft(mod.id) && <p className="text-xs text-ink-500">A section can have up to {settings.maxLessonsPerModule} items.</p>}
             </article>
           ))
         )}
