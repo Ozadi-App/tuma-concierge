@@ -1,12 +1,13 @@
 "use client";
 
 import { CURRICULUM_FRAMEWORKS, LESSON_CONTENT_TYPES, isAssessment, type CourseStudent, type LessonContentType, type StudioClass, type StudioCourseDetail, type StudioLesson, type StudioSchool } from "@peebee/shared";
-import { ArrowDown, ArrowUp, AudioLines, BookOpenText, ClipboardCheck, Eye, EyeOff, GraduationCap, Layers, Pencil, Plus, Presentation, Radio, Trash2, Upload, Users, Video, type LucideIcon } from "lucide-react";
+import { ArrowDown, ArrowUp, AudioLines, PenLine, BookOpenText, ClipboardCheck, Eye, EyeOff, GraduationCap, Layers, Pencil, Plus, Presentation, Radio, Trash2, Upload, Users, Video, type LucideIcon } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CoverPicker } from "../../../components/studio/CoverPicker";
 import { CourseForm, ModuleForm, type CourseInput } from "../../../components/studio/forms";
 import { ItemForm, type ItemInput } from "../../../components/studio/ItemForm";
+import { GradebookTable, Marking } from "../../../components/studio/Marking";
 import { Button, Chip, Crumbs, EmptyState, Notice, Skeleton, cardCls } from "../../../components/ui";
 import { api, errorMessage } from "../../../lib/api";
 import { useStudioSettings } from "../../../lib/studio-config";
@@ -21,7 +22,7 @@ type Editing =
   | { kind: "lesson-edit"; id: string };
 
 const TYPE_LABEL = Object.fromEntries(LESSON_CONTENT_TYPES.map((t) => [t.id, t.label]));
-const TYPE_ICON: Record<LessonContentType, LucideIcon> = { text: BookOpenText, slides: Presentation, audio: AudioLines, video: Video, live: Radio, quiz: ClipboardCheck, exam: GraduationCap };
+const TYPE_ICON: Record<LessonContentType, LucideIcon> = { text: BookOpenText, slides: Presentation, audio: AudioLines, video: Video, live: Radio, quiz: ClipboardCheck, exam: GraduationCap, assignment: PenLine };
 
 const whenLabel = (iso: string) => new Date(iso).toLocaleString("en-UG", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
@@ -41,6 +42,8 @@ export default function CoursePage() {
   const [students, setStudents] = useState<CourseStudent[]>([]);
   const [uploading, setUploading] = useState<string | null>(null);
   const [attendance, setAttendance] = useState<Record<string, string>>({});
+  const [marking, setMarking] = useState<string | null>(null);
+  const [gradeKey, setGradeKey] = useState(0);
 
   const load = useCallback(async () => {
     try {
@@ -463,8 +466,21 @@ export default function CoursePage() {
                             </button>
                           )}
                           {lesson.contentType === "slides" && <span>{lesson.slides.length} slides</span>}
+                          {lesson.contentType === "assignment" && lesson.assignment && (
+                            <>
+                              <span className="text-gold">{lesson.assignment.maxPoints} points{lesson.assignment.dueAt ? ` · due ${whenLabel(lesson.assignment.dueAt)}` : ""}</span>
+                              <button type="button" className="font-semibold underline" onClick={() => setMarking(marking === lesson.id ? null : lesson.id)}>
+                                {marking === lesson.id ? "Hide marking" : "Marking"}
+                              </button>
+                            </>
+                          )}
                         </p>
                         {lesson.summary && <p className="line-clamp-2 text-xs text-ink-500">{lesson.summary}</p>}
+                        {marking === lesson.id && (
+                          <div className="pt-2">
+                            <Marking lessonId={lesson.id} onChanged={() => setGradeKey((k) => k + 1)} />
+                          </div>
+                        )}
                         {settings.videoUploadsEnabled && (lesson.contentType === "video" || lesson.contentType === "audio") && (lesson.media || (canBuild && editing.kind === "none")) && (
                           <div className="flex flex-wrap items-center gap-2 pt-1">
                             {lesson.media && (
@@ -585,6 +601,8 @@ export default function CoursePage() {
           ))
         )}
       </section>
+
+      {published && <GradebookTable courseId={id} refreshKey={gradeKey} />}
 
       {published && (
         <section aria-labelledby="students-heading" className={`${cardCls} space-y-3 p-4`}>

@@ -7,6 +7,7 @@ import {
   type LearnSettings,
   type LessonContentType,
   type QuestionType,
+  type StudioAssignment,
   type StudioLesson,
   type StudioLive,
   type StudioQuiz,
@@ -26,6 +27,7 @@ export type ItemInput = {
   body: string;
   slides: StudioSlide[];
   live: StudioLive | null;
+  assignment: StudioAssignment | null;
   quiz: StudioQuiz | null;
 };
 
@@ -311,6 +313,10 @@ export function ItemForm({
   const [shuffleQ, setShuffleQ] = useState(q.shuffleQuestions ?? false);
   const [shuffleO, setShuffleO] = useState(q.shuffleOptions ?? false);
   const [draw, setDraw] = useState(String(q.questionsPerAttempt ?? 0));
+  const [maxPoints, setMaxPoints] = useState(String(initial?.assignment?.maxPoints ?? 100));
+  const [passPercent, setPassPercent] = useState(String(initial?.assignment?.passPercent ?? 50));
+  const [dueAt, setDueAt] = useState(localInput(initial?.assignment?.dueAt ?? undefined));
+  const [allowResubmit, setAllowResubmit] = useState(initial?.assignment?.allowResubmit ?? true);
   const [localError, setLocalError] = useState<string | null>(null);
 
   const patchQuestion = (i: number, p: Partial<Draft>) => setQuestions((prev) => prev.map((x, xi) => (xi === i ? { ...x, ...p } : x)));
@@ -353,6 +359,15 @@ export function ItemForm({
       live = { startsAt: new Date(startsAt).toISOString(), durationMinutes: duration, url: liveUrl.trim(), notes: liveNotes.trim() };
     }
 
+    let assignment: StudioAssignment | null = null;
+    if (contentType === "assignment") {
+      const points = Number(maxPoints);
+      const pass = Number(passPercent);
+      if (!Number.isInteger(points) || points < 1 || points > 1000) return setLocalError("Points are a whole number from 1 to 1000.");
+      if (!Number.isInteger(pass) || pass < 0 || pass > 100) return setLocalError("The pass mark is a percentage from 0 to 100.");
+      assignment = { maxPoints: points, passPercent: pass, dueAt: dueAt ? new Date(dueAt).toISOString() : null, allowResubmit };
+    }
+
     let quiz: StudioQuiz | null = null;
     if (assessment) {
       const converted: StudioQuizQuestion[] = [];
@@ -377,7 +392,7 @@ export function ItemForm({
       };
     }
     setLocalError(null);
-    onSubmit({ title: itemTitle, contentType, durationMinutes: duration, summary, contentUrl: url, body: contentType === "text" ? body : "", slides: cleanSlides, live, quiz });
+    onSubmit({ title: itemTitle, contentType, durationMinutes: duration, summary, contentUrl: url, body: contentType === "text" || contentType === "assignment" ? body : "", slides: cleanSlides, live, assignment, quiz });
   }
 
   return (
@@ -448,6 +463,29 @@ export function ItemForm({
         </div>
       )}
 
+      {contentType === "assignment" && (
+        <div className="space-y-3">
+          <Field label="Instructions" htmlFor={`${id}-ins`} hint="What the learner should do and hand in">
+            <textarea id={`${id}-ins`} rows={6} value={body} onChange={(e) => setBody(e.target.value)} className={controlCls} />
+          </Field>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Field label="Points" htmlFor={`${id}-pts`}>
+              <input id={`${id}-pts`} type="number" min={1} max={1000} inputMode="numeric" value={maxPoints} onChange={(e) => setMaxPoints(e.target.value)} className={controlCls} />
+            </Field>
+            <Field label="Pass mark (%)" htmlFor={`${id}-ap`}>
+              <input id={`${id}-ap`} type="number" min={0} max={100} inputMode="numeric" value={passPercent} onChange={(e) => setPassPercent(e.target.value)} className={controlCls} />
+            </Field>
+            <Field label="Deadline (optional)" htmlFor={`${id}-due`}>
+              <input id={`${id}-due`} type="datetime-local" value={dueAt} onChange={(e) => setDueAt(e.target.value)} className={controlCls} />
+            </Field>
+          </div>
+          <label className="flex items-center gap-2 text-sm text-ink">
+            <input type="checkbox" checked={allowResubmit} onChange={(e) => setAllowResubmit(e.target.checked)} className="h-4 w-4 accent-[rgb(var(--color-gold))]" />
+            Let learners hand in again until they pass
+          </label>
+        </div>
+      )}
+
       {assessment ? (
         <div className="space-y-4">
           <div className="grid gap-3 sm:grid-cols-3">
@@ -480,7 +518,7 @@ export function ItemForm({
             </Button>
           )}
         </div>
-      ) : (
+      ) : contentType === "assignment" ? null : (
         <Field label={contentType === "text" ? "Short description (optional)" : "Notes"} htmlFor={`${id}-sum`}>
           <textarea id={`${id}-sum`} rows={3} maxLength={2000} value={summary} onChange={(e) => setSummary(e.target.value)} className={controlCls} placeholder="Key ideas, instructions and any homework" />
         </Field>

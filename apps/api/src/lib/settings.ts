@@ -451,6 +451,8 @@ const DEFAULTS = {
   learn_drip_enabled: "1",
   learn_prerequisites_enabled: "1",
   learn_badge_courses_threshold: "3",
+  learn_assignments_enabled: "1",
+  learn_max_submission_chars: "5000",
   /** Peebee Work: clean / fix / laundry jobs done by independent providers and companies */
   work_enabled: "1",
   work_service_types: "clean",

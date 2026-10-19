@@ -17,7 +17,7 @@ export const SCHOOL_KINDS: { id: SchoolKind; label: string }[] = [
 ];
 
 /** What one item in a class section is. Quizzes and exams are items of their own, placed wherever the creator likes. */
-export type LessonContentType = "text" | "slides" | "audio" | "video" | "live" | "quiz" | "exam";
+export type LessonContentType = "text" | "slides" | "audio" | "video" | "live" | "quiz" | "exam" | "assignment";
 
 export const LESSON_CONTENT_TYPES: { id: LessonContentType; label: string; hint: string }[] = [
   { id: "text", label: "Text", hint: "A written lesson" },
@@ -27,6 +27,7 @@ export const LESSON_CONTENT_TYPES: { id: LessonContentType; label: string; hint:
   { id: "live", label: "Live video", hint: "A scheduled live lesson on Zoom, Meet or Jitsi" },
   { id: "quiz", label: "Quiz", hint: "Questions that can be retaken" },
   { id: "exam", label: "Exam", hint: "A timed test, usually one attempt" },
+  { id: "assignment", label: "Assignment", hint: "Work the learner hands in and you mark" },
 ];
 
 export const isAssessment = (type: string): boolean => type === "quiz" || type === "exam";
@@ -97,6 +98,16 @@ export interface StudioSlide {
 }
 
 /** A live lesson on someone else's meeting tool. */
+/** What an educator sets for an assignment item. */
+export interface StudioAssignment {
+  maxPoints: number;
+  /** Percent of the points needed for the item to count as done. */
+  passPercent: number;
+  /** ISO time after which nothing can be handed in, or null. */
+  dueAt: string | null;
+  allowResubmit: boolean;
+}
+
 export interface StudioLive {
   /** ISO time the lesson starts. */
   startsAt: string;
@@ -176,6 +187,8 @@ export interface StudioLesson {
   slides: StudioSlide[];
   /** Live lessons. */
   live: StudioLive | null;
+  /** Assignments. */
+  assignment?: StudioAssignment | null;
   /** Quizzes and exams. */
   quiz: StudioQuiz | null;
   /** The uploaded video or audio, if any. */
@@ -307,6 +320,10 @@ export interface LearnSettings {
   prerequisitesEnabled: boolean;
   /** Completed courses that earn the multi-course badge. */
   badgeCoursesThreshold: number;
+  /** Educators can set assignments and mark what learners hand in. */
+  assignmentsEnabled: boolean;
+  /** Longest written answer to an assignment, in characters. */
+  maxSubmissionChars: number;
 }
 
 /** An educator's access to the TV classroom, and what Learn Pro costs. */
@@ -416,6 +433,8 @@ export const DEFAULT_LEARN_SETTINGS: LearnSettings = {
   dripEnabled: true,
   prerequisitesEnabled: true,
   badgeCoursesThreshold: 3,
+  assignmentsEnabled: true,
+  maxSubmissionChars: 5000,
 };
 
 // ---------------------------------------------------------------------------
@@ -446,6 +465,67 @@ export interface LearnerQuiz {
   attemptsUsed: number;
 }
 
+export interface LearnerSubmission {
+  body: string;
+  link: string;
+  status: "submitted" | "graded";
+  score: number | null;
+  feedback: string;
+  submittedAt: string;
+}
+
+export interface LearnerAssignment {
+  maxPoints: number;
+  passPercent: number;
+  dueAt: string | null;
+  allowResubmit: boolean;
+  /** Whether it can still be handed in. */
+  open: boolean;
+  submission: LearnerSubmission | null;
+}
+
+/** An assignment as the educator sees one learner's work. */
+export interface StudioSubmission {
+  id: string;
+  userId: string;
+  learnerName: string;
+  body: string;
+  link: string;
+  status: "submitted" | "graded";
+  score: number | null;
+  feedback: string;
+  submittedAt: string;
+  gradedAt: string | null;
+}
+
+export interface GradebookItem {
+  lessonId: string;
+  title: string;
+  contentType: LessonContentType;
+}
+
+export interface GradebookCell {
+  lessonId: string;
+  done: boolean;
+  /** Percent, for quizzes, exams and graded assignments. */
+  scorePercent: number | null;
+  /** An assignment handed in and waiting to be marked. */
+  needsMarking?: boolean;
+}
+
+export interface GradebookRow {
+  userId: string;
+  name: string;
+  progressPercent: number;
+  averagePercent: number | null;
+  cells: GradebookCell[];
+}
+
+export interface Gradebook {
+  items: GradebookItem[];
+  rows: GradebookRow[];
+}
+
 export interface LearnerLive {
   startsAt: string;
   durationMinutes: number;
@@ -469,6 +549,7 @@ export interface LearnerLesson {
   locked: { reason: "drip" | "sequence"; opensAt: string | null; message: string } | null;
   quiz: LearnerQuiz | null;
   live: LearnerLive | null;
+  assignment?: LearnerAssignment | null;
 }
 
 /** One lesson in full, for the player. */

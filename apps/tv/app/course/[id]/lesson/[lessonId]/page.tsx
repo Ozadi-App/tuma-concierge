@@ -106,7 +106,7 @@ export default function LessonPage() {
   }, [router, id, upNext]);
 
   const complete = useCallback(async () => {
-    if (!secret || !lesson || done || lesson.quiz || kind === "live") return;
+    if (!secret || !lesson || done || lesson.quiz || kind === "live" || kind === "assignment") return;
     setBusy(true);
     setActionError(null);
     try {
@@ -196,7 +196,7 @@ export default function LessonPage() {
               <HelpCircle className="h-[1.3rem] w-[1.3rem]" aria-hidden /> {done ? (assessment ? "Take it again" : "Take the quiz again") : assessment ? (kind === "exam" ? "Start the exam" : "Start the quiz") : "Take the quiz"}
             </button>
           )}
-          {!lesson.quiz && !done && kind !== "live" && steps <= 1 && (
+          {!lesson.quiz && !done && kind !== "live" && kind !== "assignment" && steps <= 1 && (
             <button
               type="button"
               data-focusable
@@ -211,7 +211,7 @@ export default function LessonPage() {
           <button
             type="button"
             data-focusable
-            data-primary={(done || kind === "live") && !hasMedia && steps <= 1 && !lesson.quiz ? true : undefined}
+            data-primary={(done || kind === "live" || kind === "assignment") && !hasMedia && steps <= 1 && !lesson.quiz ? true : undefined}
             onClick={goNext}
             className={`flex items-center gap-[0.6rem] rounded-full px-[1.6rem] py-[0.7rem] text-[1.25rem] font-bold ${done ? "bg-gold text-ink-gold" : "border border-[var(--border-faint)] text-ink focus:bg-gold focus:text-ink-gold"}`}
           >
@@ -244,6 +244,12 @@ export default function LessonPage() {
                 </p>
                 <p className="text-[2.4rem] font-black text-ink">{new Date(lesson.live.startsAt).toLocaleString("en-UG", { weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" })}</p>
                 <p className="text-[1.3rem] text-ink-500">Live lessons open in the Peebee app on your phone.</p>
+              </div>
+            )}
+            {kind === "assignment" && (
+              <div className="space-y-[0.8rem]">
+                <p className="text-[2.2rem] font-black text-ink">{lesson.title}</p>
+                <p className="text-[1.3rem] text-ink-500">Assignments are handed in from the Peebee app on your phone{lesson.assignment?.submission?.status === "graded" && lesson.assignment.submission.score !== null ? `. You scored ${lesson.assignment.submission.score}/${lesson.assignment.maxPoints}.` : "."}</p>
               </div>
             )}
             {assessment && lesson.quiz && (

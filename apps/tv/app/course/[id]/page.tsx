@@ -1,7 +1,7 @@
 "use client";
 
 import type { LearnerCourse, LearnerLesson } from "@peebee/shared";
-import { AudioLines, BookOpenText, CheckCircle2, Circle, ClipboardCheck, GraduationCap, Lock, Play, Presentation, Radio, Video } from "lucide-react";
+import { AudioLines, PenLine, BookOpenText, CheckCircle2, Circle, ClipboardCheck, GraduationCap, Lock, Play, Presentation, Radio, Video } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState } from "react";
@@ -22,6 +22,7 @@ function lessonIcon(l: LearnerLesson) {
     case "slides": return Presentation;
     case "audio": return AudioLines;
     case "live": return Radio;
+    case "assignment": return PenLine;
     case "text": return BookOpenText;
     default: return Video;
   }
