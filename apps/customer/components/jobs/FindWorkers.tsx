@@ -39,10 +39,15 @@ export function WorkerCard({ w, forJob }: { w: TalentWorker; forJob?: string | n
 
 export function FindWorkers() {
   const { config, failure: configFailure } = useJobsConfig({ needMe: false });
-  const forJob = useSearchParams().get("forJob");
+  const searchParams = useSearchParams();
+  const forJob = searchParams.get("forJob");
   const [q, setQ] = useState("");
   const [category, setCategory] = useState("");
-  const [segment, setSegment] = useState<"" | "informal" | "professional">("");
+  // Hive's Workers shortcut opens on everyday trades; the chips still let anyone widen it.
+  const [segment, setSegment] = useState<"" | "informal" | "professional">(() => {
+    const wanted = searchParams.get("segment");
+    return wanted === "informal" || wanted === "professional" ? wanted : "";
+  });
   const [remote, setRemote] = useState(false);
   const [sort, setSort] = useState<"best" | "rating" | "nearest" | "rate_low">("best");
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
@@ -166,6 +171,8 @@ export function FindWorkers() {
           </select>
         </div>
       </form>
+
+      <Link href="/services/hire/post" className="block text-sm font-semibold text-gold">Rather post a quick job and let workers come to you?</Link>
 
       <FailureNote failure={failure} />
       {!workers ? <Spinner label="Searching" /> : null}

@@ -19,6 +19,7 @@ import {
   Croissant,
   Crown,
   Flame,
+  HardHat,
   Home,
   ListChecks,
   Package,
@@ -42,7 +43,7 @@ import { api } from "../lib/api";
 import { useAuth } from "../lib/auth-context";
 import { useTranslate } from "../lib/i18n";
 import { orderTitle, stageLabel } from "../lib/order-display";
-import { useHireAvailable, useHomeMenu } from "../lib/home-menu";
+import { useHireAvailability, useHomeMenu, type HireAvailability } from "../lib/home-menu";
 import { useSpecialCarServices, type SpecialCarServices } from "../lib/special-car";
 import { useLivePolling } from "../lib/use-live-polling";
 import { BottomDrawer } from "./BottomDrawer";
@@ -64,15 +65,17 @@ const originalMenu = (menu: HomeMenuSettings): MenuItem[] => [
 ];
 
 const HIVE_ITEM: Record<HiveShortcutId, { icon: LucideIcon; href: string }> = {
-  laundry: { icon: WashingMachine, href: "/services/laundry" },
   clean: { icon: Sparkles, href: "/services/clean" },
+  laundry: { icon: WashingMachine, href: "/services/laundry" },
   fix: { icon: Wrench, href: "/services/fix" },
+  // Quick odd jobs: the worker search, opened on everyday trades.
+  workers: { icon: HardHat, href: "/services/hire/workers?segment=informal" },
   hire: { icon: Briefcase, href: "/services/hire" },
 };
 
 /** Hive's row of shortcuts: the admin's names and order, with any switched off left out. */
-const hiveItems = (menu: HomeMenuSettings, hireAvailable: boolean): MenuItem[] =>
-  menu.hive.shortcuts.filter((s) => s.enabled && (s.id !== "hire" || hireAvailable)).map((s) => ({ id: s.id, label: s.label, icon: HIVE_ITEM[s.id].icon, href: HIVE_ITEM[s.id].href }));
+const hiveItems = (menu: HomeMenuSettings, hire: HireAvailability): MenuItem[] =>
+  menu.hive.shortcuts.filter((s) => s.enabled && (s.id === "workers" ? hire.workers : s.id === "hire" ? hire.hire : true)).map((s) => ({ id: s.id, label: s.label, icon: HIVE_ITEM[s.id].icon, href: HIVE_ITEM[s.id].href }));
 
 /** Ride's shortcuts, in the order Peebee shows them. Luxury and Ambulance appear once there is an approved vehicle of that kind. */
 const rideItems = (special: SpecialCarServices): MenuItem[] => [
@@ -127,7 +130,7 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
   const t = useTranslate();
   const homeMenu = useHomeMenu();
   const special = useSpecialCarServices();
-  const hireAvailable = useHireAvailable();
+  const hireAvailability = useHireAvailability();
   const { totalQuantity: cartCount, total: cartTotal } = useCart();
   const primaryAction = useNavPrimaryAction();
   // A cart/checkout or a flow step is open: Home becomes a one-step Back.
@@ -150,7 +153,7 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
   const menuItems: MenuItem[] =
     menuGroup === "original" ? originalMenu(homeMenu)
     : menuGroup === "ride" ? rideItems(special)
-    : menuGroup === "hive" ? hiveItems(homeMenu, hireAvailable)
+    : menuGroup === "hive" ? hiveItems(homeMenu, hireAvailability)
     : staticSubmenuItems[menuGroup];
   // Ride can grow to eight; past five the row scrolls sideways instead of squeezing the names.
   const scrolls = menuItems.length > 5;
@@ -178,6 +181,7 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
     else if (pathname === "/services/laundry") setSelectedItem("laundry");
     else if (pathname === "/services/clean") setSelectedItem("clean");
     else if (pathname === "/services/fix") setSelectedItem("fix");
+    else if (pathname === "/services/hire/workers" || pathname.startsWith("/services/hire/workers/")) setSelectedItem("workers");
     else if (pathname === "/service" || pathname === "/services/hire" || pathname.startsWith("/services/hire/")) setSelectedItem("hire");
     else if (pathname === "/services/learn" || pathname === "/learn" || pathname.startsWith("/learn/")) setSelectedItem("learn");
     else if (pathname === "/deliver" || pathname.startsWith("/deliver/")) setSelectedItem("parcel");

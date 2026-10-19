@@ -1,10 +1,10 @@
 "use client";
 
-import { Ambulance, ArrowRight, Bike, Briefcase, Car, CarFront, ClipboardList, Clock3, Crown, Flame, ListChecks, Package, Pill, ShoppingBasket, Sparkles, Store, Truck, UsersRound, WashingMachine, Wrench } from "lucide-react";
+import { Ambulance, ArrowRight, Bike, Briefcase, Car, CarFront, ClipboardList, Clock3, Crown, Flame, HardHat, ListChecks, Package, Pill, ShoppingBasket, Sparkles, Store, Truck, UsersRound, WashingMachine, Wrench } from "lucide-react";
 import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
 import type { HiveShortcutId } from "@peebee/shared";
-import { useHireAvailable, useHomeMenu } from "../lib/home-menu";
+import { useHireAvailability, useHomeMenu } from "../lib/home-menu";
 import { useSpecialCarServices } from "../lib/special-car";
 
 type LandingGroup = "ride" | "shopping";
@@ -85,20 +85,28 @@ export function ServiceLanding({ group }: { group: LandingGroup }) {
   );
 }
 
-const HIVE_CARD: Record<Exclude<HiveShortcutId, "hire">, { description: string; icon: LucideIcon; href: string }> = {
-  laundry: { description: "Doorstep wash & fold, dry cleaning, ironing.", icon: WashingMachine, href: "/services/laundry" },
+type HiveServiceId = "clean" | "laundry" | "fix";
+const HIVE_CARD: Record<HiveServiceId, { description: string; icon: LucideIcon; href: string }> = {
   clean: { description: "Homes, offices, cars and more, cleaned for you.", icon: Sparkles, href: "/services/clean" },
+  laundry: { description: "Doorstep wash & fold, dry cleaning, ironing.", icon: WashingMachine, href: "/services/laundry" },
   fix: { description: "Home repairs, plumbing, electrical and car servicing.", icon: Wrench, href: "/services/fix" },
 };
 
-/** Hive: Peebee-delivered services at a clear price, with a separate door to hire a person.
+/** The person-centred shortcuts: finding someone for a quick odd job, or hiring for a project or contract. */
+const HIVE_PERSON: Record<"workers" | "hire", { description: string; icon: LucideIcon; href: string }> = {
+  workers: { description: "Quick odd jobs: find a worker nearby, or post the job.", icon: HardHat, href: "/services/hire/workers?segment=informal" },
+  hire: { description: "A project or a longer contract with someone you choose.", icon: Briefcase, href: "/services/hire" },
+};
+
+/** Hive: Peebee-delivered services at a clear price, with a separate section for finding a person.
  * Names, order and what is on come from the admin's home menu setting. */
 export function HiveLanding() {
   const menu = useHomeMenu();
-  const hireAvailable = useHireAvailable();
+  const availability = useHireAvailability();
   const { hive } = menu;
-  const cards = hive.shortcuts.filter((s): s is typeof s & { id: Exclude<HiveShortcutId, "hire"> } => s.enabled && s.id !== "hire");
-  const showBanner = hive.hireBanner.enabled && hireAvailable;
+  const cards = hive.shortcuts.filter((s): s is typeof s & { id: HiveServiceId } => s.enabled && s.id !== "workers" && s.id !== "hire");
+  const people = hive.shortcuts.filter((s): s is typeof s & { id: "workers" | "hire" } => s.enabled && (s.id === "workers" ? availability.workers : s.id === "hire" ? availability.hire : false));
+  const showPeople = hive.hireBanner.enabled && people.length > 0;
 
   return (
     <main className="space-y-6 px-4 pb-8 pt-5">
@@ -130,17 +138,29 @@ export function HiveLanding() {
       )}
 
       {/* Finding a person is a different thing from a service Peebee delivers, so it sits apart from the cards above. */}
-      {showBanner && (
-        <Link href="/services/hire" className="flex items-center gap-3 rounded-3xl border border-dashed border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] p-4 transition-transform active:scale-[0.98]">
-          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gold/12 text-gold">
-            <Briefcase size={22} strokeWidth={1.8} aria-hidden />
-          </span>
-          <span className="min-w-0 flex-1">
+      {showPeople && (
+        <section aria-label={hive.hireBanner.title} className="space-y-2 rounded-3xl border border-dashed border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] p-4">
+          <div className="px-1">
             <strong className="block text-base">{hive.hireBanner.title}</strong>
             <span className="mt-0.5 block text-xs leading-relaxed text-ink-500">{hive.hireBanner.text}</span>
-          </span>
-          <ArrowRight size={17} className="shrink-0 text-gold" aria-hidden />
-        </Link>
+          </div>
+          {people.map((item) => {
+            const row = HIVE_PERSON[item.id];
+            const Icon = row.icon;
+            return (
+              <Link key={item.id} href={row.href} className="flex items-center gap-3 rounded-2xl bg-[rgb(var(--surface-card))] p-3 transition-transform active:scale-[0.98]">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gold/12 text-gold">
+                  <Icon size={20} strokeWidth={1.8} aria-hidden />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <strong className="block text-sm">{item.label}</strong>
+                  <span className="block text-xs leading-relaxed text-ink-500">{row.description}</span>
+                </span>
+                <ArrowRight size={16} className="shrink-0 text-gold" aria-hidden />
+              </Link>
+            );
+          })}
+        </section>
       )}
 
       <Link href="/services/work" className="flex items-center gap-2 px-1 text-sm font-semibold text-ink-500 transition-opacity active:opacity-60">

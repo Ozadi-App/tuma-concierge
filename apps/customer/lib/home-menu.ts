@@ -32,26 +32,30 @@ export function useHomeMenu(): HomeMenuSettings {
   return menu;
 }
 
-let hireCached: { at: number; value: boolean } | null = null;
-let hireInflight: Promise<boolean> | null = null;
+/** What of Peebee Hire customers can use right now: the marketplace itself, and the worker search. */
+export type HireAvailability = { hire: boolean; workers: boolean };
+const NO_HIRE: HireAvailability = { hire: false, workers: false };
+let hireCached: { at: number; value: HireAvailability } | null = null;
+let hireInflight: Promise<HireAvailability> | null = null;
 
-function loadHire(): Promise<boolean> {
+function loadHire(): Promise<HireAvailability> {
   if (hireCached && Date.now() - hireCached.at < 60_000) return Promise.resolve(hireCached.value);
   hireInflight ??= api
     .talentConfig()
     .then((cfg) => {
-      hireCached = { at: Date.now(), value: Boolean(cfg.enabled) };
+      const hire = Boolean(cfg.enabled);
+      hireCached = { at: Date.now(), value: { hire, workers: hire && Boolean(cfg.workerSearchEnabled) } };
       return hireCached.value;
     })
     // Switched off, not set up yet, or the call failed: leave Hire out rather than send people to a dead end.
-    .catch(() => false)
+    .catch(() => NO_HIRE)
     .finally(() => { hireInflight = null; });
   return hireInflight;
 }
 
-/** Whether the Hire marketplace is on for customers right now. */
-export function useHireAvailable(): boolean {
-  const [on, setOn] = useState<boolean>(hireCached?.value ?? false);
+/** Whether the Hire marketplace and its worker search are on for customers right now. */
+export function useHireAvailability(): HireAvailability {
+  const [on, setOn] = useState<HireAvailability>(hireCached?.value ?? NO_HIRE);
   useEffect(() => {
     let live = true;
     void loadHire().then((v) => { if (live) setOn(v); });

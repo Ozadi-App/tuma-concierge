@@ -23,11 +23,11 @@ test("the built-in home menu is valid and has the five clusters", () => {
 test("a name can be changed and the Hive shortcuts can be reordered or switched off", () => {
   const menu = clone();
   menu.clusters.hive.label = "Express";
-  menu.hive.shortcuts = [menu.hive.shortcuts[3]!, { ...menu.hive.shortcuts[0]!, enabled: false }, menu.hive.shortcuts[1]!, menu.hive.shortcuts[2]!];
+  menu.hive.shortcuts = [menu.hive.shortcuts[4]!, { ...menu.hive.shortcuts[0]!, enabled: false }, menu.hive.shortcuts[1]!, menu.hive.shortcuts[2]!, menu.hive.shortcuts[3]!];
   assert.equal(homeMenuSchema.safeParse(menu).success, true);
   const resolved = resolveHomeMenu(menu);
   assert.equal(resolved.clusters.hive.label, "Express");
-  assert.deepEqual(resolved.hive.shortcuts.map((s) => s.id), ["hire", "laundry", "clean", "fix"]);
+  assert.deepEqual(resolved.hive.shortcuts.map((s) => s.id), ["hire", "clean", "laundry", "fix", "workers"]);
   assert.equal(resolved.hive.shortcuts[1]!.enabled, false);
 });
 
@@ -46,11 +46,11 @@ test("a partial or older stored value is filled from the defaults", () => {
   const resolved = resolveHomeMenu({ clusters: { hive: { label: "Sawa" } } } as Partial<HomeMenuSettings>);
   assert.equal(resolved.clusters.hive.label, "Sawa");
   assert.equal(resolved.clusters.ride.label, "Ride");
-  assert.deepEqual(resolved.hive.shortcuts.map((s) => s.id), ["laundry", "clean", "fix", "hire"]);
+  assert.deepEqual(resolved.hive.shortcuts.map((s) => s.id), ["clean", "laundry", "fix", "workers", "hire"]);
   assert.equal(resolveHomeMenu(null).clusters.learn.label, "Learn");
   // A shortcut id we do not know is dropped, not shown.
   const odd = resolveHomeMenu({ hive: { shortcuts: [{ id: "bogus", label: "x", enabled: true }] } } as unknown as Partial<HomeMenuSettings>);
-  assert.deepEqual(odd.hive.shortcuts.map((s) => s.id), ["laundry", "clean", "fix", "hire"]);
+  assert.deepEqual(odd.hive.shortcuts.map((s) => s.id), ["clean", "laundry", "fix", "workers", "hire"]);
 });
 
 function bindDatabase(client: Client) {
@@ -88,7 +88,7 @@ test("home menu: only admins change it, bad values are refused, customers see th
 
     const changed = clone();
     changed.clusters.hive.label = "Sawa";
-    changed.hive.shortcuts = [changed.hive.shortcuts[1]!, changed.hive.shortcuts[0]!, { ...changed.hive.shortcuts[2]!, enabled: false }, changed.hive.shortcuts[3]!];
+    changed.hive.shortcuts = [changed.hive.shortcuts[1]!, changed.hive.shortcuts[0]!, { ...changed.hive.shortcuts[2]!, enabled: false }, changed.hive.shortcuts[3]!, changed.hive.shortcuts[4]!];
     changed.hive.hireBanner.title = "Looking for a person?";
     const saved = await put(admin, { homeMenu: changed });
     assert.equal(saved.status, 200, await saved.clone().text());
@@ -97,7 +97,7 @@ test("home menu: only admins change it, bad values are refused, customers see th
     const seen = await app.request("/v1/settings", { headers: { Authorization: `Bearer ${customer}` } });
     const data = await seen.json() as { settings: { homeMenu: HomeMenuSettings } };
     assert.equal(data.settings.homeMenu.clusters.hive.label, "Sawa");
-    assert.deepEqual(data.settings.homeMenu.hive.shortcuts.map((s) => [s.id, s.enabled]), [["clean", true], ["laundry", true], ["fix", false], ["hire", true]]);
+    assert.deepEqual(data.settings.homeMenu.hive.shortcuts.map((s) => [s.id, s.enabled]), [["laundry", true], ["clean", true], ["fix", false], ["workers", true], ["hire", true]]);
     assert.ok((await client.execute("SELECT * FROM admin_activity_log")).rows.length > 0, "the change is in the activity log");
 
     await setSetting("home_menu_config", "bad-json");
