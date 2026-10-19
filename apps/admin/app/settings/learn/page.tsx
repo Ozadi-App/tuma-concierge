@@ -3,6 +3,8 @@
 import { EDUCATION_STREAMS, hasPermission, type EducationStream, type LearnSettings, type SchoolStatus, type StudioSchool } from "@peebee/shared";
 import { AlertCircle, CheckCircle2, GraduationCap, Layers, ShieldAlert, Wallet } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { DemoContentCard } from "../../../components/learn/DemoContentCard";
+import { ProEducatorsCard } from "../../../components/learn/ProEducatorsCard";
 import { SettingsPageShell } from "../../../components/SettingsPageShell";
 import { api, errorMessage } from "../../../lib/api";
 import { useAuth } from "../../../lib/auth-context";
@@ -32,6 +34,8 @@ const LIMITS: { key: NumberKey; label: string; hint: string; min: number; max: n
   { key: "liveMaxExamMinutes", label: "Longest live exam (minutes)", hint: "Upper limit for a timed exam on phones", min: 1, max: 600 },
   { key: "maxScreensPerUser", label: "TV screens per educator", hint: "Most screens one account can pair", min: 1, max: 50 },
   { key: "screenPairMinutes", label: "TV pairing code lifetime (minutes)", hint: "How long a code shown on a TV can be used", min: 1, max: 60 },
+  { key: "proPriceUgx", label: "Learn Pro price (UGX)", hint: "Taken from the educator's wallet for one period. 0 makes Pro free to claim.", min: 0, max: 100000000, step: 1000 },
+  { key: "proDays", label: "Learn Pro length (days)", hint: "How long one purchase lasts", min: 1, max: 3650 },
   { key: "createsPerHour", label: "Creations per hour", hint: "Schools, classes, courses, modules and lessons made by one educator per hour", min: 1, max: 1000 },
 ];
 
@@ -107,6 +111,10 @@ export default function LearnSettingsPage() {
         return;
       }
     }
+    if (!/^\d{6}$/.test(settings.trialCodeA) || !/^\d{6}$/.test(settings.trialCodeB) || settings.trialCodeA === settings.trialCodeB) {
+      setError("The two trial class codes must each be six digits and different from each other.");
+      return;
+    }
     if (!Number.isInteger(settings.maxCoursePriceUgx) || settings.maxCoursePriceUgx < 0) {
       setError("Highest course price must be a whole number of 0 or more.");
       return;
@@ -175,6 +183,7 @@ export default function LearnSettingsPage() {
             <SwitchRow title="Video and audio uploads" hint="Educators can attach a file to a lesson" on={settings.videoUploadsEnabled} disabled={!canManage} onChange={(v) => patch("videoUploadsEnabled", v)} />
             <SwitchRow title="School fees" hint="Schools can invoice learners, who pay from their wallet" on={settings.feesEnabled} disabled={!canManage} onChange={(v) => patch("feesEnabled", v)} />
             <SwitchRow title="Live classroom and TV" hint="Educators can run live sessions that push content to a TV and quizzes to students' phones" on={settings.liveEnabled} disabled={!canManage} onChange={(v) => patch("liveEnabled", v)} />
+            <SwitchRow title="TV is a Pro feature" hint="Off (the launch setting): every educator can use the TV classroom for free. On: connecting a screen and teaching on it needs Learn Pro, which educators can buy from their wallet or staff can grant. Teaching to phones and the practice classes stay free." on={settings.tvProRequired} disabled={!canManage} onChange={(v) => patch("tvProRequired", v)} />
             <SwitchRow title="Publish automatically" hint="A course goes live as soon as it has its first lesson. When off, the educator publishes it themselves." on={settings.publishByDefault} disabled={!canManage} onChange={(v) => patch("publishByDefault", v)} />
           </section>
 
@@ -211,6 +220,33 @@ export default function LearnSettingsPage() {
                 );
               })}
             </div>
+          </section>
+
+          <section className="space-y-4 rounded-[24px] border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-5 shadow-sm">
+            <div>
+              <h2 className="text-base font-bold text-ink">Trial classes and demo content</h2>
+              <p className="text-xs text-ink-500">Two practice live classes that run themselves, opened with a code, and the visibility of demo courses</p>
+            </div>
+            <SwitchRow title="Trial live classes" hint="Anyone signed in can join a practice class with its code and see a class in progress with no tutor online" on={settings.trialClassesEnabled} disabled={!canManage} onChange={(v) => patch("trialClassesEnabled", v)} />
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {(["trialCodeA", "trialCodeB"] as const).map((key, i) => (
+                <div key={key} className="field-box flex flex-col rounded-2xl bg-[rgb(var(--surface-muted))] p-3">
+                  <label htmlFor={key} className="mb-1 text-xs font-bold text-ink-500">Trial class {i + 1} code</label>
+                  <input
+                    id={key}
+                    inputMode="numeric"
+                    pattern="[0-9]{6}"
+                    maxLength={6}
+                    value={settings[key]}
+                    disabled={!canManage}
+                    onChange={(e) => patch(key, e.target.value.replace(/\D/g, "").slice(0, 6))}
+                    className="w-full font-mono text-base font-bold tracking-widest text-ink outline-none"
+                  />
+                  <span className="mt-1 text-[10px] text-ink-500">Six digits. The two codes must be different.</span>
+                </div>
+              ))}
+            </div>
+            <SwitchRow title="Show demo courses" hint="Demo schools and courses appear in the catalogue after real ones, marked Demo. Turn off to hide them without removing them." on={settings.demoContentVisible} disabled={!canManage} onChange={(v) => patch("demoContentVisible", v)} />
           </section>
 
           <section className="space-y-4 rounded-[24px] border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-5 shadow-sm">
@@ -275,6 +311,18 @@ export default function LearnSettingsPage() {
             </button>
           </div>
         </form>
+      )}
+
+      {settings && (
+        <div className="mb-6">
+          <DemoContentCard canManage={canManage} trialCodes={[settings.trialCodeA, settings.trialCodeB]} />
+        </div>
+      )}
+
+      {settings && (
+        <div className="mb-6">
+          <ProEducatorsCard canManage={canManage} />
+        </div>
       )}
 
       {settings && (

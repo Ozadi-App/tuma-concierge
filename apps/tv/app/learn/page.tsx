@@ -4,6 +4,7 @@ import type { ScreenState } from "@peebee/shared";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { JoinCard } from "../../components/JoinCard";
+import { TrialPicker } from "../../components/TrialPicker";
 import { StageCue } from "../../components/Stage";
 import { TvAuthError, tvApi } from "../../lib/api";
 import { useDevice } from "../../lib/device";
@@ -13,11 +14,14 @@ import { useServerClock } from "../../lib/time";
 /** The classroom: shows whatever the tutor has pushed to this screen. */
 export default function LearnPage() {
   const router = useRouter();
-  const { state: device, secret, lost, pollSeconds } = useDevice();
+  const { state: device, secret, lost, pollSeconds, trial, setTrial } = useDevice();
   const [screen, setScreen] = useState<ScreenState | null>(null);
   const [soundOn, setSoundOn] = useState(false);
   const now = useServerClock(screen?.serverNow);
-  const goHome = useCallback(() => router.push("/"), [router]);
+  // Back leaves a practice class too, so the next visit starts from the home screen.
+  const goHome = useCallback(() => {
+    void (trial ? setTrial(null) : Promise.resolve()).finally(() => router.push("/"));
+  }, [router, trial, setTrial]);
   useBack(goHome);
 
   // Any key press counts as the "tap" some TVs need before they allow sound.
@@ -50,9 +54,10 @@ export default function LearnPage() {
     };
   }, [secret, lost]);
 
+  // A screen that isn't paired has no classroom of its own, but it can show a practice class.
   useEffect(() => {
-    if (device.phase === "pairing") router.replace("/");
-  }, [device.phase, router]);
+    if (device.phase === "pairing" && !trial) router.replace("/");
+  }, [device.phase, trial, router]);
 
   if (!screen) return <main className="tv-safe flex min-h-screen items-center justify-center text-[1.6rem] text-ink-500">Connecting to your class…</main>;
 
@@ -65,6 +70,9 @@ export default function LearnPage() {
         <p className="max-w-[44rem] text-[1.5rem] leading-snug text-ink-500">
           In Peebee Learn, start a live class and choose <strong className="text-ink">{screen.device.name}</strong> as the screen. This page will switch over by itself.
         </p>
+        <div className="mt-[1.2rem] w-full max-w-[84rem] text-left">
+          <TrialPicker heading="While you wait, watch a practice class" />
+        </div>
         <p className="text-[1.1rem] text-ink-500">Press Back to return to the home screen.</p>
       </main>
     );
@@ -75,7 +83,22 @@ export default function LearnPage() {
     <main className="tv-safe flex min-h-screen flex-col gap-[1.4rem]">
       <header className="flex items-center justify-between">
         <p className="text-[1.3rem] font-bold text-ink-500">{session.title}</p>
-        <p className="text-[1.1rem] text-ink-500">Peebee Learn</p>
+        <div className="flex items-center gap-[1.2rem]">
+          {session.trial && (
+            <>
+              <span className="rounded-full bg-gold/15 px-[1rem] py-[0.3rem] text-[1rem] font-bold uppercase tracking-wide text-gold">Practice class</span>
+              <button
+                type="button"
+                data-focusable
+                onClick={goHome}
+                className="rounded-full border border-[var(--border-faint)] px-[1.2rem] py-[0.4rem] text-[1rem] font-bold text-ink focus:bg-gold focus:text-ink-gold"
+              >
+                Leave practice class
+              </button>
+            </>
+          )}
+          <p className="text-[1.1rem] text-ink-500">Peebee Learn</p>
+        </div>
       </header>
       <div className="flex min-h-0 flex-1 gap-[2.4rem]">
         <section key={screen.cue?.id ?? "idle"} className="tv-fade-in min-h-0 min-w-0 flex-1" aria-live="polite">

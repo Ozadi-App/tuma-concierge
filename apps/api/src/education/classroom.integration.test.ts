@@ -442,7 +442,7 @@ test("the admin switch and 'upgrade pending' both stop the classroom cleanly", a
   const started = await a.tv("/pair/start", { method: "POST", body: {} });
   assert.equal((await a.tv("/pair", { token: host, body: { code: started.json.code } })).status, 503);
 
-  const b = await setup(["0112_"]);
+  const b = await setup(["0112_", "0113_", "0114_"]);
   const user = await b.mkUser("host_11");
   assert.equal((await b.room("/sessions", { token: user })).status, 503);
   assert.equal((await b.tv("/pair/start", { method: "POST", body: {} })).json.error, "classroom_upgrade_pending");

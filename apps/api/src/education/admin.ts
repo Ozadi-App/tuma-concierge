@@ -6,6 +6,9 @@ import { requirePermission } from "../admin/permissions.js";
 import { requireAuth, requireRole } from "../auth/middleware.js";
 import { db } from "../db/client.js";
 import { clientIp } from "../lib/ratelimit.js";
+import { grantPro, listPro, revokePro } from "./pro.js";
+import { resolveCustomerByIdentifier } from "../wallet/service.js";
+import { DEMO_STEPS, DemoError, demoMissing, demoStatus, installDemoStep, removeDemo } from "./demo.js";
 import { getLearnSettings, setLearnSettings } from "./settings.js";
 import { studioReady } from "./studio.js";
 
@@ -15,6 +18,10 @@ export const educationAdminRoutes = new Hono();
 educationAdminRoutes.use("/admin/learn-settings", requireAuth, requireRole("admin"));
 educationAdminRoutes.use("/admin/learn-schools", requireAuth, requireRole("admin"));
 educationAdminRoutes.use("/admin/learn-schools/*", requireAuth, requireRole("admin"));
+educationAdminRoutes.use("/admin/learn-demo", requireAuth, requireRole("admin"));
+educationAdminRoutes.use("/admin/learn-pro", requireAuth, requireRole("admin"));
+educationAdminRoutes.use("/admin/learn-pro/*", requireAuth, requireRole("admin"));
+educationAdminRoutes.use("/admin/learn-demo/*", requireAuth, requireRole("admin"));
 
 const STREAMS = EDUCATION_STREAM_IDS as readonly [string, ...string[]];
 
@@ -49,6 +56,13 @@ const settingsPatch = z
     liveMaxExamMinutes: z.number().int().min(1).max(600),
     maxScreensPerUser: z.number().int().min(1).max(50),
     screenPairMinutes: z.number().int().min(1).max(60),
+    trialClassesEnabled: z.boolean(),
+    trialCodeA: z.string().regex(/^\d{6}$/, "Use exactly 6 digits"),
+    trialCodeB: z.string().regex(/^\d{6}$/, "Use exactly 6 digits"),
+    demoContentVisible: z.boolean(),
+    tvProRequired: z.boolean(),
+    proPriceUgx: z.number().int().min(0).max(100_000_000),
+    proDays: z.number().int().min(1).max(3650),
   })
   .partial();
 
@@ -61,6 +75,9 @@ educationAdminRoutes.patch("/admin/learn-settings", requirePermission("settings.
   if (!parsed.success) return c.json({ error: "invalid_body", issues: parsed.error.issues }, 400);
 
   const before = await getLearnSettings();
+  const codeA = parsed.data.trialCodeA ?? before.trialCodeA;
+  const codeB = parsed.data.trialCodeB ?? before.trialCodeB;
+  if (codeA === codeB) return c.json({ error: "invalid_body", message: "The two trial class codes must be different." }, 400);
   await setLearnSettings(parsed.data as never);
   const after = await getLearnSettings();
   await logActivity({
@@ -133,4 +150,107 @@ educationAdminRoutes.post("/admin/learn-schools/:id/status", requirePermission("
     ip: clientIp(c),
   });
   return c.json({ ok: true, status: parsed.data.status });
+});
+
+// ---------------------------------------------------------------------------
+// Demo content: eight educators, five streams and two trial live classes, installed and removed as a set.
+// ---------------------------------------------------------------------------
+
+educationAdminRoutes.get("/admin/learn-demo", requirePermission("settings.view"), async (c) => {
+  return c.json({ ok: true, steps: DEMO_STEPS, ...(await demoStatus()) });
+});
+
+const installBody = z.object({
+  step: z.number().int().min(0).max(DEMO_STEPS - 1).default(0),
+  /** Optional. When set, the demo educators can sign in with their demo email and this password. */
+  password: z.string().min(8).max(100).optional(),
+});
+
+educationAdminRoutes.post("/admin/learn-demo/install", requirePermission("settings.manage"), async (c) => {
+  const parsed = installBody.safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) return c.json({ error: "invalid_body", message: parsed.error.issues[0]?.message ?? "Check the request.", issues: parsed.error.issues }, 400);
+  const missing = await demoMissing();
+  if (missing.length > 0) {
+    return c.json({ error: "upgrade_pending", message: `Apply these migrations to the database first, in order: ${missing.join(", ")}.`, missing }, 503);
+  }
+  try {
+    const result = await installDemoStep(parsed.data.step, parsed.data.password);
+    if (result.done) {
+      await logActivity({
+        actor: c.get("user"),
+        action: "learn.demo.install",
+        entityType: "settings",
+        summary: "Installed the Peebee Learn demo content",
+        after: { passwordSet: Boolean(parsed.data.password) },
+        ip: clientIp(c),
+      });
+    }
+    return c.json({ ok: true, ...result });
+  } catch (err) {
+    if (err instanceof DemoError) return c.json({ error: err.code, message: err.message }, 409);
+    throw err;
+  }
+});
+
+educationAdminRoutes.delete("/admin/learn-demo", requirePermission("settings.manage"), async (c) => {
+  const missing = await demoMissing();
+  if (missing.length > 0) return c.json({ error: "upgrade_pending", message: `Apply these migrations to the database first, in order: ${missing.join(", ")}.`, missing }, 503);
+  try {
+    const result = await removeDemo();
+    await logActivity({
+      actor: c.get("user"),
+      action: "learn.demo.remove",
+      entityType: "settings",
+      summary: "Removed the Peebee Learn demo content",
+      after: result as never,
+      ip: clientIp(c),
+    });
+    return c.json({ ok: true, ...result });
+  } catch (err) {
+    if (err instanceof DemoError) return c.json({ error: err.code, message: err.message }, 409);
+    throw err;
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Learn Pro: who has it. Staff can grant and revoke; educators can also buy it from their wallet.
+// ---------------------------------------------------------------------------
+
+educationAdminRoutes.get("/admin/learn-pro", requirePermission("settings.view"), async (c) => {
+  return c.json({ ok: true, educators: await listPro() });
+});
+
+const grantBody = z.object({
+  /** The educator's phone number or email. */
+  identifier: z.string().trim().min(3).max(120),
+  /** How many days; leave out for no end date. */
+  days: z.number().int().min(1).max(3650).nullable().optional(),
+  note: z.string().trim().max(200).optional(),
+});
+
+educationAdminRoutes.post("/admin/learn-pro/grant", requirePermission("settings.manage"), async (c) => {
+  const parsed = grantBody.safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) return c.json({ error: "invalid_body", message: parsed.error.issues[0]?.message ?? "Check the request.", issues: parsed.error.issues }, 400);
+  const person = await resolveCustomerByIdentifier(parsed.data.identifier);
+  if (!person) return c.json({ error: "not_found", message: "No active customer account has that phone number or email." }, 404);
+  const days = parsed.data.days ?? null;
+  const result = await grantPro({ userId: person.id, days, grantedBy: c.get("user").sub, note: parsed.data.note });
+  await logActivity({
+    actor: c.get("user"),
+    action: "learn.pro.grant",
+    entityType: "user",
+    entityId: person.id,
+    summary: `Granted Learn Pro to ${person.name}${days ? ` for ${days} days` : " with no end date"}`,
+    after: { expiresAt: result.expiresAt },
+    ip: clientIp(c),
+  });
+  return c.json({ ok: true, userId: person.id, name: person.name, expiresAt: result.expiresAt });
+});
+
+educationAdminRoutes.delete("/admin/learn-pro/:userId", requirePermission("settings.manage"), async (c) => {
+  const userId = c.req.param("userId") ?? "";
+  const removed = await revokePro(userId);
+  if (!removed) return c.json({ error: "not_found", message: "That educator doesn't have Pro." }, 404);
+  await logActivity({ actor: c.get("user"), action: "learn.pro.revoke", entityType: "user", entityId: userId, summary: "Revoked Learn Pro", ip: clientIp(c) });
+  return c.json({ ok: true });
 });
