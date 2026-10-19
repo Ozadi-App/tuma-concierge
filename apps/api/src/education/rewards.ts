@@ -55,6 +55,19 @@ export async function computeLocks(
   const opens = new Map<string, string>();
   if (!(await proReady())) return { locks, opens };
 
+  // A learner in a cohort starts when the cohort does.
+  let cohortStart: number | null = null;
+  if (settings.cohortsEnabled && (await hasTable("edu_cohorts"))) {
+    const c = ((await db.execute({ sql: "SELECT MAX(h.starts_at) AS at FROM edu_cohort_members m JOIN edu_cohorts h ON h.id = m.cohort_id WHERE m.user_id = ? AND m.course_id = ?", args: [userId, courseId] })).rows[0] as Row | undefined)?.at;
+    cohortStart = c ? Date.parse(String(c)) : null;
+    if (cohortStart !== null && cohortStart > now) {
+      const iso = new Date(cohortStart).toISOString();
+      for (const l of lessons) locks.set(String(l.id), { reason: "drip", opensAt: iso, message: `Starts ${new Date(cohortStart).toLocaleDateString("en-UG", { day: "numeric", month: "short" })}` });
+      for (const m of modules) opens.set(String(m.id), iso);
+      return { locks, opens };
+    }
+  }
+
   if (settings.dripEnabled) {
     const days = await dripDays(courseId);
     const enrolled = ((await db.execute({ sql: "SELECT created_at FROM edu_enrollments WHERE course_id = ? AND user_id = ?", args: [courseId, userId] })).rows[0] as Row | undefined)?.created_at;
@@ -66,7 +79,7 @@ export async function computeLocks(
         .catch(() => ({ rows: [] as Row[] }));
       startedAt = ((sub.rows[0] as Row | undefined)?.at as string | null) ?? null;
     }
-    const start = startedAt ? Date.parse(`${startedAt.replace(" ", "T")}Z`) : now;
+    const start = cohortStart ?? (startedAt ? Date.parse(`${startedAt.replace(" ", "T")}Z`) : now);
     for (const m of modules) {
       const d = days.get(String(m.id)) ?? 0;
       if (d <= 0) continue;

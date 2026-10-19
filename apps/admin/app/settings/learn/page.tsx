@@ -48,6 +48,10 @@ const LIMITS: { key: NumberKey; label: string; hint: string; min: number; max: n
   { key: "maxBundleCourses", label: "Courses per bundle", hint: "Most courses sold together in one bundle", min: 2, max: 100 },
   { key: "maxPlansPerSchool", label: "School passes per school", hint: "Subscription plans one school can offer", min: 1, max: 50 },
   { key: "maxPlanDays", label: "Longest school pass (days)", hint: "Upper limit for one pass", min: 1, max: 3650 },
+  { key: "reviewMinProgressPercent", label: "Progress needed to review (%)", hint: "How far through a course a learner must be before rating it", min: 0, max: 100 },
+  { key: "maxQaChars", label: "Longest question or answer (characters)", hint: "Also the limit for announcements", min: 100, max: 10000, step: 100 },
+  { key: "qaPostsPerHour", label: "Questions and answers per hour", hint: "Per person, to keep discussions calm", min: 1, max: 500 },
+  { key: "maxInstructorsPerCourse", label: "Extra teachers per course", hint: "Besides the school owner", min: 1, max: 50 },
   { key: "createsPerHour", label: "Creations per hour", hint: "Schools, classes, courses, modules and lessons made by one educator per hour", min: 1, max: 1000 },
 ];
 
@@ -217,6 +221,11 @@ export default function LearnSettingsPage() {
             <SwitchRow title="Coupons" hint="Educators can create discount codes for their courses" on={settings.couponsEnabled} disabled={!canManage} onChange={(v) => patch("couponsEnabled", v)} />
             <SwitchRow title="Bundles" hint="Educators can sell several of their courses together for one price" on={settings.bundlesEnabled} disabled={!canManage} onChange={(v) => patch("bundlesEnabled", v)} />
             <SwitchRow title="School passes" hint="Educators can sell timed access to every course of a school" on={settings.subscriptionsEnabled} disabled={!canManage} onChange={(v) => patch("subscriptionsEnabled", v)} />
+            <SwitchRow title="Reviews" hint="Learners can rate and review a course once they are part-way through it" on={settings.reviewsEnabled} disabled={!canManage} onChange={(v) => patch("reviewsEnabled", v)} />
+            <SwitchRow title="Questions and answers" hint="Learners can ask questions on a course or lesson; teachers and classmates answer" on={settings.qaEnabled} disabled={!canManage} onChange={(v) => patch("qaEnabled", v)} />
+            <SwitchRow title="Announcements" hint="Educators can post announcements that learners see on the course" on={settings.announcementsEnabled} disabled={!canManage} onChange={(v) => patch("announcementsEnabled", v)} />
+            <SwitchRow title="Cohorts" hint="Educators can run intakes of a course with a start date and a seat limit" on={settings.cohortsEnabled} disabled={!canManage} onChange={(v) => patch("cohortsEnabled", v)} />
+            <SwitchRow title="Extra teachers" hint="Educators can add other teachers who edit and mark a course with them" on={settings.instructorsEnabled} disabled={!canManage} onChange={(v) => patch("instructorsEnabled", v)} />
             <SwitchRow title="Show quiz answers" hint="After a quiz, learners see which answers were right and why" on={settings.revealQuizAnswers} disabled={!canManage} onChange={(v) => patch("revealQuizAnswers", v)} />
             <SwitchRow title="Show exam answers" hint="After an exam, learners see which answers were right. Off keeps the paper reusable." on={settings.revealExamAnswers} disabled={!canManage} onChange={(v) => patch("revealExamAnswers", v)} />
             <SwitchRow title="Publish automatically" hint="A course goes live as soon as it has its first lesson. When off, the educator publishes it themselves." on={settings.publishByDefault} disabled={!canManage} onChange={(v) => patch("publishByDefault", v)} />

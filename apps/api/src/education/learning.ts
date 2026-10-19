@@ -12,6 +12,7 @@ import { creditWallet, debitWallet, resolveCustomerByIdentifier } from "../walle
 import { getLearnSettings } from "./settings.js";
 import { chargeAndPayOut, splitPayment } from "./payments.js";
 import { activeSubscription, quoteCoupon, releaseCoupon, reserveCoupon, salesReady, type Coupon } from "./sales.js";
+import { chooseCohort, releaseSeat, reserveSeat, type Cohort } from "./cohorts.js";
 import { assignmentOf, assignmentsOfCourse, learnerAssignment, pastDue, submissionsOfUser, type SubmissionRow } from "./assignments.js";
 import { BADGES, afterProgress, computeLocks, courseFinished, courseRules, proReady, type Lock } from "./rewards.js";
 import { mark, newSeed, parseQuiz, readAttempt, serveQuestions, signAttempt, type Answer, type StoredQuiz } from "./quiz-engine.js";
@@ -29,6 +30,7 @@ import {
   ownedSchool,
   studioReady,
   suspended,
+  isCoTeacher,
   throttle,
 } from "./studio.js";
 
@@ -400,12 +402,12 @@ learnRoutes.use("*", async (c, next) => {
 type Access = { course: Row; school: Row; owner: boolean };
 
 /** The course, if this person may study it: the owner, or someone enrolled in a published course from a school in good standing. */
-async function courseAccess(userId: string, courseId: string): Promise<Access | null> {
+export async function courseAccess(userId: string, courseId: string): Promise<Access | null> {
   const course = await one("SELECT * FROM edu_courses WHERE id = ?", [courseId]);
   if (!course) return null;
   const school = await one("SELECT * FROM edu_schools WHERE id = ?", [course.school_id]);
   if (!school) return null;
-  if (school.owner_id === userId) return { course, school, owner: true };
+  if (school.owner_id === userId || (await isCoTeacher(userId, courseId))) return { course, school, owner: true };
   if (course.status !== "published" || school.status !== "active") return null;
   const enrolled = await one("SELECT 1 AS yes FROM edu_enrollments WHERE course_id = ? AND user_id = ? AND status = 'active'", [courseId, userId]);
   if (enrolled) return { course, school, owner: false };
@@ -588,7 +590,11 @@ learnRoutes.post("/courses/:id/enroll", async (c) => {
   }
   let coupon: Coupon | null = null;
   let price = listPrice;
-  const asked = ((await c.req.json().catch(() => null)) as { coupon?: unknown } | null)?.coupon;
+  const payload = (await c.req.json().catch(() => null)) as { coupon?: unknown; cohortId?: unknown } | null;
+  const asked = payload?.coupon;
+  const chosen = await chooseCohort(String(course.id), payload?.cohortId, settings);
+  if (!chosen.ok) return fail(c, { status: 409, error: "cohort_needed", message: chosen.message });
+  const cohort: Cohort | null = chosen.cohort;
   if (typeof asked === "string" && asked.trim() && listPrice > 0) {
     const q = await quoteCoupon(asked, course, user.sub, listPrice, settings);
     if (!q.ok) return fail(c, { status: 400, error: "coupon_invalid", message: q.message });
@@ -616,8 +622,15 @@ learnRoutes.post("/courses/:id/enroll", async (c) => {
     }
   }
 
+  // A seat is taken the same way: before any money moves.
+  if (cohort && !(await reserveSeat(cohort, user.sub))) {
+    await db.execute({ sql: "DELETE FROM edu_enrollments WHERE course_id = ? AND user_id = ? AND status = 'pending'", args: [course.id as string, user.sub] });
+    return fail(c, { status: 409, error: "cohort_full", message: "That intake just filled up. Choose another." });
+  }
+
   // The coupon is used up before any money moves, so two taps can't use its last place twice.
   if (coupon && !(await reserveCoupon(coupon, user.sub, String(course.id), listPrice - price))) {
+    if (cohort) await releaseSeat(cohort, user.sub);
     await db.execute({ sql: "DELETE FROM edu_enrollments WHERE course_id = ? AND user_id = ? AND status = 'pending'", args: [course.id as string, user.sub] });
     return fail(c, { status: 409, error: "coupon_used_up", message: "That coupon was just used up. Try again without it." });
   }
@@ -634,6 +647,7 @@ learnRoutes.post("/courses/:id/enroll", async (c) => {
     }).catch(() => null);
     if (!paid || !paid.ok) {
       if (coupon) await releaseCoupon(coupon, user.sub);
+      if (cohort) await releaseSeat(cohort, user.sub);
       await db.execute({ sql: "DELETE FROM edu_enrollments WHERE course_id = ? AND user_id = ? AND status = 'pending'", args: [course.id as string, user.sub] });
       return c.json({ error: "insufficient_wallet", message: `Add UGX ${price.toLocaleString("en-UG")} to your Peebee wallet to enrol.` }, 402);
     }

@@ -20,6 +20,11 @@ export default function SchoolsPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [shared, setShared] = useState<{ id: string; title: string; schoolName: string; status: string }[]>([]);
+
+  useEffect(() => {
+    api.studioSharedCourses().then((r) => setShared(r.courses)).catch(() => setShared([]));
+  }, []);
 
   const load = useCallback(async () => {
     setError(null);
@@ -132,6 +137,21 @@ export default function SchoolsPage() {
             </li>
           ))}
         </ul>
+      )}
+      {shared.length > 0 && (
+        <section aria-labelledby="shared-heading" className="space-y-2">
+          <h3 id="shared-heading" className="text-sm font-semibold text-ink">Courses you teach with others</h3>
+          <ul className="space-y-2">
+            {shared.map((c) => (
+              <li key={c.id}>
+                <Link href={`/courses/${c.id}`} className={`${cardCls} flex items-center justify-between gap-3 p-3 hover:border-gold/50`}>
+                  <span className="min-w-0"><span className="block truncate text-sm font-semibold text-ink">{c.title}</span><span className="block text-xs text-ink-500">{c.schoolName}</span></span>
+                  <Chip tone={c.status === "published" ? "green" : "muted"}>{c.status === "published" ? "Live" : "Draft"}</Chip>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
     </div>
   );

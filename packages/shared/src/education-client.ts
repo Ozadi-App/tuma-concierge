@@ -43,6 +43,12 @@ import type {
   StudioLive,
   StudioCourseRules,
   SalesOverview,
+  CohortInfo,
+  CourseReview,
+  QaQuestion,
+  Announcement,
+  CourseCommunity,
+  StudioCohort,
   CourseOffers,
   StudioSubmission,
   StudioAssignment,
@@ -328,6 +334,9 @@ export function educationMethods(request: RequestFn) {
           id: string; stream: EducationStream; title: string; summary: string; priceUgx: number; framework: CurriculumFramework; outcomes: string[];
           schoolName: string; className: string;
           prerequisite?: { id: string; title: string } | null;
+          rating?: { average: number | null; count: number };
+          reviews?: CourseReview[];
+          cohorts?: CohortInfo[];
           bundles?: CourseOffers["bundles"];
           plans?: CourseOffers["plans"];
           modules: { id: string; title: string; description: string; lessons: { id: string; title: string; contentType: LessonContentType; durationMinutes: number; summary: string; questionCount: number }[] }[];
@@ -520,8 +529,9 @@ export function educationMethods(request: RequestFn) {
     async learnEnrollments() {
       return request<{ ok: true; enrollments: LearnEnrollment[] }>("/v1/education/learn/enrollments");
     },
-    async learnEnroll(courseId: string, coupon?: string) {
-      return request<{ ok: true; enrolled: true; paidUgx: number; viaPass?: boolean }>(`/v1/education/learn/courses/${encodeURIComponent(courseId)}/enroll`, { method: "POST", body: JSON.stringify(coupon ? { coupon } : {}) });
+    async learnEnroll(courseId: string, options: string | { coupon?: string; cohortId?: string } = {}) {
+      const body = typeof options === "string" ? { coupon: options } : options;
+      return request<{ ok: true; enrolled: true; paidUgx: number; viaPass?: boolean }>(`/v1/education/learn/courses/${encodeURIComponent(courseId)}/enroll`, { method: "POST", body: JSON.stringify(body) });
     },
     async learnQuote(courseId: string, coupon: string) {
       return request<{ ok: true; valid: boolean; message?: string; priceUgx: number; discountUgx: number; finalUgx: number }>(`/v1/education/learn/courses/${encodeURIComponent(courseId)}/quote`, { method: "POST", body: JSON.stringify({ coupon }) });
@@ -534,6 +544,59 @@ export function educationMethods(request: RequestFn) {
     },
     async learnSubscriptions() {
       return request<{ ok: true; subscriptions: { id: string; title: string; schoolId: string; schoolName: string; expiresAt: string }[] }>("/v1/education/learn/subscriptions");
+    },
+    async learnMyReview(courseId: string) {
+      return request<{ ok: true; review: { rating: number; body: string; reply: string } | null }>(`/v1/education/learn/courses/${encodeURIComponent(courseId)}/review`);
+    },
+    async learnSaveReview(courseId: string, rating: number, body: string) {
+      return request<{ ok: true }>(`/v1/education/learn/courses/${encodeURIComponent(courseId)}/review`, { method: "POST", body: JSON.stringify({ rating, body }) });
+    },
+    async learnQa(courseId: string, lessonId?: string) {
+      return request<{ ok: true; questions: QaQuestion[] }>(`/v1/education/learn/courses/${encodeURIComponent(courseId)}/qa${lessonId ? `?lessonId=${encodeURIComponent(lessonId)}` : ""}`);
+    },
+    async learnAsk(courseId: string, body: string, lessonId: string | null) {
+      return request<{ ok: true; id: string }>(`/v1/education/learn/courses/${encodeURIComponent(courseId)}/qa`, { method: "POST", body: JSON.stringify({ body, lessonId }) });
+    },
+    async learnAnswer(questionId: string, body: string) {
+      return request<{ ok: true; id: string }>(`/v1/education/learn/qa/${encodeURIComponent(questionId)}/answers`, { method: "POST", body: JSON.stringify({ body }) });
+    },
+    async learnDeleteQuestion(id: string) {
+      return request<{ ok: true }>(`/v1/education/learn/qa/${encodeURIComponent(id)}`, { method: "DELETE" });
+    },
+    async learnDeleteAnswer(id: string) {
+      return request<{ ok: true }>(`/v1/education/learn/qa/answers/${encodeURIComponent(id)}`, { method: "DELETE" });
+    },
+    async learnAnnouncements(courseId: string) {
+      return request<{ ok: true; announcements: Announcement[] }>(`/v1/education/learn/courses/${encodeURIComponent(courseId)}/announcements`);
+    },
+    async studioCommunity(courseId: string) {
+      return request<{ ok: true } & CourseCommunity>(`/v1/education/studio/courses/${encodeURIComponent(courseId)}/community`);
+    },
+    async studioAddInstructor(courseId: string, identifier: string) {
+      return request<{ ok: true; userId: string; name: string }>(`/v1/education/studio/courses/${encodeURIComponent(courseId)}/instructors`, { method: "POST", body: JSON.stringify({ identifier }) });
+    },
+    async studioRemoveInstructor(courseId: string, userId: string) {
+      return request<{ ok: true }>(`/v1/education/studio/courses/${encodeURIComponent(courseId)}/instructors/${encodeURIComponent(userId)}`, { method: "DELETE" });
+    },
+    async studioSaveCohort(courseId: string, id: string | null, data: { name: string; startsAt: string; enrolUntil: string | null; capacity: number | null }) {
+      return id
+        ? request<{ ok: true }>(`/v1/education/studio/cohorts/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(data) })
+        : request<{ ok: true; id: string }>(`/v1/education/studio/courses/${encodeURIComponent(courseId)}/cohorts`, { method: "POST", body: JSON.stringify(data) });
+    },
+    async studioDeleteCohort(id: string) {
+      return request<{ ok: true }>(`/v1/education/studio/cohorts/${encodeURIComponent(id)}`, { method: "DELETE" });
+    },
+    async studioReplyReview(courseId: string, userId: string, reply: string) {
+      return request<{ ok: true }>(`/v1/education/studio/courses/${encodeURIComponent(courseId)}/reviews/${encodeURIComponent(userId)}/reply`, { method: "PUT", body: JSON.stringify({ reply }) });
+    },
+    async studioPostAnnouncement(courseId: string, title: string, body: string) {
+      return request<{ ok: true; id: string }>(`/v1/education/studio/courses/${encodeURIComponent(courseId)}/announcements`, { method: "POST", body: JSON.stringify({ title, body }) });
+    },
+    async studioDeleteAnnouncement(id: string) {
+      return request<{ ok: true }>(`/v1/education/studio/announcements/${encodeURIComponent(id)}`, { method: "DELETE" });
+    },
+    async studioSharedCourses() {
+      return request<{ ok: true; courses: { id: string; title: string; stream: string; status: string; schoolName: string }[] }>("/v1/education/studio/shared-courses");
     },
     async studioSales(schoolId: string) {
       return request<{ ok: true } & SalesOverview>(`/v1/education/studio/schools/${encodeURIComponent(schoolId)}/sales`);

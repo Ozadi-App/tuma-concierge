@@ -264,18 +264,34 @@ export async function one(sql: string, args: unknown[]): Promise<Row | null> {
 export const ownedSchool = (userId: string, id: string) => one("SELECT * FROM edu_schools WHERE id = ? AND owner_id = ?", [id, userId]);
 export const ownedClass = (userId: string, id: string) =>
   one("SELECT c.* FROM edu_classes c JOIN edu_schools s ON s.id = c.school_id WHERE c.id = ? AND s.owner_id = ?", [id, userId]);
-export const ownedCourse = (userId: string, id: string) =>
-  one("SELECT c.* FROM edu_courses c JOIN edu_schools s ON s.id = c.school_id WHERE c.id = ? AND s.owner_id = ?", [id, userId]);
-export const ownedModule = (userId: string, id: string) =>
-  one(
-    `SELECT m.* FROM edu_modules m JOIN edu_courses c ON c.id = m.course_id JOIN edu_schools s ON s.id = c.school_id WHERE m.id = ? AND s.owner_id = ?`,
-    [id, userId],
-  );
-export const ownedLesson = (userId: string, id: string) =>
-  one(
-    `SELECT l.* FROM edu_lessons l JOIN edu_courses c ON c.id = l.course_id JOIN edu_schools s ON s.id = c.school_id WHERE l.id = ? AND s.owner_id = ?`,
-    [id, userId],
-  );
+/**
+ * A course, its sections and its items are open to the school owner and to the teachers added to the course.
+ * The extra-teacher lookup waits for migration 0120; until then only the owner has access.
+ */
+const coTeaching = async (userId: string, courseId: string) =>
+  (await hasTable("edu_course_instructors")) && !!(await one("SELECT 1 AS y FROM edu_course_instructors WHERE course_id = ? AND user_id = ?", [courseId, userId]));
+
+export const isCoTeacher = coTeaching;
+
+export async function ownedCourse(userId: string, id: string): Promise<Row | null> {
+  const owned = await one("SELECT c.* FROM edu_courses c JOIN edu_schools s ON s.id = c.school_id WHERE c.id = ? AND s.owner_id = ?", [id, userId]);
+  if (owned) return owned;
+  return (await coTeaching(userId, id)) ? one("SELECT * FROM edu_courses WHERE id = ?", [id]) : null;
+}
+
+export async function ownedModule(userId: string, id: string): Promise<Row | null> {
+  const owned = await one(`SELECT m.* FROM edu_modules m JOIN edu_courses c ON c.id = m.course_id JOIN edu_schools s ON s.id = c.school_id WHERE m.id = ? AND s.owner_id = ?`, [id, userId]);
+  if (owned) return owned;
+  const mod = await one("SELECT * FROM edu_modules WHERE id = ?", [id]);
+  return mod && (await coTeaching(userId, String(mod.course_id))) ? mod : null;
+}
+
+export async function ownedLesson(userId: string, id: string): Promise<Row | null> {
+  const owned = await one(`SELECT l.* FROM edu_lessons l JOIN edu_courses c ON c.id = l.course_id JOIN edu_schools s ON s.id = c.school_id WHERE l.id = ? AND s.owner_id = ?`, [id, userId]);
+  if (owned) return owned;
+  const lesson = await one("SELECT * FROM edu_lessons WHERE id = ?", [id]);
+  return lesson && (await coTeaching(userId, String(lesson.course_id))) ? lesson : null;
+}
 
 export const notFound = (c: Context, what: string) => fail(c, { status: 404, error: "not_found", message: `That ${what} wasn't found.` });
 export const suspended = (c: Context) =>
@@ -342,6 +358,13 @@ async function purgeCourseData(courseIds: string, args: unknown[]): Promise<void
   await db.execute({ sql: `UPDATE edu_course_rules SET prerequisite_course_id = NULL WHERE prerequisite_course_id IN (${courseIds})`, args: args as never }).catch(tolerate);
   await db.execute({ sql: `DELETE FROM edu_course_rules WHERE course_id IN (${courseIds})`, args: args as never }).catch(tolerate);
   await db.execute({ sql: `DELETE FROM edu_certificates WHERE course_id IN (${courseIds})`, args: args as never }).catch(tolerate);
+  await db.execute({ sql: `DELETE FROM edu_answers WHERE question_id IN (SELECT id FROM edu_questions WHERE course_id IN (${courseIds}))`, args: args as never }).catch(tolerate);
+  await db.execute({ sql: `DELETE FROM edu_questions WHERE course_id IN (${courseIds})`, args: args as never }).catch(tolerate);
+  await db.execute({ sql: `DELETE FROM edu_reviews WHERE course_id IN (${courseIds})`, args: args as never }).catch(tolerate);
+  await db.execute({ sql: `DELETE FROM edu_announcements WHERE course_id IN (${courseIds})`, args: args as never }).catch(tolerate);
+  await db.execute({ sql: `DELETE FROM edu_cohort_members WHERE course_id IN (${courseIds})`, args: args as never }).catch(tolerate);
+  await db.execute({ sql: `DELETE FROM edu_cohorts WHERE course_id IN (${courseIds})`, args: args as never }).catch(tolerate);
+  await db.execute({ sql: `DELETE FROM edu_course_instructors WHERE course_id IN (${courseIds})`, args: args as never }).catch(tolerate);
   await db.execute({ sql: `DELETE FROM edu_bundle_courses WHERE course_id IN (${courseIds})`, args: args as never }).catch(tolerate);
   await db.execute({ sql: `DELETE FROM edu_coupon_redemptions WHERE coupon_id IN (SELECT id FROM edu_coupons WHERE course_id IN (${courseIds}))`, args: args as never }).catch(tolerate);
   await db.execute({ sql: `DELETE FROM edu_coupons WHERE course_id IN (${courseIds})`, args: args as never }).catch(tolerate);
@@ -824,6 +847,9 @@ studioRoutes.patch("/courses/:id", async (c) => {
   if (!parsed.ok) return parsed.res;
   const d = parsed.data as z.infer<typeof coursePatch>;
 
+  if (d.priceUgx !== undefined && d.priceUgx !== Number(course.price_ugx) && !(await ownedSchool(g.userId, String(course.school_id)))) {
+    return fail(c, { status: 403, error: "owner_only", message: "Only the school owner can change the price." });
+  }
   if (d.priceUgx !== undefined) {
     const priceBad = priceProblem(g.settings, d.priceUgx);
     if (priceBad) return fail(c, priceBad);
@@ -852,6 +878,8 @@ studioRoutes.patch("/courses/:id", async (c) => {
 studioRoutes.delete("/courses/:id", async (c) => {
   const course = await ownedCourse(c.get("user").sub, c.req.param("id"));
   if (!course) return notFound(c, "course");
+  // Deleting a course is the school owner's call, not an extra teacher's.
+  if (!(await ownedSchool(c.get("user").sub, String(course.school_id)))) return fail(c, { status: 403, error: "owner_only", message: "Only the school owner can delete a course." });
   const id = String(course.id);
   const ids = "SELECT id FROM edu_courses WHERE id = ?";
   if ((await learnersIn(ids, [id])) > 0) return hasLearnersResponse(c);
@@ -989,7 +1017,7 @@ studioRoutes.post("/modules/:id/lessons", async (c) => {
   const mod = await ownedModule(g.userId, c.req.param("id"));
   if (!mod) return notFound(c, "module");
   const course = await ownedCourse(g.userId, String(mod.course_id));
-  const school = course ? await ownedSchool(g.userId, String(course.school_id)) : null;
+  const school = course ? await one("SELECT * FROM edu_schools WHERE id = ?", [course.school_id]) : null;
   if (!course || !school) return notFound(c, "module");
   if (school.status === "suspended") return suspended(c);
   const parsed = await body(c, lessonBody);
@@ -1254,11 +1282,8 @@ studioRoutes.put("/submissions/:id/grade", async (c) => {
   const g = await gate(c);
   if (isResponse(g)) return g;
   if (!(await assignmentsReady())) return fail(c, { status: 503, error: "upgrade_pending", message: "Assignments need a platform update that hasn't finished yet. Try again shortly." });
-  const sub = await one(
-    `SELECT s.* FROM edu_submissions s JOIN edu_courses c ON c.id = s.course_id JOIN edu_schools sc ON sc.id = c.school_id WHERE s.id = ? AND sc.owner_id = ?`,
-    [c.req.param("id"), g.userId],
-  );
-  if (!sub) return notFound(c, "submission");
+  const sub = await one("SELECT * FROM edu_submissions WHERE id = ?", [c.req.param("id")]);
+  if (!sub || !(await ownedCourse(g.userId, String(sub.course_id)))) return notFound(c, "submission");
   const a = await assignmentOf(String(sub.lesson_id));
   if (!a) return notFound(c, "assignment");
   const parsed = await body(c, z.object({ score: z.number().int().min(0).max(1000), feedback: text(2000).default("") }));

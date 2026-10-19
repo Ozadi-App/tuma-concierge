@@ -88,6 +88,15 @@ const settingsPatch = z
     subscriptionsEnabled: z.boolean(),
     maxPlansPerSchool: z.number().int().min(1).max(50),
     maxPlanDays: z.number().int().min(1).max(3650),
+    reviewsEnabled: z.boolean(),
+    reviewMinProgressPercent: z.number().int().min(0).max(100),
+    qaEnabled: z.boolean(),
+    maxQaChars: z.number().int().min(100).max(10000),
+    qaPostsPerHour: z.number().int().min(1).max(500),
+    announcementsEnabled: z.boolean(),
+    cohortsEnabled: z.boolean(),
+    instructorsEnabled: z.boolean(),
+    maxInstructorsPerCourse: z.number().int().min(1).max(50),
   })
   .partial();
 

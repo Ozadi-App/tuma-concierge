@@ -327,6 +327,15 @@ export async function removeDemo(): Promise<RemoveResult> {
   const keys = ((await db.execute({ sql: `SELECT r2_key FROM edu_lesson_media WHERE lesson_id IN (${lessons})`, args: [] })).rows as Row[]).map((r) => String(r.r2_key));
   const schoolCount = await count("SELECT COUNT(*) AS n FROM edu_schools WHERE is_demo = 1");
 
+  if (await hasTable("edu_reviews")) {
+    await db.execute({ sql: `DELETE FROM edu_answers WHERE question_id IN (SELECT id FROM edu_questions WHERE course_id IN (${courses}))`, args: [] });
+    await db.execute({ sql: `DELETE FROM edu_questions WHERE course_id IN (${courses})`, args: [] });
+    await db.execute({ sql: `DELETE FROM edu_reviews WHERE course_id IN (${courses})`, args: [] });
+    await db.execute({ sql: `DELETE FROM edu_announcements WHERE course_id IN (${courses})`, args: [] });
+    await db.execute({ sql: `DELETE FROM edu_cohort_members WHERE course_id IN (${courses})`, args: [] });
+    await db.execute({ sql: `DELETE FROM edu_cohorts WHERE course_id IN (${courses})`, args: [] });
+    await db.execute({ sql: `DELETE FROM edu_course_instructors WHERE course_id IN (${courses})`, args: [] });
+  }
   if (await hasTable("edu_certificates")) {
     await db.execute({ sql: `DELETE FROM edu_certificates WHERE course_id IN (${courses})`, args: [] });
     await db.execute({ sql: `DELETE FROM edu_module_drip WHERE module_id IN (SELECT id FROM edu_modules WHERE course_id IN (${courses}))`, args: [] });

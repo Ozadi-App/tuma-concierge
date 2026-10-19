@@ -1,7 +1,7 @@
 "use client";
 
 import type { LearnerCourse, LearnerLessonDetail } from "@peebee/shared";
-import { ArrowLeft, CheckCircle2, ChevronLeft, ChevronRight, ExternalLink, Radio } from "lucide-react";
+import { ArrowLeft, CheckCircle2, ChevronLeft, ChevronRight, ExternalLink, MessageCircle, Radio } from "lucide-react";
 import { LearnThumb } from "@peebee/shared/learn-thumb";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -135,6 +135,9 @@ export default function LessonPage() {
           <p className="truncate text-[11px] font-bold uppercase tracking-wider text-ink-500">{items[at]?.section ?? course?.title ?? ""}</p>
           <p className="truncate text-sm font-semibold text-ink">{lesson?.title ?? "Loading…"}</p>
         </div>
+        <Link href={`/learn/course/${id}/discuss?lesson=${lessonId}`} aria-label="Ask a question about this lesson" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-ink">
+          <MessageCircle className="h-5 w-5" aria-hidden />
+        </Link>
         {lesson?.completed && <CheckCircle2 className="h-5 w-5 shrink-0 text-green" aria-label="Completed" />}
       </header>
       {course && (
