@@ -85,6 +85,9 @@ export function Unavailable({ failure }: { failure: JobsFailure }) {
     <section className={`${cardClass} space-y-3 p-6 text-center`}>
       <h2 className="text-lg font-bold">{failure.pending ? "Almost ready" : failure.disabled ? "Jobs is switched off" : "Something went wrong"}</h2>
       <p className="text-sm text-ink-500">{failure.message}</p>
+      <Link href="/services/jobs/practice" className="flex min-h-[48px] w-full items-center justify-center rounded-2xl bg-gold px-4 font-bold text-ink-gold">
+        Explore with sample jobs (practice mode)
+      </Link>
       <Link href="/services" className={secondaryBtn}>
         Back to Services
       </Link>

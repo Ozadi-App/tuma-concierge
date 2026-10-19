@@ -300,8 +300,8 @@ profileRoutes.get("/workers", async (c) => {
   const advanced = q.minRating != null || q.maxRate != null || q.verifiedOnly === "1" || q.availableNow === "1";
   if (advanced && !(await hasFeature(user.sub, "advanced_worker_search"))) return c.json(proRequired("advanced_worker_search"), 402);
 
-  const where: string[] = ["p.status = 'approved'", "p.activated_at IS NOT NULL", "p.visible = 1", "p.availability != 'offline'", "u.status = 'active'", "p.user_id != ?"];
-  const args: unknown[] = [user.sub];
+  const where: string[] = ["p.status = 'approved'", "p.activated_at IS NOT NULL", "p.visible = 1", "p.availability != 'offline'", "u.status = 'active'", "p.user_id != ?", "p.environment = ?"];
+  const args: unknown[] = [user.sub, await getPlatformEnvironment()];
   if (q.category) { where.push("EXISTS (SELECT 1 FROM talent_profile_categories pc WHERE pc.user_id = p.user_id AND pc.category_id = ?)"); args.push(q.category); }
   if (q.segment) { where.push("EXISTS (SELECT 1 FROM talent_profile_categories pc JOIN talent_categories tc ON tc.id = pc.category_id WHERE pc.user_id = p.user_id AND tc.segment IN (?, 'both'))"); args.push(q.segment); }
   if (q.q) {
@@ -378,7 +378,7 @@ profileRoutes.get("/workers/:id", async (c) => {
   const id = c.req.param("id");
   const p = (await db.execute({ sql: "SELECT p.*, u.name, u.role, u.phone FROM talent_profiles p JOIN users u ON u.id = p.user_id WHERE p.user_id = ?", args: [id] })).rows[0] as Row | undefined;
   const mine = id === user.sub;
-  if (!p || (!mine && (p.status !== "approved" || !p.activated_at || Number(p.visible) !== 1))) return c.json({ error: "not_found", message: "That worker isn't available." }, 404);
+  if (!p || (!mine && (p.status !== "approved" || !p.activated_at || Number(p.visible) !== 1 || String(p.environment) !== (await getPlatformEnvironment())))) return c.json({ error: "not_found", message: "That worker isn't available." }, 404);
   const showPhone = mine || !s.hideContacts || (await unlockedPhone(user.sub, id));
   const reviews = (
     await db.execute({

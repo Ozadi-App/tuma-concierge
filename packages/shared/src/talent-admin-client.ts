@@ -102,6 +102,12 @@ export function talentAdminMethods(request: Request) {
     return s ? `?${s}` : "";
   };
   return {
+    talentAdminSeedSandbox() {
+      return post<{ ok: true; workers: number; employers: number; jobs: number }>("/v1/talent/admin/sandbox/seed");
+    },
+    talentAdminClearSandbox() {
+      return post<{ ok: true; removed: number }>("/v1/talent/admin/sandbox/clear");
+    },
     talentAdminOverview() {
       return request<TalentAdminOverview>("/v1/talent/admin/overview");
     },

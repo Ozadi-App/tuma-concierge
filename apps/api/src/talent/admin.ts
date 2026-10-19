@@ -9,6 +9,7 @@ import { FEE_KINDS } from "./monetization.js";
 import { alertMatchingWorkers } from "./jobs.js";
 import { resolveDispute } from "./contracts.js";
 import { inDays, parseList, tell, ratingOf, type Row } from "./service.js";
+import { clearSandboxDemo, seedSandboxDemo } from "./seed.js";
 import { getTalentSettings, setTalentSettings, talentSettingsSchema } from "./settings.js";
 
 export const adminRoutes = new Hono();
@@ -501,4 +502,23 @@ adminRoutes.post("/admin/contracts/:id/resolve", requirePermission("talent.manag
   await logActivity({ actor: user, action: "talent.dispute.resolve", summary: `Resolved dispute on "${String(ct.title)}": ${d.outcome}${d.outcome === "split" ? ` (refund UGX ${d.refundUgx})` : ""}`, entityType: "talent_contract", entityId: String(ct.id), after: d, ip: ip(c) });
   for (const id of [String(ct.employer_id), String(ct.worker_id)]) tell(id, "Problem resolved", `Peebee settled "${String(ct.title)}".`, `/services/jobs/contracts/${ct.id}`);
   return c.json({ ok: true });
+});
+
+// ---------------------------------------------------------------------------
+// Sample data (sandbox only)
+// ---------------------------------------------------------------------------
+
+adminRoutes.post("/admin/sandbox/seed", requirePermission("talent.manage"), async (c) => {
+  const user = c.get("user");
+  const result = await seedSandboxDemo();
+  if (!result.ok) return c.json({ error: "not_sandbox", message: result.message }, 409);
+  await logActivity({ actor: user, action: "talent.sandbox.seed", summary: `Added sandbox sample data: ${result.workers} workers, ${result.jobs} jobs`, entityType: "talent_sandbox", ip: ip(c) });
+  return c.json(result);
+});
+
+adminRoutes.post("/admin/sandbox/clear", requirePermission("talent.manage"), async (c) => {
+  const user = c.get("user");
+  const removed = await clearSandboxDemo();
+  await logActivity({ actor: user, action: "talent.sandbox.clear", summary: `Removed sandbox sample data (${removed} sample accounts)`, entityType: "talent_sandbox", ip: ip(c) });
+  return c.json({ ok: true, removed });
 });

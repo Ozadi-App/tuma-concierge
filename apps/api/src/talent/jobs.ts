@@ -238,8 +238,9 @@ jobRoutes.get("/jobs", async (c) => {
   const parsed = feedSchema.safeParse(c.req.query());
   if (!parsed.success) return c.json({ error: "invalid_query", issues: parsed.error.issues }, 400);
   const q = parsed.data;
-  const where = ["j.status = 'open'", "(j.expires_at IS NULL OR j.expires_at > datetime('now'))", "j.employer_id != ?", "u.status = 'active'", "j.moderation_state != 'blocked'"];
-  const args: unknown[] = [user.sub];
+  // Sandbox sample jobs never show in live, and live jobs never show in sandbox.
+  const where = ["j.status = 'open'", "(j.expires_at IS NULL OR j.expires_at > datetime('now'))", "j.employer_id != ?", "u.status = 'active'", "j.moderation_state != 'blocked'", "j.environment = ?"];
+  const args: unknown[] = [user.sub, await getPlatformEnvironment()];
   where.push(`j.type IN (${s.jobTypes.map(() => "?").join(", ") || "''"})`);
   args.push(...s.jobTypes);
   if (q.type) { where.push("j.type = ?"); args.push(q.type); }
@@ -298,7 +299,8 @@ jobRoutes.get("/jobs/:id", async (c) => {
   if (!j) return c.json({ error: "not_found", message: "That job isn't available." }, 404);
   const mine = String(j.employer_id) === user.sub;
   const myApp = (await db.execute({ sql: "SELECT * FROM talent_applications WHERE job_id = ? AND worker_id = ?", args: [j.id, user.sub] })).rows[0] as Row | undefined;
-  const visible = mine || j.status === "open" || j.status === "filled" || j.status === "in_progress" || Boolean(myApp) || user.role === "admin";
+  const wrongEnv = !mine && !myApp && user.role !== "admin" && String(j.environment) !== (await getPlatformEnvironment());
+  const visible = !wrongEnv && (mine || j.status === "open" || j.status === "filled" || j.status === "in_progress" || Boolean(myApp) || user.role === "admin");
   if (!visible || (!mine && !myApp && (j.status === "pending_review" || j.status === "rejected"))) return c.json({ error: "not_found", message: "That job isn't available." }, 404);
 
   const contract = myApp ? ((await db.execute({ sql: "SELECT id, status FROM talent_contracts WHERE application_id = ?", args: [myApp.id] })).rows[0] as Row | undefined) : undefined;

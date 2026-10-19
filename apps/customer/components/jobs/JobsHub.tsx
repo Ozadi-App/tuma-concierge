@@ -95,6 +95,7 @@ export function JobsHub() {
 
       {me.membership.owedUgx > 0 ? <FailureNote failure={{ message: `You owe Peebee ${formatUgx(me.membership.owedUgx)} in fees. Pay it from "My work" to keep taking jobs.`, topUp: false, pro: false, disabled: false, pending: false }} /> : null}
 
+      <Link href="/services/jobs/practice" className="block text-center text-xs font-semibold text-gold underline">Try it with sample jobs (practice mode)</Link>
       <p className="text-center text-[11px] text-ink-500">Peebee does not allow illegal or unconstitutional work. Report anything that looks wrong.</p>
     </JobsPage>
   );
