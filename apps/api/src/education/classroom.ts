@@ -6,6 +6,7 @@ import { newId } from "../lib/ids.js";
 import { randomInt } from "../lib/random.js";
 import { clientIp, consume, tooManyRequests } from "../lib/ratelimit.js";
 import { getLearnSettings } from "./settings.js";
+import { syncAutopilot } from "./autopilot.js";
 import { signMediaToken } from "./learning.js";
 import { body as readBody, count, fail, isResponse, notFound, one, studioReady } from "./studio.js";
 import type { LearnSettings } from "@peebee/shared";
@@ -66,6 +67,15 @@ const PAIR_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 const pairCode = () => Array.from({ length: 6 }, () => PAIR_ALPHABET[randomInt(PAIR_ALPHABET.length)]).join("");
 const sessionCode = () => String(100000 + randomInt(900000));
 
+/** A fresh session code that isn't one of the reserved ones (the trial class codes), or null if the draws keep landing on them. */
+export function freeSessionCode(reserved: string[], draw: () => string = sessionCode): string | null {
+  for (let i = 0; i < 5; i += 1) {
+    const code = draw();
+    if (!reserved.includes(code)) return code;
+  }
+  return null;
+}
+
 const nowIso = () => new Date().toISOString();
 const plusSeconds = (s: number) => new Date(Date.now() + s * 1000).toISOString();
 const sqlite = (iso: string) => iso.slice(0, 19).replace("T", " ");
@@ -100,7 +110,7 @@ type Kind = (typeof KINDS)[number];
 /** Where each kind of item makes sense. The educator may choose any of these when pushing. */
 const ALLOWED_TARGETS: Record<Kind, Target[]> = {
   slide: ["screen", "both"],
-  lesson: ["screen", "both"],
+  lesson: ["screen", "phones", "both"],
   announcement: ["screen", "phones", "both"],
   timer: ["screen", "both"],
   question: ["screen", "phones", "both"],
@@ -385,8 +395,14 @@ async function phoneCue(session: Row, userId: string) {
     case "slide":
       return { ...base, title: String(p.title), body: String(p.body ?? ""), imageUrl: p.imageUrl ? String(p.imageUrl) : null };
     case "lesson": {
-      const lesson = await one("SELECT title, summary FROM edu_lessons WHERE id = ?", [p.lessonId]);
-      return { ...base, title: lesson ? String(lesson.title) : "Lesson", body: lesson ? String(lesson.summary ?? "") : "" };
+      const lesson = await one("SELECT l.id, l.title, l.summary, c.school_id FROM edu_lessons l JOIN edu_courses c ON c.id = l.course_id WHERE l.id = ?", [p.lessonId]);
+      // A lesson on the phones plays its video there. Only a lesson from the hosting school, and only through a short-lived link for this student.
+      let media: Row | null = null;
+      if (lesson && String(lesson.school_id) === String(session.school_id)) {
+        const m = await one("SELECT content_type FROM edu_lesson_media WHERE lesson_id = ?", [lesson.id]).catch(() => null);
+        if (m) media = { url: `${(process.env.PUBLIC_API_URL ?? "").replace(/\/$/, "")}/v1/education/media/${await signMediaToken(userId, String(lesson.id))}`, contentType: String(m.content_type) };
+      }
+      return { ...base, title: lesson ? String(lesson.title) : "Lesson", body: lesson ? String(lesson.summary ?? "") : "", media };
     }
     case "announcement":
       return { ...base, text: String(p.text) };
@@ -576,10 +592,13 @@ classroomRoutes.post("/sessions", async (c) => {
   const id = newId("liv");
   let created = false;
   for (let attempt = 0; attempt < 8 && !created; attempt += 1) {
+    // The two trial class codes belong to the trial classes, so a real session never gets them.
+    const code = freeSessionCode([settings.trialCodeA, settings.trialCodeB]);
+    if (!code) continue;
     try {
       await db.execute({
         sql: `INSERT INTO edu_live_sessions (id, school_id, class_id, course_id, host_id, title, code, screen_device_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        args: [id, schoolId, classId, courseId, user.sub, d.title, sessionCode(), deviceId],
+        args: [id, schoolId, classId, courseId, user.sub, d.title, code, deviceId],
       });
       created = true;
     } catch {
@@ -847,6 +866,27 @@ classroomRoutes.post("/sessions/:id/hands/:userId/clear", async (c) => {
 // Students
 // ---------------------------------------------------------------------------
 
+/** The trial classes anyone can try, with the codes that open them. Empty when trial classes are off or not installed. */
+classroomRoutes.get("/trial", async (c) => {
+  const settings = await getLearnSettings();
+  if (!settings.liveEnabled || !settings.trialClassesEnabled) return c.json({ ok: true, classes: [] });
+  const res = await db
+    .execute({
+      sql: `SELECT s.id, s.title, u.name AS host_name, k.stream
+            FROM edu_live_sessions s JOIN users u ON u.id = s.host_id LEFT JOIN edu_courses k ON k.id = s.course_id
+            WHERE s.autopilot = 1 AND s.status = 'live' AND s.id IN ('liv_demo_a', 'liv_demo_b') ORDER BY s.id`,
+      args: [],
+    })
+    .catch(() => ({ rows: [] as Row[] }));
+  const classes = (res.rows as Row[]).map((r) => ({
+    code: r.id === "liv_demo_a" ? settings.trialCodeA : settings.trialCodeB,
+    title: String(r.title),
+    hostName: String(r.host_name),
+    stream: r.stream ? String(r.stream) : null,
+  }));
+  return c.json({ ok: true, classes });
+});
+
 classroomRoutes.post("/join", async (c) => {
   const settings = await enabled(c);
   if (isResponse(settings)) return settings;
@@ -855,7 +895,14 @@ classroomRoutes.post("/join", async (c) => {
   if (!quota.allowed) return tooManyRequests(c, quota, "Too many tries. Check the code on the screen and try again in a few minutes.");
   const parsed = await readBody(c, z.object({ code: z.string().trim().regex(/^\d{6}$/, "The code is 6 digits") }));
   if (!parsed.ok) return parsed.res;
-  const session = await one("SELECT * FROM edu_live_sessions WHERE code = ? AND status = 'live'", [parsed.data.code]);
+  const trialSlot = parsed.data.code === settings.trialCodeA ? "a" : parsed.data.code === settings.trialCodeB ? "b" : null;
+  const found = trialSlot
+    ? settings.trialClassesEnabled
+      ? await one("SELECT * FROM edu_live_sessions WHERE id = ? AND status = 'live' AND autopilot = 1", [`liv_demo_${trialSlot}`]).catch(() => null)
+      : null
+    : await one("SELECT * FROM edu_live_sessions WHERE code = ? AND status = 'live'", [parsed.data.code]);
+  // A trial class is only ever opened by the code in the settings, never by the code it was installed with.
+  const session = found && !trialSlot && Number(found.autopilot) === 1 ? null : found;
   if (!session) return fail(c, { status: 404, error: "bad_code", message: "No live class has that code. Check the number on the screen." });
   if (session.host_id === user.sub) return fail(c, { status: 400, error: "own_session", message: "This is your own session. Students join it from their phones." });
 
@@ -880,7 +927,8 @@ async function memberSession(c: Context): Promise<{ session: Row } | Response> {
 classroomRoutes.get("/sessions/:id/state", async (c) => {
   const found = await memberSession(c);
   if (found instanceof Response) return found;
-  const { session } = found;
+  // A trial class runs itself: bring it up to date with the clock before answering.
+  const session = await syncAutopilot(found.session);
   const since = Number(c.req.query("since"));
   const version = Number(session.version);
   // The common case, thousands of times a minute: nothing changed.

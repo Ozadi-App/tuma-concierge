@@ -212,7 +212,7 @@ export function handleStudioSandbox(path: string, method: string, body: Record<s
         return {
           id: c.id, stream: c.stream, title: c.title, summary: c.summary, priceUgx: c.priceUgx, framework: c.framework, outcomes: c.outcomes,
           schoolName: school?.name ?? "", schoolSlug: school?.slug ?? "", className: cls?.name ?? "", classKind: cls?.kind ?? "class", classLevel: cls?.level ?? "",
-          lessonCount: st.lessons.filter((l) => l.courseId === c.id).length,
+          lessonCount: st.lessons.filter((l) => l.courseId === c.id).length, demo: false,
         };
       });
     return json({ ok: true, courses });
@@ -222,6 +222,7 @@ export function handleStudioSandbox(path: string, method: string, body: Record<s
   if (path.startsWith("/v1/education/learn/") || path.startsWith("/v1/education/classroom/") || path.startsWith("/v1/tv/")) {
     if (method === "GET" && (path.endsWith("/devices") )) return json({ ok: true, devices: [] });
     if (method === "GET" && path.endsWith("/sessions")) return json({ ok: true, sessions: [] });
+    if (method === "GET" && path.endsWith("/trial")) return json({ ok: true, classes: [] });
     if (method === "GET" && path.endsWith("/enrollments")) return json({ ok: true, enrollments: [] });
     if (method === "GET" && path.endsWith("/invoices")) return json({ ok: true, invoices: [] });
     return problem(503, "sandbox_only", "This needs the live service. It isn't available in the sandbox.");
