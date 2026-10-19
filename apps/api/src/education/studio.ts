@@ -68,7 +68,7 @@ export function resetStudioCache(): void {
 
 let learningCache: { at: number; ok: boolean } | null = null;
 
-/** Migration 0110 (media, enrolment, grading, fees). Those features answer "upgrade pending" until it is applied. */
+/** Migration 0111 (media, enrolment, grading, fees). Those features answer "upgrade pending" until it is applied. */
 export async function learningReady(): Promise<boolean> {
   if (learningCache && (learningCache.ok || Date.now() - learningCache.at < 30_000)) return learningCache.ok;
   let ok = false;
@@ -279,7 +279,7 @@ async function purgeLessonData(lessonIds: string, args: unknown[]): Promise<void
   for (const key of keys) await getR2Bucket().delete(key).catch(() => undefined);
 }
 
-/** Removes live classroom sessions (and their cues, members and answers) that point at the given rows; a no-op until migration 0111 is applied. */
+/** Removes live classroom sessions (and their cues, members and answers) that point at the given rows; a no-op until migration 0112 is applied. */
 async function purgeLiveSessions(column: "school_id" | "class_id" | "course_id", values: string, args: unknown[]): Promise<void> {
   const sessions = `SELECT id FROM edu_live_sessions WHERE ${column} IN (${values})`;
   try {

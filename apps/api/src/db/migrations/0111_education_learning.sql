@@ -1,4 +1,4 @@
--- Migration 0110: Peebee Learn — lesson media, enrolment, progress, grading and school fees.
+-- Migration 0111: Peebee Learn — lesson media, enrolment, progress, grading and school fees.
 -- Apply by hand after 0109. Until it is applied the learner endpoints answer "upgrade pending".
 
 -- One uploaded video or audio file per lesson (the bytes live in R2).

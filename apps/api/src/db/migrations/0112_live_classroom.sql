@@ -1,7 +1,7 @@
--- Migration 0111: Smart TV screens and live classroom sessions.
+-- Migration 0112: Smart TV screens and live classroom sessions.
 -- A TV pairs to an educator's account; the educator runs a live session and decides, cue by cue,
 -- what goes to the screen and what goes to the students' phones.
--- Apply by hand after 0110. Until it is applied the classroom endpoints answer "upgrade pending".
+-- Apply by hand after 0111. Until it is applied the classroom endpoints answer "upgrade pending".
 
 CREATE TABLE IF NOT EXISTS tv_devices (
   id TEXT PRIMARY KEY,

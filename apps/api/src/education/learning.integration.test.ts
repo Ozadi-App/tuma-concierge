@@ -407,13 +407,13 @@ test("fees: not enough in the wallet leaves the invoice exactly as it was", asyn
   assert.equal((await call(`/studio/schools/${school.id}/invoices`, { token: owner, body: { student: await phone("stu_8"), title: "x1", amountUgx: 1000 } })).status, 503);
 });
 
-test("learning: answers 'upgrade pending' until migration 0110 is applied, and the older Studio keeps working", async () => {
+test("learning: answers 'upgrade pending' until migration 0111 is applied, and the older Studio keeps working", async () => {
   resetSchemaCache();
   resetStudioCache();
   const client = createClient({ url: "file::memory:" });
   const migrations = join(process.cwd(), "src/db/migrations");
   for (const file of readdirSync(migrations).filter((f) => f.endsWith(".sql")).sort()) {
-    if (file.startsWith("0110_")) continue;
+    if (file.startsWith("0111_")) continue;
     for (const sql of splitSqlStatements(readFileSync(join(migrations, file), "utf8"))) await client.execute(sql);
   }
   bindDatabase(client);
