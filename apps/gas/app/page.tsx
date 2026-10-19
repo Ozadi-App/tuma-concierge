@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle, Briefcase, Camera, ChevronRight, Fuel, Sparkles } from "lucide-react";
+import { AlertCircle, Briefcase, Camera, ChevronRight, Fuel, Package } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -169,6 +169,18 @@ export default function PumpHomePage() {
           onConfirm={() => handleVerify(code)}
         />
       </section>
+
+      {/* Relay parcels kept in the station shop */}
+      <Link href="/parcels" className="home-card flex items-center gap-3 active:scale-[0.99] transition">
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gold/15 text-gold">
+          <Package className="h-5 w-5" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-black text-ink">Parcels</p>
+          <p className="text-xs text-ink-500">Receive from a matatu, hand to a customer or rider.</p>
+        </div>
+        <ChevronRight className="h-4 w-4 shrink-0 text-ink-500" />
+      </Link>
 
       {/* Current Station Pump Prices Board */}
       <section className="home-card space-y-3">

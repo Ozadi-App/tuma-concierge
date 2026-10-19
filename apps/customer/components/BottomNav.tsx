@@ -11,7 +11,9 @@ import {
   Car,
   CarFront,
   ChefHat,
+  ChevronLeft,
   ChevronRight,
+  Loader2,
   Citrus,
   CookingPot,
   Croissant,
@@ -41,6 +43,9 @@ import { useTranslate } from "../lib/i18n";
 import { orderTitle, stageLabel } from "../lib/order-display";
 import { useLivePolling } from "../lib/use-live-polling";
 import { BottomDrawer } from "./BottomDrawer";
+import { CartDrawer } from "./CartDrawer";
+import { useCart } from "../lib/cart";
+import { useNavBack, useNavPrimaryAction } from "../lib/nav-primary-action";
 
 type MenuGroup = "original" | "ride" | "shopping" | "food" | "deliver" | "services";
 type MenuItem = { id: string; label: string; icon: LucideIcon; href?: string; group?: Exclude<MenuGroup, "original">; disabled?: boolean };
@@ -84,7 +89,7 @@ const submenuItems: Record<Exclude<MenuGroup, "original">, MenuItem[]> = {
     { id: "laundry", label: "Laundry", icon: WashingMachine, href: "/services/laundry" },
     { id: "fix", label: "Fix", icon: Wrench, href: "/services/fix" },
     { id: "jobs", label: "Jobs", icon: Briefcase, href: "/service" },
-    { id: "learn", label: "Learn", icon: BookOpen, href: "/services/learn" },
+    { id: "learn", label: "Learn", icon: BookOpen, href: "/learn" },
   ],
 };
 
@@ -93,7 +98,7 @@ function groupForPath(pathname: string): MenuGroup {
   if (pathname === "/ride" || pathname === "/rent" || pathname === "/carpool" || pathname.startsWith("/ride/") || pathname === "/move") return "ride";
   if (["/shopping", "/shoplist", "/groceries", "/stores", "/store", "/pharmacy", "/spotlight"].some((path) => pathname === path || pathname.startsWith(`${path}/`)) || pathname.startsWith("/orders")) return "shopping";
   if (pathname === "/deliver" || pathname.startsWith("/deliver/")) return "deliver";
-  if (["/services", "/service"].some((path) => pathname === path || pathname.startsWith(`${path}/`))) return "services";
+  if (["/services", "/service", "/learn"].some((path) => pathname === path || pathname.startsWith(`${path}/`))) return "services";
   return "original";
 }
 
@@ -109,6 +114,24 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
   const [menuGroup, setMenuGroup] = useState<MenuGroup>(() => groupForPath(pathname));
   const [selectedItem, setSelectedItem] = useState<string | null>(null);
   const t = useTranslate();
+  const { totalQuantity: cartCount, total: cartTotal } = useCart();
+  const primaryAction = useNavPrimaryAction();
+  // A cart/checkout or a flow step is open: Home becomes a one-step Back.
+  const navBack = useNavBack();
+  const [cartOpen, setCartOpen] = useState(false);
+
+  // Right-hand capsule mode:
+  //  - "action": a page-provided primary action (the /cart page's Checkout), gold.
+  //  - "cart":   shopping screens with something in the shared bag get one
+  //              "View cart" button instead of the links (no floating bars).
+  //  - "links":  the normal menu.
+  const inShopping = groupForPath(pathname) === "shopping";
+  //  A page-provided action wins (it is only registered while that page is
+  //  mounted): /cart's gold Checkout, or a restaurant's own cart on food routes,
+  //  which never mixes with the shopping cart.
+  const rightMode: "action" | "cart" | "links" =
+    primaryAction ? "action" : cartCount > 0 && inShopping ? "cart" : "links";
+  const actionTone = primaryAction?.tone ?? "gold";
 
   useEffect(() => {
     const group = groupForPath(pathname);
@@ -131,7 +154,7 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
     else if (pathname === "/services/laundry") setSelectedItem("laundry");
     else if (pathname === "/services/fix") setSelectedItem("fix");
     else if (pathname === "/service" || pathname === "/services/jobs") setSelectedItem("jobs");
-    else if (pathname === "/services/learn") setSelectedItem("learn");
+    else if (pathname === "/services/learn" || pathname === "/learn" || pathname.startsWith("/learn/")) setSelectedItem("learn");
     else if (pathname === "/deliver/parcel") setSelectedItem("parcel");
     else setSelectedItem(null);
   }, [pathname]);
@@ -156,7 +179,9 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
   // the active order's own tracking page, and Home (which has the Active
   // order card — the chip just sat on top of it while scrolling).
   const isOnActiveOrderPage = activeOrder ? pathname === `/orders/${activeOrder.id}` : false;
-  const showActiveDeliveryBadge = !overlay && !!activeOrder && !isOnActiveOrderPage && pathname !== "/";
+  // The Ride home shows an active ride in its own live-trip card, so the chip would repeat it.
+  const isRideHomeWithRide = pathname === "/ride" && !!activeOrder?.is_ride;
+  const showActiveDeliveryBadge = !overlay && !!activeOrder && !isOnActiveOrderPage && pathname !== "/" && !isRideHomeWithRide;
 
   useEffect(() => {
     const nav = navRef.current;
@@ -184,6 +209,9 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
 
   return (
     <>
+      {/* Glass scrim behind the nav: darkest + most blurred at the screen's
+          bottom edge, fading to fully clear just above the nav buttons. */}
+      <div aria-hidden className="customer-nav-scrim" />
       <nav ref={navRef} aria-label="Primary navigation" className={`customer-nav fixed inset-x-0 bottom-3 z-40 px-3 pointer-events-none pb-[env(safe-area-inset-bottom)] ${overlay ? "customer-nav-overlay" : ""}`}>
         <div className="mx-auto flex max-w-lg flex-col items-center gap-2">
           {/* Active Delivery Floating Capsule Chip */}
@@ -211,7 +239,20 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
           <div className="pointer-events-auto flex w-full items-center gap-1.5">
             {/* Detached Home Capsule on Left */}
             <div className="customer-nav-capsule flex w-[64px] sm:w-[72px] shrink-0 items-center justify-center rounded-[24px] p-1.5 shadow-[var(--shadow-float-capsule)]">
+              {navBack ? (
               <button
+                key="nav-back"
+                type="button"
+                aria-label="Back"
+                onClick={navBack}
+                className="customer-nav-item customer-nav-icon-swap relative flex h-[58px] w-full flex-col items-center justify-center gap-1 rounded-[18px] px-1 py-1 text-[11px] font-bold transition-all duration-200 active:scale-95"
+              >
+                <ChevronLeft className="h-5 w-5" strokeWidth={2.2} aria-hidden />
+                <span className="leading-none truncate max-w-[54px]">Back</span>
+              </button>
+              ) : (
+              <button
+                key="nav-home"
                 type="button"
                 aria-label="Home and reset menu"
                 aria-current={pathname === "/" ? "page" : undefined}
@@ -220,7 +261,7 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
                   setSelectedItem(null);
                   router.push("/");
                 }}
-                className={`customer-nav-item relative flex h-[58px] w-full flex-col items-center justify-center gap-1 rounded-[18px] px-1 py-1 text-[11px] font-bold transition-all duration-200 active:scale-95 ${
+                className={`customer-nav-item customer-nav-icon-swap relative flex h-[58px] w-full flex-col items-center justify-center gap-1 rounded-[18px] px-1 py-1 text-[11px] font-bold transition-all duration-200 active:scale-95 ${
                   pathname === "/" ? "is-active" : ""
                 }`}
               >
@@ -233,10 +274,111 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
                   />
                 )}
               </button>
+              )}
             </div>
 
-            {/* Main Menu Capsule on Right */}
-            <div className="customer-nav-capsule flex flex-1 min-w-0 items-center justify-around rounded-[24px] p-1.5 shadow-[var(--shadow-float-capsule)]">
+            {rightMode === "action" && primaryAction && actionTone === "cart" ? (
+              <div key="nav-action-cart" className="customer-nav-swap customer-nav-capsule customer-nav-frame flex h-[70px] min-w-0 flex-1 rounded-[24px] p-1.5 shadow-[var(--shadow-float-capsule)]">
+              <button
+                type="button"
+                onClick={primaryAction.onClick}
+                disabled={primaryAction.disabled}
+                aria-label={[primaryAction.label, primaryAction.sublabel, primaryAction.detail].filter(Boolean).join(", ")}
+                className="customer-nav-cart flex min-w-0 items-center gap-2 pl-2 pr-2.5 transition active:scale-[0.98] h-full w-full rounded-[18px]"
+              >
+                <span className="customer-nav-tile flex h-10 w-10 shrink-0 items-center justify-center rounded-[13px] max-[380px]:h-9 max-[380px]:w-9">
+                  {primaryAction.count != null ? (
+                    <span className="text-[15px] font-black tabular-nums leading-none">{primaryAction.count}</span>
+                  ) : (
+                    <ShoppingBag className="h-[18px] w-[18px]" strokeWidth={2.2} aria-hidden />
+                  )}
+                </span>
+                <span className="ml-1 min-w-0 flex-1 text-left">
+                  <span className="block truncate whitespace-nowrap text-sm font-bold leading-tight">{primaryAction.label}</span>
+                  {primaryAction.sublabel && (
+                    <span className="customer-nav-cart__muted block truncate whitespace-nowrap text-[11px] font-medium">{primaryAction.sublabel}</span>
+                  )}
+                </span>
+                {primaryAction.detail && (
+                  <span className="shrink-0 whitespace-nowrap text-sm font-bold tabular-nums max-[380px]:text-[13px]">{primaryAction.detail}</span>
+                )}
+                <ChevronRight className="customer-nav-cart__muted h-4 w-4 shrink-0 -ml-0.5 max-[380px]:hidden" aria-hidden />
+              </button>
+              </div>
+            ) : rightMode === "action" && primaryAction && actionTone === "step" ? (
+              <div key="nav-action-step" className="customer-nav-swap customer-nav-capsule customer-nav-frame flex h-[70px] min-w-0 flex-1 rounded-[24px] p-1.5 shadow-[var(--shadow-float-capsule)]">
+              <button
+                type="button"
+                onClick={primaryAction.onClick}
+                disabled={primaryAction.disabled}
+                aria-busy={primaryAction.busy || undefined}
+                aria-label={[primaryAction.label, primaryAction.sublabel, primaryAction.detail].filter(Boolean).join(", ")}
+                className="customer-nav-cart flex min-w-0 items-center gap-2 pl-4 pr-3 transition active:scale-[0.98] h-full w-full rounded-[18px]"
+              >
+                {primaryAction.busy && <Loader2 className="h-5 w-5 shrink-0 animate-spin" aria-hidden />}
+                <span className="min-w-0 flex-1 text-left">
+                  <span className="block truncate whitespace-nowrap text-[15px] font-bold leading-tight max-[380px]:text-sm">{primaryAction.label}</span>
+                  {primaryAction.sublabel && (
+                    <span className="customer-nav-cart__muted block truncate whitespace-nowrap text-[11px] font-medium">{primaryAction.sublabel}</span>
+                  )}
+                </span>
+                {primaryAction.detail && (
+                  <span className="shrink-0 whitespace-nowrap text-sm font-bold tabular-nums max-[380px]:text-[13px]">{primaryAction.detail}</span>
+                )}
+                <ChevronRight className="customer-nav-cart__muted h-4 w-4 shrink-0" aria-hidden />
+              </button>
+              </div>
+            ) : rightMode === "action" && primaryAction ? (
+              <div key="nav-action" className="customer-nav-swap customer-nav-capsule customer-nav-frame flex h-[70px] min-w-0 flex-1 rounded-[24px] p-1.5 shadow-[var(--shadow-float-capsule)]">
+              <button
+                type="button"
+                onClick={primaryAction.onClick}
+                disabled={primaryAction.disabled}
+                aria-busy={primaryAction.busy || undefined}
+                className="customer-nav-checkout flex min-w-0 items-center justify-between gap-2 pl-4 pr-3.5 transition active:scale-[0.98] h-full w-full rounded-[18px]"
+              >
+                <span className="flex min-w-0 items-center gap-2">
+                  {primaryAction.busy ? (
+                    <Loader2 className="h-5 w-5 shrink-0 animate-spin" aria-hidden />
+                  ) : primaryAction.icon ? (
+                    <primaryAction.icon className="h-5 w-5 shrink-0" strokeWidth={2.2} aria-hidden />
+                  ) : (
+                    <ShoppingBag className="h-5 w-5 shrink-0" strokeWidth={2.2} aria-hidden />
+                  )}
+                  <span className="min-w-0 text-left">
+                    <span className="block truncate whitespace-nowrap text-[15px] font-bold leading-tight max-[380px]:text-sm">{primaryAction.label}</span>
+                    {primaryAction.sublabel && <span className="block truncate whitespace-nowrap text-[11px] font-semibold opacity-80">{primaryAction.sublabel}</span>}
+                  </span>
+                </span>
+                {primaryAction.detail && (
+                  <span className="shrink-0 whitespace-nowrap text-sm font-bold tabular-nums opacity-90">{primaryAction.detail}</span>
+                )}
+              </button>
+              </div>
+            ) : rightMode === "cart" ? (
+              <div key="nav-cart" className="customer-nav-swap customer-nav-capsule customer-nav-frame flex h-[70px] min-w-0 flex-1 rounded-[24px] p-1.5 shadow-[var(--shadow-float-capsule)]">
+              <button
+                type="button"
+                onClick={() => setCartOpen(true)}
+                aria-label={`View cart, ${cartCount} item${cartCount === 1 ? "" : "s"}, UGX ${cartTotal.toLocaleString()}`}
+                aria-haspopup="dialog"
+                className="customer-nav-cart flex min-w-0 items-center gap-2 pl-2 pr-2.5 transition active:scale-[0.98] h-full w-full rounded-[18px]"
+              >
+                <span className="customer-nav-tile flex h-10 w-10 shrink-0 items-center justify-center rounded-[13px] max-[380px]:h-9 max-[380px]:w-9">
+                  <span className="text-[15px] font-black tabular-nums leading-none">{cartCount}</span>
+                </span>
+                <span className="ml-1 min-w-0 flex-1 text-left">
+                  <span className="block truncate whitespace-nowrap text-sm font-bold leading-tight">View cart</span>
+                  <span className="customer-nav-cart__muted block truncate whitespace-nowrap text-[11px] font-medium">
+                    {cartCount} item{cartCount === 1 ? "" : "s"}
+                  </span>
+                </span>
+                <span className="shrink-0 whitespace-nowrap text-sm font-bold tabular-nums max-[380px]:text-[13px]">UGX {cartTotal.toLocaleString()}</span>
+                <ChevronRight className="customer-nav-cart__muted h-4 w-4 shrink-0 -ml-0.5 max-[380px]:hidden" aria-hidden />
+              </button>
+              </div>
+            ) : (
+            <div key="nav-links" className="customer-nav-swap customer-nav-capsule flex flex-1 min-w-0 items-center justify-around rounded-[24px] p-1.5 shadow-[var(--shadow-float-capsule)]">
               <ul
                 key={menuGroup}
                 className="customer-nav-items flex h-full w-full items-stretch justify-around gap-1"
@@ -315,9 +457,13 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
                 })}
               </ul>
             </div>
+            )}
           </div>
         </div>
       </nav>
+
+      {/* Shared shopping cart, opened from the nav's cart button. */}
+      <CartDrawer isOpen={cartOpen} onClose={() => setCartOpen(false)} />
 
       {/* Mini Tracker Bottom Sheet for Active Delivery */}
       {activeOrder && (

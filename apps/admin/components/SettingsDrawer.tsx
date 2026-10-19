@@ -4,6 +4,8 @@ import { ADMIN_ROLE_LABELS, hasPermission } from "@peebee/shared";
 import {
   ArrowUpRight,
   Banknote,
+  Briefcase,
+  Bus,
   Bell,
   Car,
   ChevronLeft,
@@ -18,6 +20,7 @@ import {
   LogOut,
   MapPin,
   Mic,
+  GraduationCap,
   Moon,
   Phone,
   PiggyBank,
@@ -173,6 +176,13 @@ export function SettingsListContent({ onItemClick }: { onItemClick?: () => void 
       show: hasPermission(role, "car.view"),
     },
     {
+      href: "/work",
+      icon: Briefcase,
+      label: "Peebee Work",
+      value: "Jobs & providers",
+      show: hasPermission(role, "work.view"),
+    },
+    {
       href: "/settings/delivery",
       icon: Banknote,
       label: "Delivery pricing",
@@ -185,6 +195,16 @@ export function SettingsListContent({ onItemClick }: { onItemClick?: () => void 
       label: "Rider matching",
       value: "Dispatch rules",
       show: true,
+    },
+    {
+      href: "/settings/relay",
+      icon: Bus,
+      label: "Relay delivery",
+      value: "Boda → matatu → boda",
+      show:
+        hasPermission(role, "settings.manage") ||
+        hasPermission(role, "riders.view") ||
+        hasPermission(role, "orders.view"),
     },
   ];
 
@@ -202,6 +222,13 @@ export function SettingsListContent({ onItemClick }: { onItemClick?: () => void 
       icon: Store,
       label: "Marketplace & Pro stores",
       value: "TikTok live & ads",
+      show: true,
+    },
+    {
+      href: "/settings/learn",
+      icon: GraduationCap,
+      label: "Peebee Learn",
+      value: "Schools & courses",
       show: true,
     },
     {

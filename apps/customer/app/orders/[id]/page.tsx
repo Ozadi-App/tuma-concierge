@@ -1,13 +1,18 @@
 "use client";
 
-import type { OrderDetail, OrderRating } from "@peebee/shared";
-import { MapPin, MessageCircle, TriangleAlert, User } from "lucide-react";
+import { RideStopsList } from "../../../components/ride/RideStopsList";
+import { useRegisterNavPrimaryAction } from "../../../lib/nav-primary-action";
+import { ApiError, type CheckoutBreakdown, type OrderDetail, type OrderRating, type OrderRelay } from "@peebee/shared";
+import { MapPin, MessageCircle, Phone, TriangleAlert, User } from "lucide-react";
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BottomDrawer } from "../../../components/BottomDrawer";
+import { CodeQr } from "../../../components/CodeQr";
 import { FeeProposalVoicePlayer } from "../../../components/FeeProposalVoicePlayer";
 import { LiveTrackingMap } from "../../../components/LiveTrackingMap";
 import { Modal } from "../../../components/Modal";
+import { OrderBreakdown, pickupList } from "../../../components/OrderBreakdown";
 import { OrderTimeline } from "../../../components/OrderTimeline";
 import { RateDeliveryCard } from "../../../components/RateDeliveryCard";
 import { ApplicantPicker } from "../../../components/ApplicantPicker";
@@ -18,7 +23,7 @@ import { CarRideNotice } from "../../../components/CarRideNotice";
 import { PassengerCard } from "../../../components/PassengerCard";
 import { markFeeProposalSeen } from "../../../lib/fee-proposal-seen";
 import { useTranslate } from "../../../lib/i18n";
-import { formatDateTime, formatDuration, formatUgx, orderTitle, stageLabel } from "../../../lib/order-display";
+import { formatDateTime, formatDuration, formatTime, formatUgx, orderTitle, stageLabel } from "../../../lib/order-display";
 import { useFreshness } from "../../../lib/use-freshness";
 import { useLivePolling } from "../../../lib/use-live-polling";
 
@@ -89,6 +94,237 @@ function RiderSummaryCard({
   );
 }
 
+type RelayLeg = OrderRelay["legs"][number];
+
+/** The stage where the customer meets the matatu, while that's still the plan (not missed). */
+function activeMeetStage(relay: OrderRelay): NonNullable<OrderRelay["meetStage"]> | null {
+  return relay.meetStage && !relay.missedAt ? relay.meetStage : null;
+}
+
+/** How soon the matatu gets there, from its live position. */
+function matatuArrival(relay: OrderRelay, leg: RelayLeg | undefined, meeting: boolean): string | null {
+  if (!leg) return null;
+  if (leg.status === "arrived") return meeting ? "At the stage now" : null;
+  if (leg.status !== "in_transit") return null;
+  if (typeof relay.etaMinutes === "number") return `Arrives in about ${Math.max(1, Math.round(relay.etaMinutes))} min`;
+  return meeting ? "On its way" : null;
+}
+
+function relayLegTitle(leg: RelayLeg, stationName: string | null, meetName: string | null): string {
+  if (leg.leg === 3) return "Boda to your door";
+  if (leg.kind === "matatu") {
+    return `Matatu${leg.vehiclePlate ? ` ${leg.vehiclePlate}` : ""} to ${meetName ?? stationName ?? leg.toName ?? "stage"}`;
+  }
+  return `Boda to ${leg.toName ?? "stage"}`;
+}
+
+function relayLegStatus(leg: RelayLeg): string {
+  if (leg.status === "done") return leg.handedOverAt ? `Handed over ${formatTime(leg.handedOverAt)}` : "Handed over";
+  if (leg.status === "arrived") return "Arrived";
+  if (leg.status === "in_transit") return "On the way";
+  return "Waiting";
+}
+
+type RelayStep = { key: string; title: string; status: string; done: boolean; active: boolean };
+
+function legStep(leg: RelayLeg, relay: OrderRelay, stationName: string | null): RelayStep {
+  const meet = activeMeetStage(relay);
+  const arrival = leg.kind === "matatu" ? matatuArrival(relay, leg, !!meet) : null;
+  return {
+    key: leg.id,
+    title: relayLegTitle(leg, stationName, leg.kind === "matatu" ? meet?.name ?? null : null),
+    status: `${arrival ?? relayLegStatus(leg)}${leg.providerName ? ` · ${leg.providerName}` : ""}`,
+    done: leg.status === "done",
+    active: leg.status === "in_transit" || leg.status === "arrived",
+  };
+}
+
+/** Boda -> matatu -> boda steps for a relayed parcel; a station drop adds a stop at the petrol station. */
+function RelayTimeline({ relay }: { relay: OrderRelay }) {
+  const legs = [...relay.legs].sort((a, b) => a.leg - b.leg);
+  const station = relay.dropMode === "station" ? relay.station ?? null : null;
+  const meet = activeMeetStage(relay);
+  let steps: RelayStep[];
+  if (!station) {
+    steps = legs.map((leg) => legStep(leg, relay, null));
+  } else if (meet) {
+    const collected = relay.releasedTo === "customer";
+    const matatu = legs.find((leg) => leg.kind === "matatu");
+    steps = legs.filter((leg) => leg.leg < 3).map((leg) => legStep(leg, relay, station.name));
+    steps.push({
+      key: "meet",
+      title: `Meet it at ${meet.name}`,
+      status: collected ? `Collected${relay.releasedAt ? ` ${formatTime(relay.releasedAt)}` : ""}` : matatu?.status === "arrived" ? "Ready" : "Waiting",
+      done: collected,
+      active: !collected && matatu?.status === "arrived",
+    });
+  } else {
+    const held = !!relay.heldAt;
+    const released = !!relay.releasedAt;
+    steps = legs.filter((leg) => leg.leg < 3).map((leg) => legStep(leg, relay, station.name));
+    steps.push({
+      key: "station",
+      title: `At ${station.name}`,
+      status: released
+        ? `Handed on${relay.releasedAt ? ` ${formatTime(relay.releasedAt)}` : ""}`
+        : held ? `Held since ${formatTime(relay.heldAt as string)}` : "Waiting",
+      done: released,
+      active: held && !released,
+    });
+    const leg3 = legs.find((leg) => leg.leg === 3);
+    if (relay.lastMile === "door" && leg3) {
+      steps.push(legStep(leg3, relay, station.name));
+    } else {
+      const collected = relay.releasedTo === "customer";
+      steps.push({
+        key: "collect",
+        title: "Collect at the station",
+        status: collected ? `Collected at ${station.name}` : held ? "Ready" : "Waiting",
+        done: collected,
+        active: held && !released,
+      });
+    }
+  }
+  return (
+    <section className="home-card space-y-3">
+      <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-500">Relay{relay.direction ? ` · ${relay.direction}` : ""}</h2>
+      <ol className="space-y-3">
+        {steps.map((step, i) => (
+          <li key={step.key} className="flex items-start gap-3">
+            <span
+              className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
+                step.done ? "bg-green text-white" : step.active ? "bg-gold text-ink" : "bg-[rgb(var(--surface-muted))] text-ink-500"
+              }`}
+            >
+              {i + 1}
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-semibold text-ink">{step.title}</span>
+              <span className={`block text-xs ${step.active ? "font-semibold text-ink" : "text-ink-500"}`}>{step.status}</span>
+            </span>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
+/** Meeting the matatu at a stage on its route: where, when, and the code to show the conductor. */
+function MeetStageCard({ relay }: { relay: OrderRelay }) {
+  const meet = activeMeetStage(relay);
+  if (!meet) return null;
+  if (relay.releasedTo === "customer") {
+    return (
+      <section className="home-card">
+        <p className="text-sm font-semibold text-green">Collected at {meet.name}</p>
+      </section>
+    );
+  }
+  if (!relay.collectCode || relay.releasedAt) return null;
+  const arrival = matatuArrival(relay, relay.legs.find((leg) => leg.kind === "matatu"), true);
+  const directions = meet.lat != null && meet.lng != null
+    ? `https://www.google.com/maps/dir/?api=1&destination=${meet.lat},${meet.lng}`
+    : null;
+  return (
+    <section className="home-card space-y-3 !border-l-4 !border-l-gold">
+      <div className="space-y-0.5">
+        <h2 className="text-base font-bold text-ink">Meet the matatu at {meet.name}</h2>
+        {arrival && <p className="text-sm font-semibold text-ink">{arrival}</p>}
+        {directions && (
+          <a href={directions} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-sm font-semibold text-gold">
+            <MapPin className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
+            Directions
+          </a>
+        )}
+      </div>
+      <div className="flex flex-col items-center gap-2">
+        <p className="text-xs text-ink-500">Show this code to the conductor</p>
+        <p className="font-mono text-4xl font-black tracking-[0.2em] text-ink">{relay.collectCode}</p>
+        <CodeQr value={relay.collectCode} size={180} />
+      </div>
+      {relay.station && <p className="text-xs text-ink-500">The matatu can&apos;t wait. If you miss it, collect at {relay.station.name}.</p>}
+    </section>
+  );
+}
+
+/** Waiting at (or on its way to) the petrol station: the customer's code, or a rider instead. */
+function StationPickupCard({ orderId, relay, onChanged }: { orderId: string; relay: OrderRelay; onChanged: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<{ message: string; topUp: boolean } | null>(null);
+  const station = relay.station;
+  if (!station || activeMeetStage(relay)) return null;
+  const missed = relay.meetStage && relay.missedAt ? (
+    <p className="text-sm font-semibold text-ink">You missed the matatu — collect at {station.name}</p>
+  ) : null;
+
+  if (relay.releasedTo === "customer") {
+    return (
+      <section className="home-card">
+        <p className="text-sm font-semibold text-green">Collected at {station.name}</p>
+      </section>
+    );
+  }
+  if (!relay.collectCode || relay.releasedAt) return null;
+
+  async function sendRider() {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.sendRelayRider(orderId);
+      onChanged();
+    } catch (err) {
+      const topUp = err instanceof ApiError && err.status === 409 && err.code === "insufficient_wallet_balance";
+      setError({ message: errorMessage(err), topUp });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const held = !!relay.heldAt;
+  const fee = relay.sendRiderFee ?? 0;
+  return (
+    <section className="home-card space-y-3 !border-l-4 !border-l-gold">
+      {missed}
+      <div className="space-y-0.5">
+        <h2 className="text-base font-bold text-ink">{held ? `Ready at ${station.name}` : `On its way to ${station.name}`}</h2>
+        {station.address && <p className="text-sm text-ink-500">{station.address}</p>}
+        {station.phone && (
+          <a href={`tel:${station.phone}`} className="inline-flex items-center gap-1.5 text-sm font-semibold text-gold">
+            <Phone className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
+            {station.phone}
+          </a>
+        )}
+      </div>
+      <div className="flex flex-col items-center gap-2">
+        <p className="text-xs text-ink-500">{held ? "Show this code at the counter" : "Your code to collect"}</p>
+        <p className="font-mono text-4xl font-black tracking-[0.2em] text-ink">{relay.collectCode}</p>
+        <CodeQr value={relay.collectCode} size={180} />
+      </div>
+      <button
+        type="button"
+        disabled={busy}
+        onClick={() => void sendRider()}
+        className="w-full rounded-full bg-[rgb(var(--surface-muted))] px-3 py-2.5 text-sm font-bold text-ink disabled:opacity-60"
+      >
+        {busy ? "Please wait…" : `Send a rider instead — UGX ${fee.toLocaleString("en-UG")}`}
+      </button>
+      {error && (
+        <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+          {error.message}
+          {error.topUp && (
+            <>
+              {" "}
+              <Link href="/wallet" className="font-bold underline">
+                Top up wallet
+              </Link>
+            </>
+          )}
+        </p>
+      )}
+    </section>
+  );
+}
+
 export default function OrderDetailPage() {
   const t = useTranslate();
   const params = useParams<{ id: string }>();
@@ -146,6 +382,22 @@ export default function OrderDetailPage() {
   }, [orderId, markUpdated]);
 
   useLivePolling(() => void load().catch(() => {}), 4000, [load]);
+
+  // The money breakdown (items, delivery and its legs) for the whole delivery: fetched again only
+  // when something it depends on changes, not on every poll. Older servers have none: the page
+  // then keeps its own per-order lines.
+  const [breakdown, setBreakdown] = useState<(CheckoutBreakdown & { total: number }) | null>(null);
+  const breakdownKey = detail
+    ? [detail.order.id, detail.order.stage, detail.order.final_total, detail.order.estimated_total, detail.order.delivery_fee, (detail.bundleStops ?? []).map((stop) => stop.id + stop.stage).join(","), detail.relay?.lastMile ?? ""].join("|")
+    : null;
+  useEffect(() => {
+    if (!breakdownKey) return;
+    let live = true;
+    api.getOrderBreakdown(orderId)
+      .then((next) => { if (live) setBreakdown(next.delivery ? next : null); })
+      .catch(() => { if (live) setBreakdown(null); });
+    return () => { live = false; };
+  }, [breakdownKey, orderId]);
 
   // Silently find a rider as soon as an unmatched order lands here, then
   // keep retrying on a fixed 4s cadence until one is found. Depends only on
@@ -224,6 +476,18 @@ export default function OrderDetailPage() {
     setWaitingNoticeOpen(true);
   }, [timeFees?.waitingEndsAt, timeFees?.waitingDue, waitingApproaching, waitingNoticeSeenKey]);
 
+  // While an order still needs paying, its next step is the bottom nav's right
+  // capsule (white in light, grey in dark); the gold Pay is on the pay page.
+  // A relay paid before its rider is already paid: it only waits for the rider now.
+  const navPaid = !!detail?.payments.some((p) => p.type === "collection" && p.status === "successful") && detail?.order.stage !== "Fund";
+  const navAwaitingPayment = !!detail && ["Create", "Match", "Fund"].includes(detail.order.stage) && !navPaid;
+  const navPendingPayment = !!detail?.payments.find((p) => p.status === "pending");
+  useRegisterNavPrimaryAction(navAwaitingPayment ? {
+    tone: "step",
+    label: navPendingPayment ? "Check payment" : "Continue to payment",
+    onClick: () => router.push(`/orders/${orderId}/pay`),
+  } : null);
+
   if (!detail) {
     return <div className="p-4 text-sm text-ink-500">{t("order_loading")}</div>;
   }
@@ -231,6 +495,10 @@ export default function OrderDetailPage() {
   const { order, items, substitutions, feeProposals } = detail;
   const pendingFeeProposal = feeProposals.find((f) => f.status === "pending");
   const currentItemsTotal = (order.final_total ?? order.estimated_total ?? 0) - (order.delivery_fee ?? 0);
+  // The other pickups sharing this delivery (one rider, one payment).
+  const sharedWith = order.delivery_bundle_id
+    ? (detail.bundleStops ?? []).filter((stop) => stop.id !== order.id).map((stop) => stop.restaurant_name ?? stop.outlet_name ?? "another pickup")
+    : [];
   const pendingPayment = detail.payments.find((p) => p.status === "pending");
   const awaitingRiderOrPayment = ["Create", "Match", "Fund"].includes(order.stage);
   const pendingSubs = substitutions.filter((s) => s.status === "pending");
@@ -265,6 +533,9 @@ export default function OrderDetailPage() {
   // (surfaced via the normal error banner) rather than a button here.
   const canCancel = timeFees?.canCancel ?? (!order.rider_id && ["Create", "Match"].includes(order.stage));
   const canDelete = !order.rider_id && ["Create", "Match"].includes(order.stage);
+  // While a relayed parcel rides the matatu, rider_id is empty and rider_lat/lng is the matatu.
+  const matatuLeg = detail.relay?.legs.find((l) => l.kind === "matatu");
+  const onMatatu = !order.rider_id && (matatuLeg?.status === "in_transit" || matatuLeg?.status === "arrived");
 
   return (
     <div className="space-y-6 px-4 pt-4">
@@ -317,6 +588,7 @@ export default function OrderDetailPage() {
             {order.pickup_address ? ` · ${order.pickup_address}` : ""}
           </p>
         )}
+        {!!order.is_ride && (detail.rideStops?.length ?? 0) > 0 && <RideStopsList stops={detail.rideStops!} className="pl-0.5" />}
         {order.destination_area && (
           <p className="flex items-center gap-1.5 text-sm text-ink-500">
             <MapPin className="h-3.5 w-3.5 text-ink-500" strokeWidth={2} aria-hidden />
@@ -362,8 +634,22 @@ export default function OrderDetailPage() {
 
       <OrderTimeline order={order} events={detail.events} statusLabel={stageLabel(order.stage, order.type)} />
 
-      {order.rider_id && !["Settle", "Handover"].includes(order.stage) && (
-        <LiveTrackingMap order={order} events={detail.events} />
+      {detail.relay && detail.relay.legs.length > 0 && <RelayTimeline relay={detail.relay} />}
+
+      {detail.relay?.dropMode === "station" && (
+        <>
+          <MeetStageCard relay={detail.relay} />
+          <StationPickupCard orderId={orderId} relay={detail.relay} onChanged={() => void load().catch(() => {})} />
+        </>
+      )}
+
+      {(order.rider_id || onMatatu) && !["Settle", "Handover"].includes(order.stage) && (
+        <LiveTrackingMap
+          order={order}
+          events={detail.events}
+          vehicleLabel={onMatatu ? "Matatu" : undefined}
+          target={onMatatu && matatuLeg?.toLat != null && matatuLeg.toLng != null ? { lat: matatuLeg.toLat, lng: matatuLeg.toLng } : null}
+        />
       )}
 
       {order.rider_id && (
@@ -387,48 +673,61 @@ export default function OrderDetailPage() {
 
       {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
 
-      {order.type === "shopping" && (
-        <section className="home-card space-y-2">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-500">{t("order_items_heading")}</h2>
-          <ul className="space-y-1.5">
-            {items.map((item) => (
-              <li key={item.id} className="flex items-center justify-between text-sm text-ink">
-                <span>
-                  <span className="block">
-                    {item.quantity}× {item.name}
-                    {item.unit_price != null && (
-                      <span className="text-ink-500">
-                        {" "}
-                        · {t("order_est_each")} {formatUgx(item.unit_price)} {t("order_each")}
+      {breakdown && (order.type === "shopping" || !order.is_ride) ? (
+        <section className="home-card">
+          <OrderBreakdown items={breakdown.items} itemsSubtotal={breakdown.itemsSubtotal} delivery={breakdown.delivery} total={breakdown.total} />
+        </section>
+      ) : (
+        <>
+          {order.type === "shopping" && (
+            <section className="home-card space-y-2">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-500">{t("order_items_heading")}</h2>
+              <ul className="space-y-1.5">
+                {items.map((item) => (
+                  <li key={item.id} className="flex items-center justify-between text-sm text-ink">
+                    <span>
+                      <span className="block">
+                        {item.quantity}× {item.name}
+                        {item.unit_price != null && (
+                          <span className="text-ink-500">
+                            {" "}
+                            · {t("order_est_each")} {formatUgx(item.unit_price)} {t("order_each")}
+                          </span>
+                        )}
                       </span>
+                      {item.note && <span className="block text-xs text-ink-500">{item.note}</span>}
+                    </span>
+                    {item.unit_price != null && (
+                      <span className="shrink-0 font-semibold">{formatUgx(item.unit_price * item.quantity)}</span>
                     )}
-                  </span>
-                  {item.note && <span className="block text-xs text-ink-500">{item.note}</span>}
-                </span>
-                {item.unit_price != null && (
-                  <span className="shrink-0 font-semibold">{formatUgx(item.unit_price * item.quantity)}</span>
+                  </li>
+                ))}
+              </ul>
+              <div className="space-y-1 border-t border-[var(--border-faint)] pt-2 text-sm font-semibold">
+                <div className="flex justify-between">
+                  <span>{t("order_items_total")}</span>
+                  <span>{formatUgx((order.final_total ?? order.estimated_total ?? 0) - (order.delivery_fee ?? 0))}</span>
+                </div>
+                <div className="flex justify-between text-ink-500">
+                  <span>{t("order_delivery_fee")}</span>
+                  <span>{formatUgx(order.delivery_fee ?? 0)}</span>
+                </div>
+                {sharedWith.length > 0 && (
+                  <p className="pt-1 text-xs font-normal text-ink-500">
+                    One rider collects from {pickupList([...(detail.bundleStops ?? []).filter((stop) => stop.id === order.id).map((stop) => stop.restaurant_name ?? stop.outlet_name ?? "this pickup"), ...sharedWith])} and brings them to you.
+                  </p>
                 )}
-              </li>
-            ))}
-          </ul>
-          <div className="space-y-1 border-t border-[var(--border-faint)] pt-2 text-sm font-semibold">
-            <div className="flex justify-between">
-              <span>{t("order_items_total")}</span>
-              <span>{formatUgx((order.final_total ?? order.estimated_total ?? 0) - (order.delivery_fee ?? 0))}</span>
-            </div>
-            <div className="flex justify-between text-ink-500">
-              <span>{t("order_delivery_fee")}</span>
-              <span>{formatUgx(order.delivery_fee ?? 0)}</span>
-            </div>
-          </div>
-        </section>
-      )}
+              </div>
+            </section>
+          )}
 
-      {order.type === "parcel" && (
-        <section className="home-card flex justify-between text-sm font-semibold">
-          <span>{order.is_ride ? t("order_fare") : t("order_delivery_fee")}</span>
-          <span>{formatUgx(order.delivery_fee ?? order.final_total ?? order.estimated_total)}</span>
-        </section>
+          {order.type === "parcel" && (
+            <section className="home-card flex justify-between text-sm font-semibold">
+              <span>{order.is_ride ? t("order_fare") : t("order_delivery_fee")}</span>
+              <span>{formatUgx(order.delivery_fee ?? order.final_total ?? order.estimated_total)}</span>
+            </section>
+          )}
+        </>
       )}
 
       {awaitingRiderOrPayment && (
@@ -444,9 +743,6 @@ export default function OrderDetailPage() {
             )
           )}
 
-          <button type="button" onClick={() => router.push(`/orders/${orderId}/pay`)} className="min-h-12 w-full rounded-full bg-gold px-4 text-base font-bold text-ink-gold">
-            {pendingPayment ? "Check payment" : "Continue to payment"}
-          </button>
         </section>
       )}
 

@@ -1,0 +1,246 @@
+@import "../../../packages/shared/select.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  /* Text stays inset even when a field has no explicit padding utility.
+     Compound fields share their wrapper's spacing and single fill. */
+  input:where(:not([type="checkbox"], [type="radio"], [type="range"], [type="file"], [type="hidden"], [type="submit"], [type="button"], [type="color"])):where(:not(.field-box *)),
+  textarea:where(:not(.field-box *)) {
+    padding: 0.625rem 0.75rem;
+  }
+}
+
+:root {
+  color-scheme: light;
+  /* Palette — stored as "R G B" triples so Tailwind can apply opacity modifiers */
+  --color-gold: 201 162 39;
+  --color-gold-400: 224 185 61;
+  --color-gold-500: 201 162 39;
+  --color-black: 10 10 10;
+  --color-black-700: 26 26 26;
+  --color-black-900: 10 10 10;
+  --color-ink: 10 10 10;
+  --color-ink-500: 92 102 112;
+  --color-ink-900: 10 10 10;
+  --color-ink-gold: 10 10 10;
+  --color-green: 27 122 78;
+  --color-green-400: 47 168 106;
+  --color-green-600: 27 122 78;
+  --color-cream: 255 255 255;
+  --color-cream-50: 255 255 255;
+  --color-cream-100: 245 245 245;
+  --color-navy: 48 48 48;
+  --color-navy-400: 68 68 68;
+  --color-navy-700: 32 32 32;
+
+  /* Surfaces */
+  --surface-card: 255 255 255;
+  --surface-muted: 242 242 242;
+  --surface-input: 255 255 255;
+
+  /* Geometry & Elevation */
+  --radius-card: 24px;
+  --radius-drawer: 28px;
+  --radius-capsule: 9999px;
+  --border-faint: rgba(10, 10, 10, 0.08);
+  --border-faint-on-dark: rgba(247, 243, 238, 0.12);
+  --shadow-card: 0 4px 16px rgba(10, 10, 10, 0.06), 0 1px 2px rgba(10, 10, 10, 0.04);
+  --shadow-card-hover: 0 12px 28px rgba(10, 10, 10, 0.10), 0 4px 8px rgba(10, 10, 10, 0.06);
+  --shadow-float-capsule: 0 12px 32px -4px rgba(10, 10, 10, 0.12), 0 4px 12px rgba(10, 10, 10, 0.06);
+  --shadow-glow-gold: 0 6px 20px -2px rgba(201, 162, 39, 0.40);
+  --pad-card: 24px;
+  --transition-raise: 200ms ease;
+
+  --customer-nav-content-gap: calc(88px + env(safe-area-inset-bottom));
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --color-black: 0 0 0;
+    --color-black-700: 26 26 26;
+    --color-black-900: 0 0 0;
+    --color-ink: 245 245 245;
+    --color-ink-500: 170 170 170;
+    --color-ink-900: 245 245 245;
+    --color-green: 47 168 106;
+    --color-green-400: 62 196 128;
+    --color-cream: 14 14 14;
+    --color-cream-50: 14 14 14;
+    --color-cream-100: 26 26 26;
+    --color-navy: 220 220 220;
+    --color-navy-400: 230 230 230;
+    --color-navy-700: 200 200 200;
+    --surface-card: 30 30 30;
+    --surface-muted: 39 39 39;
+    --surface-input: 36 36 36;
+    --border-faint: rgba(247, 243, 238, 0.1);
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --color-black: 0 0 0;
+  --color-black-700: 26 26 26;
+  --color-black-900: 0 0 0;
+  --color-ink: 245 245 245;
+  --color-ink-500: 170 170 170;
+  --color-ink-900: 245 245 245;
+  --color-green: 47 168 106;
+  --color-green-400: 62 196 128;
+  --color-cream: 14 14 14;
+  --color-cream-50: 14 14 14;
+  --color-cream-100: 26 26 26;
+  --color-navy: 220 220 220;
+  --color-navy-400: 230 230 230;
+  --color-navy-700: 200 200 200;
+  --surface-card: 30 30 30;
+  --surface-muted: 39 39 39;
+  --surface-input: 36 36 36;
+  --border-faint: rgba(247, 243, 238, 0.1);
+}
+
+html {
+  font-size: 16px;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  background-color: rgb(var(--color-cream));
+  color: rgb(var(--color-ink));
+  line-height: 1.5;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Google Sans", Inter, sans-serif;
+  min-height: 100dvh;
+}
+
+/* Home and dashboard cards */
+.home-card {
+  border-radius: var(--radius-card);
+  border: 1px solid var(--border-faint);
+  box-shadow: var(--shadow-card);
+  padding: var(--pad-card);
+  background: rgb(var(--surface-card));
+  transition: background-color var(--transition-raise), transform var(--transition-raise);
+}
+
+/* Form fields: default fill */
+input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"]),
+textarea,
+select {
+  background-color: rgb(var(--surface-input));
+}
+
+/* Field-box wrapper rule: one solid colour edge-to-edge */
+.field-box {
+  background-color: rgb(var(--surface-input));
+  border: 1px solid var(--border-faint);
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+}
+
+.field-box :is(input, select, textarea):not([type="checkbox"], [type="radio"]) {
+  background-color: transparent !important;
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* Customer-style Brand Header */
+.customer-header {
+  background: rgb(var(--color-black-700));
+  color: white;
+  border-bottom: 1px solid rgb(255 255 255 / .08);
+}
+
+.customer-header-toggle {
+  color: white;
+  border: 1px solid rgb(255 255 255 / .18);
+  background: rgb(255 255 255 / .06);
+  transition: background 180ms ease;
+}
+
+.customer-header-toggle:hover {
+  background: rgb(255 255 255 / .12);
+}
+
+/* In dark mode, customer header switches to the iconic Peebee gold brand header */
+:root[data-theme="dark"] .customer-header {
+  background: rgb(var(--color-gold));
+  color: #111;
+  border-bottom-color: rgb(0 0 0 / .14);
+}
+
+:root[data-theme="dark"] .customer-header-toggle {
+  color: #111;
+  border: 1px solid rgb(0 0 0 / .18);
+  background: rgb(0 0 0 / .05);
+}
+
+/* Customer Floating Bottom Navigation Capsule */
+.customer-nav-content-clearance {
+  padding-bottom: var(--customer-nav-content-gap);
+}
+
+.customer-nav-capsule {
+  background: linear-gradient(135deg, rgb(var(--color-black-700)), rgb(var(--color-black-900)));
+  border: 1px solid rgb(255 255 255 / .14);
+  box-shadow: 0 12px 32px rgb(0 0 0 / .35);
+}
+
+:root[data-theme="dark"] .customer-nav-capsule {
+  background: #000;
+  border-color: rgb(255 255 255 / .16);
+}
+
+.customer-nav-item {
+  color: rgb(255 255 255 / .7);
+  transition: all 180ms ease;
+}
+
+.customer-nav-item:hover {
+  color: white;
+  background: rgb(255 255 255 / .08);
+}
+
+.customer-nav-item.is-active {
+  color: rgb(var(--color-ink-gold));
+  background: rgb(var(--color-gold));
+  font-weight: 700;
+}
+
+.customer-nav-item.is-active .customer-nav-indicator {
+  background: rgb(var(--color-ink-gold));
+}
+
+/* Live Classroom Video Grid & Meeting UI */
+.live-video-tile {
+  background: #18181b;
+  border: 2px solid rgba(255, 255, 255, 0.08);
+  border-radius: 18px;
+  overflow: hidden;
+  position: relative;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.live-video-tile.is-speaking {
+  border-color: rgb(var(--color-gold));
+  box-shadow: 0 0 0 3px rgba(201, 162, 39, 0.35);
+}
+
+.meeting-control-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border-radius: 16px;
+  padding: 10px;
+  min-width: 58px;
+  font-size: 11px;
+  font-weight: 700;
+  transition: all 0.18s ease;
+}

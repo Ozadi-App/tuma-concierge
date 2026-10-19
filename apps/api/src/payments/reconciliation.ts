@@ -3,6 +3,7 @@ import { postLedgerTransaction } from "../ledger/service.js";
 import { newId } from "../lib/ids.js";
 import type { PlatformEnvironment } from "../lib/settings.js";
 import { activateMerchantAllocationsForFundedOrder } from "../merchants/service.js";
+import { BUNDLE_CHILD_PROVIDER, finishBundleChildren } from "../orders/bundle-funding.js";
 import { checkPaymentStatus, type DbPaymentStatus } from "./service.js";
 
 type Row = Record<string, unknown>;
@@ -107,11 +108,19 @@ export async function reconcilePayment(paymentId: string, actorId: string): Prom
     args: [paymentId],
   });
   const op = operation.rows[0] as Row | undefined;
+  // A pickup in a one-payment combined delivery has no provider request of its own:
+  // it follows the first pickup's collection.
+  if (payment.provider === BUNDLE_CHILD_PROVIDER && payment.provider_ref) {
+    await reconcilePayment(String(payment.provider_ref), actorId);
+    const refreshed = await db.execute({ sql: "SELECT status FROM payments WHERE id = ?", args: [paymentId] });
+    return String((refreshed.rows[0] as Row | undefined)?.status ?? payment.status) as DbPaymentStatus;
+  }
   if (payment.status === "successful" || payment.status === "failed") {
     if (payment.status === "successful" && payment.type === "collection" && op && !["successful", "failed"].includes(String(op.status))) {
       await activateMerchantAllocationsForFundedOrder(String(payment.order_id));
       await finishProviderOperation(String(op.id), "successful");
     }
+    if (payment.type === "collection") await finishBundleChildren(paymentId, payment.status as "successful" | "failed", actorId);
     return payment.status as DbPaymentStatus;
   }
 
@@ -130,7 +139,15 @@ export async function reconcilePayment(paymentId: string, actorId: string): Prom
       sql: "UPDATE payments SET status = 'failed', updated_at = datetime('now') WHERE id = ? AND status = 'pending'",
       args: [paymentId],
     });
+    // A relay paid before any rider goes back to waiting, so it can be paid again or expire.
+    if (payment.type === "collection") {
+      await db.execute({
+        sql: "UPDATE orders SET stage = 'Create', updated_at = datetime('now') WHERE id = ? AND stage = 'Fund' AND rider_id IS NULL",
+        args: [String(payment.order_id)],
+      });
+    }
     if (op) await finishProviderOperation(String(op.id), "failed", "provider_confirmed_failed");
+    await finishBundleChildren(paymentId, "failed", actorId);
     return status;
   }
 
@@ -143,19 +160,23 @@ export async function reconcilePayment(paymentId: string, actorId: string): Prom
   if (payment.type === "collection") {
     statements.push(
       {
-        sql: "UPDATE orders SET stage = 'Shop', updated_at = datetime('now') WHERE id = ? AND stage = 'Fund'",
+        // A relay paid before any rider waits in Match, escrow held, until assignRider starts it.
+        sql: "UPDATE orders SET stage = CASE WHEN rider_id IS NULL THEN 'Match' ELSE 'Shop' END, updated_at = datetime('now') WHERE id = ? AND stage = 'Fund'",
         args: [String(payment.order_id)],
       },
       {
         sql: `INSERT OR IGNORE INTO order_events (id, order_id, stage, note, actor_id)
-              SELECT ?, ?, 'Shop', 'Escrow funded — shopping started', ?
-              WHERE EXISTS (SELECT 1 FROM orders WHERE id = ? AND stage = 'Shop')`,
+              SELECT ?, ?, stage, CASE WHEN stage = 'Shop' THEN 'Escrow funded — shopping started' ELSE 'Escrow funded — held until a rider is assigned' END, ?
+              FROM orders WHERE id = ? AND (stage = 'Shop' OR (stage = 'Match' AND rider_id IS NULL))`,
         args: [`evt_payment_${paymentId}`, String(payment.order_id), actorId, String(payment.order_id)],
       },
     );
   }
   await executeBatch(statements);
-  if (payment.type === "collection") await activateMerchantAllocationsForFundedOrder(String(payment.order_id));
+  if (payment.type === "collection") {
+    await activateMerchantAllocationsForFundedOrder(String(payment.order_id));
+    await finishBundleChildren(paymentId, "successful", actorId);
+  }
   if (op) await finishProviderOperation(String(op.id), "successful");
   return status;
 }

@@ -4,12 +4,13 @@ import { Select } from "@peebee/shared/select";
 
 import { observeNotificationSnapshot } from "@peebee/shared";
 
-import type { AvailableJob, OrderRow, Rider } from "@peebee/shared";
+import type { AvailableJob, OrderRow, RelayOpenLeg, Rider } from "@peebee/shared";
 import { isRiderProfileComplete } from "@peebee/shared";
-import { Bike, ChevronRight, Fuel, MapPin, Package, ShoppingCart, TriangleAlert, Utensils } from "lucide-react";
+import { Bike, Bus, ChevronRight, Fuel, MapPin, Package, ShoppingCart, TriangleAlert, Utensils } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { FareOfferPanel } from "../components/FareOfferPanel";
 import { JobPreviewModal } from "../components/JobPreviewModal";
 import { StageSavingsCard } from "../components/StageSavingsCard";
 import { api, errorMessage } from "../lib/api";
@@ -58,6 +59,7 @@ export default function JobsHomePage() {
   const [loaded, setLoaded] = useState(false);
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [availableJobs, setAvailableJobs] = useState<AvailableJob[]>([]);
+  const [relayLegs, setRelayLegs] = useState<RelayOpenLeg[]>([]);
   const [busy, setBusy] = useState(false);
   const [claimingId, setClaimingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -79,6 +81,11 @@ export default function JobsHomePage() {
         setLoaded(true);
       })
       .catch((err) => setError(errorMessage(err)));
+    // Relay pickups are optional: a failure here never blocks the feed.
+    api
+      .listOpenRelayLegs()
+      .then((res) => setRelayLegs(res.legs))
+      .catch(() => setRelayLegs([]));
   }, []);
 
   useLivePolling(load, 6000, [load]);
@@ -113,6 +120,20 @@ export default function JobsHomePage() {
     try {
       await api.claimOrder(id);
       router.push(`/jobs/${id}`);
+    } catch (err) {
+      setError(errorMessage(err));
+      load();
+    } finally {
+      setClaimingId(null);
+    }
+  }
+
+  async function claimRelay(leg: RelayOpenLeg) {
+    setClaimingId(leg.id);
+    setError(null);
+    try {
+      const res = await api.claimRelayLeg(leg.id);
+      router.push(`/jobs/${res.orderId ?? leg.order_id}`);
     } catch (err) {
       setError(errorMessage(err));
       load();
@@ -268,10 +289,50 @@ export default function JobsHomePage() {
           </div>
         )}
 
+        {rider?.is_online && relayLegs.length > 0 && (
+          <ul className="space-y-5">
+            {relayLegs.map((leg) => (
+              <li key={leg.id} className="home-card space-y-3 !rounded-2xl !p-3.5">
+                <div className="flex items-center gap-3">
+                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gold/10 text-ink">
+                    <Bus className="h-6 w-6" strokeWidth={1.75} aria-hidden />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-base font-semibold leading-snug text-ink">Relay pickup</span>
+                    <span className="mt-0.5 block text-sm text-ink-500">
+                      {leg.vehicle_plate ? `Meet matatu ${leg.vehicle_plate} at ${leg.from_name}` : `Pick up at ${leg.from_name}`}
+                      {leg.matatu_status === "arrived" ? " · arrived" : ""}
+                    </span>
+                  </span>
+                </div>
+                <dl className="grid grid-cols-2 border-t border-[var(--border-faint)] pt-3">
+                  <div className="min-w-0 pr-3">
+                    <dt className="text-sm text-ink-500">Deliver</dt>
+                    <dd className="mt-0.5 break-words text-lg font-semibold tabular-nums text-ink">{leg.distance_km} km</dd>
+                    <dd className="truncate text-xs text-ink-500">{leg.destination_area ?? leg.to_name}</dd>
+                  </div>
+                  <div className="min-w-0 border-l border-[var(--border-faint)] pl-3">
+                    <dt className="text-sm text-ink-500">{t("home_delivery_fee")}</dt>
+                    <dd className="mt-0.5 break-words text-lg font-semibold tabular-nums text-ink">{formatUgx(leg.fee)}</dd>
+                  </div>
+                </dl>
+                <button
+                  type="button"
+                  onClick={() => claimRelay(leg)}
+                  disabled={claimingId === leg.id || !online}
+                  className="min-h-12 w-full rounded-xl bg-gold px-3 py-2 text-sm font-semibold text-ink-gold disabled:opacity-60"
+                >
+                  {claimingId === leg.id ? t("home_claiming") : !online ? t("home_offline_btn") : t("home_claim_job")}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+
         {!rider?.is_online && (
           <p className="py-4 text-center text-sm text-ink-500">{t("home_go_online")}</p>
         )}
-        {rider?.is_online && availableJobs.length === 0 && (
+        {rider?.is_online && availableJobs.length === 0 && relayLegs.length === 0 && (
           <p className="py-4 text-center text-sm text-ink-500">{t("home_no_jobs")}</p>
         )}
         {rider?.is_online && availableJobs.length > 0 && visibleJobs.length === 0 && (
@@ -287,7 +348,12 @@ export default function JobsHomePage() {
                 <span className="min-w-0 flex-1">
                   <span className="block text-base font-semibold leading-snug text-ink">{jobTitle(job)}</span>
                   <span className="mt-0.5 block text-sm text-ink-500">{JOB_CATEGORY_LABELS[jobCategory(job)]}</span>
-                  {(job.bundle_order_count ?? 1) > 1 && <span className="mt-1 inline-flex rounded-full bg-gold/15 px-2.5 py-1 text-xs font-bold text-ink">Combined trip · {job.bundle_order_count} pickups</span>}
+                  {(job.stop_count ?? 0) > 0 && (
+                    <span className="mr-1 mt-1 inline-flex rounded-full bg-gold/15 px-2.5 py-1 text-xs font-bold text-ink">
+                      {job.stop_count === 1 ? t("stops_one") : t("stops_count", { count: job.stop_count ?? 0 })}
+                    </span>
+                  )}
+                  {(job.bundle_order_count ?? 1) > 1 && <span className="mt-1 inline-flex rounded-full bg-gold/15 px-2.5 py-1 text-xs font-bold text-ink">Combined trip · {job.bundle_pickups ?? `${job.bundle_order_count} pickups`}</span>}
                 </span>
                 <span className="max-w-[30%] text-right text-xs leading-5 text-ink-500">
                   {job.distanceKm != null ? `${job.distanceKm} ${t("home_km_away")}` : t("home_distance_unknown")}
@@ -308,6 +374,9 @@ export default function JobsHomePage() {
                   <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-gold" strokeWidth={2.25} aria-hidden />
                   <p className="text-xs text-ink-500">{t("home_out_of_range")}</p>
                 </div>
+              )}
+              {job.fareOffer && !job.applied && (
+                <FareOfferPanel job={job as AvailableJob & { fareOffer: NonNullable<AvailableJob["fareOffer"]> }} online={online} onChanged={load} />
               )}
               {job.bidding && job.matching_mode !== "first_to_claim" && !job.applied && (
                 <div className="space-y-1">
@@ -341,7 +410,13 @@ export default function JobsHomePage() {
                     disabled={claimingId === job.id || !online}
                     className="min-h-12 flex-1 rounded-xl bg-gold px-3 py-2 text-sm font-semibold text-ink-gold disabled:opacity-60"
                   >
-                    {claimingId === job.id ? t("home_claiming") : !online ? t("home_offline_btn") : t("home_claim_job")}
+                    {claimingId === job.id
+                      ? t("home_claiming")
+                      : !online
+                        ? t("home_offline_btn")
+                        : job.fareOffer
+                          ? t("offer_accept", { price: formatUgx(job.fareOffer.amount) })
+                          : t("home_claim_job")}
                   </button>
                 ) : (
                   <button
@@ -357,7 +432,9 @@ export default function JobsHomePage() {
                         ? t("home_applied")
                         : !online
                           ? t("home_offline_btn")
-                          : t("home_apply")}
+                          : job.fareOffer
+                            ? t("offer_accept", { price: formatUgx(job.fareOffer.amount) })
+                            : t("home_apply")}
                   </button>
                 )}
               </div>

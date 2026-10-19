@@ -9,6 +9,7 @@ import { api } from "../lib/api";
 import { useTranslate, type TranslationKey } from "../lib/i18n";
 import { registerLocationFlow } from "../lib/location-flow-state";
 import { BottomNav } from "./BottomNav";
+import { useRegisterNavPrimaryAction, useRegisterNavBack } from "../lib/nav-primary-action";
 import {
   cachedPosition,
   currentLocationPlace,
@@ -35,7 +36,7 @@ const PlaceMap = dynamic(() => import("./maps/PlaceMap"), {
 });
 
 /** Same flow everywhere; only the wording changes with what's being ordered. */
-export type PlaceConcept = "ride" | "parcel" | "shopping" | "food";
+export type PlaceConcept = "ride" | "parcel" | "shopping" | "food" | "stop";
 /** `passenger` is set when a ride is booked for someone else (null = the booker rides). */
 export type PlaceResult = { pickup: Place | null; destination: Place; passenger?: RidePassenger | null };
 type Field = "pickup" | "destination";
@@ -46,6 +47,7 @@ const CONFIRM_KEY: Record<PlaceConcept, TranslationKey> = {
   parcel: "place_confirm_parcel",
   shopping: "place_confirm_delivery",
   food: "place_confirm_delivery",
+  stop: "place_confirm_stop",
 };
 
 function savedIcon(label: string) {
@@ -195,11 +197,14 @@ export function PlaceFlow({
   initial,
   onDone,
   onClose,
+  onBack,
 }: {
   concept: PlaceConcept;
   initial?: { pickup?: Place | null; destination?: Place | null; passenger?: RidePassenger | null };
   onDone: (result: PlaceResult) => void;
   onClose: () => void;
+  /** Nav Back out of the picker; defaults to onClose. */
+  onBack?: () => void;
 }) {
   const t = useTranslate();
   const route = concept === "ride" || concept === "parcel";
@@ -281,7 +286,7 @@ export function PlaceFlow({
   const setField = (f: Field, p: Place | null) => (f === "pickup" ? setPickup(p) : setDestination(p));
   const placeOf = (f: Field) => (f === "pickup" ? pickup : destination);
   const titleFor = (f: Field) =>
-    f === "pickup" ? t("place_pickup") : concept === "ride" ? t("place_destination") : t("place_delivery");
+    f === "pickup" ? t("place_pickup") : concept === "ride" ? t("place_destination") : concept === "stop" ? t("place_stop") : t("place_delivery");
   const ready = route ? !!pickup && !!destination : !!destination;
 
   function openSearch(f: Field) {
@@ -368,20 +373,17 @@ export function PlaceFlow({
     }
   }
 
+  // The confirm step lives in the bottom nav's right capsule (white in light,
+  // grey in dark) instead of an in-sheet button; it stays disabled until a
+  // place is chosen.
+  useRegisterNavPrimaryAction({ tone: "step", label: t(CONFIRM_KEY[concept]), disabled: !ready, onClick: confirm }, 1);
+  // Nav Back = one step back out of the picker (the caller decides where).
+  useRegisterNavBack(true, () => (view === "search" ? setView(returnTo) : (onBack ?? onClose)()), 1);
+
   if (!mounted) return null;
 
   const frameInset = view === "landing" ? Math.round(viewportH * 0.42) : route ? 230 : 160;
   const mapTitle = view === "landing" ? t("place_select_on_map") : titleFor(active);
-
-  const confirmButton = ready && (
-    <button
-      type="button"
-      onClick={confirm}
-      className="min-h-12 w-full rounded-full bg-gold px-4 text-base font-bold text-ink-gold shadow-[0_4px_12px_rgba(201,162,39,0.35)]"
-    >
-      {t(CONFIRM_KEY[concept])}
-    </button>
-  );
 
   const fieldRows = (searchMode: boolean) => (
     <div className="flex items-center gap-2">
@@ -478,7 +480,6 @@ export function PlaceFlow({
         <div className="customer-nav-content-clearance absolute inset-x-0 bottom-0 z-20 mx-auto max-w-lg px-3">
           <div className="space-y-2.5 rounded-3xl glass-panel p-3 shadow-[var(--shadow-float-capsule)]">
             {fieldRows(false)}
-            {confirmButton}
           </div>
         </div>
       )}
@@ -500,7 +501,7 @@ export function PlaceFlow({
             {fieldRows(true)}
           </div>
 
-          <div className={`min-h-0 flex-1 space-y-4 overflow-y-auto py-3 ${confirmButton ? "pb-3" : "customer-nav-content-clearance"}`}>
+          <div className={`min-h-0 flex-1 space-y-4 overflow-y-auto py-3 customer-nav-content-clearance`}>
             {query.trim().length >= 3 ? (
               <div className="px-4">
                 {searching && (
@@ -555,9 +556,6 @@ export function PlaceFlow({
             )}
           </div>
 
-          {confirmButton && (
-            <div className="customer-nav-content-clearance shrink-0 border-t border-[var(--border-faint)] px-4 pt-3">{confirmButton}</div>
-          )}
         </div>
       )}
 

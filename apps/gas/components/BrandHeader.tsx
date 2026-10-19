@@ -70,7 +70,8 @@ export function BrandHeader() {
   const isDarkMode = activeTheme === "dark";
   const isPractice = practiceActive || pathname === "/practice" || pathname.startsWith("/practice");
   const isSandbox = !isPractice && environment === "sandbox";
-  const modeSuperscript = isPractice ? "practice" : isSandbox ? "demo" : "Gas";
+  // Practice is shown by the shared blue border + "Practice mode" tab, not a header label.
+  const modeSuperscript = isSandbox ? "demo" : "Gas";
 
   return (
     <header

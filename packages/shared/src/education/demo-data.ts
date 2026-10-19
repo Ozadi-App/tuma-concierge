@@ -1,0 +1,2153 @@
+import type {
+  InstitutionProfile,
+  CreatorProfile,
+  CreatorCourse,
+  CourseModule,
+  CourseLesson,
+  CourseQuiz,
+  SchoolClass,
+  QuizQuestion,
+  SproutsActivity,
+  SproutsScreenTimer,
+  SproutsCoPlayPrompt,
+  FoundationsWorksheet,
+  FoundationsSubmission,
+  FoundationsMeritWallet,
+  AcademyTimetableDay,
+  AcademyExam,
+  AcademyTerminalReportCard,
+  CompassCourseDetail,
+  PeerReviewAssignment,
+  CompassVerifiableCredential,
+  SkillsCourseDetail,
+  SkillsVideoSubmission,
+  ApprenticeLogbookEntry,
+  TuitionInvoice,
+  SubscriptionPass,
+  GuardianAlertMessage,
+  EducationLiveMeeting,
+  LiveParticipant,
+  TutorContact,
+  LiveChatMessage,
+} from "./types.js";
+
+// ==========================================
+// Demo Institutions
+// ==========================================
+
+export const DEMO_INSTITUTIONS: InstitutionProfile[] = [
+  {
+    id: "inst_greenwood",
+    name: "Greenwood International Academy",
+    slug: "greenwood",
+    subdomain: "greenwood",
+    motto: "Excellence in Knowledge & Character",
+    address: "Plot 14 Lugogo Bypass, Kampala, Uganda",
+    logoUrl: "https://images.unsplash.com/photo-1546410531-bb4caa6b424d?auto=format&fit=crop&w=120&q=80",
+    badge: "UNEB Center No. U0842",
+    verifiedNationalAccreditation: true,
+    supportedStreams: ["foundations", "academy"],
+    contactEmail: "registrar@greenwood.ac.ug",
+    contactPhone: "+256 701 555 120",
+    academicCalendar: [
+      {
+        id: "term_1_2026",
+        name: "Term 1 — 2026",
+        startDate: "2026-02-02",
+        endDate: "2026-05-01",
+        midtermBreakStart: "2026-03-16",
+        midtermBreakEnd: "2026-03-20",
+        isCurrent: true,
+      },
+    ],
+  },
+  {
+    id: "inst_st_jude",
+    name: "St. Jude Senior Secondary School",
+    slug: "st-jude",
+    subdomain: "stjude",
+    motto: "Labor Omnia Vincit (Work Conquers All)",
+    address: "Plot 88 Jinja Road, Kampala",
+    logoUrl: "https://images.unsplash.com/photo-1509062522246-3755977927d7?auto=format&fit=crop&w=120&q=80",
+    badge: "UNEB Center No. U0842",
+    verifiedNationalAccreditation: true,
+    supportedStreams: ["academy"],
+    contactEmail: "admin@stjude.sc.ug",
+    contactPhone: "+256 414 333 210",
+  },
+  {
+    id: "inst_nakawa_vti",
+    name: "Kampala Vocational & Trades Guild",
+    slug: "nakawa-vti",
+    subdomain: "nakawa-vti",
+    motto: "Skills that Build the Nation",
+    address: "Nakawa Industrial Area, Jinja Road, Kampala",
+    logoUrl: "https://images.unsplash.com/photo-1581092921461-eab62e97a780?auto=format&fit=crop&w=120&q=80",
+    badge: "DIT & UVQF Certified Guild",
+    verifiedNationalAccreditation: true,
+    supportedStreams: ["skills"],
+    contactEmail: "director@nakawavti.ug",
+    contactPhone: "+256 772 444 890",
+  },
+  {
+    id: "inst_fintech_africa",
+    name: "FinTech Africa Institute",
+    slug: "fintech-africa",
+    subdomain: "fintech",
+    motto: "Next-Generation Digital Financial Systems",
+    address: "Innovation Village, Ntinda, Kampala",
+    logoUrl: "https://images.unsplash.com/photo-1523240795612-9a054b0db644?auto=format&fit=crop&w=120&q=80",
+    badge: "Licensed Professional Institute",
+    verifiedNationalAccreditation: true,
+    supportedStreams: ["compass"],
+    contactEmail: "admissions@fintech.ac.ug",
+    contactPhone: "+256 312 999 800",
+  },
+  {
+    id: "inst_little_stars",
+    name: "Little Stars Early Childhood Learning Hub",
+    slug: "little-stars",
+    subdomain: "littlestars",
+    motto: "Nurturing Curious Minds Through Play",
+    address: "Kololo Hill Road, Kampala",
+    logoUrl: "https://images.unsplash.com/photo-1503676260728-1c00da094a0b?auto=format&fit=crop&w=120&q=80",
+    badge: "ECD Certified Center",
+    verifiedNationalAccreditation: true,
+    supportedStreams: ["sprouts"],
+    contactEmail: "info@littlestars.ug",
+    contactPhone: "+256 700 888 112",
+  },
+];
+
+// ==========================================
+// 1. Sprouts Demo Data (Ages 3-6)
+// ==========================================
+
+export const DEMO_SPROUTS_ACTIVITIES: SproutsActivity[] = [
+  {
+    id: "sprout_1",
+    title: "Letter Safari: Vowel Sounds",
+    category: "letters",
+    durationMinutes: 4,
+    audioPromptUrl: "/audio/sprouts/letter-safari.mp3",
+    characterGuideName: "Kigo the Lion Cub",
+    characterGuideAvatar: "🦁",
+    instructionsVoiceover: "Tap each floating fruit to feed Kigo and hear the letter sound!",
+    stickerRewardId: "sticker_golden_lion",
+    stickerRewardTitle: "Golden Lion Cub",
+    stickerRewardIcon: "⭐🦁",
+    touchInteractionType: "drag_drop",
+    gameConfig: {
+      targetItems: ["A", "E", "I", "O", "U"],
+      matchingPairs: [
+        { item: "🍎", match: "A" },
+        { item: "🥚", match: "E" },
+        { item: "🦎", match: "I" },
+        { item: "🍊", match: "O" },
+        { item: "☂️", match: "U" },
+      ],
+    },
+  },
+  {
+    id: "sprout_2",
+    title: "Shapes Around the Compound",
+    category: "shapes",
+    durationMinutes: 5,
+    audioPromptUrl: "/audio/sprouts/shapes-compound.mp3",
+    characterGuideName: "Ami the Crowned Crane",
+    characterGuideAvatar: "🦩",
+    instructionsVoiceover: "Help Ami sort the matooke baskets into circles and the shields into triangles!",
+    stickerRewardId: "sticker_crowned_crane",
+    stickerRewardTitle: "Crowned Crane Badge",
+    stickerRewardIcon: "🎖️🪶",
+    touchInteractionType: "audio_tap",
+    gameConfig: {
+      targetItems: ["Circle", "Triangle", "Square", "Star"],
+    },
+  },
+  {
+    id: "sprout_3",
+    title: "Read-Along: The Little Boda That Could",
+    category: "storybook",
+    durationMinutes: 6,
+    audioPromptUrl: "/audio/sprouts/little-boda.mp3",
+    characterGuideName: "Boda Bobo",
+    characterGuideAvatar: "🛵",
+    instructionsVoiceover: "Follow the bouncing star as the story plays!",
+    stickerRewardId: "sticker_super_boda",
+    stickerRewardTitle: "Super Boda Rider",
+    stickerRewardIcon: "🛵✨",
+    touchInteractionType: "story_read_along",
+    gameConfig: {
+      storyPages: [
+        {
+          pageNumber: 1,
+          text: "Once upon a sunny morning in Kampala, little Bobo the Boda zoomed through Kololo hill.",
+          audioStartSec: 0,
+          audioEndSec: 5,
+          imageUrl: "https://images.unsplash.com/photo-1558981403-c5f9899a28bc?auto=format&fit=crop&w=400&q=80",
+        },
+        {
+          pageNumber: 2,
+          text: "He had a basket of fresh golden mangoes to deliver to Grandmother by the lake.",
+          audioStartSec: 5,
+          audioEndSec: 11,
+          imageUrl: "https://images.unsplash.com/photo-1553279768-865429fa0078?auto=format&fit=crop&w=400&q=80",
+        },
+        {
+          pageNumber: 3,
+          text: "Beep beep! All the animals cheered as Bobo crossed the friendly bridge on time!",
+          audioStartSec: 11,
+          audioEndSec: 16,
+          imageUrl: "https://images.unsplash.com/photo-1509198397868-475647b2a1e5?auto=format&fit=crop&w=400&q=80",
+        },
+      ],
+    },
+  },
+];
+
+export const DEMO_SPROUTS_TIMER: SproutsScreenTimer = {
+  dailyAllowanceMinutes: 30,
+  sessionLimitMinutes: 20,
+  minutesRemainingToday: 18,
+  sessionMinutesElapsed: 12,
+  isLocked: false,
+  parentPinRequiredToUnlock: true,
+};
+
+export const DEMO_SPROUTS_COPLAY: SproutsCoPlayPrompt = {
+  id: "coplay_fruits",
+  promptTitle: "Parent & Child Offline Activity",
+  offlineActionPrompt: "Together with your parent, go to the kitchen and find 2 round items. Count them together aloud!",
+  parentTip: "Tactile offline connection helps bridge 2D visual screen concepts to real-world sensory development.",
+};
+
+// ==========================================
+// 2. Foundations Demo Data (Ages 6-12)
+// ==========================================
+
+export const DEMO_FOUNDATIONS_WORKSHEETS: FoundationsWorksheet[] = [
+  {
+    id: "ws_p4_math",
+    subject: "Mathematics",
+    title: "Primary 4: Fractions and Ugandan Shilling Word Problems",
+    gradeLevel: "Primary 4",
+    teacherName: "Tr. Kenneth Ochieng",
+    instructions: "Complete all 6 sums neatly in your homework exercise book. Take a clear, bright top-down photo and obtain parent signature.",
+    maxMeritPoints: 25,
+    dueDate: "Tomorrow at 5:00 PM",
+    samplePhotoUrl: "https://images.unsplash.com/photo-1434030216411-0b793f4b4173?auto=format&fit=crop&w=400&q=80",
+  },
+  {
+    id: "ws_p5_sci",
+    subject: "Integrated Science",
+    title: "Primary 5: Parts of a Flowering Plant & Seed Germination",
+    gradeLevel: "Primary 5",
+    teacherName: "Tr. Brenda Namutebi",
+    instructions: "Draw and label a bean seed embryo. Write 3 conditions necessary for germination in complete sentences.",
+    maxMeritPoints: 20,
+    dueDate: "Friday at 4:00 PM",
+  },
+];
+
+export const DEMO_FOUNDATIONS_SUBMISSIONS: FoundationsSubmission[] = [
+  {
+    id: "sub_001",
+    worksheetId: "ws_p4_math",
+    worksheetTitle: "Primary 4: Fractions and Shilling Word Problems",
+    subject: "Mathematics",
+    studentId: "stud_timothy",
+    studentName: "Timothy Mukasa",
+    scannedPhotoUrls: [
+      "https://images.unsplash.com/photo-1434030216411-0b793f4b4173?auto=format&fit=crop&w=600&q=80",
+    ],
+    parentSigned: true,
+    parentSignerName: "Grace Mukasa (Mother)",
+    parentSignedAt: "2026-10-16 19:42",
+    status: "graded",
+    meritPointsEarned: 24,
+    teacherRemarks: "Excellent working out on the market fruit budget problem! Keep your margins neat.",
+    submittedAt: "2026-10-16 19:45",
+  },
+];
+
+export const DEMO_FOUNDATIONS_MERITS: FoundationsMeritWallet = {
+  totalMerits: 380,
+  currentStreakDays: 14,
+  punctualityPoints: 160,
+  teamworkPoints: 120,
+  recentAwards: [
+    { id: "m1", reason: "Early Homework Submission (Math)", points: 15, date: "Yesterday" },
+    { id: "m2", reason: "Perfect Score in Spelling Bee", points: 25, date: "3 days ago" },
+    { id: "m3", reason: "Clean Exercise Book Presentation", points: 10, date: "5 days ago" },
+  ],
+};
+
+// ==========================================
+// 3. Academy Demo Data (Ages 12-18)
+// ==========================================
+
+export const DEMO_ACADEMY_TIMETABLE: AcademyTimetableDay[] = [
+  {
+    dayName: "Monday",
+    periods: [
+      { periodNumber: 1, startTime: "08:00", endTime: "09:20", subject: "Pure Mathematics (UCE)", teacherName: "Mr. Kenneth Ochieng", roomOrLink: "Lab 3" },
+      { periodNumber: 2, startTime: "09:30", endTime: "10:40", subject: "Physics & Mechanics", teacherName: "Dr. Paul Habimana", roomOrLink: "Physics Hall" },
+      { periodNumber: 3, startTime: "11:00", endTime: "12:15", subject: "English Literature", teacherName: "Ms. Sarah Kyomugisha", roomOrLink: "Room 12B" },
+      { periodNumber: 4, startTime: "14:00", endTime: "15:30", subject: "Chemistry Practicals", teacherName: "Mrs. Brenda Namutebi", roomOrLink: "Science Lab 1" },
+    ],
+  },
+  {
+    dayName: "Tuesday",
+    periods: [
+      { periodNumber: 1, startTime: "08:00", endTime: "09:20", subject: "Biology & Human Anatomy", teacherName: "Mrs. Brenda Namutebi", roomOrLink: "Room 14" },
+      { periodNumber: 2, startTime: "09:30", endTime: "10:40", subject: "Geography of East Africa", teacherName: "Mr. Alex Mukasa", roomOrLink: "Room 8" },
+      { periodNumber: 3, startTime: "11:00", endTime: "12:15", subject: "Economics & Entrepreneurship", teacherName: "Mr. Kenneth Ochieng", roomOrLink: "Hall A" },
+    ],
+  },
+];
+
+export const DEMO_ACADEMY_EXAM: AcademyExam = {
+  id: "exam_uace_math_01",
+  title: "Senior 4 UNEB Mock Examination: Mathematics Paper 1",
+  subject: "Pure Mathematics",
+  term: "Term 1 — 2026",
+  durationMinutes: 90,
+  totalPoints: 100,
+  isProctored: true,
+  scheduledWindowStart: "2026-10-18 09:00",
+  scheduledWindowEnd: "2026-10-18 17:00",
+  questions: [
+    {
+      id: "q1",
+      questionType: "multiple_choice",
+      questionText: "Given that f(x) = 2x² - 5x + 3, find the roots of f(x) = 0.",
+      options: ["x = 1, x = 1.5", "x = 2, x = -3", "x = -1, x = 2.5", "x = 0.5, x = 3"],
+      maxPoints: 5,
+    },
+    {
+      id: "q2",
+      questionType: "formula_math",
+      questionText: "Calculate the exact derivative d/dx [ 3x³ - 4sin(x) + e^(2x) ]. Show step-by-step differentiation.",
+      maxPoints: 15,
+    },
+    {
+      id: "q3",
+      questionType: "essay",
+      questionText: "A trader borrows UGX 4,500,000 from a commercial bank at 18% compound interest per annum. Calculate the total repayment after 3 years.",
+      maxPoints: 20,
+    },
+  ],
+};
+
+export const DEMO_ACADEMY_REPORT_CARD: AcademyTerminalReportCard = {
+  studentId: "stud_esther",
+  studentName: "Esther Nabirye",
+  term: "Term 1",
+  academicYear: "2026",
+  homeroomClass: "Senior 4 East",
+  homeroomTeacher: "Mr. Kenneth Ochieng",
+  attendancePercent: 98.5,
+  classRank: "3 / 46",
+  overallWeightedAverage: 88.4,
+  subjects: [
+    { subjectName: "Pure Mathematics", code: "MAT401", homeworkScorePercent: 92, midtermScorePercent: 86, finalExamScorePercent: 90, weightedTotalPercent: 89.2, finalGrade: "D1", teacherComment: "Outstanding analytical thinking in calculus and algebra." },
+    { subjectName: "Physics", code: "PHY402", homeworkScorePercent: 88, midtermScorePercent: 84, finalExamScorePercent: 86, weightedTotalPercent: 85.8, finalGrade: "D1", teacherComment: "Thorough understanding of electrical circuitry and dynamics." },
+    { subjectName: "Chemistry", code: "CHM403", homeworkScorePercent: 85, midtermScorePercent: 82, finalExamScorePercent: 84, weightedTotalPercent: 83.6, finalGrade: "D2", teacherComment: "Good lab technique. Review volumetric titration formulas." },
+    { subjectName: "English Language", code: "ENG404", homeworkScorePercent: 90, midtermScorePercent: 92, finalExamScorePercent: 88, weightedTotalPercent: 89.6, finalGrade: "D1", teacherComment: "Eloquent argumentative essays and rich vocabulary." },
+  ],
+  principalRemarks: "Esther has shown exemplary academic dedication and leadership as assistant class prefect. Promoted to S.5 with Distinction.",
+  publishedAt: "2026-05-02",
+};
+
+// ==========================================
+// 4. Compass Demo Data (Higher Ed & Business)
+// ==========================================
+
+export const DEMO_COMPASS_COURSE: CompassCourseDetail = {
+  id: "course_fintech_growth",
+  code: "MKT-802",
+  title: "FinTech Product Growth, Unit Economics & Mobile Money In Africa",
+  instructorName: "Dr. Kenneth Ochieng",
+  instructorTitle: "Former Head of Digital Channels, Stanbic Bank & FinTech Fellow",
+  institutionName: "Peebee Global Institute & Executive School",
+  thumbnailUrl: "https://images.unsplash.com/photo-1551836022-d5d88e9218df?auto=format&fit=crop&w=600&q=80",
+  description: "Master modern product growth loops, customer acquisition cost (CAC), LTV modeling, and mobile money API architectures in East African tech ecosystems.",
+  priceUgx: 180000,
+  rating: 4.96,
+  reviewCount: 312,
+  enrolledStudentsCount: 1420,
+  hasLiveClassrooms: true,
+  syllabus: [
+    {
+      id: "mod_1",
+      title: "Module 1: The East African Mobile Money Rail & Settlement Architectures",
+      description: "Understanding MTN MoMo, Airtel Money, switch aggregators, and escrow safeguarding.",
+      sections: [
+        {
+          id: "sec_1_1",
+          title: "Section 1: Architecture of Instant Telecommunications Wallets",
+          units: [
+            {
+              id: "unit_1_1_1",
+              title: "1.1 Introduction: From SMS Stored Value to Open APIs",
+              durationSeconds: 740,
+              videoUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
+              isPreview: true,
+              transcript: "Mobile money in East Africa operates fundamentally as a mobile network operator ledger. In this lecture, we dissect transaction signing...",
+              resources: [
+                { name: "Financial_Model_Template.xlsx", fileUrl: "/downloads/fintech-model.xlsx", sizeLabel: "2.4 MB" },
+                { name: "MoMo_API_Architecture_Slides.pdf", fileUrl: "/downloads/momo-arch.pdf", sizeLabel: "6.1 MB" },
+              ],
+            },
+            {
+              id: "unit_1_1_2",
+              title: "1.2 Float Management, Agent Liquidity & Merchant Fees",
+              durationSeconds: 980,
+              videoUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
+              isPreview: false,
+            },
+          ],
+        },
+      ],
+    },
+  ],
+};
+
+export const DEMO_COMPASS_PEER_REVIEW: PeerReviewAssignment = {
+  id: "peer_review_capstone",
+  capstoneTitle: "FinTech Merchant Settlement Capstone Proposal",
+  studentSubmissionUrl: "https://peebee.online/cdn/capstones/esther-fintech-proposal.pdf",
+  rubricCriteria: [
+    { name: "Unit Economics Validity", maxScore: 10, guidance: "Are CAC, LTV, and payback periods logically derived with local UGX benchmarks?" },
+    { name: "Regulatory Compliance", maxScore: 10, guidance: "Does the architecture address Bank of Uganda NPS Act guidelines?" },
+    { name: "Technical Feasibility", maxScore: 10, guidance: "Is the webhook reconciliation and idempotency flow robust?" },
+  ],
+  peerSubmissionsToReview: [
+    {
+      anonymousSubmissionId: "peer_sub_891",
+      studentWorkUrl: "https://peebee.online/cdn/capstones/anon_891.pdf",
+      scores: [
+        { criteriaName: "Unit Economics Validity", scoreAwarded: 9, feedback: "Great conservative churn assumptions." },
+        { criteriaName: "Regulatory Compliance", scoreAwarded: 8, feedback: "Ensure AML reporting thresholds are cited." },
+        { criteriaName: "Technical Feasibility", scoreAwarded: 10, feedback: "Solid signature verification diagram." },
+      ],
+      isSubmitted: true,
+    },
+  ],
+  isComplete: false,
+};
+
+export const DEMO_COMPASS_CREDENTIAL: CompassVerifiableCredential = {
+  certificateId: "PB-CERT-2026-89410",
+  studentName: "Esther Nabirye",
+  courseTitle: "FinTech Product Growth, Unit Economics & Mobile Money In Africa",
+  institutionName: "Peebee Global Institute & Executive School",
+  issuedAt: "October 16, 2026",
+  verificationHash: "e8b1d98a0f443b2f8e02d64a781b0a5135fae19b882361d76378ef8a9f3901b4",
+  verificationUrl: "https://peebee.online/verify/cert/PB-CERT-2026-89410",
+  instructorSignatureUrl: "https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?auto=format&fit=crop&w=200&q=80",
+  qrCodeData: "PB-VERIFIED:PB-CERT-2026-89410:e8b1d98a",
+};
+
+// ==========================================
+// 5. Skills Demo Data (Vocational & Practical)
+// ==========================================
+
+export const DEMO_SKILLS_COURSE: SkillsCourseDetail = {
+  id: "skill_barbering_mastery",
+  trade: "barbering_styling",
+  tradeLabel: "Master Barbering & Precision Fades",
+  title: "Professional Barbering: Skin Taper Fades & Beard Sculpting",
+  masterArtisanName: "Master Alex Mukasa",
+  workshopLocation: "Peebee Studio, Acacia Mall, Kisementi",
+  thumbnailUrl: "https://images.unsplash.com/photo-1503951914875-452162b0f3f1?auto=format&fit=crop&w=600&q=80",
+  videoGuideUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+  nationalTradeTestStandard: "Directorate of Industrial Training (DIT) Level 2 — UVQF Hairdressing",
+  toolChecklist: [
+    { name: "Professional Cordless Clipper", specifications: "Adjustable taper lever (0.5mm - 3.5mm)", isRequired: true, safetyEquipment: false },
+    { name: "Guard Set (#0.5 to #4)", specifications: "Magnetic or snap-on precision guides", isRequired: true, safetyEquipment: false },
+    { name: "Detail T-Blade Trimmer", specifications: "Zero-gapped for clean hairline contouring", isRequired: true, safetyEquipment: false },
+    { name: "Barbicide & Clipper Spray", specifications: "Hospital-grade disinfectant spray (5-in-1)", isRequired: true, safetyEquipment: true },
+    { name: "Sanitary Neck Strips", specifications: "Elastic tissue hygiene strips", isRequired: true, safetyEquipment: true },
+  ],
+  procedureCards: [
+    { stepNumber: 1, stepTitle: "Hygiene & Client Consultation", instruction: "Apply clean neck strip. Sanitize clipper blades in front of client. Confirm desired fade height.", criticalSafetyNote: "Inspect scalp for abrasions or foliculitis prior to cutting." },
+    { stepNumber: 2, stepTitle: "Establishing the Baseline", instruction: "Use trimmer to cut the baseline guideline around the parietal ridge. Clean bulk hair underneath with foil shaver.", criticalSafetyNote: "Keep wrist light; avoid digging edge into sensitive neck folds." },
+    { stepNumber: 3, stepTitle: "Graduating the Blend", instruction: "Lever open on clipper: create 1-inch guideline. Switch to #1 guard half-open to softly buff into crown bulk." },
+    { stepNumber: 4, stepTitle: "Detailing & Edge Finishing", instruction: "Zero-gap trimmer for temple taper and sharp, square front lineup. Dust with talc powder." },
+  ],
+};
+
+export const DEMO_SKILLS_SUBMISSION: SkillsVideoSubmission = {
+  id: "vid_sub_920",
+  studentId: "stud_denis",
+  studentName: "Denis Kigozi",
+  trade: "barbering_styling",
+  taskTitle: "Execution of Low Skin Fade with Tapered Neckline",
+  videoUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
+  uploadedAt: "2026-10-15 14:20",
+  durationSeconds: 165,
+  status: "critiqued",
+  finalGrade: "A- (Competent with Distinction)",
+  critiques: [
+    {
+      id: "crit_1",
+      timestampSeconds: 42,
+      instructorName: "Master Alex Mukasa",
+      critiqueText: "Great smooth hand motion while setting the initial bald guideline. Notice how clean the ear clearance is.",
+      severity: "praise",
+      resolved: true,
+    },
+    {
+      id: "crit_2",
+      timestampSeconds: 88,
+      instructorName: "Master Alex Mukasa",
+      critiqueText: "Angle the corner teeth of your blade slightly higher (15°) when transitioning into the occipital bone to avoid creating a harsh demarcation line.",
+      severity: "technique_correction",
+      resolved: true,
+    },
+    {
+      id: "crit_3",
+      timestampSeconds: 135,
+      instructorName: "Master Alex Mukasa",
+      critiqueText: "Always hold client's ear folded safely down with your free thumb when edging near the mastoid process.",
+      severity: "safety_warning",
+      resolved: true,
+    },
+  ],
+};
+
+export const DEMO_SKILLS_LOGBOOK: ApprenticeLogbookEntry[] = [
+  {
+    id: "log_01",
+    studentId: "stud_denis",
+    studentName: "Denis Kigozi",
+    date: "2026-10-14",
+    practicalHours: 6.5,
+    taskPerformed: "Completed 5 low skin fades and 3 beard line-ups under mentor supervision.",
+    workshopLocation: "Peebee Barber Studio, Kisementi",
+    masterSupervisorName: "Alex Mukasa (Master Barber)",
+    supervisorSignatureRecorded: true,
+    supervisorSignedAt: "2026-10-14 18:30",
+  },
+  {
+    id: "log_02",
+    studentId: "stud_denis",
+    studentName: "Denis Kigozi",
+    date: "2026-10-15",
+    practicalHours: 7.0,
+    taskPerformed: "Sanitization protocol, hot towel shaving technique, and scissor-over-comb texture layering.",
+    workshopLocation: "Peebee Barber Studio, Kisementi",
+    masterSupervisorName: "Alex Mukasa (Master Barber)",
+    supervisorSignatureRecorded: true,
+    supervisorSignedAt: "2026-10-15 19:15",
+  },
+];
+
+// ==========================================
+// Tuition & Monetization Demo Data
+// ==========================================
+
+export const DEMO_TUITION_INVOICE: TuitionInvoice = {
+  id: "inv_term1_8942",
+  studentId: "stud_esther",
+  studentName: "Esther Nabirye",
+  institutionId: "inst_greenwood",
+  institutionName: "Greenwood International Academy",
+  termName: "Term 1 — 2026",
+  totalTuitionUgx: 850000,
+  amountPaidUgx: 500000,
+  balanceUgx: 350000,
+  dueDate: "2026-11-15",
+  status: "partial",
+  installments: [
+    { installmentNumber: 1, amountUgx: 500000, dueDate: "2026-02-05", isPaid: true, paidAt: "2026-02-04" },
+    { installmentNumber: 2, amountUgx: 350000, dueDate: "2026-11-15", isPaid: false },
+  ],
+};
+
+export const DEMO_SUBSCRIPTION_PASSES: SubscriptionPass[] = [
+  {
+    id: "pass_skills_pro",
+    name: "Peebee Skills Vocational Pass",
+    stream: "skills",
+    monthlyPriceUgx: 65000,
+    annualPriceUgx: 650000,
+    benefits: [
+      "Unlimited access to all Trade Video masterclasses",
+      "Monthly 1-on-1 video critique by certified Master Artisans",
+      "Digital Apprenticeship Logbook verified hours certification",
+      "DIT National Occupational Exam Preparation Kits",
+    ],
+  },
+  {
+    id: "pass_compass_all",
+    name: "Peebee Compass Executive Pass",
+    stream: "compass",
+    monthlyPriceUgx: 120000,
+    annualPriceUgx: 1200000,
+    benefits: [
+      "Access to all Business, Coding, Marketing & FinTech courses",
+      "Verifiable tamper-proof cryptographic certificates & LinkedIn badges",
+      "Exclusive bi-weekly Live Mastermind sessions with guest executives",
+      "Direct Teaching Assistant forum support",
+    ],
+  },
+];
+
+export const DEMO_GUARDIAN_ALERTS: GuardianAlertMessage[] = [
+  {
+    id: "alert_01",
+    studentId: "stud_esther",
+    guardianPhoneNumber: "+256 701 555 999",
+    channel: "whatsapp",
+    type: "attendance",
+    bodyText: "Peebee Greenwood Alert: Esther Nabirye was checked into Period 1 (Mathematics) at 08:04 AM.",
+    sentAt: "Today at 08:05 AM",
+    status: "delivered",
+  },
+  {
+    id: "alert_02",
+    studentId: "stud_timothy",
+    guardianPhoneNumber: "+256 772 333 444",
+    channel: "sms",
+    type: "homework_missing",
+    bodyText: "Peebee Alert: Timothy's Primary 4 Science worksheet is due today at 5:00 PM. Please review and sign off in the app.",
+    sentAt: "Today at 07:30 AM",
+    status: "delivered",
+  },
+];
+
+// ==========================================
+// Live Meetings (Zoom-Style) Demo Data
+// ==========================================
+
+export const DEMO_LIVE_MEETINGS: EducationLiveMeeting[] = [
+  {
+    id: "live_fintech_101",
+    roomCode: "PB-MKT-802",
+    title: "Live FinTech Masterclass: USSD Callback Architectures & Merchant Settlement",
+    subject: "FinTech Product Growth",
+    stream: "compass",
+    hostTutorName: "Dr. Kenneth Ochieng",
+    hostTutorAvatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=200&q=80",
+    hostTutorTitle: "FinTech Fellow & Lead Lecturer",
+    isLiveNow: true,
+    scheduledFor: "Live Now · Started 24 mins ago",
+    startedAt: "10:00 AM",
+    durationMinutes: 75,
+    participantCount: 42,
+    maxParticipants: 100,
+    whiteboardEnabled: true,
+    screenShareActive: true,
+    activeWhiteboardSlideUrl: "https://images.unsplash.com/photo-1551836022-d5d88e9218df?auto=format&fit=crop&w=800&q=80",
+    recordingAvailable: true,
+  },
+  {
+    id: "live_primary_math_401",
+    roomCode: "PB-PRI-401",
+    title: "Primary 4 Mathematics: Solving Shilling Word Problems Live Drill",
+    subject: "Mathematics",
+    stream: "foundations",
+    hostTutorName: "Tr. Brenda Namutebi",
+    hostTutorAvatar: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=200&q=80",
+    hostTutorTitle: "Lead Primary Educator",
+    isLiveNow: false,
+    scheduledFor: "Today, 4:00 PM",
+    durationMinutes: 45,
+    participantCount: 28,
+    maxParticipants: 35,
+    whiteboardEnabled: true,
+    screenShareActive: false,
+    recordingAvailable: true,
+  },
+  {
+    id: "live_sprouts_story_hour",
+    roomCode: "PB-SPR-001",
+    title: "Interactive Story Hour: The Little Boda That Could with Kigo",
+    subject: "Early Childhood Phonics",
+    stream: "sprouts",
+    hostTutorName: "Teacher Sharon",
+    hostTutorAvatar: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=200&q=80",
+    hostTutorTitle: "Early Childhood Specialist",
+    isLiveNow: false,
+    scheduledFor: "Saturday, 10:00 AM",
+    durationMinutes: 30,
+    participantCount: 16,
+    maxParticipants: 20,
+    whiteboardEnabled: true,
+    screenShareActive: false,
+    recordingAvailable: true,
+  },
+  {
+    id: "live_skills_barber_demo",
+    roomCode: "PB-SKL-702",
+    title: "Workshop Masterclass: Zero-Gap Clipper Detailing & Scalp Hygiene",
+    subject: "Vocational Barbering",
+    stream: "skills",
+    hostTutorName: "Master Alex Mukasa",
+    hostTutorAvatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80",
+    hostTutorTitle: "Master Artisan & DIT Lead Examiner",
+    isLiveNow: false,
+    scheduledFor: "Tomorrow, 2:00 PM",
+    durationMinutes: 60,
+    participantCount: 35,
+    maxParticipants: 50,
+    whiteboardEnabled: false,
+    screenShareActive: true,
+    recordingAvailable: true,
+  },
+  {
+    id: "live_academy_physics_mock",
+    roomCode: "PB-ACD-502",
+    title: "Senior 4 UNEB Physics Revision: Mechanics & Energy Conversion",
+    subject: "Physics",
+    stream: "academy",
+    hostTutorName: "Dr. Paul Habimana",
+    hostTutorAvatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=200&q=80",
+    hostTutorTitle: "Senior Science Master",
+    isLiveNow: false,
+    scheduledFor: "Today, 6:00 PM",
+    durationMinutes: 60,
+    participantCount: 52,
+    maxParticipants: 80,
+    whiteboardEnabled: true,
+    screenShareActive: true,
+    recordingAvailable: true,
+  },
+];
+
+export const DEMO_LIVE_PARTICIPANTS: LiveParticipant[] = [
+  {
+    id: "part_host",
+    name: "Dr. Kenneth Ochieng (Host)",
+    role: "host",
+    avatarUrl: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=200&q=80",
+    isMuted: false,
+    isVideoOn: true,
+    hasHandRaised: false,
+    isScreenSharing: true,
+  },
+  {
+    id: "part_esther",
+    name: "Esther Nabirye",
+    role: "student",
+    avatarUrl: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80",
+    isMuted: true,
+    isVideoOn: true,
+    hasHandRaised: true,
+  },
+  {
+    id: "part_denis",
+    name: "Denis Kigozi",
+    role: "student",
+    avatarUrl: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=200&q=80",
+    isMuted: true,
+    isVideoOn: true,
+    hasHandRaised: false,
+  },
+  {
+    id: "part_timothy",
+    name: "Timothy Mukasa",
+    role: "student",
+    avatarUrl: "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&w=200&q=80",
+    isMuted: true,
+    isVideoOn: false,
+    hasHandRaised: false,
+  },
+  {
+    id: "part_ta_brenda",
+    name: "Tr. Brenda Namutebi (TA)",
+    role: "ta",
+    avatarUrl: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=200&q=80",
+    isMuted: false,
+    isVideoOn: true,
+    hasHandRaised: false,
+  },
+];
+
+export const DEMO_TUTOR_CONTACTS: TutorContact[] = [
+  {
+    id: "tutor_ken",
+    name: "Dr. Kenneth Ochieng",
+    title: "Senior FinTech & Academic Fellow",
+    subject: "FinTech & Mathematics",
+    stream: "compass",
+    avatarUrl: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=200&q=80",
+    isOnline: true,
+    lastMessage: "Review the float reconciliation diagram before tomorrow's live drill.",
+    lastMessageTime: "10:14 AM",
+    unreadCount: 1,
+  },
+  {
+    id: "tutor_brenda",
+    name: "Tr. Brenda Namutebi",
+    title: "Lead Primary & Tech Tutor",
+    subject: "P.4 Math & Web Development",
+    stream: "foundations",
+    avatarUrl: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=200&q=80",
+    isOnline: true,
+    lastMessage: "Parent signature verified on worksheet #4. Great job!",
+    lastMessageTime: "Yesterday",
+    unreadCount: 0,
+  },
+  {
+    id: "tutor_alex",
+    name: "Master Alex Mukasa",
+    title: "Master Artisan & Lead Instructor",
+    subject: "Vocational Barbering & Mechanics",
+    stream: "skills",
+    avatarUrl: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80",
+    isOnline: false,
+    lastMessage: "I left a critique pin on your 01:28 timestamp. Check your blade angle.",
+    lastMessageTime: "2 days ago",
+    unreadCount: 0,
+  },
+  {
+    id: "tutor_sharon",
+    name: "Teacher Sharon Mukasa",
+    title: "Montessori & Early Literacy Lead",
+    subject: "Alphabet Safari & Story Hour",
+    stream: "sprouts",
+    avatarUrl: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=200&q=80",
+    isOnline: true,
+    lastMessage: "Baby Kigo's vowel sticker reward has been unlocked for today!",
+    lastMessageTime: "9:30 AM",
+    unreadCount: 1,
+  },
+  {
+    id: "tutor_patrick",
+    name: "Mr. Patrick Okello",
+    title: "Principal & UNEB Physics Examiner",
+    subject: "O-Level & A-Level Physics",
+    stream: "academy",
+    avatarUrl: "https://images.unsplash.com/photo-1509062522246-3755977927d7?auto=format&fit=crop&w=200&q=80",
+    isOnline: true,
+    lastMessage: "Mock Paper 1 revision starts at 6:00 PM in Room PB-ACD-502.",
+    lastMessageTime: "11:20 AM",
+    unreadCount: 0,
+  },
+];
+
+export const DEMO_LIVE_CHAT_MESSAGES: LiveChatMessage[] = [
+  {
+    id: "msg_1",
+    roomId: "live_fintech_101",
+    senderId: "part_host",
+    senderName: "Dr. Kenneth Ochieng (Host)",
+    senderRole: "tutor",
+    text: "Welcome everyone to today's live session! We are reviewing Bank of Uganda NPS Act guidelines and mobile wallet reconciliations.",
+    timestamp: "10:02 AM",
+  },
+  {
+    id: "msg_2",
+    roomId: "live_fintech_101",
+    senderId: "part_esther",
+    senderName: "Esther Nabirye",
+    senderRole: "student",
+    text: "Dr. Kenneth, how does the idempotency key prevent double-debiting during telecom network timeouts?",
+    timestamp: "10:12 AM",
+    isQuestion: true,
+    upvotes: 7,
+  },
+  {
+    id: "msg_3",
+    roomId: "live_fintech_101",
+    senderId: "part_ta_brenda",
+    senderName: "Tr. Brenda Namutebi (TA)",
+    senderRole: "tutor",
+    text: "Great question Esther! Dr. Kenneth is about to illustrate the 3-way handshake on the interactive whiteboard.",
+    timestamp: "10:14 AM",
+  },
+];
+
+// ==========================================
+// Demo Creator Courses, Lessons & Quizzes
+// ==========================================
+
+export const DEMO_CREATOR_COURSES: CreatorCourse[] = [
+  {
+    id: "course_greenwood_math4",
+    creatorId: "creator_greenwood",
+    creatorName: "Greenwood Junior Academy",
+    creatorAvatar: "https://images.unsplash.com/photo-1546410531-bb4caa6b424d?auto=format&fit=crop&w=200&q=80",
+    creatorRoleTitle: "Tr. Brenda Namutebi (Headmistress)",
+    institutionName: "Greenwood International Academy",
+    title: "Primary 4 Mathematics: Fractions, Decimals & Geometry",
+    stream: "foundations",
+    category: "Primary Education",
+    level: "P.4 Primary",
+    summary: "Term-paced curriculum covering equivalent fractions, visual decimals, and practical geometric shapes with printable homework worksheets and parent sign-off workflows.",
+    thumbnailUrl: "https://images.unsplash.com/photo-1596495578065-6e0763fa1178?auto=format&fit=crop&w=600&q=80",
+    priceUgx: 350000,
+    enrolledStudentsCount: 148,
+    rating: 4.9,
+    reviewCount: 42,
+    modules: [
+      {
+        id: "mod_gw_1",
+        title: "Module 1: Visual Fractions & Equivalence",
+        description: "Mastering numerator-denominator concepts through visual bar models and fraction circles.",
+        order: 1,
+        lessons: [
+          {
+            id: "les_gw_1",
+            title: "Lesson 1: Introduction to Proper Fractions & Visual Models",
+            durationMinutes: 18,
+            contentType: "video",
+            summary: "Learn what numerators and denominators represent using Ugandan pizza and fruit slices.",
+            contentUrl: "/videos/math-fractions-intro.mp4",
+            downloadableResources: [
+              { name: "P4_Fractions_Bar_Chart.pdf", url: "/downloads/p4-fractions.pdf", size: "1.2 MB" },
+            ],
+            worksheetPrompt: "Complete Worksheet #1 by drawing shaded circles for 2/3 and 3/4, then ask parent to sign.",
+          },
+          {
+            id: "les_gw_2",
+            title: "Lesson 2: Finding Equivalent Fractions",
+            durationMinutes: 22,
+            contentType: "interactive_h5p",
+            summary: "Multiplying top and bottom by common factors to find equal fractions.",
+            quiz: {
+              id: "quiz_gw_1",
+              title: "P.4 Equivalent Fractions Checkpoint",
+              instructions: "Answer all questions to earn your 15 Merit Stars. Passing score is 75%.",
+              timeLimitMinutes: 10,
+              passingScorePercent: 75,
+              questions: [
+                {
+                  id: "q_gw_1",
+                  questionText: "Which of the following is equivalent to 1/2?",
+                  options: ["2/4", "2/5", "1/3", "3/5"],
+                  correctOptionIndex: 0,
+                  explanation: "Multiplying numerator and denominator of 1/2 by 2 gives 2/4.",
+                  points: 5,
+                },
+                {
+                  id: "q_gw_2",
+                  questionText: "If a circle is divided into 8 equal parts and 6 parts are shaded, what is the fraction?",
+                  options: ["6/8 (or 3/4)", "8/6", "2/8", "1/8"],
+                  correctOptionIndex: 0,
+                  explanation: "6 shaded parts out of 8 total parts is 6/8, which reduces to 3/4.",
+                  points: 5,
+                },
+                {
+                  id: "q_gw_3",
+                  questionText: "Add 2/7 + 3/7. What is the sum?",
+                  options: ["5/7", "5/14", "6/7", "1/7"],
+                  correctOptionIndex: 0,
+                  explanation: "When denominators match, add numerators: 2 + 3 = 5, keeping denominator 7.",
+                  points: 5,
+                },
+              ],
+            },
+          },
+        ],
+      },
+    ],
+  },
+  {
+    id: "course_st_jude_physics",
+    creatorId: "creator_st_jude",
+    creatorName: "St. Jude Senior Secondary School",
+    creatorAvatar: "https://images.unsplash.com/photo-1509062522246-3755977927d7?auto=format&fit=crop&w=200&q=80",
+    creatorRoleTitle: "Mr. Patrick Okello (Principal & UNEB Examiner)",
+    institutionName: "St. Jude Senior Secondary School",
+    title: "S.4 UNEB Physics & Mechanics Intensive Prep",
+    stream: "academy",
+    category: "Secondary / High School",
+    level: "S.4 O-Level",
+    summary: "Rigorous UNEB Paper 1 & 2 exam preparation covering Newton's laws, linear momentum, pulley systems, and timed mock examinations with tab-switch anti-cheating enforcement.",
+    thumbnailUrl: "https://images.unsplash.com/photo-1636466497217-26a8cbeaf0aa?auto=format&fit=crop&w=600&q=80",
+    priceUgx: 650000,
+    enrolledStudentsCount: 312,
+    rating: 4.8,
+    reviewCount: 96,
+    modules: [
+      {
+        id: "mod_sj_1",
+        title: "Module 1: Linear Motion & Newton's Laws",
+        description: "Velocity-time graphs, uniform acceleration equations, and friction dynamics.",
+        order: 1,
+        lessons: [
+          {
+            id: "les_sj_1",
+            title: "Lesson 1: Equations of Uniformly Accelerated Motion",
+            durationMinutes: 35,
+            contentType: "video",
+            summary: "Deriving v = u + at, s = ut + 1/2at², and v² = u² + 2as with worked UNEB past paper questions.",
+            downloadableResources: [
+              { name: "UNEB_Mechanics_Formulae_Sheet.pdf", url: "/downloads/uneb-physics.pdf", size: "2.4 MB" },
+            ],
+          },
+          {
+            id: "les_sj_2",
+            title: "Lesson 2: Newton's Laws of Motion & Conservation of Momentum",
+            durationMinutes: 40,
+            contentType: "reading",
+            summary: "Inelastic vs elastic collisions in ballistics and road safety scenarios.",
+            quiz: {
+              id: "quiz_sj_1",
+              title: "UNEB Paper 1 Section A: Mechanics Timed Drill",
+              instructions: "Simulated exam conditions. Tab-switch detection active. 80% needed to pass.",
+              timeLimitMinutes: 15,
+              passingScorePercent: 80,
+              questions: [
+                {
+                  id: "q_sj_1",
+                  questionText: "Which law explains why passengers jerk forward when a bus suddenly brakes?",
+                  options: [
+                    "Newton's First Law (Law of Inertia)",
+                    "Newton's Second Law (F = ma)",
+                    "Newton's Third Law (Action-Reaction)",
+                    "Hooke's Law of Elasticity",
+                  ],
+                  correctOptionIndex: 0,
+                  explanation: "Due to inertia, the passenger's body tends to continue moving forward at constant velocity.",
+                  points: 5,
+                },
+                {
+                  id: "q_sj_2",
+                  questionText: "A car accelerates uniformly from rest to 20 m/s in 5 seconds. What is its acceleration?",
+                  options: ["4 m/s²", "100 m/s²", "0.25 m/s²", "15 m/s²"],
+                  correctOptionIndex: 0,
+                  explanation: "a = (v - u) / t = (20 - 0) / 5 = 4 m/s².",
+                  points: 5,
+                },
+                {
+                  id: "q_sj_3",
+                  questionText: "What is the SI unit of momentum?",
+                  options: ["kg·m/s (or N·s)", "Joules (J)", "Watts (W)", "N/m²"],
+                  correctOptionIndex: 0,
+                  explanation: "Momentum p = mass × velocity = kg × m/s.",
+                  points: 5,
+                },
+              ],
+            },
+          },
+        ],
+      },
+    ],
+  },
+  {
+    id: "course_fintech_101",
+    creatorId: "creator_ochieng",
+    creatorName: "FinTech Africa Institute",
+    creatorAvatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80",
+    creatorRoleTitle: "Dr. Kenneth Ochieng (Principal Fellow)",
+    institutionName: "FinTech Africa Institute",
+    title: "Mobile Money Rails & Double-Entry Float Reconciliations",
+    stream: "compass",
+    category: "Higher Ed & Professional Degrees",
+    level: "Collegiate / Professional",
+    summary: "Industry-grade payments architecture course. Covers telecom switch protocols, idempotency key guarantees, double-entry ledgers, and Bank of Uganda NPS regulatory compliance.",
+    thumbnailUrl: "https://images.unsplash.com/photo-1526304640581-d334cdbbf45e?auto=format&fit=crop&w=600&q=80",
+    priceUgx: 450000,
+    enrolledStudentsCount: 680,
+    rating: 5.0,
+    reviewCount: 185,
+    modules: [
+      {
+        id: "mod_ft_1",
+        title: "Module 1: Mobile Network Operators & Switch Architecture",
+        description: "Understanding USSD sessions, API callbacks, and telecom escrow float.",
+        order: 1,
+        lessons: [
+          {
+            id: "les_ft_1",
+            title: "Lesson 1: USSD & Open API Protocols (MTN MoMo & Airtel Money)",
+            durationMinutes: 45,
+            contentType: "video",
+            summary: "Deep dive into telecom webhook payloads, bearer tokens, and timeout handling.",
+            downloadableResources: [
+              { name: "Telecom_Webhook_Specs.json", url: "/downloads/webhook-specs.json", size: "340 KB" },
+              { name: "Double_Entry_Ledger_Schema.sql", url: "/downloads/ledger.sql", size: "12 KB" },
+            ],
+          },
+          {
+            id: "les_ft_2",
+            title: "Lesson 2: Idempotency Keys & 3-Way Reconciliation Handshake",
+            durationMinutes: 50,
+            contentType: "video",
+            summary: "How to design financial distributed transactions that never duplicate debits under network partition.",
+            quiz: {
+              id: "quiz_ft_1",
+              title: "Financial Rails Architecture Examination",
+              instructions: "Passing score: 85%. Successful completion unlocks Module 2 and capstone review.",
+              timeLimitMinutes: 20,
+              passingScorePercent: 85,
+              questions: [
+                {
+                  id: "q_ft_1",
+                  questionText: "What does an idempotency key ensure during a telecom HTTP 504 Gateway Timeout?",
+                  options: [
+                    "Guarantees the client can safely retry the request without causing duplicate account debits",
+                    "Encrypts the user's mobile money PIN",
+                    "Increases telecom cellular bandwidth",
+                    "Translates English text to Luganda",
+                  ],
+                  correctOptionIndex: 0,
+                  explanation: "Idempotency prevents repeating transactions when network connection drops before response is confirmed.",
+                  points: 10,
+                },
+                {
+                  id: "q_ft_2",
+                  questionText: "In double-entry bookkeeping, if a customer deposits UGX 50,000, what happens?",
+                  options: [
+                    "Debit Cash/Float Account UGX 50,000 and Credit Customer Wallet Liability UGX 50,000",
+                    "Debit Customer Account and Credit Cash",
+                    "Only update one single balance column",
+                    "Delete previous transaction records",
+                  ],
+                  correctOptionIndex: 0,
+                  explanation: "Every transaction must balance debits and credits: incoming cash asset increases with an offsetting customer wallet liability.",
+                  points: 10,
+                },
+              ],
+            },
+          },
+        ],
+      },
+    ],
+  },
+  {
+    id: "course_crown_barber",
+    creatorId: "creator_alex",
+    creatorName: "Crown Barber & Artisan Vocational Guild",
+    creatorAvatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=200&q=80",
+    creatorRoleTitle: "Master Alex Mukasa (Senior Guild Artisan)",
+    institutionName: "Kampala Vocational & Trades Guild",
+    title: "Professional Barbering Masterclass: Taper Fades & Hot Towel Treatment",
+    stream: "skills",
+    category: "Vocational & Practical Trades",
+    level: "Vocational Apprentice",
+    summary: "Hands-on trade apprenticeship covering clipper ergonomics, zero-gap calibration, taper fades, sanitation laws, and mentor video critique pins.",
+    thumbnailUrl: "https://images.unsplash.com/photo-1503951914875-452162b0f3f1?auto=format&fit=crop&w=600&q=80",
+    priceUgx: 250000,
+    enrolledStudentsCount: 220,
+    rating: 4.9,
+    reviewCount: 78,
+    modules: [
+      {
+        id: "mod_cb_1",
+        title: "Module 1: Tool Ergonomics, Sanitation & Guard Hierarchy",
+        description: "Hygiene standards, blade care, and foundational skin fades.",
+        order: 1,
+        lessons: [
+          {
+            id: "les_cb_1",
+            title: "Lesson 1: Clipper Guard Sizing (#0.5 to #4) & Zero-Gap Tuning",
+            durationMinutes: 30,
+            contentType: "practical_demo",
+            summary: "Learn how to inspect blade alignment to prevent client nicks and burns.",
+            practicalChecklist: [
+              "Wahl/Andis magnetic guards #0.5, #1, #1.5, #2",
+              "Hospital-grade disinfectant spray (Barbicide/Clippercide)",
+              "Neck duster and sanitized cape",
+              "Straight razor with single-use sterile blade",
+            ],
+          },
+          {
+            id: "les_cb_2",
+            title: "Lesson 2: Executing Low and Mid Skin Taper Fades",
+            durationMinutes: 42,
+            contentType: "practical_demo",
+            summary: "Video demonstration with guideline placement, lever play, and foil shaver debulking.",
+            quiz: {
+              id: "quiz_cb_1",
+              title: "Barber Tool Safety & Sanitation Certification",
+              instructions: "Vocational health standard test. 100% required on blade hygiene.",
+              timeLimitMinutes: 10,
+              passingScorePercent: 100,
+              questions: [
+                {
+                  id: "q_cb_1",
+                  questionText: "What is the mandatory sanitation procedure between every haircut client?",
+                  options: [
+                    "Brush off hair, spray with broad-spectrum disinfectant spray, and insert a new single-use razor blade",
+                    "Wipe clippers with a dry cloth",
+                    "Rinse electric clippers under running tap water",
+                    "Reuse razor blade if client looked healthy",
+                  ],
+                  correctOptionIndex: 0,
+                  explanation: "Cross-contamination prevention mandates hospital-grade disinfectant spray and brand-new single-use razor blades per client.",
+                  points: 10,
+                },
+                {
+                  id: "q_cb_2",
+                  questionText: "When fading, what does opening the clipper lever (lever down) do?",
+                  options: [
+                    "Increases cutting length (leaves hair longer)",
+                    "Cuts hair completely bald to the skin",
+                    "Speeds up the motor revolution",
+                    "Stops the clipper from vibrating",
+                  ],
+                  correctOptionIndex: 0,
+                  explanation: "Opening the lever moves the moving blade further back, leaving hair roughly 0.5mm longer for smooth transition lines.",
+                  points: 10,
+                },
+              ],
+            },
+          },
+        ],
+      },
+    ],
+  },
+  {
+    id: "course_little_stars_phonics",
+    creatorId: "creator_sharon",
+    creatorName: "Little Stars Early Learning Hub",
+    creatorAvatar: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=200&q=80",
+    creatorRoleTitle: "Teacher Sharon Mukasa (Early Literacy Lead)",
+    institutionName: "Little Stars Early Childhood Learning Hub",
+    title: "Alphabet Safari & Phonics Fun",
+    stream: "sprouts",
+    category: "Kindergarten & Early Childhood",
+    level: "Kindergarten (Ages 3–6)",
+    summary: "Delightful tablet-first phonetic adventure featuring animal guides, sound taps, visual storybook narration, and digital sticker rewards.",
+    thumbnailUrl: "https://images.unsplash.com/photo-1503676260728-1c00da094a0b?auto=format&fit=crop&w=600&q=80",
+    priceUgx: 180000,
+    enrolledStudentsCount: 195,
+    rating: 5.0,
+    reviewCount: 64,
+    modules: [
+      {
+        id: "mod_ls_1",
+        title: "Module 1: The Vowel Animals Safari",
+        description: "Discover the 5 friendly vowel animals of the African savannah.",
+        order: 1,
+        lessons: [
+          {
+            id: "les_ls_1",
+            title: "Lesson 1: Kigo the Lion & Letter A (Ah-Ah-Apple)",
+            durationMinutes: 8,
+            contentType: "audio_story",
+            summary: "Tap the bouncing golden mangoes as Kigo teaches the short 'A' sound.",
+          },
+          {
+            id: "les_ls_2",
+            title: "Lesson 2: Letter E with Tembo the Baby Elephant",
+            durationMinutes: 7,
+            contentType: "interactive_h5p",
+            summary: "Drag matching shapes and letters into Tembo's wagon.",
+            quiz: {
+              id: "quiz_ls_1",
+              title: "Safari Sounds Golden Badge Game",
+              instructions: "Listen to the voice and pick the right picture! Collect your Lion Sticker.",
+              timeLimitMinutes: 5,
+              passingScorePercent: 66,
+              questions: [
+                {
+                  id: "q_ls_1",
+                  questionText: "Which letter makes the sound 'Ah' as in Apple?",
+                  options: ["A 🍎", "B 🍌", "C 🥕", "D 🥁"],
+                  correctOptionIndex: 0,
+                  explanation: "Great job! A makes the 'Ah' sound in Apple!",
+                  points: 5,
+                },
+                {
+                  id: "q_ls_2",
+                  questionText: "Which friendly animal roars: 'L-L-Lion'?",
+                  options: ["Lion 🦁", "Fish 🐟", "Bird 🐦", "Frog 🐸"],
+                  correctOptionIndex: 0,
+                  explanation: "Super star! L is for Lion!",
+                  points: 5,
+                },
+              ],
+            },
+          },
+        ],
+      },
+    ],
+  },
+  {
+    id: "course_sarah_growth_whatsapp",
+    creatorId: "creator_sarah_growth",
+    creatorName: "Sarah K. Growth Studio",
+    creatorAvatar: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=200&q=80",
+    creatorRoleTitle: "Sarah Kyomuhendo (Growth Consultant)",
+    institutionName: "Independent Creator Studio",
+    title: "WhatsApp Business Automation & Digital Ads for East African SMBs",
+    stream: "compass",
+    category: "Self-Paced Commercial Courses",
+    level: "Business Owners & Creators",
+    summary: "Step-by-step masterclass on automating customer orders on WhatsApp, running Meta Click-to-WhatsApp ads with MoMo payment links, and tracking margins.",
+    thumbnailUrl: "https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&w=600&q=80",
+    priceUgx: 95000,
+    enrolledStudentsCount: 430,
+    rating: 4.9,
+    reviewCount: 110,
+    modules: [
+      {
+        id: "mod_sg_1",
+        title: "Module 1: Professional WhatsApp Catalog & Automated Funnel",
+        description: "Optimizing business profiles, quick replies, and label organization.",
+        order: 1,
+        lessons: [
+          {
+            id: "les_sg_1",
+            title: "Lesson 1: Structuring High-Converting Product Catalogs",
+            durationMinutes: 25,
+            contentType: "video",
+            summary: "How to format prices in UGX/KES, link Peebee store items, and set up out-of-office automations.",
+            downloadableResources: [
+              { name: "WhatsApp_Sales_Scripts_Templates.docx", url: "/downloads/scripts.docx", size: "85 KB" },
+              { name: "Cashflow_Tracking_Spreadsheet.xlsx", url: "/downloads/cashflow.xlsx", size: "450 KB" },
+            ],
+          },
+          {
+            id: "les_sg_2",
+            title: "Lesson 2: Running Click-to-WhatsApp Ads that Actually Convert",
+            durationMinutes: 30,
+            contentType: "video",
+            summary: "Setting campaign budget optimization, target audiences in Kampala & Nairobi, and ROI tracking.",
+            quiz: {
+              id: "quiz_sg_1",
+              title: "Social Commerce Mastery Quiz",
+              instructions: "Test your digital marketing strategy. 80% passing grade.",
+              timeLimitMinutes: 10,
+              passingScorePercent: 80,
+              questions: [
+                {
+                  id: "q_sg_1",
+                  questionText: "What is the single most important element in a Click-to-WhatsApp ad creative?",
+                  options: [
+                    "A clear offer with a direct call-to-action button to chat and immediate price transparency",
+                    "A 20-minute unedited video",
+                    "A link to an external foreign website with credit card only",
+                    "Using complicated technical jargon",
+                  ],
+                  correctOptionIndex: 0,
+                  explanation: "Customers in East Africa respond best to direct chat, transparent local pricing, and immediate mobile money options.",
+                  points: 5,
+                },
+                {
+                  id: "q_sg_2",
+                  questionText: "How should you follow up with a lead who inquired but did not pay?",
+                  options: [
+                    "Use WhatsApp labels to send a friendly value-add reminder within 24 hours with an alternative payment option",
+                    "Spam them every hour with all-caps messages",
+                    "Block the customer immediately",
+                    "Post their phone number publicly",
+                  ],
+                  correctOptionIndex: 0,
+                  explanation: "Polite, timely follow-up using WhatsApp labels preserves goodwill and recovers up to 35% of abandoned carts.",
+                  points: 5,
+                },
+              ],
+            },
+          },
+        ],
+      },
+    ],
+  },
+  {
+    id: "course_little_stars_numbers",
+    creatorId: "creator_sharon",
+    creatorName: "Little Stars Early Learning Hub",
+    creatorAvatar: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=200&q=80",
+    creatorRoleTitle: "Teacher Sharon Mukasa (Early Literacy Lead)",
+    institutionName: "Little Stars Early Childhood Learning Hub",
+    title: "Counting Mangoes & Shapes in the Village",
+    stream: "sprouts",
+    category: "Kindergarten & Early Childhood",
+    level: "Kindergarten (Ages 3–6)",
+    summary: "Touch-friendly number counting from 1 to 20, shape sorting baskets, and sing-along rhythm games with Ami the Crowned Crane.",
+    thumbnailUrl: "https://images.unsplash.com/photo-1587654780291-39c9404d746b?auto=format&fit=crop&w=600&q=80",
+    priceUgx: 150000,
+    enrolledStudentsCount: 164,
+    rating: 4.9,
+    reviewCount: 51,
+    modules: [
+      {
+        id: "mod_ls_num_1",
+        title: "Module 1: Counting 1 to 10 with Ami",
+        description: "Tap the fruit baskets and count aloud with voice feedback.",
+        order: 1,
+        lessons: [
+          {
+            id: "les_ls_num_1",
+            title: "Lesson 1: Counting 5 Golden Mangoes",
+            durationMinutes: 6,
+            contentType: "interactive_h5p",
+            summary: "Touch each mango on the tree and hear the number spoken aloud.",
+            quiz: {
+              id: "quiz_ls_num_1",
+              title: "Count the Baskets Game",
+              instructions: "Tap the right number of fruits to earn your Crowned Crane Sticker!",
+              timeLimitMinutes: 5,
+              passingScorePercent: 50,
+              questions: [
+                {
+                  id: "q_ls_num_1",
+                  questionText: "Count the mangoes: 🥭 🥭 🥭. How many are there?",
+                  options: ["3 Mangoes", "1 Mango", "5 Mangoes", "10 Mangoes"],
+                  correctOptionIndex: 0,
+                  explanation: "One, two, three! There are 3 mangoes!",
+                  points: 5,
+                },
+              ],
+            },
+          },
+        ],
+      },
+    ],
+  },
+  {
+    id: "course_greenwood_science5",
+    creatorId: "creator_greenwood",
+    creatorName: "Greenwood Junior Academy",
+    creatorAvatar: "https://images.unsplash.com/photo-1546410531-bb4caa6b424d?auto=format&fit=crop&w=200&q=80",
+    creatorRoleTitle: "Tr. Brenda Namutebi (Headmistress)",
+    institutionName: "Greenwood International Academy",
+    title: "Primary 5 Integrated Science: Plants, Weather & Human Health",
+    stream: "foundations",
+    category: "Primary Education",
+    level: "P.5 Primary",
+    summary: "Complete Primary 5 Science curriculum with illustrated diagrams, seed germination experiments, and handwritten worksheet photo turn-ins.",
+    thumbnailUrl: "https://images.unsplash.com/photo-1532094349884-543bc11b234d?auto=format&fit=crop&w=600&q=80",
+    priceUgx: 350000,
+    enrolledStudentsCount: 132,
+    rating: 4.9,
+    reviewCount: 39,
+    modules: [
+      {
+        id: "mod_gw_sci_1",
+        title: "Module 1: Flowering Plants & Seed Germination",
+        description: "Root systems, photosynthesis, and bean seed observation.",
+        order: 1,
+        lessons: [
+          {
+            id: "les_gw_sci_1",
+            title: "Lesson 1: Conditions Necessary for Seed Germination",
+            durationMinutes: 20,
+            contentType: "video",
+            summary: "Why seeds need water, oxygen, and warmth to sprout.",
+            worksheetPrompt: "Draw a labeled bean seed in your exercise book, snap a photo, and have your parent sign off.",
+            quiz: {
+              id: "quiz_gw_sci_1",
+              title: "Plant Science Flash Quiz",
+              instructions: "Answer to earn 15 Science Merit Stars.",
+              timeLimitMinutes: 10,
+              passingScorePercent: 75,
+              questions: [
+                {
+                  id: "q_gw_sci_1",
+                  questionText: "Which three conditions are needed for a seed to germinate?",
+                  options: [
+                    "Water, Oxygen, and Optimal Warmth",
+                    "Salt, Darkness, and Ice",
+                    "Plastic, Wind, and Smoke",
+                    "Sand, Oil, and Sugar",
+                  ],
+                  correctOptionIndex: 0,
+                  explanation: "Seeds require moisture (water), air (oxygen) for respiration, and suitable temperature (warmth).",
+                  points: 5,
+                },
+              ],
+            },
+          },
+        ],
+      },
+    ],
+  },
+  {
+    id: "course_kampala_culinary",
+    creatorId: "creator_chef_grace",
+    creatorName: "Kampala Culinary & Pastry School",
+    creatorAvatar: "https://images.unsplash.com/photo-1577219491135-ce391730fb2c?auto=format&fit=crop&w=200&q=80",
+    creatorRoleTitle: "Chef Grace Achieng (Executive Pastry Chef)",
+    institutionName: "Kampala Culinary & Hospitality Institute",
+    title: "Commercial Baking, Artisan Pastry & Catering Cost Control",
+    stream: "skills",
+    category: "Vocational & Practical Trades",
+    level: "Vocational Certificate",
+    summary: "Practical catering and commercial bakery course with laminated recipe cards, kitchen tool checklists, and video plating critique.",
+    thumbnailUrl: "https://images.unsplash.com/photo-1556910103-1c02745aae4d?auto=format&fit=crop&w=600&q=80",
+    priceUgx: 280000,
+    enrolledStudentsCount: 175,
+    rating: 4.9,
+    reviewCount: 62,
+    modules: [
+      {
+        id: "mod_kc_1",
+        title: "Module 1: Commercial Dough Fermentation & Oven Scaling",
+        description: "Bakers' percentages, proofing temperatures, and commercial hygiene.",
+        order: 1,
+        lessons: [
+          {
+            id: "les_kc_1",
+            title: "Lesson 1: Bakers' Percentages & Croissant Lamination",
+            durationMinutes: 35,
+            contentType: "practical_demo",
+            summary: "Step-by-step butter block folding and commercial deck oven steam control.",
+            practicalChecklist: [
+              "Digital kitchen scale (accurate to 1g)",
+              "Stainless steel bench scraper & rolling pin",
+              "Instant-read probe thermometer",
+              "Food-grade hairnet and clean apron",
+            ],
+            quiz: {
+              id: "quiz_kc_1",
+              title: "Bakery Hygiene & Scaling Check",
+              instructions: "Pass with 80% to log your kitchen practical hours.",
+              timeLimitMinutes: 10,
+              passingScorePercent: 80,
+              questions: [
+                {
+                  id: "q_kc_1",
+                  questionText: "In baker's percentage, what is always set as 100%?",
+                  options: ["Total flour weight", "Water weight", "Sugar weight", "Butter weight"],
+                  correctOptionIndex: 0,
+                  explanation: "In baker's math, every ingredient is weighed relative to total flour weight (100%).",
+                  points: 10,
+                },
+              ],
+            },
+          },
+        ],
+      },
+    ],
+  },
+];
+
+export const DEMO_CREATORS: CreatorProfile[] = [
+  {
+    id: "creator_greenwood",
+    name: "Greenwood Junior Academy",
+    handle: "greenwood",
+    type: "school",
+    leadInstructor: "Tr. Brenda Namutebi",
+    leadInstructorTitle: "Headmistress & Lead Primary Educator",
+    avatarUrl: "https://images.unsplash.com/photo-1546410531-bb4caa6b424d?auto=format&fit=crop&w=200&q=80",
+    bannerUrl: "https://images.unsplash.com/photo-1580582932707-520aed937b7b?auto=format&fit=crop&w=1200&q=80",
+    tagline: "Primary 1–7 Curricula, Homework Worksheets & Merit Tracking",
+    bio: "Interactive Ugandan primary school running term-paced Mathematics, Science, and English curricula with homework photo scanning and parent sign-offs.",
+    location: "Lugogo Bypass, Kampala",
+    badge: "MoES Certified Primary School",
+    stream: "foundations",
+    supportedStreams: ["foundations", "sprouts"],
+    enrolledStudents: 342,
+    rating: 4.9,
+    reviewCount: 88,
+    tuitionFeeUgx: 350000,
+    tuitionCadence: "term",
+    payoutBalanceUgx: 4200000,
+    totalEarningsUgx: 28400000,
+    isVerified: true,
+    courses: [DEMO_CREATOR_COURSES[0], DEMO_CREATOR_COURSES[7]],
+  },
+  {
+    id: "creator_st_jude",
+    name: "St. Jude Senior Secondary School",
+    handle: "st-jude",
+    type: "academy",
+    leadInstructor: "Mr. Patrick Okello",
+    leadInstructorTitle: "Principal & Head of UNEB Examination Center",
+    avatarUrl: "https://images.unsplash.com/photo-1509062522246-3755977927d7?auto=format&fit=crop&w=200&q=80",
+    bannerUrl: "https://images.unsplash.com/photo-1523050854058-8df90110c9f1?auto=format&fit=crop&w=1200&q=80",
+    tagline: "O-Level & A-Level Secondary STEM & UNEB Mock Examinations",
+    bio: "Secondary school offering structured S.1–S.6 subject timetables, proctored timed mock exams, and weighted terminal report cards.",
+    location: "Jinja Road, Kampala",
+    badge: "UNEB Center No. U0842",
+    stream: "academy",
+    supportedStreams: ["academy"],
+    enrolledStudents: 520,
+    rating: 4.8,
+    reviewCount: 142,
+    tuitionFeeUgx: 650000,
+    tuitionCadence: "term",
+    payoutBalanceUgx: 7800000,
+    totalEarningsUgx: 48900000,
+    isVerified: true,
+    courses: [DEMO_CREATOR_COURSES[1]],
+  },
+  {
+    id: "creator_ochieng",
+    name: "FinTech Africa Institute",
+    handle: "fintech-africa",
+    type: "academy",
+    leadInstructor: "Dr. Kenneth Ochieng",
+    leadInstructorTitle: "Principal Fellow & Former Central Bank Advisor",
+    avatarUrl: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80",
+    bannerUrl: "https://images.unsplash.com/photo-1526304640581-d334cdbbf45e?auto=format&fit=crop&w=1200&q=80",
+    tagline: "Higher Ed, Payments Engineering & Executive Business",
+    bio: "Collegiate and executive institute teaching software engineering, mobile money settlement architectures, and financial modeling.",
+    location: "Innovation Village, Ntinda, Kampala",
+    badge: "Licensed Professional Institute",
+    stream: "compass",
+    supportedStreams: ["compass"],
+    enrolledStudents: 1240,
+    rating: 5.0,
+    reviewCount: 310,
+    tuitionFeeUgx: 450000,
+    tuitionCadence: "course",
+    payoutBalanceUgx: 12500000,
+    totalEarningsUgx: 82000000,
+    isVerified: true,
+    courses: [DEMO_CREATOR_COURSES[2]],
+  },
+  {
+    id: "creator_alex",
+    name: "Crown Barber & Artisan Vocational Guild",
+    handle: "crown-guild",
+    type: "vocational_guild",
+    leadInstructor: "Master Alex Mukasa",
+    leadInstructorTitle: "Guild Master & Senior Barber Stylist",
+    avatarUrl: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=200&q=80",
+    bannerUrl: "https://images.unsplash.com/photo-1503951914875-452162b0f3f1?auto=format&fit=crop&w=1200&q=80",
+    tagline: "Professional Barbering, Hairstyling & DIT Trade Testing",
+    bio: "Hands-on trade guild where apprentices submit practical haircut videos, receive timestamped feedback pins, and log verified workshop hours.",
+    location: "Nakawa Industrial Area, Kampala",
+    badge: "DIT & UVQF Certified Guild",
+    stream: "skills",
+    supportedStreams: ["skills"],
+    enrolledStudents: 280,
+    rating: 4.9,
+    reviewCount: 95,
+    tuitionFeeUgx: 250000,
+    tuitionCadence: "course",
+    payoutBalanceUgx: 3200000,
+    totalEarningsUgx: 18500000,
+    isVerified: true,
+    courses: [DEMO_CREATOR_COURSES[3]],
+  },
+  {
+    id: "creator_sharon",
+    name: "Little Stars Early Childhood Learning Hub",
+    handle: "little-stars",
+    type: "early_childhood_center",
+    leadInstructor: "Teacher Sharon Mukasa",
+    leadInstructorTitle: "Montessori Lead & Early Literacy Specialist",
+    avatarUrl: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=200&q=80",
+    bannerUrl: "https://images.unsplash.com/photo-1503676260728-1c00da094a0b?auto=format&fit=crop&w=1200&q=80",
+    tagline: "Kindergarten Phonics, Numbers, Storybooks & Play (Ages 3–6)",
+    bio: "Audio-first kindergarten center designed for young learners with character voice guides, read-along picture books, and sticker rewards.",
+    location: "Kololo Hill Road, Kampala",
+    badge: "ECD Certified Center",
+    stream: "sprouts",
+    supportedStreams: ["sprouts"],
+    enrolledStudents: 195,
+    rating: 5.0,
+    reviewCount: 64,
+    tuitionFeeUgx: 180000,
+    tuitionCadence: "term",
+    payoutBalanceUgx: 2100000,
+    totalEarningsUgx: 11200000,
+    isVerified: true,
+    courses: [DEMO_CREATOR_COURSES[4], DEMO_CREATOR_COURSES[6]],
+  },
+  {
+    id: "creator_sarah_growth",
+    name: "Sarah K. Growth Studio",
+    handle: "sarah-growth",
+    type: "independent_tutor",
+    leadInstructor: "Sarah Kyomuhendo",
+    leadInstructorTitle: "Growth Consultant & Digital Creator",
+    avatarUrl: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=200&q=80",
+    bannerUrl: "https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&w=1200&q=80",
+    tagline: "Self-Paced Digital Marketing & E-Commerce Masterclasses",
+    bio: "On-demand business courses teaching East African entrepreneurs WhatsApp automation, digital advertising, and bookkeeping.",
+    location: "Kampala, Uganda",
+    badge: "Verified Independent Tutor",
+    stream: "compass",
+    supportedStreams: ["compass"],
+    enrolledStudents: 850,
+    rating: 4.9,
+    reviewCount: 220,
+    tuitionFeeUgx: 95000,
+    tuitionCadence: "course",
+    payoutBalanceUgx: 5400000,
+    totalEarningsUgx: 36200000,
+    isVerified: true,
+    courses: [DEMO_CREATOR_COURSES[5]],
+  },
+  {
+    id: "creator_chef_grace",
+    name: "Kampala Culinary & Pastry School",
+    handle: "kampala-culinary",
+    type: "vocational_guild",
+    leadInstructor: "Chef Grace Achieng",
+    leadInstructorTitle: "Executive Pastry Chef & Hospitality Trainer",
+    avatarUrl: "https://images.unsplash.com/photo-1577219491135-ce391730fb2c?auto=format&fit=crop&w=200&q=80",
+    bannerUrl: "https://images.unsplash.com/photo-1556910103-1c02745aae4d?auto=format&fit=crop&w=1200&q=80",
+    tagline: "Commercial Baking, Culinary Arts & Catering Management",
+    bio: "Practical culinary and pastry training with step-by-step recipe cards, kitchen tool checklists, and video plating assessments.",
+    location: "Bugolobi, Kampala",
+    badge: "DIT Culinary Center",
+    stream: "skills",
+    supportedStreams: ["skills"],
+    enrolledStudents: 175,
+    rating: 4.9,
+    reviewCount: 62,
+    tuitionFeeUgx: 280000,
+    tuitionCadence: "course",
+    payoutBalanceUgx: 2900000,
+    totalEarningsUgx: 16400000,
+    isVerified: true,
+    courses: [DEMO_CREATOR_COURSES[8]],
+  },
+];
+
+
+// ==========================================
+// Demo schools, classes and syllabus
+//
+// Every demo school follows the same shape the Studio builds for real users:
+//   school → class (or masterclass) → course → module → lesson, on a named syllabus.
+// The block below adds the classes, the syllabus and learning outcomes for the
+// courses above, and a few more schools so every stream has more than one.
+// ==========================================
+
+const img = (id: string, w = 600) => `https://images.unsplash.com/photo-${id}?auto=format&fit=crop&w=${w}&q=80`;
+
+type QuizRow = [question: string, options: string[], correctIndex: number, explanation: string];
+
+function demoQuiz(id: string, title: string, rows: QuizRow[], passingScorePercent = 70): CourseQuiz {
+  return {
+    id,
+    title,
+    instructions: `Answer every question. Passing score is ${passingScorePercent}%.`,
+    timeLimitMinutes: Math.max(5, rows.length * 2),
+    passingScorePercent,
+    questions: rows.map(([questionText, options, correctOptionIndex, explanation], i): QuizQuestion => ({
+      id: `${id}_q${i + 1}`,
+      questionText,
+      options,
+      correctOptionIndex,
+      explanation,
+      points: 5,
+    })),
+  };
+}
+
+function demoLesson(
+  id: string,
+  title: string,
+  durationMinutes: number,
+  contentType: CourseLesson["contentType"],
+  summary: string,
+  extra: Partial<CourseLesson> = {},
+): CourseLesson {
+  return { id, title, durationMinutes, contentType, summary, ...extra };
+}
+
+function demoModule(id: string, order: number, title: string, description: string, lessons: CourseLesson[]): CourseModule {
+  return { id, title, description, order, lessons };
+}
+
+function schoolCourse(
+  school: Pick<CreatorProfile, "id" | "name" | "avatarUrl" | "leadInstructor" | "leadInstructorTitle">,
+  c: Pick<CreatorCourse, "id" | "title" | "stream" | "category" | "level" | "summary" | "thumbnailUrl" | "priceUgx" | "modules"> &
+    Partial<CreatorCourse>,
+): CreatorCourse {
+  return {
+    creatorId: school.id,
+    creatorName: school.name,
+    creatorAvatar: school.avatarUrl,
+    creatorRoleTitle: `${school.leadInstructor} (${school.leadInstructorTitle})`,
+    institutionName: school.name,
+    enrolledStudentsCount: 0,
+    rating: 4.8,
+    reviewCount: 0,
+    ...c,
+  };
+}
+
+const NILE_VALLEY = {
+  id: "creator_nile_valley",
+  name: "Nile Valley University — School of Computing",
+  avatarUrl: img("1523240795612-9a054b0db644", 200),
+  leadInstructor: "Dr. Miriam Atuhaire",
+  leadInstructorTitle: "Head of Computer Science",
+};
+const LAKESIDE = {
+  id: "creator_lakeside_intl",
+  name: "Lakeside International School",
+  avatarUrl: img("1580582932707-520aed937b7b", 200),
+  leadInstructor: "Mr. David Whitlock",
+  leadInstructorTitle: "Director of Studies",
+};
+const ROSE = {
+  id: "creator_rose_everyday",
+  name: "Auntie Rose Everyday Learning",
+  avatarUrl: img("1500648767791-00dcc994a43e", 200),
+  leadInstructor: "Rose Nankya",
+  leadInstructorTitle: "Home Gardener & Community Tutor",
+};
+
+DEMO_CREATOR_COURSES.push(
+  schoolCourse(ST_JUDE_REF(), {
+    id: "course_st_jude_s5_maths",
+    title: "S.5 Pure Mathematics: Functions, Differentiation & Integration",
+    stream: "academy",
+    category: "Secondary / Senior High",
+    level: "S.5 A-Level",
+    summary: "The first year of UACE Pure Mathematics: functions and graphs, differentiation from first principles and the integration techniques examiners reward.",
+    thumbnailUrl: img("1509198397868-475647b2a1e5"),
+    priceUgx: 700000,
+    enrolledStudentsCount: 64,
+    rating: 4.8,
+    reviewCount: 17,
+    modules: [
+      demoModule("mod_sj_m5_1", 1, "Module 1: Functions & Graphs", "Domain, range, composite and inverse functions.", [
+        demoLesson("les_sj_m5_1", "Lesson 1: Domain, Range & Composite Functions", 30, "video", "Reading a function as a machine, and combining two of them."),
+        demoLesson("les_sj_m5_2", "Lesson 2: Inverse Functions & Their Graphs", 28, "video", "Finding an inverse, and why its graph mirrors the original in y = x.", {
+          quiz: demoQuiz("quiz_sj_m5_1", "Functions checkpoint", [
+            ["If f(x) = 2x + 3, what is f⁻¹(x)?", ["(x − 3)/2", "2x − 3", "(x + 3)/2", "x/2 + 3"], 0, "Swap x and y, then solve: x = 2y + 3 gives y = (x − 3)/2."],
+            ["The graph of an inverse function is a reflection of the original in which line?", ["y = x", "y = 0", "x = 0", "y = −x"], 0, "Reflection in y = x swaps every (a, b) for (b, a)."],
+          ]),
+        }),
+      ]),
+      demoModule("mod_sj_m5_2", 2, "Module 2: Differentiation", "From first principles to the chain rule.", [
+        demoLesson("les_sj_m5_3", "Lesson 3: Differentiation from First Principles", 35, "video", "Deriving the gradient of x² as a limit."),
+        demoLesson("les_sj_m5_4", "Lesson 4: Product, Quotient & Chain Rules", 40, "reading", "Worked UACE past-paper questions with marking-guide steps."),
+      ]),
+    ],
+  }),
+  schoolCourse(NILE_VALLEY, {
+    id: "course_nile_python101",
+    title: "CSC 1101 · Introduction to Programming with Python",
+    stream: "compass",
+    category: "University / College",
+    level: "Year 1 · 4 credit units",
+    summary: "A first university programming course: variables, control flow, functions and lists, finishing with a small mobile-money statement analyser.",
+    thumbnailUrl: img("1551836022-d5d88e9218df"),
+    priceUgx: 480000,
+    enrolledStudentsCount: 212,
+    rating: 4.7,
+    reviewCount: 58,
+    modules: [
+      demoModule("mod_nv_p1", 1, "Unit 1: Thinking in Code", "Variables, types and decisions.", [
+        demoLesson("les_nv_p1", "Lecture 1: Variables, Types & Input", 45, "video", "Storing values, reading input and printing results."),
+        demoLesson("les_nv_p2", "Lecture 2: Conditions & Loops", 50, "video", "if, elif, else, for and while — with five practice drills.", {
+          quiz: demoQuiz("quiz_nv_p1", "Unit 1 quiz", [
+            ["What does `range(3)` produce?", ["0, 1, 2", "1, 2, 3", "0, 1, 2, 3", "3"], 0, "range(n) counts from 0 up to n − 1."],
+            ["Which keyword runs a block only when the first condition is false?", ["else", "elif", "while", "break"], 0, "else is the fallback branch of an if statement."],
+          ], 60),
+        }),
+      ]),
+      demoModule("mod_nv_p2", 2, "Unit 2: Functions & Lists", "Reusable code and collections.", [
+        demoLesson("les_nv_p3", "Lecture 3: Functions & Scope", 45, "video", "Parameters, return values and why variables disappear."),
+        demoLesson("les_nv_p4", "Lab: Mobile-Money Statement Analyser", 90, "practical_demo", "Read a CSV of transactions and total money in, money out and fees.", {
+          practicalChecklist: ["Python 3.11 installed", "VS Code or any editor", "statement.csv from the course resources"],
+        }),
+      ]),
+    ],
+  }),
+  schoolCourse(NILE_VALLEY, {
+    id: "course_nile_sql",
+    title: "CSC 2204 · Databases & SQL Fundamentals",
+    stream: "compass",
+    category: "University / College",
+    level: "Year 2 · 3 credit units",
+    summary: "Relational modelling, normalisation and SQL queries on a real-style school-fees database.",
+    thumbnailUrl: img("1526304640581-d334cdbbf45e"),
+    priceUgx: 420000,
+    enrolledStudentsCount: 138,
+    rating: 4.8,
+    reviewCount: 36,
+    modules: [
+      demoModule("mod_nv_s1", 1, "Unit 1: The Relational Model", "Tables, keys and relationships.", [
+        demoLesson("les_nv_s1", "Lecture 1: Tables, Keys & Relationships", 40, "video", "Primary keys, foreign keys and one-to-many relationships."),
+        demoLesson("les_nv_s2", "Lecture 2: Normalisation to 3NF", 45, "reading", "Removing repeated data step by step."),
+      ]),
+      demoModule("mod_nv_s2", 2, "Unit 2: Querying", "SELECT, JOIN and GROUP BY.", [
+        demoLesson("les_nv_s3", "Lecture 3: SELECT, WHERE & ORDER BY", 40, "video", "Filtering and sorting rows."),
+        demoLesson("les_nv_s4", "Lecture 4: JOIN & GROUP BY", 50, "video", "Combine tables and summarise them.", {
+          quiz: demoQuiz("quiz_nv_s1", "Querying quiz", [
+            ["Which clause filters groups after GROUP BY?", ["HAVING", "WHERE", "ORDER BY", "LIMIT"], 0, "WHERE filters rows before grouping; HAVING filters the groups."],
+            ["Which JOIN keeps every row from the left table?", ["LEFT JOIN", "INNER JOIN", "CROSS JOIN", "SELF JOIN"], 0, "A LEFT JOIN keeps all left rows, filling gaps with NULL."],
+          ], 60),
+        }),
+      ]),
+    ],
+  }),
+  schoolCourse(LAKESIDE, {
+    id: "course_lakeside_igcse_bio",
+    title: "IGCSE Biology: Cells, Enzymes & Nutrition",
+    stream: "academy",
+    category: "Secondary / Senior High",
+    level: "Grade 9 · Cambridge IGCSE 0610",
+    summary: "The first term of Cambridge IGCSE Biology, with practical write-ups marked against the Cambridge assessment objectives.",
+    thumbnailUrl: img("1532094349884-543bc11b234d"),
+    priceUgx: 1200000,
+    enrolledStudentsCount: 46,
+    rating: 4.9,
+    reviewCount: 14,
+    modules: [
+      demoModule("mod_lk_b1", 1, "Topic 1: Cells", "Cell structure and specialisation.", [
+        demoLesson("les_lk_b1", "Lesson 1: Plant & Animal Cells", 30, "video", "Organelles and what each one does."),
+        demoLesson("les_lk_b2", "Lesson 2: Using a Microscope", 40, "practical_demo", "Prepare a slide and calculate magnification.", {
+          practicalChecklist: ["Light microscope", "Onion epidermis slide", "Iodine solution", "Ruler for scale"],
+        }),
+      ]),
+      demoModule("mod_lk_b2", 2, "Topic 2: Enzymes", "Biological catalysts.", [
+        demoLesson("les_lk_b3", "Lesson 3: How Enzymes Work", 30, "video", "Lock-and-key model and active sites."),
+        demoLesson("les_lk_b4", "Lesson 4: Temperature & pH Practical", 45, "practical_demo", "Design a fair test and plot the results.", {
+          quiz: demoQuiz("quiz_lk_b1", "Enzymes checkpoint", [
+            ["What happens to an enzyme above its optimum temperature?", ["It denatures", "It speeds up", "It is used up", "Nothing"], 0, "Heat changes the active site's shape, so the substrate no longer fits."],
+            ["The part of an enzyme where the substrate binds is the…", ["active site", "nucleus", "membrane", "vacuole"], 0, "The active site has a shape complementary to its substrate."],
+          ]),
+        }),
+      ]),
+    ],
+  }),
+  schoolCourse(LAKESIDE, {
+    id: "course_lakeside_ib_econ",
+    title: "IB Economics SL: Microeconomics Foundations",
+    stream: "academy",
+    category: "Secondary / Senior High",
+    level: "IB Diploma · Year 1",
+    summary: "Demand, supply, elasticity and market failure through East African markets, with Paper 1 essay technique.",
+    thumbnailUrl: img("1460925895917-afdab827c52f"),
+    priceUgx: 1500000,
+    enrolledStudentsCount: 28,
+    rating: 4.9,
+    reviewCount: 9,
+    modules: [
+      demoModule("mod_lk_e1", 1, "Unit 1: Competitive Markets", "Demand, supply and equilibrium.", [
+        demoLesson("les_lk_e1", "Lesson 1: Demand & Supply", 35, "video", "Why the price of matooke moves with the harvest."),
+        demoLesson("les_lk_e2", "Lesson 2: Price Elasticity", 40, "video", "Measuring how strongly buyers react to price.", {
+          quiz: demoQuiz("quiz_lk_e1", "Elasticity checkpoint", [
+            ["If demand is price inelastic, a price rise causes total revenue to…", ["rise", "fall", "stay the same", "become zero"], 0, "Quantity falls proportionally less than price rises, so revenue goes up."],
+          ]),
+        }),
+      ]),
+      demoModule("mod_lk_e2", 2, "Unit 2: Market Failure", "Externalities and government responses.", [
+        demoLesson("les_lk_e3", "Lesson 3: Externalities", 35, "reading", "Private versus social cost, with a boda-boda pollution example."),
+        demoLesson("les_lk_e4", "Lesson 4: Writing the Paper 1 Essay", 45, "interactive_h5p", "Plan a 10-mark answer in 8 minutes."),
+      ]),
+    ],
+  }),
+  schoolCourse(ROSE, {
+    id: "course_rose_kitchen_garden",
+    title: "Kitchen Garden Masterclass: Grow Vegetables in Small Spaces",
+    stream: "skills",
+    category: "Everyday Skills",
+    level: "Beginner · Masterclass",
+    summary: "Four weeks to a working sack garden: soil, sowing, watering and pests, using only what you can buy at the local market.",
+    thumbnailUrl: img("1587654780291-39c9404d746b"),
+    priceUgx: 45000,
+    enrolledStudentsCount: 320,
+    rating: 4.9,
+    reviewCount: 104,
+    modules: [
+      demoModule("mod_rs_g1", 1, "Week 1: Soil & Sacks", "Build a sack garden that drains well.", [
+        demoLesson("les_rs_g1", "Lesson 1: Mixing Soil and Filling a Sack", 15, "practical_demo", "Topsoil, compost and sand in the right ratio.", {
+          practicalChecklist: ["Empty 50 kg sack", "Topsoil", "Compost or old manure", "Pipe or tin for the drainage core"],
+        }),
+        demoLesson("les_rs_g2", "Lesson 2: Choosing What to Grow", 12, "video", "Sukuma wiki, spinach, tomatoes and onions compared."),
+      ]),
+      demoModule("mod_rs_g2", 2, "Week 2: Sowing & Watering", "Get seedlings through the first fortnight.", [
+        demoLesson("les_rs_g3", "Lesson 3: Sowing Seeds and Transplanting", 14, "video", "Depth, spacing and when to move seedlings."),
+        demoLesson("les_rs_g4", "Lesson 4: Watering Without Waste", 10, "reading", "Morning versus evening, and the finger test.", {
+          quiz: demoQuiz("quiz_rs_g1", "Garden basics", [
+            ["When is the best time to water vegetables?", ["Early morning", "Midday", "Never", "Midnight"], 0, "Morning water soaks in before the heat evaporates it."],
+          ], 50),
+        }),
+      ]),
+    ],
+  }),
+  schoolCourse(ROSE, {
+    id: "course_rose_guitar",
+    title: "Guitar for Complete Beginners: Your First 10 Songs",
+    stream: "skills",
+    category: "Everyday Skills",
+    level: "Beginner · Masterclass",
+    summary: "From holding the guitar to playing along with ten well-known songs, with a video submission each week for feedback.",
+    thumbnailUrl: img("1539571696357-5a69c17a67c6"),
+    priceUgx: 60000,
+    enrolledStudentsCount: 190,
+    rating: 4.8,
+    reviewCount: 61,
+    modules: [
+      demoModule("mod_rs_m1", 1, "Week 1: First Chords", "Posture, tuning and three open chords.", [
+        demoLesson("les_rs_m1", "Lesson 1: Holding & Tuning", 12, "video", "Posture and tuning with a free phone app."),
+        demoLesson("les_rs_m2", "Lesson 2: G, C and D Chords", 18, "practical_demo", "Place each chord and switch cleanly.", {
+          practicalChecklist: ["Acoustic guitar", "Tuner app", "Pick (optional)"],
+        }),
+      ]),
+      demoModule("mod_rs_m2", 2, "Week 2: Strumming", "Keep time and sing along.", [
+        demoLesson("les_rs_m3", "Lesson 3: Down-Up Strumming", 15, "video", "A steady four-beat pattern."),
+        demoLesson("les_rs_m4", "Lesson 4: Your First Song", 20, "practical_demo", "Play a full verse and record it for feedback."),
+      ]),
+    ],
+  }),
+);
+
+// A reference to St. Jude's profile fields, resolved once the creators below exist.
+function ST_JUDE_REF() {
+  return {
+    id: "creator_st_jude",
+    name: "St. Jude Senior Secondary School",
+    avatarUrl: img("1509062522246-3755977927d7", 200),
+    leadInstructor: "Mr. Patrick Okello",
+    leadInstructorTitle: "Principal & Head of UNEB Examination Center",
+  };
+}
+
+const courseById = (id: string): CreatorCourse => {
+  const found = DEMO_CREATOR_COURSES.find((c) => c.id === id);
+  if (!found) throw new Error(`Unknown demo course ${id}`);
+  return found;
+};
+
+// Whole-school profile data for the three added schools.
+DEMO_CREATORS.push(
+  {
+    id: NILE_VALLEY.id,
+    name: NILE_VALLEY.name,
+    handle: "nile-valley-computing",
+    type: "academy",
+    leadInstructor: NILE_VALLEY.leadInstructor,
+    leadInstructorTitle: NILE_VALLEY.leadInstructorTitle,
+    avatarUrl: NILE_VALLEY.avatarUrl,
+    bannerUrl: img("1523050854058-8df90110c9f1", 1200),
+    tagline: "Undergraduate Computing: programming, databases and software engineering",
+    bio: "A university school running credit-bearing computing courses with lecture video, lab work and a final project.",
+    location: "Jinja Road, Kampala",
+    badge: "NCHE Accredited Programme",
+    stream: "compass",
+    supportedStreams: ["compass"],
+    enrolledStudents: 560,
+    rating: 4.7,
+    reviewCount: 94,
+    tuitionFeeUgx: 480000,
+    tuitionCadence: "course",
+    payoutBalanceUgx: 6800000,
+    totalEarningsUgx: 41200000,
+    isVerified: true,
+    courses: [courseById("course_nile_python101"), courseById("course_nile_sql")],
+  },
+  {
+    id: LAKESIDE.id,
+    name: LAKESIDE.name,
+    handle: "lakeside-international",
+    type: "school",
+    leadInstructor: LAKESIDE.leadInstructor,
+    leadInstructorTitle: LAKESIDE.leadInstructorTitle,
+    avatarUrl: LAKESIDE.avatarUrl,
+    bannerUrl: img("1503676260728-1c00da094a0b", 1200),
+    tagline: "Cambridge IGCSE and IB Diploma, taught in Kampala",
+    bio: "An international secondary school teaching Cambridge and IB syllabi to day students and to online learners across East Africa.",
+    location: "Munyonyo, Kampala",
+    badge: "Cambridge International School",
+    stream: "academy",
+    supportedStreams: ["academy"],
+    enrolledStudents: 74,
+    rating: 4.9,
+    reviewCount: 23,
+    tuitionFeeUgx: 1200000,
+    tuitionCadence: "term",
+    payoutBalanceUgx: 9200000,
+    totalEarningsUgx: 58600000,
+    isVerified: true,
+    courses: [courseById("course_lakeside_igcse_bio"), courseById("course_lakeside_ib_econ")],
+  },
+  {
+    id: ROSE.id,
+    name: ROSE.name,
+    handle: "auntie-rose",
+    type: "independent_tutor",
+    leadInstructor: ROSE.leadInstructor,
+    leadInstructorTitle: ROSE.leadInstructorTitle,
+    avatarUrl: ROSE.avatarUrl,
+    bannerUrl: img("1587654780291-39c9404d746b", 1200),
+    tagline: "Short practical masterclasses: gardening, music and home skills",
+    bio: "Friendly four-week masterclasses for anyone who wants to learn something useful, with no exams and no prior experience needed.",
+    location: "Wakiso, Uganda",
+    badge: "Verified Independent Tutor",
+    stream: "skills",
+    supportedStreams: ["skills"],
+    enrolledStudents: 510,
+    rating: 4.9,
+    reviewCount: 165,
+    tuitionFeeUgx: 45000,
+    tuitionCadence: "course",
+    payoutBalanceUgx: 1600000,
+    totalEarningsUgx: 9800000,
+    isVerified: true,
+    courses: [courseById("course_rose_kitchen_garden"), courseById("course_rose_guitar")],
+  },
+);
+
+// St. Jude also teaches the A-Level maths course.
+const stJude = DEMO_CREATORS.find((c) => c.id === "creator_st_jude");
+if (stJude) stJude.courses = [...stJude.courses, courseById("course_st_jude_s5_maths")];
+
+// Sarah's WhatsApp-for-business course is everyday practical learning, so it belongs in Skills.
+const sarah = DEMO_CREATORS.find((c) => c.id === "creator_sarah_growth");
+if (sarah) {
+  sarah.stream = "skills";
+  sarah.supportedStreams = ["skills"];
+}
+courseById("course_sarah_growth_whatsapp").stream = "skills";
+courseById("course_sarah_growth_whatsapp").category = "Everyday Skills";
+courseById("course_sarah_growth_whatsapp").level = "Beginner · Masterclass";
+
+type ClassSeed = Omit<SchoolClass, "enrolled" | "capacity" | "academicYear"> & { capacity?: number; enrolled?: number; academicYear?: string };
+
+const CLASS_SEEDS: ClassSeed[] = [
+  // Sprouts
+  { id: "class_ls_middle", schoolId: "creator_sharon", stream: "sprouts", kind: "class", name: "Middle Class — Numbers & Shapes", level: "Middle class (4 yrs)", framework: "uganda_ecd", term: "Term 3", teacherName: "Teacher Sharon Mukasa", capacity: 25, enrolled: 22, summary: "Counting to 20, sorting and everyday shapes through songs and games.", courseIds: ["course_little_stars_numbers"] },
+  { id: "class_ls_top", schoolId: "creator_sharon", stream: "sprouts", kind: "class", name: "Top Class — Phonics & Early Reading", level: "Top class (5–6 yrs)", framework: "uganda_ecd", term: "Term 3", teacherName: "Teacher Sharon Mukasa", capacity: 25, enrolled: 24, summary: "Letter sounds, blending and read-along storybooks, ready for Primary 1.", courseIds: ["course_little_stars_phonics"] },
+  // Foundations
+  { id: "class_gw_p4", schoolId: "creator_greenwood", stream: "foundations", kind: "class", name: "Primary 4 Blue", level: "Primary 4", framework: "uganda_primary", term: "Term 3", teacherName: "Tr. Brenda Namutebi", capacity: 45, enrolled: 42, summary: "Mathematics for Primary 4 with parent-signed homework.", courseIds: ["course_greenwood_math4"] },
+  { id: "class_gw_p5", schoolId: "creator_greenwood", stream: "foundations", kind: "class", name: "Primary 5 Gold", level: "Primary 5", framework: "uganda_primary", term: "Term 3", teacherName: "Tr. Brenda Namutebi", capacity: 45, enrolled: 39, summary: "Integrated Science with weekly experiments and worksheet turn-ins.", courseIds: ["course_greenwood_science5"] },
+  // Academy
+  { id: "class_sj_s4", schoolId: "creator_st_jude", stream: "academy", kind: "class", name: "Senior 4 Sciences", level: "Senior 4 (O-Level)", framework: "uneb_olevel", term: "Term 3", teacherName: "Mr. Patrick Okello", capacity: 60, enrolled: 54, summary: "UCE Physics with timed mock exams under anti-cheat proctoring.", courseIds: ["course_st_jude_physics"] },
+  { id: "class_sj_s5", schoolId: "creator_st_jude", stream: "academy", kind: "class", name: "Senior 5 Maths-Physics", level: "Senior 5 (A-Level)", framework: "uneb_alevel", term: "Term 3", teacherName: "Mr. Patrick Okello", capacity: 40, enrolled: 31, summary: "Year one of the UACE Pure Mathematics paper.", courseIds: ["course_st_jude_s5_maths"] },
+  { id: "class_lk_g9", schoolId: "creator_lakeside_intl", stream: "academy", kind: "class", name: "Grade 9 · IGCSE Sciences", level: "Senior 3", framework: "cambridge_igcse", term: "Michaelmas term", teacherName: "Mr. David Whitlock", capacity: 24, enrolled: 21, summary: "Cambridge IGCSE Biology in small groups with practical write-ups.", courseIds: ["course_lakeside_igcse_bio"] },
+  { id: "class_lk_ib", schoolId: "creator_lakeside_intl", stream: "academy", kind: "class", name: "IB Diploma Year 1", level: "Senior 5 (A-Level)", framework: "ib_diploma", term: "Michaelmas term", teacherName: "Mr. David Whitlock", capacity: 20, enrolled: 14, summary: "IB Economics Standard Level, with internal assessment coaching.", courseIds: ["course_lakeside_ib_econ"] },
+  // Compass
+  { id: "class_nv_y1", schoolId: "creator_nile_valley", stream: "compass", kind: "class", name: "BSc Computer Science · Year 1", level: "Year 1", framework: "university_credit", academicYear: "2026/27", term: "Semester 1", teacherName: "Dr. Miriam Atuhaire", capacity: 120, enrolled: 108, summary: "First-year programming, taught as lectures and a weekly lab.", courseIds: ["course_nile_python101"] },
+  { id: "class_nv_y2", schoolId: "creator_nile_valley", stream: "compass", kind: "class", name: "BSc Computer Science · Year 2", level: "Year 2", framework: "university_credit", academicYear: "2026/27", term: "Semester 1", teacherName: "Dr. Miriam Atuhaire", capacity: 100, enrolled: 88, summary: "Databases and data modelling for second-year students.", courseIds: ["course_nile_sql"] },
+  { id: "class_ft_cohort7", schoolId: "creator_ochieng", stream: "compass", kind: "class", name: "Payments Engineering Certificate · Cohort 7", level: "Short course", framework: "professional_certificate", academicYear: "2026", term: "Cohort 7", teacherName: "Dr. Kenneth Ochieng", capacity: 80, enrolled: 71, summary: "Settlement, float reconciliation and USSD architecture for fintech engineers.", courseIds: ["course_fintech_101"] },
+  // Skills
+  { id: "class_crown_2026", schoolId: "creator_alex", stream: "skills", kind: "class", name: "Barbering Apprentices · Intake 2026", level: "Beginner", framework: "uvqf_tvet", academicYear: "2026", term: "Intake 2026", teacherName: "Master Alex Mukasa", capacity: 30, enrolled: 28, summary: "Practical barbering with video submissions and a signed logbook.", courseIds: ["course_crown_barber"] },
+  { id: "class_kc_pastry", schoolId: "creator_chef_grace", stream: "skills", kind: "class", name: "Pastry & Baking Certificate · Evening", level: "Intermediate", framework: "uvqf_tvet", academicYear: "2026", term: "Evening intake", teacherName: "Chef Grace Achieng", capacity: 24, enrolled: 20, summary: "Commercial baking skills in the kitchen, two evenings a week.", courseIds: ["course_kampala_culinary"] },
+  { id: "class_sg_whatsapp", schoolId: "creator_sarah_growth", stream: "skills", kind: "masterclass", name: "WhatsApp Business Masterclass", level: "Masterclass", framework: "open_syllabus", academicYear: "2026", term: "Self-paced", teacherName: "Sarah Kyomuhendo", capacity: 500, enrolled: 412, summary: "Sell more on WhatsApp: catalogues, automated replies and simple ads.", courseIds: ["course_sarah_growth_whatsapp"] },
+  { id: "class_rose_garden", schoolId: "creator_rose_everyday", stream: "skills", kind: "masterclass", name: "Kitchen Garden Masterclass", level: "Masterclass", framework: "open_syllabus", academicYear: "2026", term: "4 weeks", teacherName: "Rose Nankya", capacity: 400, enrolled: 320, summary: "Grow your own vegetables in a sack, in any small space.", courseIds: ["course_rose_kitchen_garden"] },
+  { id: "class_rose_guitar", schoolId: "creator_rose_everyday", stream: "skills", kind: "masterclass", name: "Guitar for Beginners Masterclass", level: "Masterclass", framework: "open_syllabus", academicYear: "2026", term: "4 weeks", teacherName: "Rose Nankya", capacity: 300, enrolled: 190, summary: "Hold, tune and play your first ten songs.", courseIds: ["course_rose_guitar"] },
+];
+
+/** What a learner can do after finishing each demo course. */
+const COURSE_OUTCOMES: Record<string, string[]> = {
+  course_greenwood_math4: ["Compare and simplify fractions", "Solve shilling word problems with decimals", "Name and measure basic shapes"],
+  course_greenwood_science5: ["Label the parts of a flowering plant", "Explain how a seed germinates", "Describe how weather affects crops"],
+  course_st_jude_physics: ["Apply Newton's laws to UCE problems", "Calculate momentum and energy changes", "Sit a timed mock under exam conditions"],
+  course_st_jude_s5_maths: ["Differentiate from first principles", "Use the product, quotient and chain rules", "Integrate standard functions"],
+  course_lakeside_igcse_bio: ["Describe cell structures and their functions", "Plan and write up an enzyme practical", "Answer Cambridge command-word questions"],
+  course_lakeside_ib_econ: ["Explain demand, supply and elasticity", "Evaluate market failure and government responses", "Plan a Paper 1 essay quickly"],
+  course_nile_python101: ["Write Python programs with loops and functions", "Process a CSV file", "Debug a failing script"],
+  course_nile_sql: ["Model data in third normal form", "Write JOIN and GROUP BY queries", "Explain keys and constraints"],
+  course_fintech_101: ["Trace a mobile-money transaction end to end", "Reconcile float against a ledger", "Design a safe callback handler"],
+  course_crown_barber: ["Perform a clean taper fade", "Run a hot-towel treatment safely", "Log supervised practical hours"],
+  course_kampala_culinary: ["Scale a recipe with baker's percentages", "Laminate dough for croissants", "Keep a commercial kitchen hygienic"],
+  course_sarah_growth_whatsapp: ["Set up a WhatsApp Business catalogue", "Automate greetings and quick replies", "Run a small paid advert"],
+  course_rose_kitchen_garden: ["Build a sack garden", "Sow and transplant seedlings", "Water without waste"],
+  course_rose_guitar: ["Tune a guitar", "Play G, C and D chords", "Strum a full song"],
+  course_little_stars_phonics: ["Say the sound of each letter", "Blend three-letter words", "Follow a read-along story"],
+  course_little_stars_numbers: ["Count objects to 20", "Sort by size and colour", "Name circles, squares and triangles"],
+};
+
+export const DEMO_SCHOOL_CLASSES: SchoolClass[] = CLASS_SEEDS.map((seed) => ({
+  academicYear: "2026",
+  capacity: 40,
+  enrolled: 0,
+  ...seed,
+}));
+
+for (const cls of DEMO_SCHOOL_CLASSES) {
+  for (const courseId of cls.courseIds) {
+    const course = courseById(courseId);
+    course.classId = cls.id;
+    course.framework = cls.framework;
+    course.outcomes = COURSE_OUTCOMES[courseId] ?? [];
+  }
+}
+for (const creator of DEMO_CREATORS) {
+  creator.classes = DEMO_SCHOOL_CLASSES.filter((c) => c.schoolId === creator.id);
+}

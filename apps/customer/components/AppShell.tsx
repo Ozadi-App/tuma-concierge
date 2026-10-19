@@ -1,17 +1,20 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
+import { useEffect, useSyncExternalStore } from "react";
+import { noteInAppNavigation } from "../lib/nav-primary-action";
 import { usePathname } from "next/navigation";
 import { AuthGate } from "./AuthGate";
 import { BottomNav } from "./BottomNav";
 import { BrandHeader } from "./BrandHeader";
 import { FoodBusinessTheme } from "./FoodBusinessTheme";
 import { OfflineBanner } from "./OfflineBanner";
-import { PracticeModeGuard, PracticeModePrompt } from "./PracticeMode";
+import { PracticeModeBanner, PracticeModeGuard, PracticeModePrompt } from "./PracticeMode";
 import { isNavigationOverlayOpen, subscribeToNavigationOverlay } from "../lib/location-flow-state";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  // Lets the nav's Back use router.back() only when there is an in-app screen to return to.
+  useEffect(() => { noteInAppNavigation(); }, [pathname]);
   const navigationOverlayOpen = useSyncExternalStore(subscribeToNavigationOverlay, isNavigationOverlayOpen, () => false);
   const foodBusinessId=/^\/restaurants\/([^/]+)(?:\/items\/[^/]+)?$/.exec(pathname)?.[1];
   const isFoodDetail=/^\/restaurants\/[^/]+\/items\/[^/]+$/.test(pathname);
@@ -26,7 +29,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // screens take on full viewport view without top BrandHeader or bottom navigation bar.
   const isSingleStore = /^\/store\/[^/]+$/.test(pathname);
   const isSingleProduct = pathname.startsWith("/product/") || /^\/store\/[^/]+\/product\/[^/]+$/.test(pathname);
-  const isImmersiveFullscreen = isSingleStore || isSingleProduct;
+  // Spotlight is an edge-to-edge immersive feed: no header, no bottom nav;
+  // the page overlays its own back affordance.
+  const isSpotlight = pathname === "/spotlight" || pathname.startsWith("/spotlight/");
+  const isImmersiveFullscreen = isSingleStore || isSingleProduct || isSpotlight;
 
   const showHeader = !isAuthPage && !isChatThread && !isFoodDetail && !isImmersiveFullscreen;
   const showNav = !isAuthPage && !isChatThread && !isFoodDetail && !navigationOverlayOpen && !isImmersiveFullscreen;
@@ -36,6 +42,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       <PracticeModeGuard role="customer" pathname={pathname} />
       {!isAuthPage && <PracticeModePrompt role="customer" />}
+      {!isAuthPage && <PracticeModeBanner role="customer" />}
       {!isAuthPage && <OfflineBanner />}
       {showHeader && <BrandHeader />}
       <main

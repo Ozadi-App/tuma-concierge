@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { publicShareRoutes } from "./public/share-routes.js";
 import { onboardingRoutes } from "./onboarding/routes.js";
 import { cors } from "hono/cors";
 import { mobileNumberRoutes } from "./account/mobile-numbers.js";
@@ -17,6 +18,8 @@ import { emailKeyRoutes } from "./verify/email-key-routes.js";
 import { tripRoutes } from "./passengers/trips.js";
 import { merchantRoutes } from "./merchants/routes.js";
 import { orderRoutes } from "./orders/routes.js";
+import { relayRoutes } from "./relay/routes.js";
+import { relayStationRoutes } from "./relay/station-routes.js";
 import { paymentRoutes } from "./payments/routes.js";
 import { pushRoutes } from "./push/routes.js";
 import { restaurantChatRoutes } from "./restaurants/chat.js";
@@ -39,6 +42,10 @@ import { walletsRoutes } from "./wallet/wallets.js";
 
 import { gasRoutes } from "./gas/routes.js";
 import { marketplaceRoutes } from "./marketplace/routes.js";
+import { workRoutes } from "./work/routes.js";
+import { pharmacyRoutes } from "./pharmacy/routes.js";
+import { educationAdminRoutes } from "./education/admin.js";
+import { educationRoutes } from "./education/routes.js";
 
 /** Hono app shared by the Node entry (local dev) and the Cloudflare Worker entry. */
 const app = new Hono();
@@ -52,6 +59,7 @@ const devOrigins = [
   "http://localhost:3006", // apps/partner dev server
   "http://localhost:3007", // sales onboarding
   "http://localhost:3008", // apps/gas dev server
+  "http://localhost:3009", // apps/work dev server
 ];
 
 const defaultOrigins = [
@@ -65,6 +73,7 @@ const defaultOrigins = [
   "https://partner.peebee.online",
   "https://sales.peebee.online",
   "https://gas.peebee.online",
+  "https://work.peebee.online",
 ];
 
 /** Anything a developer runs on their own machine can call the API from the
@@ -221,9 +230,17 @@ app.route("/v1/auth", verifyRoutes);
 // Public (token-gated) trip page for rides booked for someone else — mounted
 // before the authenticated /v1 routers on purpose.
 app.route("/v1/trips", tripRoutes);
+app.route("/v1/gas", relayStationRoutes);
 app.route("/v1/gas", gasRoutes);
+// Public, sign-in-free data for shared links; before the order routes' catch-all sign-in.
+app.route("/v1", publicShareRoutes);
 app.route("/v1", marketplaceRoutes);
+app.route("/v1/work", workRoutes);
+app.route("/v1/pharmacy", pharmacyRoutes);
+app.route("/v1/education", educationRoutes);
+app.route("/v1", educationAdminRoutes);
 app.route("/v1", orderRoutes);
+app.route("/v1", relayRoutes);
 app.route("/v1", paymentRoutes);
 app.route("/v1", pushRoutes);
 app.route("/v1", riderRoutes);

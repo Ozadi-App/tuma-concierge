@@ -4,11 +4,13 @@ import { isPracticeMode, isProSubscriptionCurrent, type MerchantPayment, type Or
 import { Crown, MapPin, MessageCircle, Pencil, X } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { CustomerAvatar } from "../../../components/CustomerAvatar";
 import { DeliveryNavigation } from "../../../components/DeliveryNavigation";
 import { FeeProposalVoicePlayer } from "../../../components/FeeProposalVoicePlayer";
 import { LugandaListPlayer } from "../../../components/LugandaListPlayer";
+import { RelayCollectFromMatatu, RelayHandToMatatu } from "../../../components/RelayHandoff";
+import { RideStopsPanel } from "../../../components/RideStopsPanel";
 import { VoiceNotePlayer } from "../../../components/VoiceNotePlayer";
 import { VoiceReasonRecorder } from "../../../components/VoiceReasonRecorder";
 import { api, errorMessage } from "../../../lib/api";
@@ -64,10 +66,21 @@ export default function JobDetailPage() {
     setReceiptReference("PRACTICE-001");
   }, []);
 
+  // A relay's first rider loses access to the order once the matatu takes the parcel.
+  const [handedOff, setHandedOff] = useState(false);
+  const wasRelayFirstRider = useRef(false);
+
   const load = useCallback(async () => {
-    const res = await api.getOrder(orderId);
-    setDetail(res);
-    return res;
+    try {
+      const res = await api.getOrder(orderId);
+      wasRelayFirstRider.current = !!res.relay?.legs.find((leg) => leg.leg === 1)?.handoffCode;
+      setDetail(res);
+      return res;
+    } catch (err) {
+      const status = (err as { status?: number }).status;
+      if (wasRelayFirstRider.current && (status === 403 || status === 404)) setHandedOff(true);
+      throw err;
+    }
   }, [orderId]);
 
   useLivePolling(() => void load().catch(() => {}), 4000, [load]);
@@ -93,11 +106,29 @@ export default function JobDetailPage() {
     }
   }
 
+  if (handedOff) {
+    return (
+      <div className="space-y-4 px-4 pb-24 pt-4">
+        <section className="home-card space-y-3 text-center">
+          <p className="text-lg font-bold text-ink">Handed to the matatu</p>
+          <p className="text-sm text-ink-500">Your share goes to your wallet.</p>
+          <Link href="/" className="inline-flex min-h-11 w-full items-center justify-center rounded-full bg-gold px-6 text-sm font-bold text-ink-gold">
+            {t("job_back_to_jobs")}
+          </Link>
+        </section>
+      </div>
+    );
+  }
+
   if (!detail) {
     return <div className="p-4 text-sm text-ink-500">{t("job_loading")}</div>;
   }
 
   const { order, items, substitutions, feeProposals } = detail;
+  const rideStops = detail.rideStops ?? [];
+  // Multi-stop: the next stop not yet left behind (null = straight to the destination).
+  const nextStop = rideStops.find((stop) => stop.status !== "done") ?? null;
+  const stopAfter = nextStop ? rideStops.find((stop) => stop.position > nextStop.position) ?? null : null;
   const canDeliver = ["Shop", "Substitute", "Approve"].includes(order.stage);
   const canPropose = order.type === "shopping" && (order.stage === "Shop" || order.stage === "Substitute");
   const canProposeFee = !["Create", "Settle"].includes(order.stage);
@@ -106,6 +137,11 @@ export default function JobDetailPage() {
   const currentItemsTotal = (order.final_total ?? order.estimated_total ?? 0) - (order.delivery_fee ?? 0);
   const pendingCount = Object.keys(pendingEdits).length;
   const pendingNetDelta = Object.values(pendingEdits).reduce((sum, e) => sum + e.priceDelta, 0);
+  const relayLeg1 = detail.relay?.legs.find((leg) => leg.leg === 1);
+  const relayMatatu = detail.relay?.legs.find((leg) => leg.leg === 2);
+  const relayLeg3 = detail.relay?.legs.find((leg) => leg.leg === 3);
+  const relayFirstRider = !!relayLeg1?.handoffCode;
+  const relayAwaitingCollect = !relayFirstRider && relayLeg3?.status === "assigned";
 
   function markUnavailable(item: OrderDetail["items"][number]) {
     setPendingEdits((prev) => ({
@@ -291,9 +327,12 @@ export default function JobDetailPage() {
         )}
       </header>
 
+      {rideStops.length > 0 && <RideStopsPanel order={order} stops={rideStops} />}
+
       {(detail.bundleStops?.length ?? 0) > 1 && (
         <section className="rounded-2xl border border-gold/25 bg-gold/10 p-4" aria-label="Combined delivery pickups">
-          <h2 className="font-bold text-ink">One delivery · {detail.bundleStops!.length} pickups</h2>
+          <h2 className="font-bold text-ink">Combined delivery · collect from {detail.bundleStops!.length} restaurants</h2>
+          <p className="mt-1 text-sm text-ink-500">Pick up every order below before delivering. They are paid and delivered together.</p>
           <ol className="mt-3 space-y-2">
             {detail.bundleStops!.map((stop, index) => (
               <li key={stop.id} className="flex items-center justify-between gap-3 text-sm">
@@ -658,7 +697,25 @@ export default function JobDetailPage() {
           </form>
         )}
 
-        {order.stage === "Deliver" && (
+        {order.stage === "Deliver" && relayFirstRider && relayLeg1 && (
+          <RelayHandToMatatu leg={relayLeg1} matatu={relayMatatu} />
+        )}
+
+        {order.stage === "Deliver" && relayAwaitingCollect && relayLeg3 && (
+          <RelayCollectFromMatatu
+            leg={relayLeg3}
+            matatu={relayMatatu}
+            station={
+              detail.relay?.dropMode === "station"
+                ? (detail.relay.station ?? { name: relayLeg3.fromName ?? "the station", address: null, lat: null, lng: null, phone: null })
+                : undefined
+            }
+            busy={busy}
+            onCollect={(code) => run(() => api.collectRelayLeg(relayLeg3.id, code))}
+          />
+        )}
+
+        {order.stage === "Deliver" && !relayFirstRider && !relayAwaitingCollect && (
           <>
             <p className="text-sm text-ink-500">
               {order.is_ride
@@ -707,7 +764,45 @@ export default function JobDetailPage() {
           <p className="text-sm text-ink-500">{t("job_customer_notified_handover")}</p>
         )}
 
-        {order.stage === "PickedUp" && (
+        {order.stage === "PickedUp" && nextStop?.status === "pending" && (
+          <>
+            <p className="text-sm text-ink-500">
+              {t("stop_heading", { n: nextStop.position })}
+              {nextStop.area ? ` · ${nextStop.area}` : ""}
+            </p>
+            <DeliveryNavigation
+              key={`stop-${nextStop.position}`}
+              orderId={orderId}
+              destinationLat={nextStop.lat}
+              destinationLng={nextStop.lng}
+              busy={busy}
+              onConfirmDelivery={() => run(() => api.arrivedAtStop(orderId, nextStop.position))}
+              confirmButtonLabel={t("stop_arrived_btn", { n: nextStop.position })}
+              confirmModalDescription={t("stop_arrived_desc")}
+            />
+          </>
+        )}
+
+        {order.stage === "PickedUp" && nextStop?.status === "arrived" && (
+          <>
+            <p className="text-sm font-semibold text-ink" role="status">
+              {t("stop_waiting", { n: nextStop.position })}
+              {nextStop.area ? ` · ${nextStop.area}` : ""}
+            </p>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => run(() => api.continueFromStop(orderId, nextStop.position))}
+              className="min-h-11 w-full rounded-full bg-gold px-4 text-sm font-bold text-ink-gold disabled:opacity-60"
+            >
+              {t("stop_continue_btn", {
+                next: stopAfter ? t("stop_label", { n: stopAfter.position }) : t("stop_the_destination"),
+              })}
+            </button>
+          </>
+        )}
+
+        {order.stage === "PickedUp" && !nextStop && (
           <>
             <p className="text-sm text-ink-500">{t("job_heading_destination")}</p>
             <DeliveryNavigation

@@ -14,11 +14,11 @@ import { createOrderFromInput } from "../orders/routes.js";
 import { checkPaymentStatus, initiateDisbursement, UnsupportedNetworkError } from "../payments/service.js";
 import { creditWallet, debitWallet } from "../wallet/service.js";
 import { passengerSchema } from "../passengers/routes.js";
-import { endAssignment, quoteFare } from "./service.js";
+import { categoryFare, endAssignment, MAX_HIRE_HOURS, nearbyCategoryDrivers, quoteFare } from "./service.js";
 import { baseMimeType, extensionForMime } from "../lib/mime.js";
 import { getR2Bucket, uploadResponseHeaders } from "../storage/r2.js";
 import { openForDriversSql, scheduledAvailable, toDbTime, validateScheduledFor } from "./scheduled.js";
-import { acceptsTier, nearbyTierCounts, tierFare, type CarServiceTier } from "./tiers.js";
+import { acceptsTier, effectiveKindSql, nearbyTierCounts, standardCategoryOnly, tierFare, type CarServiceTier } from "./tiers.js";
 
 type Row = Record<string, unknown>;
 
@@ -38,8 +38,14 @@ carRoutes.use("/car/*", async (c, next) => {
 carRoutes.get("/car/config", async (c) => {
   c.header("Cache-Control", "private, no-store");
   const settings = await getCarSettings();
+  // Luxury and Ambulance groups, hourly rates and descriptions exist once migration 0101 is applied.
+  // `has_vehicles` lets the customer app show Luxury / Ambulance only once Peebee has approved at least one such vehicle,
+  // while owners can still see the category to register one.
+  const categoryExtras = (await hasColumn("vehicle_categories", "service_group"))
+    ? ", service_group, rate_per_hour, description, EXISTS (SELECT 1 FROM vehicles v WHERE v.category_id = vehicle_categories.id AND v.status = 'approved') AS has_vehicles"
+    : "";
   const categories = await db.execute(
-    `SELECT id, kind, name, seats, cargo_type, size_label, reference_image_key, rate_per_km, minimum_fare
+    `SELECT id, kind, name, seats, cargo_type, size_label, reference_image_key, rate_per_km, minimum_fare${categoryExtras}
      FROM vehicle_categories WHERE active = 1 ORDER BY sort ASC, name ASC`,
   );
   const scheduled = (await scheduledAvailable(settings.scheduled))
@@ -50,7 +56,7 @@ carRoutes.get("/car/config", async (c) => {
     : null;
   const selfDrive = settings.selfDrive.enabled && settings.selfDrive.platformPercent != null && (await hasTable("rentals")) ? { maxDays: settings.selfDrive.maxDays } : null;
   const serviceTiers = await hasColumn("car_bookings", "service_tier") && await hasColumn("car_bookings", "vehicle_size") && await hasColumn("vehicles", "accepts_convenient") ? settings.servicePricing : null;
-  return c.json({ onDemandEnabled: settings.onDemandEnabled, matchingMode: settings.matchingMode, scheduled, carpool, selfDrive, serviceTiers, vehiclePhotos: settings.vehiclePhotos, kyc: settings.kyc, deals: settings.deals.enabled && (await hasTable("driver_requests")) && (await hasColumn("vehicle_assignments", "fee_type")) ? { shareEnabled: settings.deals.shareEnabled, rentEnabled: settings.deals.rentEnabled, minOwnerSharePercent: settings.deals.minOwnerSharePercent, maxOwnerSharePercent: settings.deals.maxOwnerSharePercent, maxRentPerDay: settings.deals.maxRentPerDay } : null, categories: categories.rows });
+  return c.json({ onDemandEnabled: settings.onDemandEnabled, matchingMode: settings.matchingMode, emergencyNumber: settings.emergencyNumber ?? "999", maxHireHours: MAX_HIRE_HOURS, scheduled, carpool, selfDrive, serviceTiers, vehiclePhotos: settings.vehiclePhotos, kyc: settings.kyc, deals: settings.deals.enabled && (await hasTable("driver_requests")) && (await hasColumn("vehicle_assignments", "fee_type")) ? { shareEnabled: settings.deals.shareEnabled, rentEnabled: settings.deals.rentEnabled, minOwnerSharePercent: settings.deals.minOwnerSharePercent, maxOwnerSharePercent: settings.deals.maxOwnerSharePercent, maxRentPerDay: settings.deals.maxRentPerDay } : null, categories: categories.rows });
 });
 
 carRoutes.get("/car/service-options", async (c) => {
@@ -66,6 +72,17 @@ carRoutes.get("/car/service-options", async (c) => {
   const counts = await nearbyTierCounts(t.pickupLat, t.pickupLng, settings.maxPickupKm, pricing.xlMinSeats);
   const options = (["normal", "large"] as const).flatMap((size) => (["convenient", "comfort"] as const).map((tier) => ({ size, tier, fare: tierFare(distanceKm, tier, pricing, size), nearby: counts[size][tier] })));
   return c.json({ distanceKm: Math.round(distanceKm * 10) / 10, options });
+});
+
+/** How many cars of one category (Luxury, Ambulance, a cargo type…) are online and free near a point. */
+carRoutes.get("/car/category-nearby", async (c) => {
+  c.header("Cache-Control", "private, no-store");
+  const parsed = z.object({ categoryId: z.string().min(1), lat: z.coerce.number().min(-90).max(90), lng: z.coerce.number().min(-180).max(180) }).safeParse(c.req.query());
+  if (!parsed.success) return c.json({ error: "invalid_query" }, 400);
+  const category = await activeCategory(parsed.data.categoryId);
+  if (!category) return c.json({ error: "invalid_category" }, 400);
+  const settings = await getCarSettings();
+  return c.json({ nearby: await nearbyCategoryDrivers(parsed.data.categoryId, parsed.data.lat, parsed.data.lng, settings.maxPickupKm) });
 });
 
 // ---- Who am I: owner / driver status, vehicles, current car -----------------
@@ -275,8 +292,9 @@ carRoutes.post("/car/driver/location", async (c) => {
 /** The driver's own state: online with an approved, assigned vehicle. */
 async function onlineDriver(userId: string): Promise<{ vehicleId: string; categoryId: string; categoryKind: unknown; serviceClass: unknown; acceptsConvenient: unknown; seatCapacity: unknown; lat: number | null; lng: number | null } | null> {
   const preference = await hasColumn("vehicles", "accepts_convenient");
+  const kindSql = await effectiveKindSql("cat");
   const res = await db.execute({
-    sql: `SELECT s.vehicle_id, s.lat, s.lng, v.category_id, cat.kind AS category_kind, v.service_class, v.seat_capacity, ${preference ? "v.accepts_convenient" : "0 AS accepts_convenient"} FROM car_driver_state s
+    sql: `SELECT s.vehicle_id, s.lat, s.lng, v.category_id, ${kindSql} AS category_kind, v.service_class, v.seat_capacity, ${preference ? "v.accepts_convenient" : "0 AS accepts_convenient"} FROM car_driver_state s
           JOIN car_partners p ON p.user_id = s.driver_id AND p.driver_status = 'approved'
           JOIN vehicles v ON v.id = s.vehicle_id AND v.status = 'approved'
           JOIN vehicle_categories cat ON cat.id = v.category_id
@@ -301,8 +319,10 @@ carRoutes.get("/car/driver/jobs", async (c) => {
   const scheduledSelect = (await hasColumn("car_bookings", "scheduled_for")) ? "b.scheduled_for" : "NULL";
   const tiersReady = await hasColumn("car_bookings", "service_tier");
   const sizesReady = await hasColumn("car_bookings", "vehicle_size");
+  const notesReady = await hasColumn("car_bookings", "trip_note");
+  const jobKindSql = await effectiveKindSql("cc");
   const res = await db.execute({
-    sql: `SELECT o.*, b.category_id, ${tiersReady ? "b.service_tier" : "NULL AS service_tier"}, ${sizesReady ? "b.vehicle_size" : "'normal' AS vehicle_size"}, ${scheduledSelect} AS scheduled_for, cu.name AS customer_name FROM car_bookings b
+    sql: `SELECT o.*, b.category_id, (SELECT ${jobKindSql} FROM vehicle_categories cc WHERE cc.id = b.category_id) AS category_kind, ${notesReady ? "b.trip_note, b.hire_hours" : "NULL AS trip_note, NULL AS hire_hours"}, ${tiersReady ? "b.service_tier" : "NULL AS service_tier"}, ${sizesReady ? "b.vehicle_size" : "'normal' AS vehicle_size"}, ${scheduledSelect} AS scheduled_for, cu.name AS customer_name FROM car_bookings b
           JOIN orders o ON o.id = b.order_id JOIN users cu ON cu.id = o.customer_id
           WHERE ${tiersReady ? "(b.category_id = ? OR b.service_tier IS NOT NULL)" : "b.category_id = ?"} AND b.status = 'requested' AND o.rider_id IS NULL AND o.stage IN ('Create', 'Match')
           AND o.environment = ? ${openSql}
@@ -331,6 +351,9 @@ carRoutes.get("/car/driver/jobs", async (c) => {
           distanceKm: o.distance_km,
           fare: o.estimated_total,
           serviceTier: o.service_tier ?? null,
+          categoryKind: o.category_kind ?? null,
+          tripNote: o.trip_note ?? null,
+          hireHours: o.hire_hours ?? null,
           vehicleSize: o.vehicle_size ?? "normal",
           pickupDistanceKm: km != null ? Math.round(km * 10) / 10 : null,
           matchingMode: o.matching_mode,
@@ -351,9 +374,12 @@ carRoutes.get("/car/driver/active", async (c) => {
   const user = c.get("user");
   // A ride booked for someone else: the driver meets the passenger, not the booker.
   const passengerSelect = (await hasColumn("orders", "passenger_name")) ? "o.passenger_name, o.passenger_phone" : "NULL AS passenger_name, NULL AS passenger_phone";
+  const notesSelect = (await hasColumn("car_bookings", "trip_note")) ? "b.trip_note, b.hire_hours" : "NULL AS trip_note, NULL AS hire_hours";
+  const activeKindSql = await effectiveKindSql("cc");
   const active = await db.execute({
     sql: `SELECT o.id, o.stage, o.estimated_total, o.final_total, o.pickup_address, o.pickup_lat, o.pickup_lng,
                  o.destination_address, o.destination_lat, o.destination_lng, o.distance_km, o.customer_id, cu.name AS customer_name,
+                 (SELECT ${activeKindSql} FROM vehicle_categories cc WHERE cc.id = b.category_id) AS category_kind, ${notesSelect},
                  ${passengerSelect}
           FROM orders o JOIN car_bookings b ON b.order_id = o.id JOIN users cu ON cu.id = o.customer_id
           WHERE o.rider_id = ? AND o.stage NOT IN ('Settle', 'Cancelled') LIMIT 1`,
@@ -446,6 +472,10 @@ const tripFields = z.object({
   destinationLat: z.number().min(-90).max(90),
   destinationLng: z.number().min(-180).max(180),
   cargoDescription: z.string().trim().max(300).optional(),
+  /** Luxury: hours the car and chauffeur stay with the customer, charged at the category's hourly rate on top of the trip. */
+  hireHours: z.number().int().min(1).max(MAX_HIRE_HOURS).optional(),
+  /** What is happening (Ambulance) or the occasion (Luxury); shown to the driver. */
+  note: z.string().trim().max(300).optional(),
 });
 const oneService = (t: { categoryId?: string; serviceTier?: CarServiceTier }) => Boolean(t.categoryId) !== Boolean(t.serviceTier);
 const tripSchema = tripFields.refine(oneService, { message: "Choose one car service." });
@@ -470,7 +500,8 @@ carRoutes.post("/car/quote", async (c) => {
   }
   const category = await activeCategory(parsed.data.categoryId!);
   if (!category) return c.json({ error: "invalid_category" }, 400);
-  return c.json({ fare: quoteFare(category, distanceKm), distanceKm: Math.round(distanceKm * 10) / 10 });
+  if (parsed.data.hireHours && category.service_group !== "luxury") return c.json({ error: "hire_not_offered", message: "Hiring by the hour is only for Luxury cars." }, 400);
+  return c.json({ fare: categoryFare(category, distanceKm, parsed.data.hireHours), distanceKm: Math.round(distanceKm * 10) / 10 });
 });
 
 /** Book a car now. Creates the ride's list and order (same payment, tracking,
@@ -486,7 +517,7 @@ carRoutes.post("/car/bookings", async (c) => {
   if (isTier && !(await hasColumn("car_bookings", "vehicle_size"))) return c.json({ error: "vehicle_sizes_unavailable" }, 503);
   const vehicleSize = parsed.data.vehicleSize ?? (parsed.data.serviceTier === "xl" ? "large" : "normal");
   const category = isTier
-    ? (await db.execute({ sql: `SELECT * FROM vehicle_categories WHERE active = 1 AND kind = 'passenger' AND ${vehicleSize === "large" ? "seats >= 5" : "seats < 5"} ORDER BY sort ASC LIMIT 1`, args: [] })).rows[0] as Row | undefined
+    ? (await db.execute({ sql: `SELECT * FROM vehicle_categories cat WHERE cat.active = 1 AND cat.kind = 'passenger'${await standardCategoryOnly("cat")} AND ${vehicleSize === "large" ? "cat.seats >= 5" : "cat.seats < 5"} ORDER BY cat.sort ASC LIMIT 1`, args: [] })).rows[0] as Row | undefined
     : await activeCategory(parsed.data.categoryId!);
   if (!category) return c.json({ error: "invalid_category" }, 400);
   if (category.kind === "cargo" && !(await isServiceEnabled("cargo"))) return servicePaused(c, "cargo");
@@ -498,14 +529,31 @@ carRoutes.post("/car/bookings", async (c) => {
     const checked = validateScheduledFor(parsed.data.scheduledFor, settings.scheduled);
     if ("error" in checked) return c.json({ error: "invalid_time", message: checked.error }, 400);
     scheduledAt = checked.at;
-  } else if (!settings.onDemandEnabled) {
+  } else if (!settings.onDemandEnabled && category.service_group !== "ambulance") {
     return c.json({ error: "mode_disabled", message: "Booking a car right now isn't available." }, 403);
+  }
+  const emergencyNumber = settings.emergencyNumber ?? "999";
+  // An ambulance is for now: an emergency can't wait for a booked time.
+  if (category.service_group === "ambulance" && parsed.data.scheduledFor) return c.json({ error: "emergency_now_only", message: "An ambulance is dispatched straight away. It can't be booked for later." }, 400);
+  if (parsed.data.hireHours) {
+    if (category.service_group !== "luxury" || !(Number(category.rate_per_hour) > 0)) return c.json({ error: "hire_not_offered", message: "Hiring by the hour isn't offered for this car." }, 400);
   }
 
   const t = parsed.data;
   const distanceKm = haversineKm(t.pickupLat, t.pickupLng, t.destinationLat, t.destinationLng);
-  const fare = isTier ? tierFare(distanceKm, parsed.data.serviceTier!, settings.servicePricing!, vehicleSize) : quoteFare(category, distanceKm);
+  const fare = isTier ? tierFare(distanceKm, parsed.data.serviceTier!, settings.servicePricing!, vehicleSize) : categoryFare(category, distanceKm, parsed.data.hireHours);
   if (fare <= 0) return c.json({ error: "no_price", message: "This car type has no price set yet." }, 409);
+  // Luxury and ambulance cars are few: say so up front instead of leaving the customer waiting for nobody.
+  if ((category.service_group === "luxury" || category.service_group === "ambulance") && !parsed.data.scheduledFor) {
+    if ((await nearbyCategoryDrivers(String(category.id), t.pickupLat, t.pickupLng, settings.maxPickupKm)) === 0) {
+      return c.json({
+        error: "no_nearby_car",
+        message: category.service_group === "ambulance"
+          ? `No ambulance is available nearby right now. If someone's life is in danger, call ${emergencyNumber} now.`
+          : "No car of this type is available nearby right now. Try another type or book it for later.",
+      }, 409);
+    }
+  }
   if (isTier && !parsed.data.scheduledFor) {
     const counts = await nearbyTierCounts(t.pickupLat, t.pickupLng, settings.maxPickupKm, settings.servicePricing!.xlMinSeats);
     if (counts[vehicleSize][parsed.data.serviceTier as "convenient" | "comfort"] === 0 && parsed.data.serviceTier !== "xl") return c.json({ error: "no_nearby_car", message: "No car in this service is nearby. Choose an available service." }, 409);
@@ -516,7 +564,9 @@ carRoutes.post("/car/bookings", async (c) => {
   const isCargo = category.kind === "cargo";
   const listTitle = isCargo
     ? `${String(category.name)}${t.cargoDescription ? ` · ${t.cargoDescription}` : ""}`
-    : `${isTier ? `${parsed.data.serviceTier![0].toUpperCase()}${parsed.data.serviceTier!.slice(1)}` : String(category.name)} ride`;
+    : category.service_group === "ambulance"
+      ? `Ambulance request${t.note ? ` · ${t.note}` : ""}`
+      : `${isTier ? `${parsed.data.serviceTier![0].toUpperCase()}${parsed.data.serviceTier!.slice(1)}` : String(category.name)} ride`;
   await db.execute({
     sql: "INSERT INTO lists (id, customer_id, title, status, environment) VALUES (?, ?, ?, 'draft', ?)",
     args: [listId, user.sub, listTitle, environment],
@@ -543,7 +593,8 @@ carRoutes.post("/car/bookings", async (c) => {
     },
     {
       fare,
-      matchingMode: settings.matchingMode,
+      // An ambulance goes to the nearest free one at once: nobody waits to pick a driver in an emergency.
+      matchingMode: category.service_group === "ambulance" ? "first_to_claim" : settings.matchingMode,
       // The customer's pick window starts when the ride opens to drivers, not at booking.
       matchingDeadlineAt:
         scheduledAt && settings.matchingMode === "customer_selects"
@@ -554,12 +605,16 @@ carRoutes.post("/car/bookings", async (c) => {
   if (response.status >= 400) return response;
 
   const body = (await response.clone().json()) as { order: Row };
+  const noteColumns = (await hasColumn("car_bookings", "trip_note")) && (await hasColumn("car_bookings", "hire_hours"));
   await db.execute({
     sql: `INSERT INTO car_bookings (id, order_id, customer_id, category_id, environment${isTier ? ", service_tier, vehicle_size" : ""}) VALUES (?, ?, ?, ?, ?${isTier ? ", ?, ?" : ""})`,
     args: [newId("cbk"), String(body.order.id), user.sub, String(category.id), environment, ...(isTier ? [parsed.data.serviceTier!, vehicleSize] : [])],
   });
   if (scheduledAt) {
     await db.execute({ sql: "UPDATE car_bookings SET scheduled_for = ? WHERE order_id = ?", args: [scheduledAt, String(body.order.id)] });
+  }
+  if (noteColumns && (t.note || t.hireHours)) {
+    await db.execute({ sql: "UPDATE car_bookings SET trip_note = ?, hire_hours = ? WHERE order_id = ?", args: [t.note ?? null, t.hireHours ?? null, String(body.order.id)] });
   }
   return response;
 });

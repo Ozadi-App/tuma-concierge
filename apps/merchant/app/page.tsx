@@ -1,7 +1,7 @@
 "use client";
 
 import type { MerchantBalance, MerchantPaymentSummary } from "@peebee/shared";
-import { AlertCircle, ArrowDownToLine, Building2, ChevronRight, CreditCard, ShieldCheck } from "lucide-react";
+import { AlertCircle, ArrowDownToLine, Building2, ChevronRight, CreditCard, ShieldCheck, Truck } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api, errorMessage } from "../lib/api";
@@ -39,6 +39,7 @@ export default function DashboardPage() {
       <Link href="/payments" className="home-card !p-4"><CreditCard className="h-5 w-5 text-gold"/><p className="mt-3 text-sm font-bold">Payments</p><p className="text-xs text-ink-500">Confirm and dispute</p></Link>
       <Link href="/outlets" className="home-card !p-4"><Building2 className="h-5 w-5 text-gold"/><p className="mt-3 text-sm font-bold">Outlets</p><p className="text-xs text-ink-500">Codes and locations</p></Link>
     </div>
+    <Link href="/deliveries" className="home-card flex items-center gap-3"><span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gold/15 text-gold"><Truck/></span><span className="flex-1"><span className="block font-bold">Deliveries</span><span className="text-xs text-ink-500">Follow store orders sent by matatu</span></span><ChevronRight className="h-5 w-5 text-ink-500"/></Link>
     <section className="home-card space-y-3"><div className="flex items-center justify-between"><h2 className="font-bold">Recent sales</h2>{merchant.member_role !== "cashier" && <Link href="/activity" className="text-xs font-bold text-gold">View ledger</Link>}</div>{payments.slice(0, 4).map((payment) => <div key={payment.id} className="flex items-center justify-between border-t border-[var(--border-faint)] pt-3 text-sm"><span><span className="block font-semibold">{payment.outlet_name}</span><span className="text-xs text-ink-500">{payment.rider_name} · {payment.status.replaceAll("_", " ")}</span></span><strong>{ugx(payment.amount)}</strong></div>)}{payments.length === 0 && <p className="text-sm text-ink-500">No merchant payments yet.</p>}</section>
   </div>;
 }

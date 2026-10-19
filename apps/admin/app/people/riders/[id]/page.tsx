@@ -28,6 +28,8 @@ export default function RiderDetailPage() {
   const [docUrl, setDocUrl] = useState<string | null>(null);
   const [docType,setDocType]=useState("");
   const [busy, setBusy] = useState(false);
+  const [defaultRangeKm, setDefaultRangeKm] = useState<number | null>(null);
+  const [rangeInput, setRangeInput] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -38,7 +40,10 @@ export default function RiderDetailPage() {
   }, [userId]);
 
   useEffect(() => {
-    load().catch((err) => setError(errorMessage(err)));
+    load()
+      .then((found) => setRangeInput(found?.visibility_range_km != null ? String(found.visibility_range_km) : ""))
+      .catch((err) => setError(errorMessage(err)));
+    api.getSettings().then(({ settings }) => setDefaultRangeKm(settings.riderVisibilityRangeKm ?? null)).catch(() => {});
   }, [load]);
 
   useEffect(() => {
@@ -157,6 +162,38 @@ export default function RiderDetailPage() {
           >
             {rider.verified ? "Revoke approval" : "Approve"}
           </button>
+        )}
+      </section>
+
+      <section className="home-card space-y-2">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-500">Order range</h2>
+        <Row
+          label="Sees orders within"
+          value={(() => {
+            const km = rider.visibility_range_km ?? defaultRangeKm;
+            const label = km == null ? "…" : km === 0 ? "No limit" : `${km} km`;
+            return rider.visibility_range_km == null ? `${label} (default)` : label;
+          })()}
+        />
+        {canManage && (
+          <div className="space-y-2">
+            <input
+              inputMode="decimal"
+              value={rangeInput}
+              onChange={(e) => setRangeInput(e.target.value.replace(/[^\d.]/g, ""))}
+              placeholder={defaultRangeKm != null ? `Default: ${defaultRangeKm === 0 ? "no limit" : `${defaultRangeKm} km`}` : "km"}
+              aria-label="Range in km"
+              className="w-full rounded-xl border border-[var(--border-faint)] px-3 py-2.5 text-[15px] outline-none focus:border-gold"
+            />
+            <p className="text-xs text-ink-500">0 means no limit. Leave empty to use the default.</p>
+            <button
+              disabled={busy}
+              onClick={() => run(() => api.adminSetRiderVisibilityRange(userId, rangeInput.trim() === "" ? null : Number(rangeInput)))}
+              className="min-h-11 w-full rounded-full bg-gold px-4 text-sm font-bold text-ink-gold disabled:opacity-60"
+            >
+              Save range
+            </button>
+          </div>
         )}
       </section>
 

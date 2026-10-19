@@ -2,9 +2,11 @@ import '@peebee/shared/auth.css';
 import type { Metadata, Viewport } from "next";
 import Script from "next/script";
 import { AppShell } from "../components/AppShell";
+import { CallOverlay } from "../components/CallOverlay";
 import { InstallPrompt } from "../components/InstallPrompt";
 import { ServiceWorkerRegister } from "../components/ServiceWorkerRegister";
 import { AuthProvider } from "../lib/auth-context";
+import { CallsProvider } from "../lib/calls-context";
 import "./globals.css";
 
 const THEME_INIT_SCRIPT = `
@@ -47,7 +49,12 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           {THEME_INIT_SCRIPT}
         </Script>
         <ServiceWorkerRegister />
-        <AuthProvider><AppShell>{children}</AppShell></AuthProvider>
+        <AuthProvider>
+          <CallsProvider>
+            <AppShell>{children}</AppShell>
+            <CallOverlay />
+          </CallsProvider>
+        </AuthProvider>
         <InstallPrompt />
       </body>
     </html>

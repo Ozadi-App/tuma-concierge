@@ -31,6 +31,7 @@ import {
   CreditCard,
   Briefcase,
   ChevronRight,
+  Package,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -69,7 +70,7 @@ export default function StationManagerPage() {
   const [newPhone, setNewPhone] = useState("+256 ");
   const [newCode, setNewCode] = useState("");
   const [newPumpLane, setNewPumpLane] = useState("Pump 1");
-  const [newPin, setNewPin] = useState("1234");
+  const [newPin, setNewPin] = useState("");
   const [newApproveImmediately, setNewApproveImmediately] = useState(true);
   const [commissioningBusy, setCommissioningBusy] = useState(false);
 
@@ -197,11 +198,15 @@ export default function StationManagerPage() {
         phone: newPhone.trim(),
         attendantCode: newCode.trim() || undefined,
         pumpLane: newPumpLane.trim() || undefined,
-        pin: newPin.trim() || "1234",
+        pin: newPin.trim() || undefined,
         approveImmediately: newApproveImmediately,
       });
       if (res.ok) {
         showToast(`Commissioned ${res.attendant.full_name} (${res.attendant.attendant_code}) successfully.`);
+        if (res.temporary_pin) {
+          window.alert(`Staff PIN for ${res.attendant.full_name}: ${res.temporary_pin}\n\nGive it to them privately. It will not be shown again.`);
+        }
+        setNewPin("");
         setCommissionModalOpen(false);
         setNewFullName("");
         setNewPhone("+256 ");
@@ -253,11 +258,14 @@ export default function StationManagerPage() {
   }
 
   async function handleResetPin(id: string) {
-    const pin = window.prompt("Enter new 4-digit terminal PIN for this attendant:", "1234");
-    if (!pin) return;
+    const pin = window.prompt("Enter a new 4 to 8 digit PIN for this attendant, or leave blank to generate one:", "");
+    if (pin === null) return;
     try {
-      await api.gasManagerResetPin(id, pin.trim());
-      showToast(`PIN reset to ${pin.trim()}.`);
+      const res = await api.gasManagerResetPin(id, pin.trim() || undefined);
+      if (res.temporary_pin) {
+        window.alert(`New staff PIN: ${res.temporary_pin}\n\nGive it to them privately. It will not be shown again.`);
+      }
+      showToast("PIN reset.");
       void fetchAttendants();
     } catch (err) {
       setActionError(errorMessage(err));
@@ -411,6 +419,18 @@ export default function StationManagerPage() {
           </button>
         </div>
       </section>
+
+      {/* Relay parcels kept in the station shop */}
+      <Link href="/parcels" className="home-card flex items-center gap-3 active:scale-[0.99] transition">
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gold/15 text-gold">
+          <Package className="h-5 w-5" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-black text-ink">Parcels</p>
+          <p className="text-xs text-ink-500">Relay parcels at this station.</p>
+        </div>
+        <ChevronRight className="h-4 w-4 shrink-0 text-ink-500" />
+      </Link>
 
       {/* Station Selector dropdown if multiple outlets */}
       {outlets.length > 1 && (
@@ -1012,8 +1032,9 @@ export default function StationManagerPage() {
                   <input
                     value={newPin}
                     onChange={(e) => setNewPin(e.target.value)}
-                    placeholder="1234"
-                    maxLength={6}
+                    placeholder="Leave blank to generate"
+                    inputMode="numeric"
+                    maxLength={8}
                     className="w-full font-bold text-ink outline-none font-mono"
                   />
                 </div>

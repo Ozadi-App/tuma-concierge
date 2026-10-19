@@ -61,7 +61,32 @@ test("checkout methods preserve payment ownership and held funds", async (t) => 
       for (const [key, value] of Object.entries({ monetization_service_fee_enabled: "1", monetization_service_fee_type: "flat", monetization_service_fee_value: "500", monetization_processing_fee_enabled: "1", monetization_processing_fee_percent: "20", monetization_processing_fee_mode: "customer" })) {
         await client.execute({ sql: "INSERT INTO settings (key, value) VALUES (?, ?)", args: [key, value] });
       }
-      assert.deepEqual(await (await request("quote/checkout")).json(), { baseAmount: 2500, mobileMoney: 3500, wallet: 3000, cash: 2500 });
+      const parcel = await (await request("quote/checkout")).json() as Record<string, unknown>;
+      assert.deepEqual({ baseAmount: parcel.baseAmount, mobileMoney: parcel.mobileMoney, wallet: parcel.wallet, cash: parcel.cash }, { baseAmount: 2500, mobileMoney: 3500, wallet: 3000, cash: 2500 });
+      assert.deepEqual({ items: parcel.items, itemsSubtotal: parcel.itemsSubtotal, delivery: parcel.delivery }, { items: [], itemsSubtotal: 0, delivery: { total: 2500, mode: "rider", pickups: [] } }, "a parcel has no items: its total is the delivery");
+
+      // A single shopping order: its items, their subtotal and the delivery add up, with the fees, to what is charged.
+      await client.execute("INSERT INTO lists (id, customer_id, title) VALUES ('shop-list', 'customer', 'Shop')");
+      await client.execute("INSERT INTO list_items (id, list_id, name, quantity, unit_price) VALUES ('item-1', 'shop-list', 'Summer dress', 1, 65000), ('item-2', 'shop-list', 'Belt', 2, 5000)");
+      await client.execute("INSERT INTO orders (id, list_id, customer_id, rider_id, stage, estimated_total, delivery_fee, environment, type, pickup_area) VALUES ('shop', 'shop-list', 'customer', 'rider', 'Match', 87000, 12000, 'live', 'shopping', 'Urban Vogue Boutique')");
+      const shop = await (await request("shop/checkout")).json() as {
+        baseAmount: number; mobileMoney: number; wallet: number; cash: number; itemsSubtotal: number;
+        items: Array<{ storeName: string; name: string; quantity: number; price: number }>;
+        delivery: { total: number; mode: string; pickups: string[]; legs?: unknown };
+      };
+      assert.deepEqual(shop.items.map((item) => [item.storeName, item.name, item.quantity, item.price]), [["Urban Vogue Boutique", "Summer dress", 1, 65000], ["Urban Vogue Boutique", "Belt", 2, 10000]]);
+      assert.equal(shop.itemsSubtotal, 75000);
+      assert.deepEqual(shop.delivery, { total: 12000, mode: "rider", pickups: ["Urban Vogue Boutique"] });
+      for (const charged of [shop.mobileMoney, shop.wallet, shop.cash]) {
+        assert.equal(shop.itemsSubtotal + shop.delivery.total + (charged - shop.baseAmount), charged);
+      }
+      assert.ok(shop.mobileMoney > shop.baseAmount, "fees are on top");
+      // When the total no longer matches the list (an approved change), the lines carry no amounts but the subtotal stays exact.
+      await client.execute("UPDATE orders SET final_total = 90000 WHERE id = 'shop'");
+      const changed = await (await request("shop/checkout")).json() as typeof shop;
+      assert.equal(changed.itemsSubtotal, 78000);
+      assert.ok(changed.items.every((item) => item.price === null));
+      await client.execute("UPDATE orders SET stage = 'Cancelled' WHERE id = 'shop'");
       assert.equal((await request("quote/checkout", undefined, other)).status, 403);
       assert.equal((await request("quote/fund", { paymentMethod: "wallet", useWallet: true, acceptedAmount: 2500 })).status, 409);
       assert.equal((await client.execute("SELECT wallet_balance FROM users WHERE id = 'customer'")).rows[0].wallet_balance, 20000);

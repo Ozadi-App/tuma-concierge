@@ -107,6 +107,8 @@ export type OrderRow = {
   /** Shared by orders that the customer chose to combine into one rider trip. */
   delivery_bundle_id?: string | null;
   bundle_order_count?: number;
+  /** The restaurants of a combined delivery in pickup order ("A → B"); null for a single order. */
+  bundle_pickups?: string | null;
   delivery_bundle_hold?: number;
   /** A passenger ride rather than a goods parcel — type stays 'parcel' (see
    * apps/api/src/db/migrations/0039_ride_orders.sql). Pickup = where the
@@ -127,8 +129,68 @@ export type OrderRow = {
   rider_lat: number | null;
   rider_lng: number | null;
   rider_location_updated_at: string | null;
+  /** Name your fare (migration 0104): the customer's offer, the app quote it
+   * was measured against, when riders stop countering and how many raises. */
+  fare_offer?: number | null;
+  fare_offer_quote?: number | null;
+  fare_offer_expires_at?: string | null;
+  fare_offer_raises?: number;
+  /** Multi-stop rides (0104): number of stops between pickup and destination. */
+  stop_count?: number;
   created_at: string;
   updated_at: string;
+};
+
+/** One stop on a multi-stop boda ride (0104). */
+export type RideStop = {
+  position: number;
+  area: string | null;
+  address: string | null;
+  lat: number;
+  lng: number;
+  status: "pending" | "arrived" | "done";
+  arrivedAt: string | null;
+  departedAt: string | null;
+};
+
+/** A stop as the customer chooses it, before booking. */
+export type RideStopInput = { area?: string; address?: string; lat: number; lng: number };
+
+/** The app's quote for a boda ride through any stops, plus the Name-your-fare band. */
+export type RideQuote = {
+  quote: number;
+  base: number;
+  stopFees: number;
+  stopFee: number;
+  stops: number;
+  distanceKm: number;
+  maxStops: number;
+  offers: { min: number; max: number; ttlMinutes: number; maxRaises: number } | null;
+};
+
+/** A customer's live offer on a ride. */
+export type FareOffer = {
+  amount: number;
+  quote: number;
+  min: number;
+  max: number;
+  expiresAt: string | null;
+  expired: boolean;
+  raises: number;
+  raisesLeft: number;
+};
+
+/** A rider's counter to a customer's offer, waiting for the customer. */
+export type FareCounter = {
+  id: string;
+  amount: number;
+  offer: number;
+  rider_id: string;
+  rider_name: string | null;
+  rider_rating: number | null;
+  rider_verified: number | null;
+  expires_at: string | null;
+  created_at: string;
 };
 
 /**
@@ -164,6 +226,7 @@ export type AvailableJob = Pick<
   | "restaurant_id"
   | "is_ride"
   | "bundle_order_count"
+  | "bundle_pickups"
 > & {
   /**
    * Deliberately narrower than a full OrderRow. This feed goes to every
@@ -187,6 +250,18 @@ export type AvailableJob = Pick<
   applied: boolean;
   /** Set when riders may bid on this job: the app's price and the allowed range for a bid. */
   bidding?: { appPrice: number | null; min: number | null; max: number | null } | null;
+  /** Multi-stop rides: stops between pickup and destination (0 = single destination). */
+  stop_count?: number;
+  /** Name your fare: the customer's offer, the app quote, the counter band and this rider's open counter. */
+  fareOffer?: {
+    amount: number;
+    quote: number;
+    min: number;
+    max: number;
+    expiresAt: string | null;
+    expired: boolean;
+    myCounter: { id: string; amount: number; expiresAt: string | null } | null;
+  } | null;
 };
 
 /**
@@ -229,6 +304,8 @@ export type CarSettings = {
   shares: { owner: number; driver: number; platform: number };
   /** A driver further than this from the pickup isn't offered the ride. */
   maxPickupKm: number;
+  /** Phone number shown with Ambulance requests (default 999). */
+  emergencyNumber?: string;
   servicePricing?: { ratePerKm: number; minimumFare: number; comfortPremiumPercent: number; xlPremiumPercent: number; xlMinSeats: number };
   /** Owners and drivers may cash their ride earnings out to mobile money. */
   withdrawalsEnabled: boolean;
@@ -307,6 +384,8 @@ export type MarketplaceSettings = {
   minOrderAmountUgx: number;
   liveMaxDurationMins: number;
   deliveryBaseFeeUgx: number;
+  /** A cart left this many hours is set aside as an earlier (retrievable) cart when a new one starts. */
+  cartExpiryHours?: number;
 };
 
 /** Admin-tunable delivery pricing/matching numbers (packages/shared/src/api-client.ts: getSettings/adminUpdateSettings). */
@@ -328,6 +407,12 @@ export type DeliverySettings = {
    * short ride round down toward a near-free delivery. */
   minimumDeliveryFee: number;
   serviceRangeKm: number;
+  /** Furthest a rider can see or take an order, in km (0 = no limit). A rider can have their own. */
+  riderVisibilityRangeKm?: number;
+  /** Delivery distances follow the road: straight line x this, unless a routing server answers. */
+  roadDistanceFactor?: number;
+  /** Admin only: an OSRM-compatible routing server for true road distances ("" = use the road factor). */
+  routingServerUrl?: string;
   /** Flat delivery fee (UGX) added on top of a shopping order's item costs
    * — see apps/api/src/lib/settings.ts for why shopping can't be priced by
    * distance the way a parcel ride is. */
@@ -751,6 +836,8 @@ export type ChatThreadDetail = {
 };
 
 export type Rider = {
+  /** Own order visibility range in km (0 = no limit); null uses the admin default. */
+  visibility_range_km?: number | null;
   user_id: string;
   /** Stable rider reference for support and order handoff. */
   rider_code?: string | null;
@@ -1267,6 +1354,8 @@ export type SharedTrip = {
   riderLat: number | null;
   riderLng: number | null;
   etaMinutes: number | null;
+  /** Multi-stop rides: the stops on the way, in order, with progress. */
+  stops?: Array<{ position: number; area: string | null; address: string | null; status: "pending" | "arrived" | "done" }>;
 };
 
 export type SavedLocation = {
@@ -1544,6 +1633,36 @@ export type FeeProposal = {
   updated_at: string;
 };
 
+/** One line of what the customer pays for at checkout. `price` is the line's amount (quantity × unit price), or null when not known exactly. */
+export type CheckoutItem = { orderId: string; storeName: string | null; name: string; quantity: number; price: number | null; note?: string | null };
+
+/** One leg of a relayed delivery, as charged: boda to the stage, matatu along the route, boda to the door. */
+export type CheckoutDeliveryLeg = {
+  leg?: number;
+  kind: "boda" | "matatu";
+  fromName: string | null;
+  toName: string | null;
+  distanceKm: number | null;
+  fee: number;
+  /** Matatu legs: the way along the route, "KLA - EBB". */
+  direction?: string | null;
+};
+
+/** The delivery part of a checkout: its charged total, every pickup, and (relay) the legs it is made of. */
+export type CheckoutDelivery = {
+  total: number;
+  mode: "relay" | "rider";
+  pickups: string[];
+  legs?: CheckoutDeliveryLeg[];
+  lastMile?: "door" | "collect";
+  station?: string | null;
+  /** A marketplace bag, where the customer chose Relay or Direct. */
+  marketplace?: boolean;
+};
+
+/** Items, their subtotal and the delivery: itemsSubtotal + delivery.total (+ payment fees) is what is charged. */
+export type CheckoutBreakdown = { items: CheckoutItem[]; itemsSubtotal: number; delivery: CheckoutDelivery };
+
 export type OrderDetail = {
   timeFees?: OrderTimeFees;
   order: OrderRow;
@@ -1554,6 +1673,13 @@ export type OrderDetail = {
   rating: OrderRating | null;
   feeProposals: FeeProposal[];
   bundleStops?: Array<{ id: string; stage: string; pickup_address: string | null; pickup_lat: number | null; pickup_lng: number | null; restaurant_name: string | null; outlet_name: string | null }>;
+  /** Set when the parcel is relayed boda -> matatu -> boda. */
+  relay?: import("./relay.js").OrderRelay | null;
+  /** Multi-stop rides (0104). */
+  rideStops?: RideStop[];
+  /** Name your fare (0104). */
+  fareOffer?: FareOffer | null;
+  fareCounters?: FareCounter[];
 };
 
 /** A rider's mobile-money cash-out of their wallet balance. */
@@ -2026,9 +2152,15 @@ export type AdminStageDetail = { stage: Stage; members: StageMemberSummary[]; cy
 
 export type CarPartnerStatus = "none" | "pending" | "approved" | "rejected" | "suspended";
 
+/** "luxury" and "ambulance" categories carry passengers but are kept out of the ordinary taxi matching (migration 0101). */
+export type CarServiceGroup = "standard" | "luxury" | "ambulance";
+
 export type AdminCarCategory = {
   id: string;
   kind: "passenger" | "cargo";
+  service_group?: CarServiceGroup;
+  rate_per_hour?: number;
+  description?: string | null;
   name: string;
   seats: number | null;
   cargo_type: string | null;
@@ -2044,6 +2176,10 @@ export type AdminCarCategory = {
 
 export type AdminCarCategoryInput = {
   kind: "passenger" | "cargo";
+  serviceGroup?: CarServiceGroup;
+  /** Luxury hire: UGX per hour on top of the trip. */
+  ratePerHour?: number;
+  description?: string | null;
   name: string;
   seats?: number | null;
   cargoType?: string | null;
@@ -2110,6 +2246,13 @@ export type AdminCarBooking = {
 export type CarCategory = {
   id: string;
   kind: "passenger" | "cargo";
+  /** Present once migration 0101 is applied. */
+  service_group?: CarServiceGroup;
+  /** Luxury hire: UGX per hour, added to the trip fare (0 = not offered by the hour). */
+  rate_per_hour?: number;
+  description?: string | null;
+  /** 1 once Peebee has approved at least one vehicle in this category (Luxury and Ambulance: customers see them only then). */
+  has_vehicles?: number;
   name: string;
   seats: number | null;
   cargo_type: string | null;
@@ -2120,6 +2263,10 @@ export type CarCategory = {
 
 export type CarConfig = {
   onDemandEnabled: boolean;
+  /** Shown with Ambulance requests: a life-threatening emergency should also call this. */
+  emergencyNumber?: string;
+  /** Most hours a Luxury car can be hired for. */
+  maxHireHours?: number;
   serviceTiers?: { ratePerKm: number; minimumFare: number; comfortPremiumPercent: number; xlPremiumPercent: number; xlMinSeats: number } | null;
   /** Photos per vehicle: the most an owner can add, and how many are needed before approval. */
   vehiclePhotos?: { max: number; minRequired: number };
@@ -2153,6 +2300,10 @@ export type CarBookingInput = {
   passenger?: RidePassenger;
   /** Cargo/moving items description (for cargo and truck bookings). */
   cargoDescription?: string;
+  /** Luxury: hours of hire on top of the trip. */
+  hireHours?: number;
+  /** What is happening (Ambulance) or the occasion (Luxury); shown to the driver. */
+  note?: string;
 };
 
 export type CarWallet = {
@@ -2383,6 +2534,11 @@ export type CarMe = {
 
 export type CarDriverJob = {
   id: string;
+  /** "luxury" and "ambulance" for those services, else "passenger" or "cargo". */
+  categoryKind?: string | null;
+  /** The customer's note: what is happening (Ambulance) or the occasion (Luxury). */
+  tripNote?: string | null;
+  hireHours?: number | null;
   serviceTier?: "convenient" | "comfort" | "xl" | null;
   vehicleSize?: "normal" | "large" | null;
   customerName: string;
@@ -2411,6 +2567,9 @@ export type CarDriverActive = {
     destination_lat: number | null;
     destination_lng: number | null;
     customer_name: string;
+    category_kind?: string | null;
+    trip_note?: string | null;
+    hire_hours?: number | null;
     /** Set when the ride was booked for someone else — meet and call this person. */
     passenger_name?: string | null;
     passenger_phone?: string | null;

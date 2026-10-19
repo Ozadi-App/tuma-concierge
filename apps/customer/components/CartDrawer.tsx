@@ -1,28 +1,22 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import { useRegisterNavBack, useRegisterNavPrimaryAction } from "../lib/nav-primary-action";
+import React, { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  ArrowLeft,
-  Check,
   ChevronRight,
-  MapPin,
   Minus,
   Plus,
   ShoppingBag,
-  Sparkles,
-  Store,
   Trash2,
-  Truck,
-  Wallet,
   X,
 } from "lucide-react";
-import { useCart, CartItem } from "../lib/cart";
+import { useCart, dismissEarlierCartNotice } from "../lib/cart";
+import { bagCheckoutHref } from "../lib/bag-checkout";
+import { EarlierCarts } from "./EarlierCarts";
 import { ProductImage } from "./ProductImage";
-import { api, errorMessage } from "../lib/api";
-import { getCachedCustomerCoordinates } from "../lib/location";
 
 export interface CartDrawerProps {
   isOpen: boolean;
@@ -30,53 +24,47 @@ export interface CartDrawerProps {
   onOpen?: () => void;
 }
 
+/**
+ * The shopping bag: its items and their subtotal only. Delivery is its own step: "Proceed to
+ * Checkout" goes to /cart?step=delivery (see lib/bag-checkout.ts), which only ever checks out
+ * this bag. Restaurant carts and earlier carts are never touched from here.
+ */
 export function CartDrawer({
   isOpen,
   onClose,
-  onOpen,
 }: CartDrawerProps) {
   const router = useRouter();
   const {
     items,
-    mounted,
     totalQuantity,
-    selectedItems,
     selectedCount,
     subtotal,
-    deliveryFee,
-    total,
     updateQuantity,
     removeItem,
-    clearCart,
   } = useCart();
 
   const [portalReady, setPortalReady] = useState(false);
-  const [viewMode, setViewMode] = useState<"items" | "checkout">("items");
-  const [deliveryAddress, setDeliveryAddress] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [checkoutError, setCheckoutError] = useState<string | null>(null);
 
   useEffect(() => {
     setPortalReady(true);
-    const cached = getCachedCustomerCoordinates();
-    setDeliveryAddress(cached.label ? `${cached.label}, Kampala` : "Acacia Mall / Kololo, Kampala");
   }, []);
+
+  // The "saved under Earlier carts" notice shows the next time the bag opens; closing the bag clears it.
+  const wasOpenRef = useRef(false);
+  useEffect(() => {
+    if (wasOpenRef.current && !isOpen) dismissEarlierCartNotice();
+    wasOpenRef.current = isOpen;
+  }, [isOpen]);
 
   // Lock body scroll and listen for Escape key when open
   useEffect(() => {
-    if (!isOpen) {
-      setViewMode("items");
-      setCheckoutError(null);
-      return;
-    }
+    if (!isOpen) return;
 
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
 
     function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        onClose();
-      }
+      if (event.key === "Escape") onClose();
     }
 
     window.addEventListener("keydown", handleKeyDown);
@@ -86,53 +74,42 @@ export function CartDrawer({
     };
   }, [isOpen, onClose]);
 
-  const handleCheckoutSubmit = async () => {
-    if (selectedItems.length === 0) return;
-    setIsSubmitting(true);
-    setCheckoutError(null);
-
-    const cached = getCachedCustomerCoordinates();
-
-    try {
-      const res = await api.checkoutMarketplace({
-        items: selectedItems.map((it) => ({
-          productId: it.productId,
-          storeId: it.storeId,
-          title: it.title,
-          price: it.price,
-          quantity: it.quantity,
-          variantId: it.variantId,
-          variantTitle: it.variantTitle,
-          imageUrl: it.imageUrl,
-        })),
-        paymentRail: "escrow",
-        destinationAddress: deliveryAddress.trim() || cached.label || "Kampala",
-        destinationArea: "Kampala",
-        destinationLat: cached.lat || 0.3353,
-        destinationLng: cached.lng || 32.5857,
-      });
-
-      const firstOrder = res.order ?? res.orders?.[0];
-      clearCart();
-      setIsSubmitting(false);
-      onClose();
-
-      if (firstOrder?.id) {
-        router.push(`/orders/${firstOrder.id}/pay`);
-      } else {
-        router.push("/orders");
-      }
-    } catch (err) {
-      setCheckoutError(errorMessage(err));
-      setIsSubmitting(false);
-    }
+  // Next step: the Delivery screen of this bag's checkout.
+  const proceedToCheckout = () => {
+    if (selectedCount === 0) return;
+    onClose();
+    router.push(bagCheckoutHref("delivery"));
   };
+
+  // Screens without the bottom nav (single store, product) keep the bag's own buttons.
+  const [navPresent, setNavPresent] = useState(false);
+  // While open, the drawer drives the bottom nav (which floats above it):
+  // Home → Back (closes the bag), and the right capsule is this bag's next step.
+  useRegisterNavBack(isOpen && navPresent, onClose, 2);
+  useRegisterNavPrimaryAction(
+    isOpen && navPresent && items.length > 0
+      ? {
+          tone: "step",
+          label: "Continue to delivery",
+          detail: `UGX ${subtotal.toLocaleString()}`,
+          disabled: selectedCount === 0,
+          onClick: proceedToCheckout,
+        }
+      : null,
+    2,
+  );
+  useEffect(() => {
+    if (!isOpen) return;
+    setNavPresent(!!document.querySelector("nav.customer-nav"));
+    document.documentElement.classList.add("peebee-cart-drawer-open");
+    return () => document.documentElement.classList.remove("peebee-cart-drawer-open");
+  }, [isOpen]);
 
   if (!portalReady || typeof document === "undefined") return null;
 
   return createPortal(
     <div
-      className={`menu-item-cart-layer${isOpen ? " is-open" : ""}`}
+      className={`menu-item-cart-layer marketplace-cart-layer${isOpen ? " is-open" : ""}`}
       aria-hidden={!isOpen}
     >
       {/* Backdrop */}
@@ -158,31 +135,18 @@ export function CartDrawer({
         ========================================================================= */}
         <div className="menu-item-cart-drawer__header flex items-center justify-between px-5 py-4 border-b border-[var(--border-faint)]">
           <div className="flex items-center gap-3">
-            {viewMode === "checkout" ? (
-              <button
-                type="button"
-                onClick={() => setViewMode("items")}
-                className="flex h-9 w-9 items-center justify-center rounded-full border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] text-ink hover:scale-105 active:scale-95 transition"
-                aria-label="Back to items list"
-              >
-                <ArrowLeft className="h-4 w-4" />
-              </button>
-            ) : (
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gold/15 text-gold">
-                <ShoppingBag className="h-5 w-5" />
-              </div>
-            )}
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gold/15 text-gold">
+              <ShoppingBag className="h-5 w-5" />
+            </div>
             <div>
               <h2
                 id="marketplace-cart-drawer-title"
                 className="text-lg font-extrabold tracking-tight text-ink leading-tight"
               >
-                {viewMode === "checkout" ? "Delivery & Payment" : "Your Shopping Bag"}
+                Your Shopping Bag
               </h2>
               <p className="text-xs text-ink-500 font-medium" aria-live="polite">
-                {viewMode === "checkout"
-                  ? `${totalQuantity} item${totalQuantity === 1 ? "" : "s"} selected`
-                  : totalQuantity > 0
+                {totalQuantity > 0
                   ? `${totalQuantity} item${totalQuantity === 1 ? "" : "s"} from stores`
                   : "Cart is empty"}
               </p>
@@ -223,38 +187,21 @@ export function CartDrawer({
                 <span>Continue Shopping</span>
                 <ChevronRight className="h-3.5 w-3.5" />
               </button>
+              <EarlierCarts className="w-full pt-4 text-left" />
             </div>
-          ) : viewMode === "items" ? (
+          ) : (
             /* Items List View */
             <div className="space-y-4">
-              {/* Free delivery progress banner */}
-              <div className="rounded-2xl bg-gold/10 border border-gold/20 p-3 text-xs flex items-center justify-between">
-                <span className="font-semibold text-ink flex items-center gap-1.5">
-                  <Truck className="h-4 w-4 text-gold shrink-0" />
-                  {subtotal >= 50000 ? (
-                    <span className="text-emerald-700 dark:text-emerald-400 font-bold">
-                      🎉 Free Delivery unlocked!
-                    </span>
-                  ) : (
-                    <span>
-                      Add <strong>UGX {(50000 - subtotal).toLocaleString()}</strong> for Free Delivery
-                    </span>
-                  )}
-                </span>
-                <span className="text-[10px] font-black uppercase text-gold">
-                  {subtotal >= 50000 ? "FREE" : "UGX 3,500"}
-                </span>
-              </div>
-
+              <EarlierCarts showList={false} />
               {/* Items List */}
               <ul className="space-y-3">
                 {items.map((line) => (
                   <li
                     key={line.id}
-                    className="flex items-center gap-3 rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] p-3 shadow-xs transition hover:border-gold/30"
+                    className="flex gap-3 rounded-[20px] border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] p-2.5"
                   >
                     {/* Thumbnail */}
-                    <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-neutral-100 dark:bg-neutral-800 border border-surface-border/50">
+                    <div className="relative h-[72px] w-[72px] shrink-0 overflow-hidden rounded-[14px] bg-[rgb(var(--surface-card))]">
                       <ProductImage
                         src={line.imageUrl}
                         alt={line.title}
@@ -264,16 +211,21 @@ export function CartDrawer({
                       />
                     </div>
 
-                    {/* Meta Info */}
-                    <div className="min-w-0 flex-1 space-y-1">
-                      <div className="flex items-start justify-between gap-1">
-                        <h4 className="text-xs font-bold text-ink truncate leading-tight">
-                          {line.title}
-                        </h4>
+                    <div className="flex min-w-0 flex-1 flex-col justify-between py-0.5">
+                      {/* Name + remove */}
+                      <div className="flex items-start gap-2">
+                        <div className="min-w-0 flex-1">
+                          <h4 className="truncate text-sm font-semibold leading-tight text-ink">{line.title}</h4>
+                          {(line.variantTitle || line.storeName) && (
+                            <p className="mt-0.5 truncate text-[11px] text-ink-500">
+                              {[line.variantTitle, line.storeName].filter(Boolean).join(" · ")}
+                            </p>
+                          )}
+                        </div>
                         <button
                           type="button"
                           onClick={() => removeItem(line.id)}
-                          className="shrink-0 p-1 text-ink-500 hover:text-red-500 transition active:scale-90"
+                          className="-mr-1 -mt-1 shrink-0 rounded-full p-1.5 text-ink-500 transition hover:text-red-500 active:scale-90"
                           aria-label={`Remove ${line.title}`}
                           title="Remove item"
                         >
@@ -281,44 +233,29 @@ export function CartDrawer({
                         </button>
                       </div>
 
-                      {line.variantTitle && (
-                        <p className="text-[11px] font-medium text-ink-500 truncate">
-                          Option: {line.variantTitle}
-                        </p>
-                      )}
-
-                      {line.storeName && (
-                        <p className="text-[10px] font-semibold text-gold truncate flex items-center gap-1">
-                          <Store className="h-3 w-3 shrink-0" />
-                          <span>{line.storeName}</span>
-                        </p>
-                      )}
-
-                      {/* Stepper & Price Row */}
-                      <div className="flex items-center justify-between pt-1">
-                        <div className="flex items-center gap-1.5 rounded-full bg-[rgb(var(--surface-card))] border border-[var(--border-faint)] px-2 py-0.5">
+                      {/* Stepper + line price (one line, never wraps) */}
+                      <div className="mt-2 flex items-center justify-between gap-2">
+                        <div className="flex shrink-0 items-center gap-1 rounded-full border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-0.5">
                           <button
                             type="button"
                             onClick={() => updateQuantity(line.id, -1)}
-                            className="flex h-5 w-5 items-center justify-center text-ink-500 hover:text-ink active:scale-90 transition"
+                            className="flex h-6 w-6 items-center justify-center rounded-full text-ink-500 transition hover:text-ink active:scale-90"
                             aria-label="Decrease quantity"
                           >
                             <Minus className="h-3 w-3" />
                           </button>
-                          <span className="w-5 text-center text-xs font-bold text-ink">
-                            {line.quantity}
-                          </span>
+                          <span className="w-5 text-center text-xs font-bold tabular-nums text-ink">{line.quantity}</span>
                           <button
                             type="button"
                             onClick={() => updateQuantity(line.id, 1)}
-                            className="flex h-5 w-5 items-center justify-center text-ink-500 hover:text-ink active:scale-90 transition"
+                            className="flex h-6 w-6 items-center justify-center rounded-full text-ink-500 transition hover:text-ink active:scale-90"
                             aria-label="Increase quantity"
                           >
                             <Plus className="h-3 w-3" />
                           </button>
                         </div>
 
-                        <span className="font-mono text-xs font-black text-ink">
+                        <span className="min-w-0 truncate whitespace-nowrap text-sm font-bold tabular-nums text-ink">
                           UGX {(line.price * line.quantity).toLocaleString()}
                         </span>
                       </div>
@@ -326,129 +263,46 @@ export function CartDrawer({
                   </li>
                 ))}
               </ul>
-            </div>
-          ) : (
-            /* Quick Checkout Form */
-            <div className="space-y-4">
-              {checkoutError && (
-                <div className="rounded-2xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800/50 p-3 text-xs text-red-700 dark:text-red-300">
-                  {checkoutError}
-                </div>
-              )}
-
-              {/* Delivery Destination */}
-              <div className="space-y-2">
-                <label className="text-xs font-bold uppercase tracking-wider text-ink-500 flex items-center gap-1.5">
-                  <MapPin className="h-3.5 w-3.5 text-gold" />
-                  <span>Delivery Destination</span>
-                </label>
-                <div className="field-box rounded-2xl border border-[var(--border-faint)] p-3 bg-[rgb(var(--surface-muted))] focus-within:border-gold transition">
-                  <input
-                    type="text"
-                    value={deliveryAddress}
-                    onChange={(e) => setDeliveryAddress(e.target.value)}
-                    placeholder="Enter delivery address in Kampala"
-                    className="w-full text-xs font-semibold text-ink bg-transparent outline-none"
-                  />
-                  <p className="mt-1 text-[10px] text-ink-500 flex items-center gap-1">
-                    <Truck className="h-3 w-3 text-emerald-600 shrink-0" />
-                    <span>Dispatched instantly to nearby online boda riders</span>
-                  </p>
-                </div>
-              </div>
-
-              {/* Order breakdown */}
-              <div className="rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] p-3.5 space-y-2 text-xs">
-                <div className="flex justify-between text-ink-500">
-                  <span>Items Subtotal</span>
-                  <span>UGX {subtotal.toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between text-ink-500">
-                  <span>Delivery Fee</span>
-                  <span>{deliveryFee === 0 ? "FREE" : `UGX ${deliveryFee.toLocaleString()}`}</span>
-                </div>
-                <div className="border-t border-[var(--border-faint)] pt-2 flex justify-between font-bold text-sm text-ink">
-                  <span>Total Due</span>
-                  <span className="text-gold font-mono">UGX {total.toLocaleString()}</span>
-                </div>
-              </div>
+              <EarlierCarts showNotice={false} />
             </div>
           )}
         </div>
 
         {/* =========================================================================
-            FOOTER ACTIONS
+            FOOTER: items subtotal only; delivery is chosen at the next step.
         ========================================================================= */}
         {items.length > 0 && (
           <div className="menu-item-cart-drawer__footer border-t border-[var(--border-faint)] px-5 py-4 bg-[rgb(var(--surface-card))] space-y-3">
-            {viewMode === "items" ? (
-              <>
-                <div className="flex items-center justify-between text-xs text-ink-500">
-                  <span>Subtotal ({totalQuantity} items)</span>
-                  <span className="font-mono text-sm font-bold text-ink">
-                    UGX {subtotal.toLocaleString()}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between text-xs text-ink-500">
-                  <span>Delivery Estimate</span>
-                  <span className="font-bold text-ink">
-                    {deliveryFee === 0 ? (
-                      <span className="text-emerald-600 font-extrabold">FREE</span>
-                    ) : (
-                      `UGX ${deliveryFee.toLocaleString()}`
-                    )}
-                  </span>
-                </div>
-                <div className="border-t border-[var(--border-faint)] pt-2 flex items-center justify-between text-sm font-black text-ink">
-                  <span>Total</span>
-                  <span className="font-mono text-base text-gold">
-                    UGX {total.toLocaleString()}
-                  </span>
-                </div>
+            <div className="space-y-1">
+              <div className="flex items-center justify-between text-sm font-black text-ink">
+                <span>Subtotal ({selectedCount} item{selectedCount === 1 ? "" : "s"})</span>
+                <span className="font-mono text-base text-gold">UGX {subtotal.toLocaleString()}</span>
+              </div>
+              <p className="text-[11px] text-ink-500">Delivery is chosen at the next step.</p>
+            </div>
 
-                <div className="pt-1 flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setViewMode("checkout")}
-                    className="flex-1 py-3.5 px-4 rounded-full bg-gold text-ink-gold font-bold text-sm shadow-md hover:brightness-105 active:scale-98 transition flex items-center justify-center gap-2"
-                  >
-                    <span>Proceed to Checkout</span>
-                    <ChevronRight className="h-4 w-4 stroke-[2.5]" />
-                  </button>
+            <div className={`pt-1 flex items-center gap-2 ${navPresent ? "justify-end" : ""}`}>
+              {!navPresent && (
+              <button
+                type="button"
+                onClick={proceedToCheckout}
+                disabled={selectedCount === 0}
+                className="flex-1 py-3.5 px-4 rounded-full bg-gold text-ink-gold font-bold text-sm shadow-md hover:brightness-105 active:scale-98 transition flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                <span>Proceed to Checkout</span>
+                <ChevronRight className="h-4 w-4 stroke-[2.5]" />
+              </button>
+              )}
 
-                  <Link
-                    href="/cart"
-                    onClick={onClose}
-                    className="p-3.5 rounded-full border border-[var(--border-faint)] text-xs font-bold text-ink-500 hover:text-ink hover:bg-[rgb(var(--surface-muted))] transition"
-                    title="View full cart screen"
-                  >
-                    Full Cart
-                  </Link>
-                </div>
-              </>
-            ) : (
-              <>
-                <button
-                  type="button"
-                  disabled={isSubmitting || selectedItems.length === 0}
-                  onClick={handleCheckoutSubmit}
-                  className="w-full py-4 px-5 rounded-full bg-gold text-ink-gold font-black text-sm shadow-lg hover:brightness-105 active:scale-98 transition flex items-center justify-between disabled:opacity-50"
-                >
-                  <span>{isSubmitting ? "Creating Order…" : "Next: Payment"}</span>
-                  <span className="font-mono font-extrabold">
-                    UGX {total.toLocaleString()}
-                  </span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setViewMode("items")}
-                  className="w-full text-center text-xs font-semibold text-ink-500 hover:text-ink"
-                >
-                  ← Edit items in bag
-                </button>
-              </>
-            )}
+              <Link
+                href="/cart"
+                onClick={onClose}
+                className="p-3.5 rounded-full border border-[var(--border-faint)] text-xs font-bold text-ink-500 hover:text-ink hover:bg-[rgb(var(--surface-muted))] transition"
+                title="View full cart screen"
+              >
+                Full Cart
+              </Link>
+            </div>
           </div>
         )}
       </aside>

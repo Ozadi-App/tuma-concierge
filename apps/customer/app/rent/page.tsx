@@ -1,5 +1,6 @@
 "use client";
 
+import { useRegisterNavPrimaryAction, useRegisterNavBack } from "../../lib/nav-primary-action";
 import type { Rental, RentalInspection, RentalVehicle, SelfDriveResidenceMethod, SelfDriveRenterKycProfile } from "@peebee/shared";
 import { ChevronLeft } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -231,6 +232,38 @@ export default function RentPage() {
     catch (err) { setError(errorMessage(err)); }
   }
 
+  // Booking steps run from the bottom nav's right capsule: "Continue" is an
+  // intermediate step (white/grey); paying is the final, gold step. The
+  // details step submits the form so its built-in field validation still runs.
+  const rentalTotal = selectedVehicle ? rentalQuote(selectedVehicle, periodType, hourCount) + selectedVehicle.deposit : 0;
+  const periodOff = !!selectedVehicle && ((periodType === "hourly" && selectedVehicle.hourlyEnabled === false) || (periodType === "half_day" && selectedVehicle.halfDayEnabled === false) || (periodType === "full_day" && selectedVehicle.fullDayEnabled === false));
+  // Booking steps: Back goes payment → details → available cars.
+  useRegisterNavBack(!!selectedVehicle && !!bookingStep, () => {
+    if (bookingStep === "payment") { setBookingStep("details"); return; }
+    setSelectedVehicle(null); setPendingVehicle(null); setBookingStep(null); setKycOpen(false); setError(""); setNotice("");
+  });
+  useRegisterNavPrimaryAction(
+    selectedVehicle && bookingStep === "details"
+      ? {
+          tone: "step",
+          label: busy === "availability" ? "Checking availability…" : "Continue",
+          sublabel: "Verification and payment",
+          disabled: busy === "availability" || periodOff,
+          busy: busy === "availability",
+          onClick: () => (document.getElementById("rent-details-form") as HTMLFormElement | null)?.requestSubmit(),
+        }
+      : selectedVehicle && bookingStep === "payment"
+        ? {
+            tone: "gold",
+            label: busy === selectedVehicle.id ? "Processing payment…" : `Pay ${ugx(rentalTotal)}`,
+            sublabel: "From wallet",
+            disabled: busy === selectedVehicle.id,
+            busy: busy === selectedVehicle.id,
+            onClick: () => void placeRental(selectedVehicle),
+          }
+        : null,
+  );
+
   return (
     <div className="space-y-4 px-4 pt-4">
       <div className="flex items-center gap-2">
@@ -259,7 +292,7 @@ export default function RentPage() {
           </section>
 
           {bookingStep === "details" ? (
-            <form onSubmit={continueToPayment} className="home-card space-y-4">
+            <form id="rent-details-form" onSubmit={continueToPayment} className="home-card space-y-4">
               <div><p className="text-xs font-bold uppercase tracking-wide text-gold">Booking details</p><h2 className="mt-1 text-lg font-bold text-ink">When do you need it?</h2></div>
               <label className="block space-y-1 text-xs font-semibold text-ink-500">Pickup time<input required type="datetime-local" min={defaultPickup()} value={startsAt} onChange={(e) => setStartsAt(e.target.value)} className={field} /></label>
               <div className="space-y-2">
@@ -276,7 +309,6 @@ export default function RentPage() {
                 <div className="flex justify-between gap-3"><span className="text-ink-500">Rental</span><b className="text-ink">{ugx(rentalQuote(selectedVehicle, periodType, hourCount))}</b></div>
                 <div className="mt-1 flex justify-between gap-3"><span className="text-ink-500">Refundable deposit</span><b className="text-ink">{ugx(selectedVehicle.deposit)}</b></div>
               </div>
-              <button disabled={busy === "availability" || (periodType === "hourly" && selectedVehicle.hourlyEnabled === false) || (periodType === "half_day" && selectedVehicle.halfDayEnabled === false) || (periodType === "full_day" && selectedVehicle.fullDayEnabled === false)} className="min-h-12 w-full rounded-full bg-gold px-4 text-base font-bold text-ink-gold disabled:opacity-60">{busy === "availability" ? "Checking availability…" : "Continue to verification and payment"}</button>
             </form>
           ) : (
             <section className="home-card space-y-4">
@@ -290,7 +322,6 @@ export default function RentPage() {
               </div>
               <p className="text-xs text-ink-500">Payment uses your Peebee wallet. Rent and the refundable deposit are held while the vehicle owner responds. The deposit is returned when the car is returned undamaged.</p>
               <button type="button" onClick={() => setBookingStep("details")} className="min-h-10 w-full rounded-full border border-[var(--border-faint)] px-4 text-sm font-semibold text-ink">Edit booking details</button>
-              <button type="button" disabled={busy === selectedVehicle.id} onClick={() => placeRental(selectedVehicle)} className="min-h-12 w-full rounded-full bg-gold px-4 text-base font-bold text-ink-gold disabled:opacity-60">{busy === selectedVehicle.id ? "Processing payment…" : `Pay ${ugx(rentalQuote(selectedVehicle, periodType, hourCount) + selectedVehicle.deposit)} from wallet`}</button>
             </section>
           )}
 

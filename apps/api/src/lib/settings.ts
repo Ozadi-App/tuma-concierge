@@ -26,6 +26,14 @@ const DEFAULTS = {
    * round down toward zero for a very short (or same-building) ride. */
   minimum_delivery_fee: "2000",
   service_range_km: "7",
+  // Furthest a rider can see or take an order, in km. 0 = no limit. A rider can have their own.
+  rider_visibility_range_km: "20",
+  /** Hours a cart is left before a new one sets it aside as an earlier (retrievable) cart. */
+  cart_expiry_hours: "12",
+  /** Delivery distances follow the road: straight line x this factor, unless a routing server answers. */
+  road_distance_factor: "1.3",
+  /** An OSRM-compatible routing server for true road distances; empty uses the road factor. */
+  routing_server_url: "",
   /** Flat delivery fee (UGX) charged on top of a shopping order's item
    * costs. Unlike a parcel ride there's no pickup point to measure a
    * distance from at order-creation time (the "pickup" is wherever the
@@ -275,6 +283,8 @@ const DEFAULTS = {
   car_share_platform_percent: "10",
   /** A driver further than this from the pickup isn't offered the ride. */
   car_driver_max_pickup_km: "10",
+  /** Shown beside Ambulance requests: a life-threatening emergency should also call this. */
+  car_emergency_number: "999",
   car_convenient_rate_per_km: "2000",
   car_convenient_minimum_fare: "8000",
   car_comfort_premium_percent: "30",
@@ -344,6 +354,17 @@ const DEFAULTS = {
   /** A bid may be this % of the app's price at the lowest / highest. */
   bidding_min_percent: "50",
   bidding_max_percent: "150",
+  /** Name your fare (boda rides): a customer's offer may be this % of the app's quote, lowest / highest. */
+  fare_offer_min_percent: "70",
+  fare_offer_max_percent: "150",
+  /** How long an offer stays open for rider counters, and how long one counter waits for the customer. */
+  fare_offer_ttl_minutes: "10",
+  fare_counter_ttl_seconds: "120",
+  /** How many times a customer may raise one offer. */
+  fare_offer_max_raises: "5",
+  /** Multi-stop boda rides: the most stops between pickup and destination, and a flat fee per stop (UGX). */
+  ride_max_stops: "3",
+  ride_stop_fee: "1000",
   /** On by default: jobs nobody serves within 6 hours expire. Admin can
    * change the time/unit or switch it off (Settings → Rider matching). */
   job_expiry_enabled: "1",
@@ -353,7 +374,15 @@ const DEFAULTS = {
   service_gas_enabled: "1",
   gas_rider_daily_limit_ugx: "60000",
   gas_voucher_expiry_minutes: "60",
+  gas_session_hours: "12",
+  gas_pin_max_attempts: "5",
+  gas_withdrawal_min_ugx: "5000",
+  gas_voucher_lookups_per_5min: "20",
   gas_platform_discount_percent: "0",
+  /** Pharmacy prescriptions (customer uploads a doctor's slip; the pharmacy quotes it) */
+  pharmacy_enabled: "1",
+  pharmacy_max_image_mb: "6",
+  pharmacy_submissions_per_hour: "10",
   /** Peebee Marketplace: Groceries & Stores, Live Commerce, Pro Paywalls, Social Ads */
   marketplace_enabled: "1",
   marketplace_live_enabled: "1",
@@ -367,6 +396,84 @@ const DEFAULTS = {
   marketplace_min_order_amount: "5000",
   marketplace_live_max_duration_mins: "180",
   marketplace_delivery_base_fee: "3000",
+  /** Peebee Learn Studio: schools, classes, courses and lessons made by educators */
+  learn_enabled: "1",
+  learn_streams: "sprouts,foundations,academy,compass,skills",
+  learn_masterclasses_enabled: "1",
+  learn_paid_courses_enabled: "1",
+  learn_max_course_price_ugx: "5000000",
+  learn_max_schools_per_user: "3",
+  learn_max_classes_per_school: "30",
+  learn_max_courses_per_class: "12",
+  learn_max_modules_per_course: "30",
+  learn_max_lessons_per_module: "40",
+  learn_max_quiz_questions: "20",
+  learn_max_lesson_minutes: "240",
+  learn_creates_per_hour: "60",
+  learn_publish_by_default: "0",
+  /** Peebee Work: clean / fix / laundry jobs done by independent providers and companies */
+  work_enabled: "1",
+  work_service_types: "clean",
+  work_pricing_modes: "fixed,quote",
+  work_matching_modes: "broadcast,customer_picks",
+  work_default_matching: "broadcast",
+  work_provider_kinds: "individual,company",
+  work_commission_percent: "15",
+  work_require_approval: "1",
+  work_offer_window_minutes: "60",
+  work_radius_km: "15",
+  work_max_notified: "20",
+  work_min_lead_minutes: "30",
+  work_max_advance_days: "30",
+  work_quote_valid_hours: "24",
+  work_max_quote_ugx: "5000000",
+  work_free_cancel_minutes: "10",
+  work_late_cancel_fee_percent: "20",
+  work_auto_confirm_hours: "24",
+  work_dispute_window_hours: "48",
+  work_jobs_per_hour: "6",
+  work_rematch_on_provider_cancel: "1",
+  work_max_rematches: "2",
+  work_photos_enabled: "1",
+  work_max_photos_per_job: "8",
+  work_max_photo_kb: "4096",
+  work_chat_enabled: "1",
+  work_tracking_enabled: "1",
+  // On-site checks: flag cancellations that follow a long stay at the customer's address (off until admin turns it on).
+  work_onsite_check_enabled: "0",
+  work_onsite_radius_m: "150",
+  work_onsite_min_minutes: "20",
+  work_onsite_action: "flag",
+  work_onsite_flag_no_location: "1",
+  work_onsite_require_location: "1",
+  work_onsite_suspend_after_flags: "0",
+  work_onsite_window_days: "30",
+  work_location_retention_days: "30",
+  // Relay delivery (boda -> matatu -> boda) for long parcel deliveries. Off until staff turn it on.
+  relay_enabled: "0",
+  relay_min_distance_km: "25",
+  relay_max_access_km: "10",
+  relay_last_mile_radius_km: "5",
+  relay_release_per_leg: "0",
+  // Petrol-station drop: when the customer picks door delivery or collection ("order" = when ordering,
+  // "arrival" = once the parcel reaches the station), and how far the station may be from them.
+  relay_last_mile_choice: "order",
+  relay_station_max_km: "10",
+  // Customers may meet the matatu at a stage on its route (off: parcels go to the petrol station).
+  relay_stage_pickup: "0",
+  // If the customer isn't at the stage, the matatu leaves the parcel at the petrol station instead.
+  relay_stage_fallback: "1",
+  // For arrival times from the matatu's position, and when to say "arriving in N minutes".
+  relay_matatu_speed_kmh: "30",
+  relay_arrival_notice_minutes: "10",
+  /** Sandbox only: demo riders, a demo matatu and demo petrol stations move relay parcels along by themselves. */
+  relay_sandbox_demo: "1",
+  /** Seconds each demo step waits, so a real tester can act first. */
+  relay_sandbox_demo_step_seconds: "20",
+  /** A relay order can be paid as soon as it is placed; off: it waits for a rider like a direct order. */
+  relay_pay_before_rider: "1",
+  /** "Direct" (one rider all the way) is promised in under this many hours. */
+  direct_delivery_max_hours: "3",
 } as const;
 
 export type SettingKey = keyof typeof DEFAULTS;
@@ -379,6 +486,8 @@ export type CarSettings = {
   matchingMode: CarMatchingMode;
   shares: CarShares;
   maxPickupKm: number;
+  /** Phone number shown with Ambulance requests. */
+  emergencyNumber?: string;
   servicePricing?: { ratePerKm: number; minimumFare: number; comfortPremiumPercent: number; xlPremiumPercent: number; xlMinSeats: number };
   withdrawalsEnabled: boolean;
   withdrawalMinAmount: number;
@@ -444,7 +553,7 @@ export async function getCarServicePricing(): Promise<NonNullable<CarSettings["s
 }
 
 export async function getCarSettings(): Promise<CarSettings> {
-  const [enabled, onDemand, mode, owner, driver, platform, maxKm, wdEnabled, wdMin, sEnabled, sMax, sLead, sOpen, sWatch, sNoSig, sSpeed, cpEnabled, cpSeats, cpRepeat, cpCutoff, cpPay, cpRadius, sdEnabled, sdPct, sdDays, sdDeposit, sdApprove, sdGrace, sdInspections, vpMax, vpMin, kycOwner, kycDriverId, kycLicence, dEnabled, dShare, dRent, dMin, dMax, dRentMax] = await Promise.all([
+  const [enabled, onDemand, mode, owner, driver, platform, maxKm, wdEnabled, wdMin, sEnabled, sMax, sLead, sOpen, sWatch, sNoSig, sSpeed, cpEnabled, cpSeats, cpRepeat, cpCutoff, cpPay, cpRadius, sdEnabled, sdPct, sdDays, sdDeposit, sdApprove, sdGrace, sdInspections, vpMax, vpMin, kycOwner, kycDriverId, kycLicence, dEnabled, dShare, dRent, dMin, dMax, dRentMax, emergencyNumber] = await Promise.all([
     getSetting("car_enabled"),
     getSetting("car_ondemand_enabled"),
     getSetting("car_matching_mode"),
@@ -485,6 +594,7 @@ export async function getCarSettings(): Promise<CarSettings> {
     getSetting("car_deal_min_owner_share_percent"),
     getSetting("car_deal_max_owner_share_percent"),
     getSetting("car_deal_max_rent_per_day"),
+    getSetting("car_emergency_number"),
   ]);
   const sdPercent = sdPct === "" ? NaN : Number(sdPct);
   const clamp = (v: string, lo: number, hi: number, fallback: number) => Math.min(hi, Math.max(lo, Math.floor(Number(v)) || fallback));
@@ -500,6 +610,7 @@ export async function getCarSettings(): Promise<CarSettings> {
     matchingMode: mode === "first_to_claim" ? "first_to_claim" : "customer_selects",
     shares,
     maxPickupKm: Math.min(200, Math.max(1, Number(maxKm) || 10)),
+    emergencyNumber: /^[0-9+*#]{2,15}$/.test(String(emergencyNumber ?? "").trim()) ? String(emergencyNumber).trim() : "999",
     servicePricing: await getCarServicePricing(),
     withdrawalsEnabled: wdEnabled === "1",
     withdrawalMinAmount: Math.max(0, Math.floor(Number(wdMin) || 0)),
@@ -557,6 +668,7 @@ export async function setCarSettings(next: CarSettings): Promise<void> {
   await setSetting("car_share_driver_percent", String(next.shares.driver));
   await setSetting("car_share_platform_percent", String(next.shares.platform));
   await setSetting("car_driver_max_pickup_km", String(next.maxPickupKm));
+  if (next.emergencyNumber != null) await setSetting("car_emergency_number", next.emergencyNumber);
   if (next.servicePricing) {
     await setSetting("car_convenient_rate_per_km", String(next.servicePricing.ratePerKm));
     await setSetting("car_convenient_minimum_fare", String(next.servicePricing.minimumFare));
@@ -628,6 +740,39 @@ export async function getBiddingSettings(): Promise<BiddingSettings> {
   return { enabled: enabled === "1", minPercent, maxPercent };
 }
 
+export type RideExtrasSettings = {
+  offerMinPercent: number;
+  offerMaxPercent: number;
+  offerTtlMinutes: number;
+  counterTtlSeconds: number;
+  maxRaises: number;
+  maxStops: number;
+  stopFee: number;
+};
+
+/** Name your fare + multi-stop limits. Stored as plain settings keys, so no migration is needed to tune them. */
+export async function getRideExtrasSettings(): Promise<RideExtrasSettings> {
+  const [minP, maxP, ttl, counterTtl, raises, maxStops, stopFee] = await Promise.all([
+    getSetting("fare_offer_min_percent"),
+    getSetting("fare_offer_max_percent"),
+    getSetting("fare_offer_ttl_minutes"),
+    getSetting("fare_counter_ttl_seconds"),
+    getSetting("fare_offer_max_raises"),
+    getSetting("ride_max_stops"),
+    getSetting("ride_stop_fee"),
+  ]);
+  const num = (v: string, d: string) => (Number.isFinite(Number(v)) && v !== "" ? Number(v) : Number(d));
+  return {
+    offerMinPercent: Math.min(100, Math.max(10, num(minP, DEFAULTS.fare_offer_min_percent))),
+    offerMaxPercent: Math.max(100, Math.min(500, num(maxP, DEFAULTS.fare_offer_max_percent))),
+    offerTtlMinutes: Math.max(1, Math.min(120, num(ttl, DEFAULTS.fare_offer_ttl_minutes))),
+    counterTtlSeconds: Math.max(30, Math.min(1800, num(counterTtl, DEFAULTS.fare_counter_ttl_seconds))),
+    maxRaises: Math.max(0, Math.min(20, num(raises, DEFAULTS.fare_offer_max_raises))),
+    maxStops: Math.max(0, Math.min(5, num(maxStops, DEFAULTS.ride_max_stops))),
+    stopFee: Math.max(0, Math.min(100_000, num(stopFee, DEFAULTS.ride_stop_fee))),
+  };
+}
+
 export async function setBiddingSettings(next: BiddingSettings): Promise<void> {
   await setSetting("bidding_enabled", next.enabled ? "1" : "0");
   await setSetting("bidding_min_percent", String(next.minPercent));
@@ -688,6 +833,7 @@ export async function getDeliverySettings(): Promise<{
   deliveryRatePerKm: number;
   minimumDeliveryFee: number;
   serviceRangeKm: number;
+  riderVisibilityRangeKm: number;
   shoppingDeliveryFee: number;
   rideRatePerKm: number;
   rideMinimumFare: number;
@@ -704,10 +850,12 @@ export async function getDeliverySettings(): Promise<{
     getSetting("ride_for_other_enabled"),
     getSetting("ride_for_other_distance_m"),
   ]);
+  const visibility = Number(await getSetting("rider_visibility_range_km"));
   return {
     deliveryRatePerKm: Number(rate) || Number(DEFAULTS.delivery_rate_per_km),
     minimumDeliveryFee: Number(minimumFee) || Number(DEFAULTS.minimum_delivery_fee),
     serviceRangeKm: Number(range) || Number(DEFAULTS.service_range_km),
+    riderVisibilityRangeKm: Number.isFinite(visibility) && visibility >= 0 ? visibility : Number(DEFAULTS.rider_visibility_range_km),
     shoppingDeliveryFee: Number(shoppingFee) || Number(DEFAULTS.shopping_delivery_fee),
     rideRatePerKm: Number(rideRate) || Number(DEFAULTS.ride_rate_per_km),
     rideMinimumFare: Number(rideMinimum) || Number(DEFAULTS.ride_minimum_fare),
@@ -1274,20 +1422,36 @@ export type GasSettings = {
   dailyLimitUgx: number;
   voucherExpiryMinutes: number;
   platformDiscountPercent: number;
+  /** How long an attendant/manager sign-in lasts. */
+  sessionHours: number;
+  /** Wrong PIN guesses before an account is locked out (progressively longer lockouts). */
+  pinMaxAttempts: number;
+  /** Smallest amount a station can withdraw. */
+  withdrawalMinUgx: number;
+  /** Voucher code lookups an attendant may make per 5 minutes before being slowed down. */
+  voucherLookupsPer5Min: number;
 };
 
 export async function getGasSettings(): Promise<GasSettings> {
-  const [enabledStr, limitStr, expiryStr, discountStr] = await Promise.all([
+  const [enabledStr, limitStr, expiryStr, discountStr, sessionStr, pinStr, minWdStr, lookupStr] = await Promise.all([
     getSetting("service_gas_enabled"),
     getSetting("gas_rider_daily_limit_ugx"),
     getSetting("gas_voucher_expiry_minutes"),
     getSetting("gas_platform_discount_percent"),
+    getSetting("gas_session_hours"),
+    getSetting("gas_pin_max_attempts"),
+    getSetting("gas_withdrawal_min_ugx"),
+    getSetting("gas_voucher_lookups_per_5min"),
   ]);
   return {
     enabled: enabledStr !== "0",
     dailyLimitUgx: Math.max(0, Number(limitStr) || 60000),
     voucherExpiryMinutes: Math.max(5, Number(expiryStr) || 60),
     platformDiscountPercent: Math.max(0, Math.min(100, Number(discountStr) || 0)),
+    sessionHours: Math.max(1, Math.min(168, Number(sessionStr) || 12)),
+    pinMaxAttempts: Math.max(3, Math.min(20, Number(pinStr) || 5)),
+    withdrawalMinUgx: Math.max(1000, Number(minWdStr) || 5000),
+    voucherLookupsPer5Min: Math.max(5, Math.min(200, Number(lookupStr) || 20)),
   };
 }
 
@@ -1297,6 +1461,39 @@ export async function setGasSettings(next: Partial<GasSettings>): Promise<void> 
   if (next.dailyLimitUgx != null) writes.push(setSetting("gas_rider_daily_limit_ugx", String(Math.max(0, Math.round(next.dailyLimitUgx)))));
   if (next.voucherExpiryMinutes != null) writes.push(setSetting("gas_voucher_expiry_minutes", String(Math.max(5, Math.round(next.voucherExpiryMinutes)))));
   if (next.platformDiscountPercent != null) writes.push(setSetting("gas_platform_discount_percent", String(Math.max(0, Math.min(100, next.platformDiscountPercent)))));
+  if (next.sessionHours != null) writes.push(setSetting("gas_session_hours", String(Math.max(1, Math.min(168, Math.round(next.sessionHours))))));
+  if (next.pinMaxAttempts != null) writes.push(setSetting("gas_pin_max_attempts", String(Math.max(3, Math.min(20, Math.round(next.pinMaxAttempts))))));
+  if (next.withdrawalMinUgx != null) writes.push(setSetting("gas_withdrawal_min_ugx", String(Math.max(1000, Math.round(next.withdrawalMinUgx)))));
+  if (next.voucherLookupsPer5Min != null) writes.push(setSetting("gas_voucher_lookups_per_5min", String(Math.max(5, Math.min(200, Math.round(next.voucherLookupsPer5Min))))));
+  await Promise.all(writes);
+}
+
+export type PharmacySettings = {
+  enabled: boolean;
+  /** Largest prescription photo accepted. */
+  maxImageMb: number;
+  /** Prescriptions one customer may submit per hour. */
+  submissionsPerHour: number;
+};
+
+export async function getPharmacySettings(): Promise<PharmacySettings> {
+  const [enabled, mb, perHour] = await Promise.all([
+    getSetting("pharmacy_enabled"),
+    getSetting("pharmacy_max_image_mb"),
+    getSetting("pharmacy_submissions_per_hour"),
+  ]);
+  return {
+    enabled: enabled !== "0",
+    maxImageMb: Math.max(1, Math.min(20, Number(mb) || 6)),
+    submissionsPerHour: Math.max(1, Math.min(100, Number(perHour) || 10)),
+  };
+}
+
+export async function setPharmacySettings(next: Partial<PharmacySettings>): Promise<void> {
+  const writes: Promise<void>[] = [];
+  if (next.enabled != null) writes.push(setSetting("pharmacy_enabled", next.enabled ? "1" : "0"));
+  if (next.maxImageMb != null) writes.push(setSetting("pharmacy_max_image_mb", String(Math.max(1, Math.min(20, Math.round(next.maxImageMb))))));
+  if (next.submissionsPerHour != null) writes.push(setSetting("pharmacy_submissions_per_hour", String(Math.max(1, Math.min(100, Math.round(next.submissionsPerHour))))));
   await Promise.all(writes);
 }
 
@@ -1313,6 +1510,8 @@ export type MarketplaceSettings = {
   minOrderAmountUgx: number;
   liveMaxDurationMins: number;
   deliveryBaseFeeUgx: number;
+  /** A cart left this many hours is set aside as an earlier cart when the customer starts a new one. */
+  cartExpiryHours: number;
 };
 
 export async function getMarketplaceSettings(): Promise<MarketplaceSettings> {
@@ -1329,6 +1528,7 @@ export async function getMarketplaceSettings(): Promise<MarketplaceSettings> {
     minOrderStr,
     liveDurationStr,
     deliveryBaseFeeStr,
+    cartExpiryStr,
   ] = await Promise.all([
     getSetting("marketplace_enabled"),
     getSetting("marketplace_live_enabled"),
@@ -1342,6 +1542,7 @@ export async function getMarketplaceSettings(): Promise<MarketplaceSettings> {
     getSetting("marketplace_min_order_amount"),
     getSetting("marketplace_live_max_duration_mins"),
     getSetting("marketplace_delivery_base_fee"),
+    getSetting("cart_expiry_hours"),
   ]);
 
   return {
@@ -1357,6 +1558,7 @@ export async function getMarketplaceSettings(): Promise<MarketplaceSettings> {
     minOrderAmountUgx: Math.max(0, Number(minOrderStr) || 5000),
     liveMaxDurationMins: Math.max(15, Number(liveDurationStr) || 180),
     deliveryBaseFeeUgx: Math.max(0, Number(deliveryBaseFeeStr) || 3000),
+    cartExpiryHours: Math.max(1, Math.min(720, Number(cartExpiryStr) || 12)),
   };
 }
 
@@ -1374,6 +1576,7 @@ export async function setMarketplaceSettings(next: Partial<MarketplaceSettings>)
   if (next.minOrderAmountUgx != null) writes.push(setSetting("marketplace_min_order_amount", String(Math.max(0, Math.round(next.minOrderAmountUgx)))));
   if (next.liveMaxDurationMins != null) writes.push(setSetting("marketplace_live_max_duration_mins", String(Math.max(15, Math.round(next.liveMaxDurationMins)))));
   if (next.deliveryBaseFeeUgx != null) writes.push(setSetting("marketplace_delivery_base_fee", String(Math.max(0, Math.round(next.deliveryBaseFeeUgx)))));
+  if (next.cartExpiryHours != null) writes.push(setSetting("cart_expiry_hours", String(Math.max(1, Math.min(720, Math.round(next.cartExpiryHours))))));
   await Promise.all(writes);
 }
 

@@ -8,12 +8,13 @@ import {
   startPracticeMode,
   type PracticeRole,
 } from "@peebee/shared";
-import { FlaskConical, Sparkles } from "lucide-react";
+import { FlaskConical } from "lucide-react";
 import { useEffect, useState } from "react";
+import { PracticeModeFrame, PracticePromptDialog } from "@peebee/shared/practice-ui";
 import { api } from "../lib/api";
 
 const ROLE_LABELS: Record<PracticeRole, string> = {
-  customer: "customer", rider: "rider", restaurant: "restaurant", merchant: "merchant", gas: "fuel attendant",
+  customer: "customer", rider: "rider", restaurant: "restaurant", merchant: "merchant", gas: "fuel attendant", learner: "learner",
 };
 
 export function PracticeModeCard({ role }: { role: PracticeRole }) {
@@ -45,6 +46,12 @@ export function PracticeModeGuard({ role, pathname }: { role: PracticeRole; path
   return null;
 }
 
+/** Blue screen border + "Practice mode" tab (shared); its X leaves practice. */
+export function PracticeModeBanner({ role }: { role: PracticeRole }) {
+  async function exit() { const completed = isPracticeJourneyComplete(role); exitPracticeMode(role); if (completed) await api.completePractice(role).catch(() => undefined); window.location.replace("/account"); }
+  return <PracticeModeFrame onExit={exit} />;
+}
+
 export function PracticeModePrompt({ role }: { role: PracticeRole }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -59,5 +66,16 @@ export function PracticeModePrompt({ role }: { role: PracticeRole }) {
   if (!open) return null;
   function start() { window.location.assign(startPracticeMode(role)); }
   async function neverRemind() { setBusy(true); await api.dismissPracticeReminder(role).catch(() => undefined); setOpen(false); setBusy(false); }
-  return <div className="fixed inset-0 z-[70] flex items-end bg-black/50 p-4 sm:items-center"><section role="dialog" aria-modal="true" aria-labelledby={`practice-prompt-${role}`} className="mx-auto w-full max-w-md space-y-4 rounded-[28px] bg-[rgb(var(--surface))] p-5 shadow-2xl"><div className="flex items-start gap-3"><span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-200"><Sparkles className="h-5 w-5" aria-hidden/></span><div><h2 id={`practice-prompt-${role}`} className="text-lg font-black text-ink">Practise before you get started?</h2><p className="mt-1 text-sm leading-5 text-ink-500">Learn inside the real {ROLE_LABELS[role]} screens with sample data and simulated money. Nothing affects your live account.</p></div></div><button type="button" onClick={start} className="min-h-12 w-full rounded-full bg-sky-600 px-4 text-sm font-black text-white">Start practice</button><button type="button" onClick={() => setOpen(false)} className="min-h-10 w-full rounded-full border border-[var(--border-faint)] px-4 text-sm font-bold text-ink">Maybe later</button><button type="button" disabled={busy} onClick={neverRemind} className="w-full py-1 text-xs font-semibold text-ink-500 disabled:opacity-50">Don&apos;t remind me again</button></section></div>;
+  return <PracticePromptDialog
+    id={`practice-prompt-${role}`}
+    title="Practise before you get started?"
+    body={`Learn inside the real ${ROLE_LABELS[role]} screens with sample data and simulated money. Nothing affects your live account.`}
+    primaryLabel="Start practice"
+    onPrimary={start}
+    secondaryLabel="Maybe later"
+    onSecondary={() => setOpen(false)}
+    tertiaryLabel="Don't remind me again"
+    onTertiary={neverRemind}
+    tertiaryBusy={busy}
+  />;
 }

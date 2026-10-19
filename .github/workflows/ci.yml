@@ -39,7 +39,7 @@ jobs:
       - name: Typecheck apps
         run: |
           set -e
-          for app in api admin customer merchant partner restaurant rider web sales preview-hub; do
+          for app in api admin customer merchant partner restaurant rider web sales preview-hub work learn; do
             echo "::group::tsc $app"
             (cd apps/$app && npx tsc --noEmit)
             echo "::endgroup::"
@@ -49,6 +49,8 @@ jobs:
         run: npm test
       - name: Menu editor save and retry tests
         run: pnpm --filter api exec tsx --test ../restaurant/lib/menu-editor.test.ts
+      - name: Customer cart and card pricing tests
+        run: pnpm --filter api exec tsx --test ../customer/lib/cart.test.ts ../customer/lib/product-pricing.test.ts
 
   # Every Next.js app must still build.
   build:
@@ -56,7 +58,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        app: [admin, customer, merchant, partner, restaurant, rider, web, sales]
+        app: [admin, customer, merchant, partner, restaurant, rider, web, sales, work, learn]
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4

@@ -17,6 +17,9 @@ const field = "min-h-12 w-full rounded-xl border border-[var(--border-faint)] px
 
 type Picked = { id: string; file: File; preview: string };
 
+/** Order the vehicle types: ordinary taxis, then Luxury, Ambulance, and cargo last. */
+const groupRank = (c: { kind: string; service_group?: string }) => (c.kind === "cargo" ? 3 : c.service_group === "luxury" ? 1 : c.service_group === "ambulance" ? 2 : 0);
+
 export default function VehiclesPage() {
   const { me, mode, refreshMe, user } = useAuth();
   const [categories, setCategories] = useState<CarCategory[]>([]);
@@ -25,6 +28,7 @@ export default function VehiclesPage() {
   const [dealLimits, setDealLimits] = useState<NonNullable<Awaited<ReturnType<typeof api.getCarConfig>>["deals"]> | null>(null);
   const [dealVehicles, setDealVehicles] = useState<OwnerDeals["vehicles"]>([]);
   const [categoryId, setCategoryId] = useState("");
+  const specialSelected = (() => { const c = categories.find((x) => x.id === categoryId); return c && c.service_group && c.service_group !== "standard" ? c : undefined; })();
   const [plate, setPlate] = useState("");
   const [make, setMake] = useState("");
   const [customMake, setCustomMake] = useState("");
@@ -100,7 +104,7 @@ export default function VehiclesPage() {
     setBusy(true);
     setError("");
     try {
-      const { id } = await api.carAddVehicle({ categoryId, plate, make: (make === "Other" ? customMake : make) || undefined, model: model || undefined, modelCatalogId: modelCatalogId || undefined, year: Number(year) || undefined, colour: colour || undefined, lastServiceDate, serviceClass, acceptsConvenient, conditionGrade, seatCapacity: Number(seatCapacity) || undefined, features });
+      const { id } = await api.carAddVehicle({ categoryId, plate, make: (make === "Other" ? customMake : make) || undefined, model: model || undefined, modelCatalogId: modelCatalogId || undefined, year: Number(year) || undefined, colour: colour || undefined, lastServiceDate, serviceClass: specialSelected ? "convenient" : serviceClass, acceptsConvenient: specialSelected ? false : acceptsConvenient, conditionGrade, seatCapacity: Number(seatCapacity) || undefined, features });
       const sent = await uploadAll(id, picked);
       if (sent < picked.length) setError(`The vehicle was submitted, but only ${sent} of ${picked.length} photos uploaded. You can add the rest from its card below.`);
       picked.forEach((p) => URL.revokeObjectURL(p.preview));
@@ -247,10 +251,12 @@ export default function VehiclesPage() {
         <h3 className="pt-1 text-sm font-bold text-ink">1 · Vehicle details</h3>
         <Select required value={categoryId} onValueChange={(value) => setCategoryId(value)} className={field} aria-label="Vehicle type">
           <option value="">Choose vehicle type…</option>
-          {categories.map((c) => (
-            <option key={c.id} value={c.id}>{c.name}{c.kind === "passenger" && c.seats ? ` (${c.seats} seats)` : ""}</option>
+          {[...categories].sort((a, b) => groupRank(a) - groupRank(b)).map((c) => (
+            <option key={c.id} value={c.id}>{c.name}{c.kind === "passenger" && c.seats ? ` (${c.seats} seats)` : ""}{c.service_group === "luxury" ? " · Luxury" : c.service_group === "ambulance" ? " · Ambulance" : ""}</option>
           ))}
         </Select>
+        {specialSelected?.service_group === "luxury" && <p className="rounded-xl bg-gold/10 p-3 text-xs text-ink">Luxury cars get weddings, parties, red carpet and VIP bookings. Peebee checks the car and its condition before it can take them.</p>}
+        {specialSelected?.service_group === "ambulance" && <p className="rounded-xl bg-red-50 p-3 text-xs text-red-700 dark:bg-red-950/40 dark:text-red-300">Ambulances get emergency requests and are sent at once. Peebee checks the vehicle, its medical equipment and the crew&apos;s qualifications before it can take any. Add clear photos and keep your documents ready.</p>}
         <input required value={plate} onChange={(e) => setPlate(e.target.value)} placeholder="Number plate" className={field} />
         <div className="grid grid-cols-2 gap-3">
           <Select required value={make} onValueChange={(value) => { setMake(value); setModel(""); setModelCatalogId(""); setSeatCapacity(""); }} className={field} aria-label="Vehicle make">
@@ -272,7 +278,7 @@ export default function VehiclesPage() {
         {modelCatalogId && <p className="text-xs text-ink-500">Reference profile: {CAR_MODEL_CATALOG.find((m) => m.id === modelCatalogId)?.seats} seats · {Math.round((CAR_MODEL_CATALOG.find((m) => m.id === modelCatalogId)?.fuelLitresPerKm ?? 0) * 1000)} L/100 km. Actual fuel use varies by year, trim and condition.</p>}
         <h3 className="pt-1 text-sm font-bold text-ink">2 · Condition and care</h3>
         <div className="grid grid-cols-2 gap-3">
-          <Select value={serviceClass} onValueChange={(v) => setServiceClass(v as typeof serviceClass)} className={field} aria-label="Vehicle class"><option value="convenient">Convenient · ordinary</option><option value="comfort">Comfort · newer or extra features</option></Select>
+          {!specialSelected && <Select value={serviceClass} onValueChange={(v) => setServiceClass(v as typeof serviceClass)} className={field} aria-label="Vehicle class"><option value="convenient">Convenient · ordinary</option><option value="comfort">Comfort · newer or extra features</option></Select>}
           <Select value={conditionGrade} onValueChange={(v) => setConditionGrade(v as typeof conditionGrade)} className={field} aria-label="Vehicle condition"><option value="excellent">Excellent condition</option><option value="good">Good condition</option><option value="fair">Fair condition</option></Select>
         </div>
         {serviceClass === "comfort" && <label className="flex items-center gap-2 text-sm text-ink"><input type="checkbox" checked={acceptsConvenient} onChange={(e) => setAcceptsConvenient(e.target.checked)} />Also accept Convenient fares when no Comfort ride is available</label>}

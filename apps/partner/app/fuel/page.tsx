@@ -62,7 +62,7 @@ export default function PartnerFuelPage() {
         api.getActiveRiderFuelCode().catch(() => ({ code: null })),
         api.gasStations().catch(() => ({ outlets: [] })),
         api.gasProducts().catch(() => ({ products: [] })),
-        api.gasDispenses().catch(() => ({ dispenses: [] })),
+        api.gasRiderDispenses().catch(() => ({ dispenses: [] })),
       ]);
 
       setActiveCode(codeRes.code);

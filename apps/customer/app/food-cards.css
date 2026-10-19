@@ -1,0 +1,192 @@
+/* Food menu dish cards (restaurant page).
+ * Featured: full-bleed photo, thick soft frame, progressively frosted base
+ * with white copy and a white "Add +" pill.
+ * General: photo inset in the top of a white (light) / charcoal (dark) card,
+ * dark name, muted description, price, meta row and a subtle pill.
+ * Gold is only the badge accent. Each mode is tuned on its own, not inverted. */
+
+.fc-card {
+  --fc-radius: 30px;
+  --fc-frame: 6px;
+  --fc-card-bg: #ffffff;
+  --fc-card-line: rgb(16 16 16 / .05);
+  --fc-card-shadow: 0 1px 2px rgb(16 16 16 / .04), 0 14px 34px -14px rgb(16 16 16 / .16);
+  --fc-name: #141414;
+  --fc-muted: #7c7c7c;
+  --fc-pill-bg: #f1f1f1;
+  --fc-pill-ink: #161616;
+  --fc-badge-bg: rgb(var(--color-gold));
+  --fc-badge-ink: #1a1405;
+  position: relative;
+  isolation: isolate;
+  display: block;
+  min-width: 0;
+  border: 1px solid var(--fc-card-line);
+  border-radius: var(--fc-radius);
+  background: var(--fc-card-bg);
+  box-shadow: var(--fc-card-shadow);
+  color: var(--fc-name);
+  text-align: left;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 220ms var(--ease-out-expo, cubic-bezier(.16,1,.3,1)), box-shadow 220ms ease;
+}
+:root[data-theme="dark"] .fc-card {
+  --fc-card-bg: #262626;
+  --fc-card-line: rgb(255 255 255 / .08);
+  --fc-card-shadow: 0 1px 0 rgb(255 255 255 / .04) inset, 0 16px 34px -16px rgb(0 0 0 / .85);
+  --fc-name: #f6f6f6;
+  --fc-muted: #a3a3a3;
+  --fc-pill-bg: #343434;
+  --fc-pill-ink: #f6f6f6;
+}
+.fc-card:has(.fc-hit:active) { transform: scale(.982); }
+.fc-card:has(.fc-hit:focus-visible) { outline: 3px solid rgb(var(--color-gold)); outline-offset: 3px; }
+.fc-hit { position: absolute; z-index: 3; inset: 0; border-radius: inherit; background: transparent; cursor: pointer; }
+.fc-hit:focus-visible { outline: none; }
+
+/* Shared copy */
+.fc-name {
+  display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  font-size: 15px; font-weight: 650; line-height: 1.25; letter-spacing: -.01em; color: var(--fc-name);
+}
+.fc-badge {
+  display: inline-flex; align-items: center; gap: 3px; padding: 4px 9px 4px 6px; box-shadow: 0 2px 10px -2px rgb(0 0 0 / .3);
+  border-radius: 999px; background: var(--fc-badge-bg); color: var(--fc-badge-ink);
+  font-size: 10.5px; font-weight: 750; letter-spacing: .01em; line-height: 1.3; white-space: nowrap;
+}
+.fc-desc {
+  display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+  margin-top: 4px; font-size: 12.5px; line-height: 1.42; color: var(--fc-muted);
+}
+.fc-price { display: flex; align-items: baseline; gap: 3px; margin-top: 8px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.fc-price__from { font-size: 11px; font-weight: 500; color: var(--fc-muted); }
+.fc-price__ccy { font-size: 10.5px; font-weight: 650; letter-spacing: .04em; color: var(--fc-muted); }
+.fc-price__amount { font-size: 15.5px; font-weight: 750; letter-spacing: -.01em; }
+.fc-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-top: 8px; }
+.fc-meta { display: flex; min-width: 0; align-items: center; gap: 9px; overflow: hidden; color: var(--fc-muted); font-size: 11.5px; font-weight: 550; white-space: nowrap; }
+.fc-meta__item { display: inline-flex; align-items: center; gap: 3px; }
+.fc-meta__item svg { flex: none; opacity: .85; }
+
+/* Add pill */
+.fc-add {
+  position: relative; z-index: 4; display: inline-flex; flex: none; align-items: center; justify-content: center; gap: 4px;
+  min-height: 34px; padding: 0 12px 0 14px; border-radius: 999px; border: 0;
+  background: var(--fc-pill-bg); color: var(--fc-pill-ink);
+  font-size: 13px; font-weight: 650; letter-spacing: -.005em;
+  transition: transform 160ms var(--ease-out-expo, cubic-bezier(.16,1,.3,1)), background 160ms ease, box-shadow 160ms ease;
+}
+.fc-add:active:not(:disabled) { transform: scale(.93); }
+.fc-add:focus-visible { outline: 2px solid rgb(var(--color-gold)); outline-offset: 2px; }
+.fc-add:disabled { opacity: .55; cursor: not-allowed; font-size: 12px; padding: 0 12px; }
+.fc-add__qty {
+  display: inline-flex; min-width: 20px; height: 20px; align-items: center; justify-content: center; padding: 0 5px;
+  border-radius: 999px; background: var(--fc-pill-ink); color: var(--fc-pill-bg); font-size: 11.5px; font-weight: 750; font-variant-numeric: tabular-nums;
+}
+.fc-add.is-in { padding-left: 7px; }
+
+/* ── Featured: full-bleed photo with frosted base ─────────────────────── */
+.fc-card--featured {
+  --fc-radius: 32px;
+  flex: 0 0 auto;
+  width: min(76vw, 292px);
+  aspect-ratio: 4 / 5.25;
+  padding: var(--fc-frame);
+  scroll-snap-align: start;
+  --fc-card-line: rgb(16 16 16 / .04);
+  --fc-card-shadow: 0 2px 6px rgb(16 16 16 / .04), 0 22px 44px -22px rgb(16 16 16 / .28);
+  /* Light: grey frost carrying white text (the most readable of the light mockups over food photos). */
+  --fc-tint: linear-gradient(to bottom, rgb(84 84 84 / 0) 0%, rgb(84 84 84 / .26) 34%, rgb(62 62 62 / .52) 70%, rgb(52 52 52 / .66) 100%);
+}
+:root[data-theme="dark"] .fc-card--featured {
+  --fc-frame: 4px;
+  --fc-card-bg: #262626;
+  --fc-card-line: rgb(255 255 255 / .1);
+  --fc-card-shadow: 0 1px 0 rgb(255 255 255 / .05) inset, 0 22px 44px -20px rgb(0 0 0 / .9);
+  /* Dark: smoky charcoal frost. */
+  --fc-tint: linear-gradient(to bottom, rgb(18 18 18 / 0) 0%, rgb(18 18 18 / .38) 34%, rgb(16 16 16 / .72) 70%, rgb(14 14 14 / .86) 100%);
+}
+.fc-feature__media {
+  position: absolute; inset: var(--fc-frame); overflow: hidden;
+  border-radius: calc(var(--fc-radius) - var(--fc-frame));
+  background: linear-gradient(160deg, rgb(var(--surface-muted)), rgb(var(--color-gold) / .18));
+  color: rgb(var(--color-gold));
+}
+.fc-feature__media.is-empty { display: flex; align-items: flex-start; justify-content: center; padding-top: 22%; }
+.fc-feature__media img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transform: scale(1.001); transition: transform 600ms var(--ease-out-expo, cubic-bezier(.16,1,.3,1)); }
+.fc-card--featured:hover .fc-feature__media img { transform: scale(1.04); }
+.fc-feature__blur {
+  position: absolute; inset: 38% 0 0;
+  -webkit-backdrop-filter: blur(18px) saturate(1.15); backdrop-filter: blur(18px) saturate(1.15);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, rgba(0,0,0,.55) 26%, #000 52%);
+  mask-image: linear-gradient(to bottom, transparent 0%, rgba(0,0,0,.55) 26%, #000 52%);
+}
+.fc-feature__tint { position: absolute; inset: 38% 0 0; background: var(--fc-tint); }
+.fc-feature__body {
+  position: absolute; left: var(--fc-frame); right: var(--fc-frame); bottom: var(--fc-frame);
+  display: flex; flex-direction: column; padding: 16px 14px 14px 18px; pointer-events: none;
+  color: #fff; text-shadow: 0 1px 10px rgb(0 0 0 / .18);
+}
+.fc-feature__body .fc-name { color: #fff; font-size: 19px; font-weight: 650; }
+.fc-feature__body .fc-desc { color: rgb(255 255 255 / .9); font-size: 13px; margin-top: 5px; }
+.fc-feature__body .fc-price { margin-top: 10px; }
+.fc-feature__body .fc-price__from,.fc-feature__body .fc-price__ccy { color: rgb(255 255 255 / .78); }
+.fc-feature__body .fc-price__amount { font-size: 17px; }
+.fc-feature__body .fc-meta { color: rgb(255 255 255 / .82); font-size: 12px; }
+.fc-feature__body .fc-row { margin-top: 10px; }
+.fc-card--featured .fc-add {
+  pointer-events: auto; min-height: 40px; padding: 0 15px 0 18px; font-size: 14px;
+  --fc-pill-bg: #ffffff; --fc-pill-ink: #141414;
+  text-shadow: none; box-shadow: 0 6px 18px -6px rgb(0 0 0 / .35), 0 0 0 1px rgb(255 255 255 / .5) inset;
+}
+.fc-card--featured .fc-add.is-in { padding-left: 9px; }
+
+/* ── General: inset photo on top, copy below ──────────────────────────── */
+.fc-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.fc-section + .fc-section { margin-top: 18px; }
+.fc-section__title { margin: 4px 2px 10px; font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: rgb(var(--color-ink-500)); }
+.fc-card--general { --fc-radius: 24px; padding: 6px; container-type: inline-size; }
+.fc-general__media {
+  position: relative; display: flex; aspect-ratio: 1 / 1; align-items: center; justify-content: center; overflow: hidden;
+  border-radius: 19px; background: linear-gradient(160deg, rgb(var(--surface-muted)), rgb(var(--color-gold) / .14)); color: rgb(var(--color-gold));
+}
+.fc-general__media img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transition: transform 500ms var(--ease-out-expo, cubic-bezier(.16,1,.3,1)); }
+.fc-card--general:hover .fc-general__media img { transform: scale(1.04); }
+.fc-general__body { position: relative; display: flex; flex-direction: column; padding: 10px 6px 4px 8px; pointer-events: none; }
+.fc-card--general .fc-add { pointer-events: auto; }
+@container (max-width: 160px) {
+  .fc-meta__extra { display: none; }
+  .fc-general__body { padding-inline: 5px 3px; }
+}
+
+/* Calm entry and tap feedback */
+@keyframes fc-pop { 0% { transform: scale(.6); } 60% { transform: scale(1.18); } 100% { transform: scale(1); } }
+.fc-add__qty { animation: fc-pop 320ms var(--ease-out-expo, cubic-bezier(.16,1,.3,1)); }
+@media (prefers-reduced-motion: reduce) {
+  .fc-card, .fc-add, .fc-feature__media img, .fc-general__media img { transition: none; }
+  .fc-card:has(.fc-hit:active), .fc-add:active:not(:disabled) { transform: none; }
+  .fc-add__qty { animation: none; }
+  .fc-card--featured:hover .fc-feature__media img, .fc-card--general:hover .fc-general__media img { transform: none; }
+}
+/* Equal-height grid cards: price + action row sit on the card's bottom edge. */
+.fc-card--general { display: flex; flex-direction: column; }
+.fc-general__body { flex: 1 1 auto; }
+.fc-general__body .fc-price { margin-top: auto; padding-top: 8px; }
+
+/* Corner overlays on the photo: prep time (frosted dark glass, readable on any
+ * photo in both modes) and the gold badge. Purely visual: taps pass through. */
+.fc-overlay { position: absolute; z-index: 2; pointer-events: none; }
+.fc-card--featured .fc-overlay--left { top: calc(var(--fc-frame) + 12px); left: calc(var(--fc-frame) + 12px); }
+.fc-card--featured .fc-overlay--right { top: calc(var(--fc-frame) + 12px); right: calc(var(--fc-frame) + 12px); }
+.fc-general__media .fc-overlay--left { top: 8px; left: 8px; }
+.fc-glass-pill {
+  display: inline-flex; align-items: center; gap: 4px; padding: 5px 10px 5px 8px; border-radius: 999px;
+  border: 1px solid rgb(255 255 255 / .2); background: rgb(18 18 18 / .4); color: #fff;
+  -webkit-backdrop-filter: blur(14px) saturate(1.2); backdrop-filter: blur(14px) saturate(1.2);
+  font-size: 12px; font-weight: 600; line-height: 1.2; font-variant-numeric: tabular-nums; white-space: nowrap;
+  box-shadow: 0 2px 10px -3px rgb(0 0 0 / .3);
+}
+.fc-glass-pill svg { flex: none; opacity: .9; }
+.fc-card--featured .fc-badge { font-size: 11px; padding: 5px 10px 5px 7px; }
+.fc-feature__left { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
+.fc-feature__left .fc-price { margin-top: 0; }
+.fc-feature__left .fc-meta:empty { display: none; }

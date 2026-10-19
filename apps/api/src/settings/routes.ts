@@ -1,6 +1,8 @@
 import { Hono } from "hono";
+import { getRoadSettings } from "../lib/road-distance.js";
 import { z } from "zod";
 import { logActivity } from "../admin/activity.js";
+import { getWorkSettings, setWorkSettings, WORK_MATCHING_MODES, WORK_PRICING_MODES, WORK_PROVIDER_KINDS, WORK_SERVICE_TYPES } from "../work/settings.js";
 import { hasPermission, requirePermission } from "../admin/permissions.js";
 import { requireAuth, requireRole } from "../auth/middleware.js";
 import { db } from "../db/client.js";
@@ -22,6 +24,8 @@ import {
   setCarSettings,
   getGasSettings,
   setGasSettings,
+  getPharmacySettings,
+  setPharmacySettings,
   getMarketplaceSettings,
   setMarketplaceSettings,
   getLugandaAudioSettings,
@@ -141,8 +145,12 @@ async function fullSettings() {
     bidding: await getBiddingSettings(),
     car: await getCarSettings(),
     gas: await getGasSettings(),
+    work: await getWorkSettings(),
+    pharmacy: await getPharmacySettings(),
     marketplace: await getMarketplaceSettings(),
     ...delivery,
+    // How delivery distances follow the road (the server address is removed for non-staff in GET /settings).
+    ...(await getRoadSettings().then((road) => ({ roadDistanceFactor: road.factor, routingServerUrl: road.routingServerUrl ?? "" }))),
     services,
     ...matching,
     paymentsActiveProviders: activeProviders,
@@ -203,7 +211,9 @@ async function fullSettings() {
  * signed out either — orderRoutes registers requireAuth as "*" on the shared
  * /v1 router, which covers everything mounted after it, this included. */
 settingsRoutes.get("/settings", async (c) => {
-  return c.json({ settings: await fullSettings() });
+  const { routingServerUrl, ...settings } = await fullSettings();
+  // The routing server's address only to staff: it may carry a key.
+  return c.json({ settings: c.get("user")?.role === "admin" ? { ...settings, routingServerUrl } : settings });
 });
 
 const practiceExperienceSchema = z.enum(["customer", "rider", "restaurant", "merchant"]);
@@ -283,6 +293,7 @@ const updateSchema = z.object({
         platform: z.number().int().min(0).max(100),
       }),
       maxPickupKm: z.number().int().min(1).max(200),
+      emergencyNumber: z.string().trim().regex(/^[0-9+*#]{2,15}$/, "Enter a phone number, digits only.").optional(),
       servicePricing: z.object({
         ratePerKm: z.number().int().min(1).max(1_000_000),
         minimumFare: z.number().int().min(0).max(1_000_000),
@@ -377,6 +388,9 @@ const updateSchema = z.object({
   deliveryRatePerKm: z.number().positive().max(1_000_000).optional(),
   minimumDeliveryFee: z.number().int().nonnegative().max(1_000_000).optional(),
   serviceRangeKm: z.number().positive().max(1000).optional(),
+  riderVisibilityRangeKm: z.number().min(0).max(1000).optional(),
+  roadDistanceFactor: z.number().min(1).max(3).optional(),
+  routingServerUrl: z.union([z.literal(""), z.string().url().max(300).regex(/^https?:\/\//)]).optional(),
   shoppingDeliveryFee: z.number().int().nonnegative().max(1_000_000).optional(),
   shoppingUnits: shoppingUnitSettingsSchema.optional(),
   rideTracking: rideTrackingSchema.optional(),
@@ -389,6 +403,59 @@ const updateSchema = z.object({
       dailyLimitUgx: z.number().int().min(0).max(10_000_000),
       voucherExpiryMinutes: z.number().int().min(5).max(1440),
       platformDiscountPercent: z.number().min(0).max(100),
+      sessionHours: z.number().int().min(1).max(168),
+      pinMaxAttempts: z.number().int().min(3).max(20),
+      withdrawalMinUgx: z.number().int().min(1000).max(100_000_000),
+      voucherLookupsPer5Min: z.number().int().min(5).max(200),
+    })
+    .partial()
+    .optional(),
+  pharmacy: z
+    .object({
+      enabled: z.boolean(),
+      maxImageMb: z.number().int().min(1).max(20),
+      submissionsPerHour: z.number().int().min(1).max(100),
+    })
+    .partial()
+    .optional(),
+  work: z
+    .object({
+      enabled: z.boolean(),
+      serviceTypes: z.array(z.enum(WORK_SERVICE_TYPES)),
+      pricingModes: z.array(z.enum(WORK_PRICING_MODES)).min(1),
+      matchingModes: z.array(z.enum(WORK_MATCHING_MODES)).min(1),
+      defaultMatching: z.enum(WORK_MATCHING_MODES),
+      providerKinds: z.array(z.enum(WORK_PROVIDER_KINDS)).min(1),
+      commissionPercent: z.number().int().min(0).max(60),
+      requireApproval: z.boolean(),
+      offerWindowMinutes: z.number().int().min(5).max(10080),
+      radiusKm: z.number().int().min(1).max(200),
+      maxNotified: z.number().int().min(1).max(200),
+      minLeadMinutes: z.number().int().min(0).max(10080),
+      maxAdvanceDays: z.number().int().min(1).max(365),
+      quoteValidHours: z.number().int().min(1).max(336),
+      maxQuoteUgx: z.number().int().min(1000).max(1_000_000_000),
+      freeCancelMinutes: z.number().int().min(0).max(1440),
+      lateCancelFeePercent: z.number().int().min(0).max(100),
+      autoConfirmHours: z.number().int().min(1).max(336),
+      disputeWindowHours: z.number().int().min(1).max(720),
+      jobsPerHour: z.number().int().min(1).max(100),
+      rematchOnProviderCancel: z.boolean(),
+      maxRematches: z.number().int().min(0).max(10),
+      photosEnabled: z.boolean(),
+      maxPhotosPerJob: z.number().int().min(1).max(30),
+      maxPhotoKb: z.number().int().min(100).max(10240),
+      chatEnabled: z.boolean(),
+      trackingEnabled: z.boolean(),
+      onsiteCheckEnabled: z.boolean(),
+      onsiteRadiusM: z.number().int().min(20).max(2000),
+      onsiteMinMinutes: z.number().int().min(1).max(1440),
+      onsiteAction: z.enum(["flag", "suspend"]),
+      onsiteFlagNoLocation: z.boolean(),
+      onsiteRequireLocation: z.boolean(),
+      onsiteSuspendAfterFlags: z.number().int().min(0).max(50),
+      onsiteWindowDays: z.number().int().min(1).max(365),
+      locationRetentionDays: z.number().int().min(1).max(365),
     })
     .partial()
     .optional(),
@@ -406,6 +473,7 @@ const updateSchema = z.object({
       minOrderAmountUgx: z.number().int().min(0).max(10_000_000),
       liveMaxDurationMins: z.number().int().min(15).max(1440),
       deliveryBaseFeeUgx: z.number().int().min(0).max(1_000_000),
+      cartExpiryHours: z.number().int().min(1).max(720),
     })
     .partial()
     .optional(),
@@ -537,6 +605,8 @@ settingsRoutes.put(
     if (parsed.data.bidding) await setBiddingSettings(parsed.data.bidding);
     if (parsed.data.car) await setCarSettings(parsed.data.car);
     if (parsed.data.gas) await setGasSettings(parsed.data.gas);
+    if (parsed.data.work) await setWorkSettings(parsed.data.work);
+    if (parsed.data.pharmacy) await setPharmacySettings(parsed.data.pharmacy);
     if (parsed.data.marketplace) await setMarketplaceSettings(parsed.data.marketplace);
 
     if (parsed.data.deliveryRatePerKm != null) {
@@ -560,6 +630,15 @@ settingsRoutes.put(
     }
     if (parsed.data.serviceRangeKm != null) {
       await setSetting("service_range_km", String(parsed.data.serviceRangeKm));
+    }
+    if (parsed.data.riderVisibilityRangeKm != null) {
+      await setSetting("rider_visibility_range_km", String(parsed.data.riderVisibilityRangeKm));
+    }
+    if (parsed.data.roadDistanceFactor != null) {
+      await setSetting("road_distance_factor", String(parsed.data.roadDistanceFactor));
+    }
+    if (parsed.data.routingServerUrl != null) {
+      await setSetting("routing_server_url", parsed.data.routingServerUrl.trim());
     }
     if (parsed.data.shoppingDeliveryFee != null) {
       await setSetting("shopping_delivery_fee", String(parsed.data.shoppingDeliveryFee));
@@ -1145,6 +1224,7 @@ const patchMarketplaceSettingsSchema = z
     minOrderAmountUgx: z.number().int().min(0).max(10_000_000),
     liveMaxDurationMins: z.number().int().min(15).max(1440),
     deliveryBaseFeeUgx: z.number().int().min(0).max(1_000_000),
+    cartExpiryHours: z.number().int().min(1).max(720),
   })
   .partial();
 

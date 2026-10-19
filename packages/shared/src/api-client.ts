@@ -1,6 +1,15 @@
+import type { BagTrip, RelayAdminOrder, RelayRouteStage, RelayMerchantOrder, RelayOpenLeg, RelayOperator, RelayOperatorParcels, RelayQuote, RelayRoute, RelaySettings, RelayStation, RelayStationParcels, RelayTrack } from "./relay.js";
 import type { AdminRole } from "./permissions.js";
+import { workMethods } from "./work-client.js";
+import { workAdminMethods } from "./work-admin-client.js";
+import { educationMethods } from "./education-client.js";
 import type { PracticeRole } from "./practice.js";
 import type {
+  FareCounter,
+  FareOffer,
+  RideQuote,
+  RideStop,
+  RideStopInput,
   ActivityLogEntry,
   AdminMerchantSettlementAccount,
   AdminMerchant,
@@ -101,6 +110,7 @@ import type {
   MatchingMode,
   NavMode,
   OrderDetail,
+  CheckoutBreakdown,
   OrderEvent,
   OrderRow,
   OrderOverview,
@@ -286,6 +296,30 @@ export function friendlyErrorMessage(err: unknown): string {
 }
 
 /** API client for peebee-api (apps/api on Render). */
+export type PharmacyQuoteItem = { name: string; strength?: string; dosage?: string; quantity: number; unitPrice: number };
+
+export type PharmacyPrescription = {
+  id: string;
+  customerName: string;
+  customerPhone: string | null;
+  pharmacyId: string;
+  pharmacyName: string;
+  hasImage: boolean;
+  imagePath: string | null;
+  patientNotes: string;
+  patientAge: number | null;
+  patientGender: string | null;
+  status: "pending_review" | "priced_ready" | "dispensed" | "declined" | "cancelled";
+  pharmacistNotes: string;
+  dosageInstructions: string;
+  quotedItems: PharmacyQuoteItem[];
+  quotedTotalUgx: number;
+  deliveryAddress: string;
+  deliveryFeeUgx: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }: CreateApiClientOptions) {
   const root = baseUrl.replace(/\/$/, "");
   const f = fetchImpl ?? fetch;
@@ -312,7 +346,8 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
       await f(`${root}${path}`, {
         ...init,
         headers: {
-          "Content-Type": "application/json",
+          // A file upload (FormData) must not carry a JSON content type; the browser sets the multipart boundary itself.
+          ...(typeof FormData !== "undefined" && init?.body instanceof FormData ? {} : { "Content-Type": "application/json" }),
           ...authHeaders(),
           ...(init?.headers ?? {}),
         },
@@ -455,16 +490,90 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
       estimatedTotal?: number;
       /** A ride booked for someone else. */
       passenger?: RidePassenger;
+      /** Boda rides: ordered stops between pickup and destination. */
+      stops?: RideStopInput[];
+      /** Boda rides: Name your fare — the customer's own price, within the quote's band. */
+      fareOffer?: number;
+      /** A long parcel dropped at a petrol station: bring it to the door, or collect it there. */
+      relayLastMile?: "door" | "collect" | "meet";
+      /** A long goods parcel: by matatu relay (default when offered) or one boda all the way. */
+      deliveryMode?: "rider" | "relay";
+      /** With relayLastMile "meet": the stage where the customer meets the matatu. */
+      relayMeetStageId?: string;
     }) {
       return request<{ order: OrderRow }>("/v1/orders", { method: "POST", body: JSON.stringify(input) });
     },
     async getActiveOrder() {
-      return request<{ activeOrder: OrderRow | null; pendingFeeProposal: FeeProposal | null }>("/v1/orders/active");
+      return request<{
+        activeOrder: OrderRow | null;
+        pendingFeeProposal: FeeProposal | null;
+        rideStops?: RideStop[];
+        fareOffer?: FareOffer | null;
+        fareCounters?: FareCounter[];
+      }>("/v1/orders/active");
+    },
+    /** The app's boda quote through any stops, with the Name-your-fare band. */
+    async getRideQuote(input: { pickupLat: number; pickupLng: number; destinationLat: number; destinationLng: number; stops?: Array<{ lat: number; lng: number }> }) {
+      const params = new URLSearchParams({
+        pickupLat: String(input.pickupLat),
+        pickupLng: String(input.pickupLng),
+        destinationLat: String(input.destinationLat),
+        destinationLng: String(input.destinationLng),
+      });
+      if (input.stops?.length) params.set("stops", input.stops.map((s) => `${s.lat},${s.lng}`).join(";"));
+      return request<RideQuote>(`/v1/rides/quote?${params}`);
+    },
+    /** Customer raises their offer (amount) or switches to the app's standard fare. */
+    async raiseFareOffer(orderId: string, input: { amount: number } | { standard: true }, idempotencyKey?: string) {
+      return request<{ order: OrderRow; fareOffer: FareOffer | null; fareCounters: FareCounter[] }>(`/v1/orders/${orderId}/fare-offer`, {
+        method: "POST",
+        body: JSON.stringify(input),
+        headers: idempotencyKey ? { "Idempotency-Key": idempotencyKey } : undefined,
+      });
+    },
+    async getFareCounters(orderId: string) {
+      return request<{ fareOffer: FareOffer | null; counters: FareCounter[] }>(`/v1/orders/${orderId}/fare-counters`);
+    },
+    /** Rider counters a customer's offer. Accepting the offer itself is the normal claim/apply. */
+    async counterFareOffer(orderId: string, amount: number, idempotencyKey?: string) {
+      return request<{ counter: { id: string; amount: number; expiresAt: string } }>(`/v1/orders/${orderId}/fare-counters`, {
+        method: "POST",
+        body: JSON.stringify({ amount }),
+        headers: idempotencyKey ? { "Idempotency-Key": idempotencyKey } : undefined,
+      });
+    },
+    async getRideStops(orderId: string) {
+      return request<{ stops: RideStop[] }>(`/v1/orders/${orderId}/stops`);
+    },
+    /** Rider: arrived at stop N (only the next pending stop, only while the passenger is aboard). */
+    async arrivedAtStop(orderId: string, position: number) {
+      return request<{ stops: RideStop[]; order: OrderRow }>(`/v1/orders/${orderId}/stops/${position}/arrived`, { method: "POST" });
+    },
+    /** Rider: leaving stop N for the next stop / the destination. */
+    async continueFromStop(orderId: string, position: number) {
+      return request<{ stops: RideStop[]; order: OrderRow }>(`/v1/orders/${orderId}/stops/${position}/continue`, { method: "POST" });
     },
 
     // Restaurant browsing + food checkout — see apps/api/src/restaurants/customer.ts.
     async listRestaurants() {
       return request<{ restaurants: Restaurant[]; /** Food ordering is switched off by an admin. */ paused?: boolean }>("/v1/restaurants");
+    },
+    /**
+     * The exact delivery fee for an order from a food business to a location. For one delivery
+     * shared with another business (`alsoFrom`, its cart ordered together with this one) or with an
+     * unpaid order (`bundleWith`), `shared` splits it into what each order is charged: the first
+     * pickup's own delivery, and what this extra stop adds.
+     */
+    async getRestaurantDeliveryQuote(id: string, input: { lat?: number | null; lng?: number | null; alsoFrom?: string | null; bundleWith?: string | null }) {
+      const params = new URLSearchParams();
+      if (input.lat != null && input.lng != null) { params.set("lat", String(input.lat)); params.set("lng", String(input.lng)); }
+      if (input.alsoFrom) params.set("alsoFrom", input.alsoFrom);
+      if (input.bundleWith) params.set("bundleWith", input.bundleWith);
+      return request<{
+        deliveryFee: number;
+        distanceKm: number | null;
+        shared?: { firstPickup: { name: string; fee: number }; addedStop: { name: string; fee: number } };
+      }>(`/v1/restaurants/${encodeURIComponent(id)}/delivery-quote?${params}`);
     },
     async getRestaurant(id: string) {
       return request<{ restaurant: Restaurant }>(`/v1/restaurants/${id}`);
@@ -492,13 +601,119 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
       });
     },
     async getDeliveryBundleCandidates() {
-      return request<{ orders: Array<{ id: string; restaurant_id: string | null; restaurant_name: string | null; pickup_address: string | null; pickup_lat: number; pickup_lng: number; destination_lat: number; destination_lng: number; delivery_fee: number | null }> }>("/v1/orders/bundle-candidates");
+      return request<{ orders: Array<{ id: string; restaurant_id: string | null; restaurant_name: string | null; pickup_address: string | null; pickup_lat: number; pickup_lng: number; destination_lat: number; destination_lng: number; delivery_fee: number | null; estimated_total: number | null }> }>("/v1/orders/bundle-candidates");
     },
     async closeDeliveryBundleWindow(orderId: string) {
       return request<{ ok: boolean }>(`/v1/orders/${orderId}/bundle-window/close`, { method: "POST" });
     },
     async getOrder(orderId: string) {
       return request<OrderDetail>(`/v1/orders/${orderId}`);
+    },
+    // Relay delivery (boda -> matatu -> boda for long parcels).
+    async getRelayQuote(input: { pickupLat: number; pickupLng: number; destinationLat: number; destinationLng: number; pickupName?: string; destinationName?: string }) {
+      const params = new URLSearchParams();
+      for (const [key, value] of Object.entries(input)) if (value != null && value !== "") params.set(key, String(value));
+      return request<{
+        relay: RelayQuote | null;
+        /** One boda all the way, along the road. */ boda?: { distanceKm: number; fee: number };
+        /** "Direct" is promised in under this many hours (admin setting). */ directMaxHours?: number;
+      }>(`/v1/relay/quote?${params}`);
+    },
+    async trackRelayOrder(orderId: string) {
+      return request<RelayTrack>(`/v1/relay/orders/${encodeURIComponent(orderId)}/track`);
+    },
+    /** Waiting at the petrol station: send a rider to the door, paying the last leg from the wallet. */
+    async sendRelayRider(orderId: string) {
+      return request<{ orderId: string; charged: number }>(`/v1/relay/orders/${encodeURIComponent(orderId)}/send-rider`, { method: "POST", body: "{}" });
+    },
+    async listMerchantRelayOrders() {
+      return request<{ orders: RelayMerchantOrder[] }>("/v1/relay/merchant/orders");
+    },
+    // Peebee Gas (pump attendant / station manager session)
+    async gasRelayParcels() {
+      return request<RelayStationParcels>("/v1/gas/relay/parcels");
+    },
+    async gasRelayParcel(orderId: string) {
+      return request<Omit<RelayTrack, "order"> & { order: { id: string; stage: string; destinationArea: string | null } }>(`/v1/gas/relay/parcels/${encodeURIComponent(orderId)}`);
+    },
+    async gasRelayReceive(code: string) {
+      return request<{ orderId: string }>("/v1/gas/relay/receive", { method: "POST", body: JSON.stringify({ code }) });
+    },
+    async gasRelayRelease(code: string) {
+      return request<{ orderId: string }>("/v1/gas/relay/release", { method: "POST", body: JSON.stringify({ code }) });
+    },
+    async relayOperatorHandover(code: string) {
+      return request<{ orderId: string }>("/v1/relay/operator/handover", { method: "POST", body: JSON.stringify({ code }) });
+    },
+    async relayOperatorMissed(legId: string) {
+      return request<{ orderId: string; station: string }>(`/v1/relay/operator/legs/${encodeURIComponent(legId)}/missed`, { method: "POST", body: "{}" });
+    },
+    async adminListRelayRouteStages(routeId: string) {
+      return request<{ stages: RelayRouteStage[]; ready: boolean }>(`/v1/admin/relay/routes/${encodeURIComponent(routeId)}/stages`);
+    },
+    async adminCreateRelayRouteStage(routeId: string, input: { name?: string; seq?: number; lat?: number; lng?: number; outletId?: string | null; active?: boolean }) {
+      return request<{ id: string }>(`/v1/admin/relay/routes/${encodeURIComponent(routeId)}/stages`, { method: "POST", body: JSON.stringify(input) });
+    },
+    async adminUpdateRelayRouteStage(stageId: string, input: Partial<{ name: string; seq: number; lat: number; lng: number; outletId: string | null; active: boolean }>) {
+      return request<{ ok: boolean }>(`/v1/admin/relay/stages/${encodeURIComponent(stageId)}`, { method: "PATCH", body: JSON.stringify(input) });
+    },
+    async adminListRelayStations() {
+      return request<{ stations: RelayStation[]; ready: boolean }>("/v1/admin/relay/stations");
+    },
+    /** off, sandbox (sandbox & practice only, for trial stations) or live. */
+    async adminSetRelayStation(outletId: string, mode: "off" | "sandbox" | "live") {
+      return request<{ ok: boolean }>(`/v1/admin/relay/stations/${encodeURIComponent(outletId)}`, { method: "POST", body: JSON.stringify({ mode }) });
+    },
+    async listOpenRelayLegs() {
+      return request<{ legs: RelayOpenLeg[] }>("/v1/relay/legs/open");
+    },
+    async claimRelayLeg(legId: string) {
+      return request<{ orderId: string }>(`/v1/relay/legs/${encodeURIComponent(legId)}/claim`, { method: "POST", body: "{}" });
+    },
+    async collectRelayLeg(legId: string, code: string) {
+      return request<{ orderId: string }>(`/v1/relay/legs/${encodeURIComponent(legId)}/collect`, { method: "POST", body: JSON.stringify({ code }) });
+    },
+    async getRelayOperatorMe() {
+      return request<{ operator: RelayOperator | null; routes: Array<Pick<RelayRoute, "id" | "name" | "stage_a_name" | "stage_b_name" | "route_code">>; enabled: boolean }>("/v1/relay/operator/me");
+    },
+    async applyRelayOperator(input: { routeId: string; vehiclePlate: string; phone?: string }) {
+      return request<{ ok: boolean }>("/v1/relay/operator/apply", { method: "POST", body: JSON.stringify(input) });
+    },
+    async getRelayOperatorParcels() {
+      return request<RelayOperatorParcels>("/v1/relay/operator/parcels");
+    },
+    async receiveRelayParcel(code: string) {
+      return request<{ orderId: string }>("/v1/relay/operator/receive", { method: "POST", body: JSON.stringify({ code }) });
+    },
+    async markRelayMatatuArrived(legId: string) {
+      return request<{ ok: boolean }>(`/v1/relay/operator/legs/${encodeURIComponent(legId)}/arrived`, { method: "POST", body: "{}" });
+    },
+    async sendRelayMatatuLocation(legId: string, lat: number, lng: number) {
+      return request<{ ok: boolean }>(`/v1/relay/operator/legs/${encodeURIComponent(legId)}/location`, { method: "POST", body: JSON.stringify({ lat, lng }) });
+    },
+    async adminGetRelaySettings() {
+      return request<{ settings: RelaySettings; ready: boolean; stationsReady?: boolean; stagesReady?: boolean }>("/v1/admin/relay/settings");
+    },
+    async adminUpdateRelaySettings(input: Partial<RelaySettings>) {
+      return request<{ settings: RelaySettings }>("/v1/admin/relay/settings", { method: "PUT", body: JSON.stringify(input) });
+    },
+    async adminListRelayRoutes() {
+      return request<{ routes: RelayRoute[]; ready: boolean; /** Migration 0107: stage codes can be saved. */ codesReady?: boolean }>("/v1/admin/relay/routes");
+    },
+    async adminCreateRelayRoute(input: { name: string; stageAName: string; stageALat: number; stageALng: number; stageBName: string; stageBLat: number; stageBLng: number; parcelFare: number; active?: boolean; dropMode?: "stage" | "station"; stageACode?: string; stageBCode?: string }) {
+      return request<{ id: string }>("/v1/admin/relay/routes", { method: "POST", body: JSON.stringify(input) });
+    },
+    async adminUpdateRelayRoute(id: string, input: Partial<{ name: string; stageAName: string; stageALat: number; stageALng: number; stageBName: string; stageBLat: number; stageBLng: number; parcelFare: number; active: boolean; dropMode: "stage" | "station"; stageACode: string; stageBCode: string }>) {
+      return request<{ ok: boolean }>(`/v1/admin/relay/routes/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(input) });
+    },
+    async adminListRelayOperators() {
+      return request<{ operators: RelayOperator[] }>("/v1/admin/relay/operators");
+    },
+    async adminSetRelayOperatorStatus(userId: string, status: "approved" | "suspended" | "pending") {
+      return request<{ ok: boolean }>(`/v1/admin/relay/operators/${encodeURIComponent(userId)}/status`, { method: "POST", body: JSON.stringify({ status }) });
+    },
+    async adminListRelayOrders() {
+      return request<{ orders: RelayAdminOrder[] }>("/v1/admin/relay/orders");
     },
     /** Attaches a spoken note to the order — context a typed list can miss (units, brand, exactly where in the shop). */
     async uploadOrderVoiceNote(orderId: string, audio: Blob) {
@@ -572,7 +787,17 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
       return request<{ ok: true }>(`/v1/orders/${orderId}/customer-delete`, { method: "POST" });
     },
     async getOrderCheckout(orderId: string) {
-      return request<{ baseAmount: number; mobileMoney: number; wallet: number; cash: number }>(`/v1/orders/${orderId}/checkout`);
+      return request<{
+        baseAmount: number; mobileMoney: number; wallet: number; cash: number;
+        /** Present on the first pickup of a combined delivery: the quote covers every pickup. */
+        bundle?: { deliveryFee: number; orders: Array<{ id: string; restaurantName: string | null; itemsAndDelivery: number; deliveryFee: number }> };
+        /** A relay that can be paid now, before any rider accepts it (admin setting). */
+        payBeforeRider?: boolean;
+      } & Partial<CheckoutBreakdown>>(`/v1/orders/${orderId}/checkout`);
+    },
+    /** What the order page shows: items, subtotal and delivery for the whole combined delivery (or the order), at any stage. */
+    async getOrderBreakdown(orderId: string) {
+      return request<CheckoutBreakdown & { total: number }>(`/v1/orders/${orderId}/breakdown`);
     },
     async fundOrder(
       orderId: string,
@@ -1657,41 +1882,104 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
       destinationArea?: string;
       destinationLat?: number;
       destinationLng?: number;
+      relayLastMile?: "door" | "collect" | "meet";
+      relayMeetStageId?: string;
+      /** A long trip: by matatu relay (default when offered) or one rider all the way. */
+      deliveryMode?: "rider" | "relay";
     }) {
       return request<{ ok: boolean; orders: OrderRow[]; order: OrderRow }>("/v1/marketplace/checkout", {
         method: "POST",
         body: JSON.stringify(input),
       });
     },
+    /** The exact delivery fee for a bag: one rider trip through every store, split by store. */
+    async quoteMarketplaceCheckout(input: {
+      items: Array<{ productId: string; storeId: string; title: string; price: number; quantity: number; variantId?: string; variantTitle?: string }>;
+      destinationLat?: number;
+      destinationLng?: number;
+      relayLastMile?: "door" | "collect" | "meet";
+      relayMeetStageId?: string;
+      deliveryMode?: "rider" | "relay";
+    }) {
+      return request<{
+        itemsTotal: number;
+        deliveryFee: number;
+        total: number;
+        /** How this quote delivers; when a relay is offered the customer chooses (relay by default). */
+        deliveryMode?: "rider" | "relay";
+        /** The delivery fee each way, so both choices show their price. */
+        options?: { rider: number; relay: number | null };
+        /** "Direct" (one rider all the way) is promised in under this many hours (admin setting). */
+        directMaxHours?: number;
+        stores: Array<{ storeId: string; storeName: string; itemsTotal: number; deliveryFee: number }>;
+        /** One rider's whole trip along the road; null without a delivery location. */
+        trip?: BagTrip | null;
+        /** A long trip by matatu relay: the rider collects from every store first. */
+        relay?: {
+          routeName: string; direction?: string; routeCode?: string; dropMode: "stage" | "station"; station: string | null; lastMile: "door" | "collect" | "pending";
+          doorTotal: number; collectTotal: number | null; choiceAtOrder: boolean;
+          meetStages?: Array<{ id: string; name: string; distanceKm: number; isStation: boolean }>;
+          meetStage?: string | null;
+          legs: Array<{ leg: number; kind: "boda" | "matatu"; fromName: string; toName: string; distanceKm?: number; fee: number }>;
+        } | null;
+      }>("/v1/marketplace/checkout/quote", { method: "POST", body: JSON.stringify(input) });
+    },
 
     // Pharmacy & Prescription Endpoints
+    /** The pharmacy the signed-in user works for (403 `not_a_pharmacist` when none). */
+    async pharmacyMe() {
+      return request<{
+        pharmacist: { id: string; name: string; role: string };
+        pharmacy: { id: string; name: string; address: string; phone: string; licenceNumber: string };
+        pharmacies: { id: string; name: string }[];
+      }>("/v1/pharmacy/me");
+    },
+    async getPharmacies() {
+      return request<{ pharmacies: { id: string; name: string; address: string | null; phone: string | null }[] }>("/v1/pharmacy/pharmacies");
+    },
+    /** Uploads a photo of the doctor's slip to private storage; pass the returned key to submitPrescription. */
+    async uploadPrescriptionPhoto(file: Blob) {
+      const form = new FormData();
+      form.append("file", file, "prescription.jpg");
+      const res = await f(`${root}/v1/pharmacy/uploads`, { method: "POST", headers: authHeaders(), body: form });
+      return json<{ key: string }>(res);
+    },
     async submitPrescription(input: {
-      prescriptionImageUrl: string;
+      pharmacyId: string;
+      prescriptionImageKey: string;
       patientNotes?: string;
-      pharmacyId?: string;
       patientAge?: number;
-      patientGender?: string;
+      patientGender?: "female" | "male" | "other";
       deliveryAddress?: string;
     }) {
-      return request<{ ok: boolean; prescription: any }>("/v1/pharmacy/prescriptions", {
+      return request<{ ok: boolean; prescription: PharmacyPrescription }>("/v1/pharmacy/prescriptions", {
         method: "POST",
         body: JSON.stringify(input),
       });
     },
     async getCustomerPrescriptions() {
-      return request<{ prescriptions: any[] }>("/v1/pharmacy/prescriptions");
+      return request<{ prescriptions: PharmacyPrescription[] }>("/v1/pharmacy/prescriptions");
     },
-    async getPharmacistPrescriptions() {
-      return request<{ prescriptions: any[] }>("/v1/pharmacy/pharmacist/prescriptions");
+    async cancelPrescription(id: string) {
+      return request<{ ok: boolean }>(`/v1/pharmacy/prescriptions/${encodeURIComponent(id)}/cancel`, { method: "POST", body: JSON.stringify({}) });
+    },
+    /** The slip photo as a Blob. It needs the sign-in header, so it can't be a plain <img src>. */
+    async prescriptionImageBlob(id: string): Promise<Blob> {
+      const res = await f(`${root}/v1/pharmacy/prescriptions/${encodeURIComponent(id)}/image`, { headers: authHeaders() });
+      if (!res.ok) throw new Error(`API ${res.status}: failed to load the prescription photo`);
+      return res.blob();
+    },
+    async getPharmacistPrescriptions(status?: string) {
+      const q = status ? `?status=${encodeURIComponent(status)}` : "";
+      return request<{ prescriptions: PharmacyPrescription[] }>(`/v1/pharmacy/pharmacist/prescriptions${q}`);
     },
     async updatePrescriptionReview(id: string, input: {
-      status: string;
+      status: "priced_ready" | "declined" | "dispensed";
       pharmacistNotes?: string;
       dosageInstructions?: string;
-      quotedItems?: any[];
-      quotedTotalUgx?: number;
+      quotedItems?: PharmacyQuoteItem[];
     }) {
-      return request<{ ok: boolean; prescription: any }>(`/v1/pharmacy/pharmacist/prescriptions/${id}`, {
+      return request<{ ok: boolean; prescription: PharmacyPrescription }>(`/v1/pharmacy/pharmacist/prescriptions/${encodeURIComponent(id)}`, {
         method: "PATCH",
         body: JSON.stringify(input),
       });
@@ -1757,6 +2045,15 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
     async getCarServiceOptions(route: { pickupLat: number; pickupLng: number; destinationLat: number; destinationLng: number }) {
       const params = new URLSearchParams(Object.entries(route).map(([key, value]) => [key, String(value)]));
       return request<{ distanceKm: number; options: Array<{ size: "normal" | "large"; tier: "convenient" | "comfort"; fare: number; nearby: number }> }>(`/v1/car/service-options?${params}`);
+    },
+    /** Fare for a category (Luxury: pass `hireHours` for hire by the hour). */
+    async quoteCarCategory(input: { categoryId: string; hireHours?: number; pickupLat: number; pickupLng: number; destinationLat: number; destinationLng: number }) {
+      return request<{ fare: number; distanceKm: number }>("/v1/car/quote", { method: "POST", body: JSON.stringify(input) });
+    },
+    /** How many cars of one category are online and free near a point. */
+    async getCarCategoryNearby(categoryId: string, lat: number, lng: number) {
+      const params = new URLSearchParams({ categoryId, lat: String(lat), lng: String(lng) });
+      return request<{ nearby: number }>(`/v1/car/category-nearby?${params}`);
     },
     async bookCar(input: CarBookingInput & { scheduledFor?: string }) {
       return request<{ order: OrderRow }>("/v1/car/bookings", { method: "POST", body: JSON.stringify(input) });
@@ -2026,6 +2323,12 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
       const res=await f(`${root}/v1/admin/people/${kind}/${encodeURIComponent(id)}/photo`,{headers:authHeaders()});
       if (!res.ok) throw new Error("Photo unavailable");
       return res.blob();
+    },
+    async adminSetRiderVisibilityRange(userId: string, rangeKm: number | null) {
+      return request<{ ok: boolean; rangeKm: number | null }>(`/v1/admin/riders/${encodeURIComponent(userId)}/visibility-range`, {
+        method: "POST",
+        body: JSON.stringify({ rangeKm }),
+      });
     },
     async adminVerifyRider(userId: string, verified: boolean) {
       return request<{ rider: Rider }>(`/v1/admin/riders/${userId}/verify`, {
@@ -2464,12 +2767,18 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
       const q = outletId ? `?outletId=${encodeURIComponent(outletId)}` : "";
       return request<{ dispenses: FuelReceipt[] }>(`/v1/gas/dispenses${q}`);
     },
+    /** The signed-in customer's own fuel receipts. */
+    async gasRiderDispenses() {
+      return request<{ dispenses: FuelReceipt[] }>("/v1/gas/rider/dispenses");
+    },
     async gasShiftSummary(outletId?: string) {
       const q = outletId ? `?outletId=${encodeURIComponent(outletId)}` : "";
       return request<{ summary: FuelShiftSummary }>(`/v1/gas/shift/summary${q}`);
     },
+    async cancelRiderFuelCode() {
+      return request<{ ok: true; refunded_ugx: number }>("/v1/gas/rider/cancel-code", { method: "POST", body: JSON.stringify({}) });
+    },
     async generateRiderFuelCode(input: {
-      riderId?: string;
       vehiclePlate?: string;
       amountUgx: number;
       productId?: string;
@@ -2480,11 +2789,10 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
         body: JSON.stringify(input),
       });
     },
-    async getActiveRiderFuelCode(riderId?: string) {
-      const q = riderId ? `?riderId=${encodeURIComponent(riderId)}` : "";
-      return request<{ code: FuelCode | null }>(`/v1/gas/rider/active-code${q}`);
+    async getActiveRiderFuelCode() {
+      return request<{ code: FuelCode | null }>("/v1/gas/rider/active-code");
     },
-    async gasAttendantLogin(code: string, pin?: string, outletId?: string) {
+    async gasAttendantLogin(code: string, pin: string, outletId?: string) {
       return request<{
         ok: true;
         token: string;
@@ -2509,7 +2817,7 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
       });
     },
     // Station Manager Portal Methods
-    async gasManagerLogin(code?: string, pin?: string, outletId?: string) {
+    async gasManagerLogin(code: string | undefined, pin: string, outletId?: string) {
       return request<{
         ok: true;
         token: string;
@@ -2543,7 +2851,7 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
       pin?: string;
       approveImmediately?: boolean;
     }) {
-      return request<{ ok: true; attendant: FuelPumpAttendant }>("/v1/gas/manager/attendants/commission", {
+      return request<{ ok: true; attendant: FuelPumpAttendant; temporary_pin?: string }>("/v1/gas/manager/attendants/commission", {
         method: "POST",
         body: JSON.stringify(data),
       });
@@ -2569,8 +2877,8 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
         body: JSON.stringify({ pumpLane }),
       });
     },
-    async gasManagerResetPin(attendantId: string, pin: string) {
-      return request<{ ok: true }>(`/v1/gas/manager/attendants/${encodeURIComponent(attendantId)}/reset-pin`, {
+    async gasManagerResetPin(attendantId: string, pin?: string) {
+      return request<{ ok: true; temporary_pin?: string }>(`/v1/gas/manager/attendants/${encodeURIComponent(attendantId)}/reset-pin`, {
         method: "POST",
         body: JSON.stringify({ pin }),
       });
@@ -2619,6 +2927,15 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
         method: "POST",
         body: JSON.stringify(data),
       });
+    },
+    ...workMethods(request),
+    ...workAdminMethods(request),
+    ...educationMethods(request),
+    /** A job photo as a Blob (private: the request carries the sign-in header, so it can't be a plain image URL). */
+    async workPhotoBlob(photoId: string): Promise<Blob> {
+      const res = await f(`${root}/v1/work/photos/${encodeURIComponent(photoId)}`, { headers: authHeaders() });
+      if (!res.ok) throw new Error("Couldn't load the photo.");
+      return res.blob();
     },
   };
 }

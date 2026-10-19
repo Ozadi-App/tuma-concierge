@@ -7,7 +7,7 @@ export { DEFAULT_TIME_FEES, timeFeePolicy, timeFeeNotice } from "./time-fees.js"
 export type { TimeFeeSettings, TimeFeePolicy, OrderTimeFees } from "./time-fees.js";
 export type { PaymentRail as PaymentRailValue } from "./payment-rail.js";
 export { createApiClient, ApiError, friendlyErrorMessage } from "./api-client.js";
-export type { ApiValidationIssue } from "./api-client.js";
+export type { ApiValidationIssue, PharmacyPrescription, PharmacyQuoteItem } from "./api-client.js";
 export type { CreateApiClientOptions, ApiClient } from "./api-client.js";
 export { CallEngine } from "./call-engine.js";
 export type { CallEngineState, CallEnginePhase, CallEngineOptions } from "./call-engine.js";
@@ -17,6 +17,7 @@ export { CAR_MODEL_CATALOG } from "./car-model-catalog.js";
 export type { CarModel } from "./car-model-catalog.js";
 export * from "./shopping-units.js";
 export * from "./ride-tracking.js";
+export * from "./relay.js";
 export * from "./demo-marketplace.js";
 export type { UgandaDistrict } from "./uganda-locations.js";
 export {
@@ -72,6 +73,11 @@ export type {
   ServiceSwitches,
   SavedPassenger,
   SharedTrip,
+  RideStop,
+  RideStopInput,
+  RideQuote,
+  FareOffer,
+  FareCounter,
   AuthUser,
   UserStatus,
   AdminCustomer,
@@ -110,6 +116,7 @@ export type {
   CarDriverActive,
   CarOwnerRides,
   CarCategory,
+  CarServiceGroup,
   CarConfig,
   CarBookingInput,
   CarPartnerStatus,
@@ -122,6 +129,10 @@ export type {
   JobExpiryUnit,
   FeeProposal,
   OrderDetail,
+  CheckoutItem,
+  CheckoutDeliveryLeg,
+  CheckoutDelivery,
+  CheckoutBreakdown,
   OrderRating,
   CreateListBody,
   CreateListResponse,
@@ -266,3 +277,19 @@ export * from "./food-business.js";
 export * from "./food-orders.js";
 export * from "./colour-scenes.js";
 export * from "./food-feedback.js";
+export type {
+  WorkCustomerAction, WorkJob, WorkJobProvider, WorkJobStatus, WorkMatchingMode, WorkMessage, WorkPhoto, WorkPricingMode, WorkProviderProfile, WorkPublicSettings,
+  WorkService, WorkServiceType, WorkStaffMember,
+} from "./work-client.js";
+export type {
+  WorkAdminEvent, WorkAdminJob, WorkAdminJobDetail, WorkAdminMessage, WorkAdminMoney, WorkAdminPhoto, WorkAdminOffer, WorkAdminProvider, WorkAdminProviderRow,
+  WorkAdminService, WorkAdminServiceInput, WorkAdminSettings, WorkProviderAction, WorkProviderKind, WorkProviderStatus, WorkResolveOutcome,
+  WorkAdminFlag, WorkFlagDetail, WorkFlagKind, WorkFlagOutcome, WorkFlagStatus,
+} from "./work-admin-client.js";
+export { WORK_SETTINGS_EXTRA_DEFAULTS } from "./work-admin-client.js";
+
+export * from "./education/types.js";
+export * from "./education/studio.js";
+export { handleStudioSandbox, resetStudioSandbox } from "./education/studio-sandbox.js";
+export * from "./education/demo-data.js";
+

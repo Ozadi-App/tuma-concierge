@@ -15,6 +15,7 @@ import { z } from "zod";
 import { requireAuth, requireRole } from "../auth/middleware.js";
 import { db, executeBatch } from "../db/client.js";
 import { haversineKm } from "../lib/geo.js";
+import { roadKm, roadLegsKm } from "../lib/road-distance.js";
 import { newId } from "../lib/ids.js";
 import { getDeliverySettings, getMatchingSettings, getMaxOrderValue, getPlatformEnvironment, isServiceEnabled } from "../lib/settings.js";
 import { servicePaused } from "../lib/service-gate.js";
@@ -63,6 +64,70 @@ customerRestaurantRoutes.get("/restaurants/:id", requireAuth, async (c) => {
   const restaurant = res.rows[0] as Row | undefined;
   if (!restaurant) return c.json({ error: "not_found" }, 404);
   return c.json({ restaurant: await reconcileFoodHours(restaurant) });
+});
+
+async function activeRestaurantRow(id: string, environment: string): Promise<Row | undefined> {
+  const demo = environment === "sandbox" ? demoFoodRestaurant(id) : undefined;
+  if (demo) return { ...demo };
+  const res = await db.execute({ sql: "SELECT * FROM restaurants WHERE id = ? AND status = 'active' AND environment = ?", args: [id, environment] });
+  return res.rows[0] as Row | undefined;
+}
+
+/**
+ * The delivery fee an order from this restaurant to a location will be charged,
+ * worked out by the same distance price as the order itself (so what the customer
+ * sees at checkout is final, not an estimate). With `alsoFrom` (another restaurant
+ * whose cart is combined into one delivery) it is the fee for the whole route:
+ * that restaurant -> this restaurant -> the customer.
+ */
+customerRestaurantRoutes.get("/restaurants/:id/delivery-quote", requireAuth, async (c) => {
+  const id = c.req.param("id") as string;
+  const environment = await getPlatformEnvironment();
+  const restaurant = await activeRestaurantRow(id, environment);
+  if (!restaurant) return c.json({ error: "not_found" }, 404);
+  const lat = Number(c.req.query("lat")), lng = Number(c.req.query("lng"));
+  const hasDestination = c.req.query("lat") != null && c.req.query("lng") != null && Number.isFinite(lat) && Number.isFinite(lng);
+  const alsoFromId = c.req.query("alsoFrom");
+  const { deliveryRatePerKm, minimumDeliveryFee, shoppingDeliveryFee } = await getDeliverySettings();
+  const restaurantLat = restaurant.lat as number | null;
+  const restaurantLng = restaurant.lng as number | null;
+  // A shared delivery: another restaurant whose cart is ordered with this one (alsoFrom), or an
+  // unpaid order this one joins (bundleWith). The first pickup is charged its own delivery as if
+  // alone; this pickup adds what the extra stop costs. The two lines are exactly what each order
+  // is charged, so checkout, the pay screen and both orders show the same breakdown.
+  const bundleWithId = c.req.query("bundleWith");
+  if (alsoFromId || bundleWithId) {
+    let first: { lat: number; lng: number; name: string; fee: number | null } | null = null;
+    if (bundleWithId) {
+      const prior = (await db.execute({
+        sql: `SELECT o.pickup_lat, o.pickup_lng, o.delivery_fee, COALESCE(r.name, o.pickup_area) AS name FROM orders o LEFT JOIN restaurants r ON r.id = o.restaurant_id
+              WHERE o.id = ? AND o.customer_id = ? AND o.environment = ? AND o.stage = 'Create'`,
+        args: [bundleWithId, c.get("user").sub, environment],
+      })).rows[0] as Row | undefined;
+      if (prior?.pickup_lat != null && prior.pickup_lng != null) first = { lat: Number(prior.pickup_lat), lng: Number(prior.pickup_lng), name: String(prior.name ?? "Your first order"), fee: Number(prior.delivery_fee ?? 0) };
+    } else {
+      const other = await activeRestaurantRow(alsoFromId!, environment);
+      if (other?.lat != null && other.lng != null) first = { lat: Number(other.lat), lng: Number(other.lng), name: String(other.name), fee: null };
+    }
+    if (!first || restaurantLat == null || restaurantLng == null || !hasDestination) {
+      return c.json({ error: "route_unavailable", message: "Both pickups and your delivery location need map coordinates to work out the delivery fee." }, 409);
+    }
+    // Along the road: the first pickup, this one, then the customer.
+    const distanceKm = (await roadLegsKm([first, { lat: restaurantLat, lng: restaurantLng }, { lat, lng }])).reduce((a, b) => a + b, 0);
+    const routeFee = roundFare(distanceKm * deliveryRatePerKm, minimumDeliveryFee);
+    const firstFee = first.fee ?? roundFare((await roadKm(first, { lat, lng })) * deliveryRatePerKm, minimumDeliveryFee);
+    const addedStop = Math.max(0, routeFee - firstFee);
+    return c.json({
+      deliveryFee: firstFee + addedStop,
+      distanceKm: Math.round(distanceKm * 10) / 10,
+      shared: { firstPickup: { name: first.name, fee: firstFee }, addedStop: { name: String(restaurant.name), fee: addedStop } },
+    });
+  }
+  if (restaurantLat != null && restaurantLng != null && hasDestination) {
+    const distanceKm = await roadKm({ lat: restaurantLat, lng: restaurantLng }, { lat, lng });
+    return c.json({ deliveryFee: roundFare(distanceKm * deliveryRatePerKm, minimumDeliveryFee), distanceKm: Math.round(distanceKm * 10) / 10 });
+  }
+  return c.json({ deliveryFee: roundFare(shoppingDeliveryFee), distanceKm: null });
 });
 
 /** Same tree shape as the owner's GET /restaurants/me/menu, filtered down
@@ -257,16 +322,18 @@ customerRestaurantRoutes.post("/restaurants/:id/order", requireAuth, requireRole
   let deliveryFee: number;
   if (restaurantLat != null && restaurantLng != null && d.destinationLat != null && d.destinationLng != null) {
     if (bundleWith) {
-      const firstPickupKm = haversineKm(Number(bundleWith.pickup_lat), Number(bundleWith.pickup_lng), restaurantLat, restaurantLng);
-      const finalLegKm = haversineKm(restaurantLat, restaurantLng, d.destinationLat, d.destinationLng);
-      distanceKm = firstPickupKm + finalLegKm;
+      distanceKm = (await roadLegsKm([
+        { lat: Number(bundleWith.pickup_lat), lng: Number(bundleWith.pickup_lng) },
+        { lat: restaurantLat, lng: restaurantLng },
+        { lat: d.destinationLat, lng: d.destinationLng },
+      ])).reduce((a, b) => a + b, 0);
       const routeFee = roundFare(distanceKm * deliveryRatePerKm, minimumDeliveryFee);
       bundleExtraFee = Math.max(0, routeFee - Number(bundleWith.delivery_fee ?? 0));
       deliveryFee = bundleExtraFee;
       // Keep the existing unpaid order as the deterministic bundle lead.
       deliveryBundleId = String(bundleWith.id);
     } else {
-      distanceKm = haversineKm(restaurantLat, restaurantLng, d.destinationLat, d.destinationLng);
+      distanceKm = await roadKm({ lat: restaurantLat, lng: restaurantLng }, { lat: d.destinationLat, lng: d.destinationLng });
       deliveryFee = roundFare(distanceKm * deliveryRatePerKm, minimumDeliveryFee);
     }
   } else {

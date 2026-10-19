@@ -4,6 +4,35 @@ import { haversineKm } from "./geo.js";
 import { DEMO_FOOD_RESTAURANTS, demoFoodImage, demoFoodMenu, demoFoodRestaurant } from "./demo-food.js";
 import { DEMO_MARKETPLACE_STORES, DEMO_MARKETPLACE_PRODUCTS, DEMO_MARKETPLACE_SPOTLIGHT } from "./demo-marketplace.js";
 import { CAR_MODEL_CATALOG } from "./car-model-catalog.js";
+import { EDUCATION_STREAMS } from "./education/types.js";
+import { handleStudioSandbox } from "./education/studio-sandbox.js";
+import {
+  DEMO_INSTITUTIONS,
+  DEMO_SPROUTS_ACTIVITIES,
+  DEMO_SPROUTS_TIMER,
+  DEMO_SPROUTS_COPLAY,
+  DEMO_FOUNDATIONS_WORKSHEETS,
+  DEMO_FOUNDATIONS_SUBMISSIONS,
+  DEMO_FOUNDATIONS_MERITS,
+  DEMO_ACADEMY_TIMETABLE,
+  DEMO_ACADEMY_EXAM,
+  DEMO_ACADEMY_REPORT_CARD,
+  DEMO_COMPASS_COURSE,
+  DEMO_COMPASS_PEER_REVIEW,
+  DEMO_COMPASS_CREDENTIAL,
+  DEMO_SKILLS_COURSE,
+  DEMO_SKILLS_SUBMISSION,
+  DEMO_SKILLS_LOGBOOK,
+  DEMO_TUITION_INVOICE,
+  DEMO_SUBSCRIPTION_PASSES,
+  DEMO_GUARDIAN_ALERTS,
+  DEMO_LIVE_MEETINGS,
+  DEMO_LIVE_PARTICIPANTS,
+  DEMO_TUTOR_CONTACTS,
+  DEMO_LIVE_CHAT_MESSAGES,
+  DEMO_CREATORS,
+  DEMO_CREATOR_COURSES,
+} from "./education/demo-data.js";
 
 const PRACTICE_STATE_VERSION = 4;
 const PRACTICE_ORDER_ID = "practice-order";
@@ -12,6 +41,29 @@ const PRACTICE_PAYMENT_ID = "mpay_practice";
 const PRACTICE_MERCHANT_ID = "merchant-practice";
 const PRACTICE_OUTLET_ID = "outlet-practice";
 const PRACTICE_CAR_CATEGORY_ID = "practice-car-comfort";
+/** Luxury and Ambulance services in practice mode, mirroring the live seeded car types. */
+const PRACTICE_SPECIAL_CATEGORIES: readonly {id: string; kind: string; service_group: "luxury" | "ambulance"; name: string; seats: number; rate_per_km: number; minimum_fare: number; rate_per_hour: number; description: string; has_vehicles: number; rider: string}[] = [
+  { id: "practice-luxury-sedan", kind: "passenger", service_group: "luxury", name: "Luxury Sedan", seats: 4, rate_per_km: 5_000, minimum_fare: 60_000, rate_per_hour: 40_000, description: "Executive sedan with a professional chauffeur - weddings, airport pickups and VIP events.", has_vehicles: 1, rider: "practice-car-driver-lux-1" },
+  { id: "practice-luxury-suv", kind: "passenger", service_group: "luxury", name: "Luxury SUV", seats: 6, rate_per_km: 7_000, minimum_fare: 90_000, rate_per_hour: 60_000, description: "Premium SUV for bridal parties and celebrity transport.", has_vehicles: 1, rider: "practice-car-driver-lux-2" },
+  { id: "practice-luxury-limo", kind: "passenger", service_group: "luxury", name: "Stretch Limousine", seats: 8, rate_per_km: 12_000, minimum_fare: 200_000, rate_per_hour: 120_000, description: "Red-carpet arrivals, proms and parties.", has_vehicles: 1, rider: "practice-car-driver-lux-2" },
+  { id: "practice-ambulance-basic", kind: "passenger", service_group: "ambulance", name: "Basic Ambulance", seats: 2, rate_per_km: 4_000, minimum_fare: 50_000, rate_per_hour: 0, description: "Patient transport with a trained crew.", has_vehicles: 1, rider: "practice-car-driver-amb-1" },
+  { id: "practice-ambulance-icu", kind: "passenger", service_group: "ambulance", name: "ICU Ambulance", seats: 2, rate_per_km: 8_000, minimum_fare: 120_000, rate_per_hour: 0, description: "Fully equipped intensive-care ambulance.", has_vehicles: 1, rider: "practice-car-driver-amb-1" },
+];
+type PracticeSpecialCategory = (typeof PRACTICE_SPECIAL_CATEGORIES)[number];
+function practiceSpecialCategory(id: unknown): PracticeSpecialCategory | null { return PRACTICE_SPECIAL_CATEGORIES.find((category) => category.id === id) ?? null; }
+function practiceDistanceKm(lat1: number, lng1: number, lat2: number, lng2: number) {
+  if (![lat1, lng1, lat2, lng2].every(Number.isFinite)) return 0;
+  return 6371 * 2 * Math.asin(Math.sqrt(Math.sin(((lat2 - lat1) * Math.PI) / 360) ** 2 + Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(((lng2 - lng1) * Math.PI) / 360) ** 2));
+}
+function practiceSpecialFare(category: PracticeSpecialCategory, distanceKm: number, hireHours: unknown) {
+  const hours = category.service_group === "luxury" ? Math.min(24, Math.max(0, Math.floor(Number(hireHours) || 0))) : 0;
+  return roundFare(distanceKm * category.rate_per_km, category.minimum_fare) + hours * category.rate_per_hour;
+}
+const PRACTICE_SPECIAL_RIDERS = [
+  { id: "practice-car-driver-lux-1", name: "James Kiggundu", make: "Mercedes-Benz", model: "S-Class", size: "normal", tier: "comfort", plate: "PRACTICE LUX 1" },
+  { id: "practice-car-driver-lux-2", name: "Brenda Nalwoga", make: "Range Rover", model: "Vogue", size: "large", tier: "comfort", plate: "PRACTICE LUX 2" },
+  { id: "practice-car-driver-amb-1", name: "Dr. Moses Opio", make: "Toyota", model: "HiAce Ambulance", size: "large", tier: "comfort", plate: "PRACTICE AMB 1" },
+] as const;
 const PRACTICE_CAR_RIDERS = [
   { id: "practice-car-driver-01", name: "Daniel Kato", make: "Toyota", model: "Corolla", size: "normal", tier: "convenient", plate: "PRACTICE 01" },
   { id: "practice-car-driver-02", name: "Sarah Namusoke", make: "Honda", model: "Civic", size: "normal", tier: "comfort", plate: "PRACTICE 02" },
@@ -22,6 +74,90 @@ const PRACTICE_CAR_RIDERS = [
   { id: "practice-car-driver-07", name: "Isaac Mugisha", make: "Nissan", model: "Serena", size: "large", tier: "convenient", plate: "PRACTICE 07" },
   { id: "practice-car-driver-08", name: "Ruth Atim", make: "Toyota", model: "Noah", size: "large", tier: "comfort", plate: "PRACTICE 08" },
 ] as const;
+/** Cargo categories RideModal falls back to (rate per km, minimum fare). */
+const PRACTICE_CARGO_RATES: Record<string, readonly [number, number]> = {
+  "peebee-cargo-van": [2_500, 15_000],
+  "peebee-cargo-pickup": [3_500, 25_000],
+  "peebee-cargo-truck-3t": [5_000, 45_000],
+  "peebee-cargo-truck-7t": [8_000, 80_000],
+};
+/** Practice Boda pricing for multi-stop + Name your fare (mirrors the API's defaults). */
+const PRACTICE_RIDE = { ratePerKm: 1_000, minimumFare: 3_000, stopFee: 1_000, maxStops: 3, minPercent: 70, maxPercent: 150, offerTtlMs: 10 * 60_000, counterTtlMs: 120_000, maxRaises: 5 };
+const PRACTICE_RIDE_JOB_ID = "practice-ride-offer";
+const PRACTICE_RIDE_JOB_STOPS: PracticeStop[] = [
+  { area: "Garden City", address: "Yusuf Lule Road", lat: 0.3209, lng: 32.5917 },
+  { area: "Bugolobi Market", address: "Bandali Rise", lat: 0.3176, lng: 32.6133 },
+];
+
+function practiceRideQuote(pickup: { lat: number; lng: number }, destination: { lat: number; lng: number }, stops: Array<{ lat: number; lng: number }>) {
+  const points = [pickup, ...stops, destination];
+  let km = 0;
+  for (let i = 1; i < points.length; i++) km += haversineKm(points[i - 1].lat, points[i - 1].lng, points[i].lat, points[i].lng);
+  const base = roundFare(km * PRACTICE_RIDE.ratePerKm, PRACTICE_RIDE.minimumFare);
+  const stopFees = stops.length * roundFare(PRACTICE_RIDE.stopFee);
+  const quote = base + stopFees;
+  const min = Math.min(quote, roundFare((quote * PRACTICE_RIDE.minPercent) / 100));
+  const max = Math.max(quote, roundFare((quote * PRACTICE_RIDE.maxPercent) / 100));
+  return { quote, base, stopFees, km, min, max };
+}
+
+function practiceOfferSummary(state: PracticeState) {
+  if (state.fareOffer == null || state.fareQuote == null) return null;
+  const min = Math.min(state.fareQuote, roundFare((state.fareQuote * PRACTICE_RIDE.minPercent) / 100));
+  const max = Math.max(state.fareQuote, roundFare((state.fareQuote * PRACTICE_RIDE.maxPercent) / 100));
+  const raises = state.fareRaises ?? 0;
+  return {
+    amount: state.fareOffer, quote: state.fareQuote, min, max,
+    expiresAt: state.offerExpiresAt ? new Date(state.offerExpiresAt).toISOString() : null,
+    expired: state.offerExpiresAt != null && state.offerExpiresAt <= Date.now(),
+    raises, raisesLeft: Math.max(0, PRACTICE_RIDE.maxRaises - raises),
+  };
+}
+
+function practiceCounters(state: PracticeState) {
+  return (state.counters ?? [])
+    .filter((c) => c.status === "pending" && c.expiresAt > Date.now())
+    .sort((a, b) => a.amount - b.amount)
+    .map((c) => ({ id: c.id, amount: c.amount, offer: state.fareOffer ?? 0, rider_id: `practice-${c.riderName.toLowerCase()}`, rider_name: c.riderName, rider_rating: c.rating, rider_verified: 1, expires_at: new Date(c.expiresAt).toISOString(), created_at: new Date(c.expiresAt - PRACTICE_RIDE.counterTtlMs).toISOString() }));
+}
+
+/** Practice stops progress on their own once the passenger is aboard: each stop is reached, then left. */
+function practiceStops(state: PracticeState) {
+  const stops = state.stops ?? [];
+  const elapsed = state.autoAdvanceAt != null ? Date.now() - state.autoAdvanceAt : -1;
+  const aboard = ["PickedUp", "Handover", "Settle"].includes(state.stage);
+  return stops.map((stop, i) => {
+    const arriveAt = 22_000 + i * 14_000;
+    const status: "pending" | "arrived" | "done" = !aboard ? "pending" : state.stage !== "PickedUp" || elapsed >= arriveAt + 7_000 ? "done" : elapsed >= arriveAt ? "arrived" : "pending";
+    return { position: i + 1, area: stop.area, address: stop.address, lat: stop.lat, lng: stop.lng, status, arrivedAt: status === "pending" ? null : nowIso(), departedAt: status === "done" ? nowIso() : null };
+  });
+}
+
+function practiceRideJobOrder(job: PracticeRideJob) {
+  return {
+    id: PRACTICE_RIDE_JOB_ID, list_id: "practice-ride-list", customer_id: "practice-customer", customer_name: "Grace N.",
+    rider_id: job.claimed ? "practice-rider" : null, rider_name: job.claimed ? "Daniel" : null,
+    matching_mode: "first_to_claim", stage: job.stage, type: "parcel", payment_rail: "escrow", funds_model: "merchant_allocations_v1", currency: "UGX",
+    estimated_total: job.total, final_total: job.stage === "Create" ? null : job.total, delivery_fee: job.total,
+    pickup_area: "Kololo", pickup_address: "Acacia Avenue", pickup_lat: 0.3337, pickup_lng: 32.5934,
+    destination_area: "Ntinda", destination_address: "Ntinda Shopping Centre", destination_lat: 0.3536, destination_lng: 32.6162,
+    distance_km: 6.1, matched_out_of_range: 0, voice_note_key: null, pin_code: "1357", eta_minutes: job.stage === "Deliver" ? 6 : null,
+    restaurant_id: null, is_ride: 1, rider_lat: null, rider_lng: null, rider_location_updated_at: null,
+    fare_offer: 6_000, fare_offer_quote: 7_500, fare_offer_raises: 0, stop_count: job.stops.length,
+    created_at: nowIso(-3 * 60_000), updated_at: nowIso(),
+  };
+}
+
+function freshRideJob(): PracticeRideJob {
+  return { claimed: false, stage: "Create", total: 6_000, counter: null, stageAt: Date.now(), stops: PRACTICE_RIDE_JOB_STOPS.map((s) => ({ ...s, status: "pending" as const })) };
+}
+
+const PRACTICE_RECENT_PLACES = [
+  { area: "Kisementi", address: "Acacia Mall, Kisementi, Kampala", lat: 0.3373, lng: 32.5907 },
+  { area: "Lugogo", address: "Garden City, Yusuf Lule Road, Kampala", lat: 0.3201, lng: 32.5924 },
+  { area: "Entebbe", address: "Entebbe International Airport, Entebbe", lat: 0.0424, lng: 32.4435 },
+];
+const PRACTICE_PASSENGERS_KEY = "peebee_practice_passengers_v1";
 const PRACTICE_RIDESHARE_TRIPS = [
   { route: "entebbe-kampala", from: ["Entebbe City", 0.0612, 32.4637] as const, to: ["Kampala", 0.3136, 32.5811] as const, driver: PRACTICE_CAR_RIDERS[0], price: 15_000 },
   { route: "kampala-entebbe", from: ["Kampala", 0.3136, 32.5811] as const, to: ["Entebbe City", 0.0612, 32.4637] as const, driver: PRACTICE_CAR_RIDERS[1], price: 15_000 },
@@ -129,6 +265,32 @@ type PracticeState = {
   settlementStatus: "none" | "successful";
   settlementAmount: number;
   restaurantOpen: boolean;
+  /** Multi-stop + Name your fare (customer side). Optional so older snapshots still load. */
+  stops?: PracticeStop[];
+  fareOffer?: number | null;
+  fareQuote?: number | null;
+  fareRaises?: number;
+  offerAt?: number | null;
+  offerExpiresAt?: number | null;
+  counters?: PracticeCounter[];
+  countersSeeded?: number;
+  /** The rider whose counter the customer accepted (Name your fare). */
+  acceptedRiderName?: string | null;
+  /** Rider side: a practice boda ride with a customer offer and two stops. */
+  rideJob?: PracticeRideJob;
+  /** Fuel attendant: a sample relay parcel arriving by matatu, then collected. */
+  relayParcel?: { status: "incoming" | "held" | "collected"; heldAt: string | null; releasedAt: string | null };
+};
+
+type PracticeStop = { area: string | null; address: string | null; lat: number; lng: number };
+type PracticeCounter = { id: string; amount: number; riderName: string; rating: number; expiresAt: number; status: "pending" | "approved" | "rejected" };
+type PracticeRideJob = {
+  claimed: boolean;
+  stage: string;
+  total: number;
+  counter: { amount: number; at: number; expiresAt: number } | null;
+  stageAt: number;
+  stops: Array<PracticeStop & { status: "pending" | "arrived" | "done" }>;
 };
 
 const DEFAULT_ITEMS: PracticeItem[] = [
@@ -217,7 +379,7 @@ export function isPracticeMode(): boolean {
 }
 
 export function practiceStartPath(role: PracticeRole): string {
-  return role === "customer" || role === "rider" || role === "merchant" || role === "restaurant" || role === "gas" ? "/" : "/account";
+  return role === "customer" || role === "rider" || role === "merchant" || role === "restaurant" || role === "gas" || role === "learner" ? "/" : "/account";
 }
 
 export function startPracticeMode(role: PracticeRole): string {
@@ -266,19 +428,21 @@ function nowIso(offsetMs = 0) {
 
 function orderFor(state: PracticeState) {
   const riderAssigned = state.riderClaimed;
+  // A Name-your-fare boda ride is matched to the rider whose counter was accepted, not a demo car.
+  const car = state.isRide && !state.acceptedRiderName;
   return {
     id: PRACTICE_ORDER_ID,
     list_id: PRACTICE_LIST_ID,
     customer_id: "practice-customer",
     customer_name: state.isRide ? "Grace N." : "Amina",
-    rider_id: riderAssigned ? (state.isRide ? (state.demoCarRiderId ?? PRACTICE_CAR_RIDERS[0].id) : "practice-rider") : null,
-    rider_name: riderAssigned ? (state.isRide ? practiceCar(state.demoCarRiderId).driver : "Daniel") : null,
-    car_category_name: state.isRide ? practiceCar(state.demoCarRiderId).name : null,
-    car_make: state.isRide ? practiceCar(state.demoCarRiderId).make : null,
-    car_model: state.isRide ? practiceCar(state.demoCarRiderId).model : null,
-    car_plate: state.isRide ? practiceCar(state.demoCarRiderId).plate : null,
-    car_driver_name: riderAssigned && state.isRide ? practiceCar(state.demoCarRiderId).driver : null,
-    car_owner_name: state.isRide ? practiceCar(state.demoCarRiderId).owner : null,
+    rider_id: riderAssigned ? (car ? (state.demoCarRiderId ?? PRACTICE_CAR_RIDERS[0].id) : "practice-rider") : null,
+    rider_name: riderAssigned ? (car ? practiceCar(state.demoCarRiderId).driver : state.acceptedRiderName ?? "Daniel") : null,
+    car_category_name: car ? practiceCar(state.demoCarRiderId).name : null,
+    car_make: car ? practiceCar(state.demoCarRiderId).make : null,
+    car_model: car ? practiceCar(state.demoCarRiderId).model : null,
+    car_plate: car ? practiceCar(state.demoCarRiderId).plate : null,
+    car_driver_name: riderAssigned && car ? practiceCar(state.demoCarRiderId).driver : null,
+    car_owner_name: car ? practiceCar(state.demoCarRiderId).owner : null,
     matching_mode: "first_to_claim",
     stage: state.stage,
     type: state.orderType,
@@ -306,14 +470,19 @@ function orderFor(state: PracticeState) {
     rider_lat: null,
     rider_lng: null,
     rider_location_updated_at: null,
+    fare_offer: state.fareOffer ?? null,
+    fare_offer_quote: state.fareQuote ?? null,
+    fare_offer_expires_at: state.offerExpiresAt ? new Date(state.offerExpiresAt).toISOString() : null,
+    fare_offer_raises: state.fareRaises ?? 0,
+    stop_count: (state.stops ?? []).length,
     created_at: nowIso(-12 * 60_000),
     updated_at: nowIso(),
   };
 }
 
 function practiceCar(riderId: string | null) {
-  const rider = PRACTICE_CAR_RIDERS.find((entry) => entry.id === riderId) ?? PRACTICE_CAR_RIDERS[0];
-  return { name: rider.size === "large" ? "Large · 5–7 seats" : "Normal · 3–4 seats", make: rider.make, model: rider.model, plate: rider.plate, owner: "Peebee Practice Fleet", driver: rider.name };
+  const rider = [...PRACTICE_CAR_RIDERS, ...PRACTICE_SPECIAL_RIDERS].find((entry) => entry.id === riderId) ?? PRACTICE_CAR_RIDERS[0];
+  return { name: riderId?.startsWith("practice-car-driver-lux-") ? "Luxury" : riderId?.startsWith("practice-car-driver-amb-") ? "Ambulance" : rider.size === "large" ? "Large · 5–7 seats" : "Normal · 3–4 seats", make: rider.make, model: rider.model, plate: rider.plate, owner: "Peebee Practice Fleet", driver: rider.name };
 }
 
 function itemsFor(state: PracticeState) {
@@ -330,6 +499,10 @@ function itemsFor(state: PracticeState) {
 const STAGES = ["Create", "Match", "Fund", "Shop", "Deliver", "Arrived", "Handover", "Settle"];
 
 function orderDetail(state: PracticeState) {
+  return { ...orderDetailBase(state), ...((state.stops ?? []).length ? { rideStops: practiceStops(state) } : {}), ...(state.fareOffer != null ? { fareOffer: practiceOfferSummary(state) } : {}) };
+}
+
+function orderDetailBase(state: PracticeState) {
   const stageIndex = Math.max(0, STAGES.indexOf(state.stage));
   const events = STAGES.slice(0, stageIndex + 1).map((stage, index) => ({
     id: `practice-event-${stage.toLowerCase()}`,
@@ -519,10 +692,12 @@ function handlePracticeRequest(role: PracticeRole, path: string, method: string,
     if (path === "/v1/car/rentals/listings") return jsonResponse({ days: 1, vehicles: PRACTICE_RENTAL_CARS });
     if (path === "/v1/car/rentals/mine") return jsonResponse({ rentals: canUseStorage() ? JSON.parse(window.localStorage.getItem(PRACTICE_RENTALS_KEY) ?? "[]") : [] });
     if (path === "/v1/car/rentals/renter-profile") return jsonResponse({ status: "approved", isSimulated: true, ninMasked: "••••••••••0000", residentialAddress: "Practice address · Entebbe", residenceMethod: "bill", hasNationalId: true, hasRentReceipt: false, hasLandlordLetter: false, hasResidenceBill: true, tenancyStart: null, tenancyEnd: null, reviewNotes: null });
-    if (path === "/v1/car/config") return jsonResponse({ onDemandEnabled: true, matchingMode: "first_to_claim", scheduled: null, carpool: { maxSeatsPerBooking: 3, maxRepeatWeeks: 0 }, selfDrive: null, serviceTiers: { ratePerKm: 2_000, minimumFare: 8_000, comfortPremiumPercent: 30, xlPremiumPercent: 50, xlMinSeats: 6 }, vehiclePhotos: false, kyc: null, deals: null, categories: [
+    if (path === "/v1/car/config") return jsonResponse({ onDemandEnabled: true, matchingMode: "first_to_claim", emergencyNumber: "999", maxHireHours: 24, scheduled: { maxAdvanceHours: 72, minLeadMinutes: 30 }, carpool: { maxSeatsPerBooking: 3, maxRepeatWeeks: 0 }, selfDrive: null, serviceTiers: { ratePerKm: 2_000, minimumFare: 8_000, comfortPremiumPercent: 30, xlPremiumPercent: 50, xlMinSeats: 6 }, vehiclePhotos: false, kyc: null, deals: null, categories: [
       { id: PRACTICE_CAR_CATEGORY_ID, kind: "passenger", name: "Normal · Saloon", seats: 4, cargo_type: null, size_label: null, reference_image_key: null, rate_per_km: 2_000, minimum_fare: 8_000 },
       { id: "practice-car-large", kind: "passenger", name: "Large · Minivan", seats: 7, cargo_type: null, size_label: null, reference_image_key: null, rate_per_km: 3_000, minimum_fare: 12_000 },
+      ...PRACTICE_SPECIAL_CATEGORIES.map(({ rider: _rider, ...category }) => ({ ...category, cargo_type: null, size_label: null, reference_image_key: null })),
     ] });
+    if (path === "/v1/car/category-nearby") return jsonResponse({ nearby: practiceSpecialCategory(query.get("categoryId")) ? 1 : 2 });
     if (path === "/v1/car/carpool/trips") return jsonResponse({ trips: practiceRideshareTrips(query), maxSeatsPerBooking: 3 });
     if (path === "/v1/car/service-options") {
       const lat1 = Number(query.get("pickupLat")), lng1 = Number(query.get("pickupLng")), lat2 = Number(query.get("destinationLat")), lng2 = Number(query.get("destinationLng"));
@@ -646,12 +821,161 @@ function handlePracticeRequest(role: PracticeRole, path: string, method: string,
     return jsonResponse({ ok: true, status: "completed" });
   }
 
+  // ---- Name your fare + multi-stop (practice stand-ins) -----------------
+  // Customer: riders "answer" an open offer on a timer — counters after a few
+  // seconds, and an offer at or above the app fare is simply accepted.
+  if (role === "customer" && state.fareOffer != null && state.stage === "Create" && !state.riderClaimed && state.offerAt != null) {
+    const elapsed = Date.now() - state.offerAt;
+    if (state.fareQuote != null && state.fareOffer >= state.fareQuote && elapsed >= 6_000) {
+      save({ riderClaimed: true, stage: "Match", counters: [] });
+    } else {
+      const summary = practiceOfferSummary(state)!;
+      const seeded = state.countersSeeded ?? 0;
+      const plan = [
+        { at: 4_000, riderName: "Musa", rating: 4.8, bump: 1_000 },
+        { at: 9_000, riderName: "Sarah", rating: 4.9, bump: 1_500 },
+      ];
+      const due = plan.filter((p, i) => i >= seeded && elapsed >= p.at && !summary.expired);
+      if (due.length) {
+        const counters = [...(state.counters ?? [])];
+        for (const p of due) {
+          const amount = Math.min(summary.max, roundFare(state.fareOffer + p.bump));
+          if (amount > state.fareOffer) counters.push({ id: `practice-counter-${p.riderName.toLowerCase()}-${state.fareRaises ?? 0}`, amount, riderName: p.riderName, rating: p.rating, expiresAt: Date.now() + PRACTICE_RIDE.counterTtlMs, status: "pending" });
+        }
+        save({ counters, countersSeeded: seeded + due.length });
+      }
+    }
+  }
+  // Rider: the practice ride job's customer "accepts" a counter and "pays" on a timer.
+  if (role === "rider") {
+    const job = state.rideJob ?? freshRideJob();
+    let next = job;
+    if (!job.claimed && job.counter && Date.now() - job.counter.at >= 6_000) next = { ...job, claimed: true, stage: "Match", total: job.counter.amount, counter: null, stageAt: Date.now() };
+    else if (job.claimed && job.stage === "Match" && Date.now() - job.stageAt >= 5_000) next = { ...job, stage: "Shop", stageAt: Date.now() };
+    else if (job.stage === "PickedUp" && job.stops.every((st) => st.status === "done") && job.stops.length > 0 && Date.now() - job.stageAt >= 10_000) next = { ...job, stage: "Handover", stageAt: Date.now() };
+    if (next !== job || !state.rideJob) save({ rideJob: next });
+  }
+
+  if (role === "customer" && method === "GET" && path === "/v1/rides/quote") {
+    const num = (k: string) => Number(query.get(k));
+    const stopsRaw = (query.get("stops") ?? "").trim();
+    const stops = stopsRaw ? stopsRaw.split(";").map((pair) => { const [lat, lng] = pair.split(",").map(Number); return { lat, lng }; }) : [];
+    if (stops.length > PRACTICE_RIDE.maxStops) return jsonResponse({ error: "invalid_stops", message: `A ride can have at most ${PRACTICE_RIDE.maxStops} stops.` }, 400);
+    const q = practiceRideQuote({ lat: num("pickupLat"), lng: num("pickupLng") }, { lat: num("destinationLat"), lng: num("destinationLng") }, stops);
+    return jsonResponse({ quote: q.quote, base: q.base, stopFees: q.stopFees, stopFee: PRACTICE_RIDE.stopFee, stops: stops.length, distanceKm: Math.round(q.km * 10) / 10, maxStops: PRACTICE_RIDE.maxStops, offers: { min: q.min, max: q.max, ttlMinutes: PRACTICE_RIDE.offerTtlMs / 60_000, maxRaises: PRACTICE_RIDE.maxRaises } });
+  }
+  if (role === "customer" && method === "POST" && path === "/v1/orders" && body.isRide === true && (Array.isArray(body.stops) || body.fareOffer != null) && body.pickupLat != null && body.destinationLat != null) {
+    const stops = (Array.isArray(body.stops) ? body.stops as Array<Record<string, unknown>> : []).slice(0, PRACTICE_RIDE.maxStops).map((st) => ({ area: typeof st.area === "string" ? st.area : null, address: typeof st.address === "string" ? st.address : null, lat: Number(st.lat), lng: Number(st.lng) }));
+    const pickup = { lat: Number(body.pickupLat), lng: Number(body.pickupLng) };
+    const destination = { lat: Number(body.destinationLat), lng: Number(body.destinationLng) };
+    const q = practiceRideQuote(pickup, destination, stops);
+    let total = q.quote;
+    let offer: number | null = null;
+    if (body.fareOffer != null) {
+      offer = roundFare(Number(body.fareOffer));
+      if (offer < q.min || offer > q.max) return jsonResponse({ error: "offer_out_of_range", message: `Your offer must be between UGX ${q.min.toLocaleString("en-UG")} and UGX ${q.max.toLocaleString("en-UG")}.` }, 400);
+      total = offer;
+    }
+    save({
+      hasOrder: true, riderClaimed: false, acceptedRiderName: null, stage: "Create", orderType: "parcel", isRide: true, paymentRail: "escrow", total, deliveryFee: total,
+      destinationArea: String(body.destinationArea ?? "Destination"), destinationAddress: String(body.destinationAddress ?? ""),
+      pickupAddress: typeof body.pickupAddress === "string" ? body.pickupAddress : null, pickupLat: pickup.lat, pickupLng: pickup.lng, destinationLat: destination.lat, destinationLng: destination.lng,
+      merchantPaymentStatus: "none", autoAdvanceAt: null, stops,
+      fareOffer: offer, fareQuote: offer != null ? q.quote : null, fareRaises: 0, offerAt: offer != null ? Date.now() : null,
+      offerExpiresAt: offer != null ? Date.now() + PRACTICE_RIDE.offerTtlMs : null, counters: [], countersSeeded: 0,
+    });
+    return jsonResponse({ order: orderFor(state) }, 201);
+  }
+  if (role === "customer" && method === "POST" && path === `/v1/orders/${PRACTICE_ORDER_ID}/fare-offer`) {
+    const summary = practiceOfferSummary(state);
+    if (!summary || state.stage !== "Create" || state.riderClaimed) return jsonResponse({ error: "invalid_stage", message: "A rider has already taken this ride." }, 409);
+    const amount = body.standard === true ? summary.quote : roundFare(Number(body.amount ?? 0));
+    if (amount <= summary.amount) return jsonResponse({ error: "offer_not_higher", message: "You can only raise your offer while riders are deciding." }, 400);
+    if (amount > summary.max) return jsonResponse({ error: "offer_out_of_range", message: `Your offer must be at most UGX ${summary.max.toLocaleString("en-UG")}.` }, 400);
+    if (summary.raisesLeft <= 0) return jsonResponse({ error: "too_many_raises", message: "You've raised this offer as many times as allowed." }, 409);
+    save({
+      fareOffer: amount, total: amount, deliveryFee: amount, fareRaises: summary.raises + 1, offerAt: Date.now(), offerExpiresAt: Date.now() + PRACTICE_RIDE.offerTtlMs, countersSeeded: 0,
+      counters: (state.counters ?? []).map((c) => (c.status === "pending" && c.amount <= amount ? { ...c, status: "rejected" as const } : c)),
+    });
+    return jsonResponse({ order: orderFor(state), fareOffer: practiceOfferSummary(state), fareCounters: practiceCounters(state) });
+  }
+  if (role === "customer" && method === "GET" && path === `/v1/orders/${PRACTICE_ORDER_ID}/fare-counters`) {
+    return jsonResponse({ fareOffer: practiceOfferSummary(state), counters: state.stage === "Create" && !state.riderClaimed ? practiceCounters(state) : [] });
+  }
+  const practiceCounterDecision = path.match(new RegExp(`^/v1/orders/${PRACTICE_ORDER_ID}/fee-proposals/(practice-counter-[^/]+)/decision$`));
+  if (role === "customer" && method === "POST" && practiceCounterDecision) {
+    const counter = (state.counters ?? []).find((c) => c.id === practiceCounterDecision[1] && c.status === "pending");
+    if (!counter) return jsonResponse({ error: "not_found" }, 404);
+    if (counter.expiresAt <= Date.now()) return jsonResponse({ error: "counter_expired", message: "That counter has expired. Pick another or raise your offer." }, 410);
+    if (body.approve === true) {
+      save({ riderClaimed: true, acceptedRiderName: counter.riderName, stage: "Match", total: counter.amount, deliveryFee: counter.amount, fareOffer: counter.amount, counters: (state.counters ?? []).map((c) => ({ ...c, status: c.id === counter.id ? "approved" as const : "rejected" as const })) });
+    } else {
+      save({ counters: (state.counters ?? []).map((c) => (c.id === counter.id ? { ...c, status: "rejected" as const } : c)) });
+    }
+    return jsonResponse({ order: orderFor(state), fareCounters: practiceCounters(state) });
+  }
+  if (role === "customer" && method === "POST" && path === `/v1/orders/${PRACTICE_ORDER_ID}/customer-cancel`) {
+    save({ stage: "Cancelled", hasOrder: false, fareOffer: null, fareQuote: null, counters: [], stops: [] });
+    return jsonResponse({ order: orderFor(state) });
+  }
+  if (method === "GET" && path === `/v1/orders/${PRACTICE_ORDER_ID}/stops`) return jsonResponse({ stops: practiceStops(state) });
+  // The customer-side /match poll must not hand an open offer to a rider who never accepted it.
+  if (role === "customer" && method === "POST" && path === `/v1/orders/${PRACTICE_ORDER_ID}/match` && state.fareOffer != null && !state.riderClaimed) {
+    return jsonResponse({ order: orderFor(state) });
+  }
+
+  // Rider: the practice ride job (customer offer + two stops).
+  if (role === "rider" && path.startsWith(`/v1/orders/${PRACTICE_RIDE_JOB_ID}`) || role === "rider" && path === `/v1/riders/jobs/${PRACTICE_RIDE_JOB_ID}/preview`) {
+    const job = state.rideJob ?? freshRideJob();
+    const put = (patch: Partial<PracticeRideJob>) => { save({ rideJob: { ...job, ...patch } }); return state.rideJob!; };
+    const sub = path.slice(`/v1/orders/${PRACTICE_RIDE_JOB_ID}`.length);
+    const stopsOut = (j: PracticeRideJob) => j.stops.map((st, i) => ({ position: i + 1, area: st.area, address: st.address, lat: st.lat, lng: st.lng, status: st.status, arrivedAt: null, departedAt: null }));
+    const detail = (j: PracticeRideJob) => ({ order: practiceRideJobOrder(j), items: [], events: [], substitutions: [], payments: [], rating: null, feeProposals: [], bundleStops: [], rideStops: stopsOut(j), fareOffer: null });
+    if (path.endsWith("/preview")) return jsonResponse({ items: [] });
+    if (method === "GET" && sub === "") return jsonResponse(detail(job));
+    if (method === "GET" && sub === "/stops") return jsonResponse({ stops: stopsOut(job) });
+    if (method === "POST" && sub === "/fare-counters") {
+      if (job.claimed) return jsonResponse({ error: "already_claimed", message: "This job has already been taken" }, 409);
+      const amount = roundFare(Number(body.amount ?? 0));
+      if (amount <= 6_000 || amount > 11_000) return jsonResponse({ error: "counter_out_of_range", message: "Your counter must be more than UGX 6,000 and at most UGX 11,000." }, 400);
+      const j = put({ counter: { amount, at: Date.now(), expiresAt: Date.now() + PRACTICE_RIDE.counterTtlMs } });
+      return jsonResponse({ counter: { id: "practice-rider-counter", amount, expiresAt: new Date(j.counter!.expiresAt).toISOString() } }, 201);
+    }
+    if (method === "POST" && (sub === "/claim" || sub === "/apply")) return jsonResponse({ order: practiceRideJobOrder(put({ claimed: true, stage: "Match", counter: null, stageAt: Date.now() })) });
+    if (method === "POST" && sub === "/deliver") return jsonResponse({ order: practiceRideJobOrder(put({ stage: "Deliver", stageAt: Date.now() })) });
+    if (method === "POST" && sub === "/arrived") return jsonResponse({ order: practiceRideJobOrder(put({ stage: "Arrived", stageAt: Date.now() })) });
+    if (method === "POST" && sub === "/picked-up") return jsonResponse({ order: practiceRideJobOrder(put({ stage: "PickedUp", stageAt: Date.now() })) });
+    const stopAction = sub.match(/^\/stops\/(\d+)\/(arrived|continue)$/);
+    if (method === "POST" && stopAction) {
+      if (job.stage !== "PickedUp") return jsonResponse({ error: "invalid_stage", message: "Stops start once the passenger is picked up." }, 409);
+      const index = Number(stopAction[1]) - 1;
+      const nextIndex = job.stops.findIndex((st) => st.status !== "done");
+      if (index !== nextIndex) return jsonResponse({ error: "out_of_order", message: nextIndex >= 0 ? `Next is stop ${nextIndex + 1}.` : "All stops are done." }, 409);
+      const want = stopAction[2] === "arrived" ? "pending" : "arrived";
+      if (job.stops[index].status !== want) return jsonResponse({ error: "out_of_order", message: want === "arrived" ? "Mark the stop as arrived first." : "Already here." }, 409);
+      const stops = job.stops.map((st, i) => (i === index ? { ...st, status: stopAction[2] === "arrived" ? "arrived" as const : "done" as const } : st));
+      const j = put({ stops, stageAt: Date.now() });
+      return jsonResponse({ stops: stopsOut(j), order: practiceRideJobOrder(j) });
+    }
+    if (method === "POST" && sub === "/settle") return jsonResponse({ order: practiceRideJobOrder(put({ stage: "Settle", stageAt: Date.now() })) });
+    if (method === "POST" && sub === "/cancel") return jsonResponse({ order: practiceRideJobOrder(put(freshRideJob())) });
+    if (method === "POST" && sub === "/location") return jsonResponse({ ok: true });
+    if (method === "GET" && sub === "/chat") return jsonResponse({ messages: [] });
+    return practiceError();
+  }
+
   if (method === "GET" && path === "/v1/orders/active") {
-    return jsonResponse({ activeOrder: state.hasOrder && state.stage !== "Settle" ? orderFor(state) : null, pendingFeeProposal: null });
+    const activeOrder = state.hasOrder && !["Settle", "Cancelled"].includes(state.stage) ? orderFor(state) : null;
+    return jsonResponse({
+      activeOrder,
+      pendingFeeProposal: null,
+      ...(activeOrder && (state.stops ?? []).length ? { rideStops: practiceStops(state) } : {}),
+      ...(activeOrder && state.fareOffer != null ? { fareOffer: practiceOfferSummary(state), fareCounters: state.stage === "Create" && !state.riderClaimed ? practiceCounters(state) : [] } : {}),
+    });
   }
   if (method === "GET" && path.startsWith("/v1/lists/recent")) {
     const driver = state.isRide ? practiceCar(state.demoCarRiderId) : null;
-    return jsonResponse({ lists: state.hasOrder ? [{ id: PRACTICE_LIST_ID, listId: PRACTICE_LIST_ID, title: state.isRide ? "Practice car ride" : "Practice shopping list", status: state.stage === "Settle" ? "delivered" : "active", itemCount: state.items.length, updatedAt: nowIso(), riderFirstName: state.riderClaimed || role === "customer" ? driver?.driver ?? "Daniel" : null, riderId: state.riderClaimed || role === "customer" ? state.demoCarRiderId ?? "practice-rider" : null, riderHasPhoto: false, area: state.destinationArea, orderId: PRACTICE_ORDER_ID }] : [] });
+    return jsonResponse({ lists: state.hasOrder ? [{ id: PRACTICE_LIST_ID, listId: PRACTICE_LIST_ID, title: state.isRide ? "Practice car ride" : "Practice shopping list", status: state.stage === "Settle" ? "delivered" : "active", itemCount: state.items.length, updatedAt: nowIso(), riderFirstName: state.riderClaimed || role === "customer" ? state.acceptedRiderName ?? driver?.driver ?? "Daniel" : null, riderId: state.riderClaimed || role === "customer" ? state.demoCarRiderId ?? "practice-rider" : null, riderHasPhoto: false, area: state.destinationArea, orderId: PRACTICE_ORDER_ID }] : [] });
   }
   if (method === "POST" && path === "/v1/lists") {
     const rawItems = Array.isArray(body.items) ? body.items as Array<Record<string, unknown>> : [];
@@ -663,7 +987,7 @@ function handlePracticeRequest(role: PracticeRole, path: string, method: string,
     const type = body.type === "parcel" ? "parcel" : "shopping";
     const estimated = Number(body.estimatedTotal ?? 30_000);
     const deliveryFee = type === "parcel" ? roundFare(estimated, 3_000) : 5_000;
-    save({ hasOrder: true, riderClaimed: false, stage: "Create", orderType: type, isRide: body.isRide === true, paymentRail: body.paymentRail === "float" ? "float" : "escrow", total: type === "shopping" ? estimated + deliveryFee : deliveryFee, deliveryFee, destinationArea: String(body.destinationArea ?? "Entebbe City"), destinationAddress: String(body.destinationAddress ?? "Kitoro Road"), merchantPaymentStatus: "none", autoAdvanceAt: null });
+    save({ hasOrder: true, riderClaimed: false, fareOffer: null, fareQuote: null, counters: [], stops: [], acceptedRiderName: null, stage: "Create", orderType: type, isRide: body.isRide === true, paymentRail: body.paymentRail === "float" ? "float" : "escrow", total: type === "shopping" ? estimated + deliveryFee : deliveryFee, deliveryFee, destinationArea: String(body.destinationArea ?? "Entebbe City"), destinationAddress: String(body.destinationAddress ?? "Kitoro Road"), merchantPaymentStatus: "none", autoAdvanceAt: null });
     return jsonResponse({ order: orderFor(state) });
   }
   if (role === "customer" && method === "POST" && path === "/v1/marketplace/checkout") {
@@ -702,6 +1026,24 @@ function handlePracticeRequest(role: PracticeRole, path: string, method: string,
     };
     return jsonResponse({ ok: true, orders: [order], order }, 201);
   }
+  if (role === "customer" && method === "POST" && path === "/v1/car/quote") {
+    const cargo = PRACTICE_CARGO_RATES[String(body.categoryId)];
+    if (cargo) {
+      const km = practiceDistanceKm(Number(body.pickupLat), Number(body.pickupLng), Number(body.destinationLat), Number(body.destinationLng));
+      return jsonResponse({ fare: roundFare(km * cargo[0], cargo[1]), distanceKm: Math.round(km * 10) / 10 });
+    }
+    const category = practiceSpecialCategory(body.categoryId);
+    if (!category) return practiceError("Choose one of the demo car types to continue.");
+    const km = practiceDistanceKm(Number(body.pickupLat), Number(body.pickupLng), Number(body.destinationLat), Number(body.destinationLng));
+    return jsonResponse({ fare: practiceSpecialFare(category, km, body.hireHours), distanceKm: Math.round(km * 10) / 10 });
+  }
+  if (role === "customer" && method === "POST" && path === "/v1/car/bookings" && practiceSpecialCategory(body.categoryId)) {
+    const category = practiceSpecialCategory(body.categoryId)!;
+    const km = practiceDistanceKm(Number(body.pickupLat), Number(body.pickupLng), Number(body.destinationLat), Number(body.destinationLng));
+    const fare = practiceSpecialFare(category, km, body.hireHours);
+    save({ hasOrder: true, riderClaimed: true, fareOffer: null, fareQuote: null, counters: [], stops: [], acceptedRiderName: null, stage: "Match", orderType: "parcel", isRide: true, carCategoryId: category.id, carVehicleSize: "normal", carServiceTier: "comfort", demoCarRiderId: category.rider, paymentRail: "escrow", total: fare, deliveryFee: fare, destinationArea: String(body.destinationArea ?? "Entebbe City"), destinationAddress: String(body.destinationAddress ?? "Kitoro Road"), autoAdvanceAt: null });
+    return jsonResponse({ order: orderFor(state) }, 201);
+  }
   if (role === "customer" && method === "POST" && path === "/v1/car/bookings") {
     const vehicleSize = body.vehicleSize === "large" ? "large" : "normal";
     const serviceTier = body.serviceTier === "comfort" ? "comfort" : "convenient";
@@ -712,7 +1054,7 @@ function handlePracticeRequest(role: PracticeRole, path: string, method: string,
     const fare = roundFare(baseFare * (vehicleSize === "large" ? 1.5 : 1) * (serviceTier === "comfort" ? 1.3 : 1), 0);
     const eligible = PRACTICE_CAR_RIDERS.filter((rider) => rider.size === vehicleSize && rider.tier === serviceTier);
     const demoRider = eligible[Math.floor(Math.random() * eligible.length)] ?? PRACTICE_CAR_RIDERS[0];
-    save({ hasOrder: true, riderClaimed: true, stage: "Match", orderType: "parcel", isRide: true, carCategoryId: vehicleSize === "large" ? "practice-car-large" : PRACTICE_CAR_CATEGORY_ID, carVehicleSize: vehicleSize, carServiceTier: serviceTier, demoCarRiderId: demoRider.id, paymentRail: "escrow", total: fare, deliveryFee: fare, destinationArea: String(body.destinationArea ?? "Entebbe City"), destinationAddress: String(body.destinationAddress ?? "Kitoro Road"), autoAdvanceAt: null });
+    save({ hasOrder: true, riderClaimed: true, fareOffer: null, fareQuote: null, counters: [], stops: [], acceptedRiderName: null, stage: "Match", orderType: "parcel", isRide: true, carCategoryId: vehicleSize === "large" ? "practice-car-large" : PRACTICE_CAR_CATEGORY_ID, carVehicleSize: vehicleSize, carServiceTier: serviceTier, demoCarRiderId: demoRider.id, paymentRail: "escrow", total: fare, deliveryFee: fare, destinationArea: String(body.destinationArea ?? "Entebbe City"), destinationAddress: String(body.destinationAddress ?? "Kitoro Road"), autoAdvanceAt: null });
     return jsonResponse({ order: orderFor(state) }, 201);
   }
   const rideshareBooking = path.match(/^\/v1\/car\/carpool\/trips\/(practice-rideshare-[^/]+)\/seats$/);
@@ -720,7 +1062,7 @@ function handlePracticeRequest(role: PracticeRole, path: string, method: string,
     const trip = practiceRideshareTrip(rideshareBooking[1]);
     const seats = Number(body.seats);
     if (!trip || !Number.isInteger(seats) || seats < 1 || seats > 3) return practiceError("Choose an available demo trip and one to three seats.");
-    save({ hasOrder: true, riderClaimed: true, stage: "Match", orderType: "parcel", isRide: true, carCategoryId: PRACTICE_CAR_CATEGORY_ID,
+    save({ hasOrder: true, riderClaimed: true, fareOffer: null, fareQuote: null, counters: [], stops: [], acceptedRiderName: null, stage: "Match", orderType: "parcel", isRide: true, carCategoryId: PRACTICE_CAR_CATEGORY_ID,
       carVehicleSize: trip.driver.size === "large" ? "large" : "normal", carServiceTier: "convenient", demoCarRiderId: trip.driver.id,
       paymentRail: "escrow", total: trip.price * seats, deliveryFee: trip.price * seats, pickupAddress: trip.from[0], pickupLat: trip.from[1], pickupLng: trip.from[2],
       destinationArea: trip.to[0], destinationAddress: trip.to[0], destinationLat: trip.to[1], destinationLng: trip.to[2], autoAdvanceAt: null });
@@ -729,6 +1071,8 @@ function handlePracticeRequest(role: PracticeRole, path: string, method: string,
   if (method === "GET" && path === `/v1/orders/${PRACTICE_ORDER_ID}`) return jsonResponse(orderDetail(state));
   if (method === "GET" && path === `/v1/orders/${PRACTICE_ORDER_ID}/checkout`) return jsonResponse({ baseAmount: state.total, mobileMoney: state.total, wallet: state.total, cash: state.total });
   if (method === "GET" && path === `/v1/car/bookings/${PRACTICE_ORDER_ID}/info`) {
+    // A Name-your-fare ride is a boda, not a car booking (the live API answers 404 too).
+    if (state.acceptedRiderName || state.fareOffer != null) return jsonResponse({ error: "not_found" }, 404);
     const car = practiceCar(state.demoCarRiderId);
     return jsonResponse({ car: true, scheduledFor: null, categoryName: car.name, vehicleName: `${car.make} ${car.model}`, plate: car.plate, ownerName: car.owner, driverName: car.driver });
   }
@@ -767,10 +1111,23 @@ function handlePracticeRequest(role: PracticeRole, path: string, method: string,
 
   if (method === "GET" && path === "/v1/riders/me") return jsonResponse({ rider: sampleRider(true) });
   if (method === "POST" && path === "/v1/riders/status") return jsonResponse({ rider: sampleRider(body.online !== false) });
-  if (method === "GET" && path === "/v1/riders/me/orders") return jsonResponse({ orders: state.riderClaimed ? [orderFor(state)] : [] });
+  if (method === "GET" && path === "/v1/riders/me/orders") {
+    const rideJob = role === "rider" && state.rideJob?.claimed && state.rideJob.stage !== "Settle" ? [practiceRideJobOrder(state.rideJob)] : [];
+    return jsonResponse({ orders: [...(state.riderClaimed ? [orderFor(state)] : []), ...rideJob] });
+  }
   if (method === "GET" && path === "/v1/riders/jobs/available") {
     const order = orderFor(state);
-    return jsonResponse({ jobs: state.riderClaimed ? [] : [{ ...order, customer_name: "Amina", restaurant_name: null, distanceKm: 1.8, outOfServiceRange: false, applied: false }] });
+    const job = state.rideJob;
+    const rideOffer = role === "rider" && job && !job.claimed
+      ? [{
+          ...practiceRideJobOrder(job), customer_name: "Grace", restaurant_name: null, distanceKm: 0.9, outOfServiceRange: false, applied: false, bidding: null,
+          fareOffer: {
+            amount: 6_000, quote: 7_500, min: 5_000, max: 11_000, expiresAt: new Date(Date.now() + 8 * 60_000).toISOString(), expired: false,
+            myCounter: job.counter ? { id: "practice-rider-counter", amount: job.counter.amount, expiresAt: new Date(job.counter.expiresAt).toISOString() } : null,
+          },
+        }]
+      : [];
+    return jsonResponse({ jobs: [...rideOffer, ...(state.riderClaimed ? [] : [{ ...order, customer_name: "Amina", restaurant_name: null, distanceKm: 1.8, outOfServiceRange: false, applied: false }])] });
   }
   if (method === "GET" && path === `/v1/riders/jobs/${PRACTICE_ORDER_ID}/preview`) return jsonResponse({ items: itemsFor(state) });
   if (method === "GET" && path === "/v1/riders/me/subscription") return jsonResponse({ subscription: { required: false, mode: "recurring", amount: 0, cadence: "weekly", status: "active", current: true, paidThrough: null } });
@@ -782,7 +1139,29 @@ function handlePracticeRequest(role: PracticeRole, path: string, method: string,
   if (method === "GET" && /^\/v1\/wallets\/[^/]+\/ledger$/.test(path)) return jsonResponse({ ledger: [] });
   if (method === "GET" && /^\/v1\/wallets\/[^/]+\/report$/.test(path)) return jsonResponse({ period: "month", totalIn: 12_000, totalOut: 0, net: 12_000, byType: [] });
   if (method === "GET" && path.startsWith("/v1/mobile-numbers")) return jsonResponse({ numbers: [{ id: "practice-number", owner_id: "practice-user", purpose: path.includes("withdrawal") ? "withdrawal" : "payment", phone: "0700000000", label: "Practice number", is_primary: 1, created_at: nowIso(-86_400_000), updated_at: nowIso() }] });
-  if (method === "GET" && path === "/v1/locations") return jsonResponse({ locations: [{ id: "practice-location", user_id: "practice-user", label: "Practice home", area: "Entebbe City", address: "Kitoro Road", lat: 0.0612, lng: 32.4637, created_at: nowIso(-86_400_000) }] });
+  if (method === "GET" && path === "/v1/locations") return jsonResponse({ locations: [
+    { id: "practice-location", user_id: "practice-user", label: "Practice home", area: "Entebbe City", address: "Kitoro Road", lat: 0.0612, lng: 32.4637, created_at: nowIso(-86_400_000) },
+    { id: "practice-work", user_id: "practice-user", label: "Work", area: "Nakasero", address: "Nakasero Road, Kampala", lat: 0.3242, lng: 32.5806, created_at: nowIso(-172_800_000) },
+  ] });
+  // Recent ride destinations and saved passengers for the Ride home — browser-local only.
+  if (role === "customer" && method === "GET" && path === "/v1/orders/recent-places") return jsonResponse({ places: PRACTICE_RECENT_PLACES.map((p, i) => ({ ...p, last_at: nowIso(-(i + 1) * 86_400_000) })) });
+  if (role === "customer" && path === "/v1/passengers") {
+    const list = (): Array<Record<string, unknown>> => (canUseStorage() ? JSON.parse(window.localStorage.getItem(PRACTICE_PASSENGERS_KEY) ?? "null") : null) ?? [{ id: "practice-passenger", user_id: "practice-user", name: "Mum", phone: "0772000111", created_at: nowIso(-86_400_000) }];
+    if (method === "GET") return jsonResponse({ enabled: true, passengers: list() });
+    if (method === "POST") {
+      const passenger = { id: `practice-passenger-${Date.now()}`, user_id: "practice-user", name: String(body.name ?? "Passenger"), phone: String(body.phone ?? ""), created_at: nowIso() };
+      if (canUseStorage()) window.localStorage.setItem(PRACTICE_PASSENGERS_KEY, JSON.stringify([passenger, ...list()]));
+      return jsonResponse({ passenger }, 201);
+    }
+  }
+  const practicePassenger = path.match(/^\/v1\/passengers\/([^/]+)$/);
+  if (role === "customer" && method === "DELETE" && practicePassenger) {
+    if (canUseStorage()) {
+      const rows = JSON.parse(window.localStorage.getItem(PRACTICE_PASSENGERS_KEY) ?? "[]") as Array<{ id: string }>;
+      window.localStorage.setItem(PRACTICE_PASSENGERS_KEY, JSON.stringify(rows.filter((r) => r.id !== practicePassenger[1])));
+    }
+    return jsonResponse({ ok: true });
+  }
 
   if (method === "POST" && path === "/v1/merchant-payments") {
     save({ merchantPaymentStatus: "awaiting_confirmation" });
@@ -830,9 +1209,291 @@ function handlePracticeRequest(role: PracticeRole, path: string, method: string,
     return jsonResponse({ orders: history === completed && !query.has("cursor") ? [order] : [], counts: { active: completed ? 0 : 1, history: completed ? 1 : 0 }, nextCursor: null });
   }
 
+  // Pharmacy prescriptions: kept in this browser only, never sent anywhere.
+  if (role === "customer" && path.startsWith("/v1/pharmacy/")) {
+    const rxKey = "peebee_practice_prescriptions_v1";
+    const readRx = (): Array<Record<string, unknown>> => (canUseStorage() ? JSON.parse(window.localStorage.getItem(rxKey) ?? "[]") : []);
+    const writeRx = (rows: Array<Record<string, unknown>>) => { if (canUseStorage()) window.localStorage.setItem(rxKey, JSON.stringify(rows)); };
+    const pharmacies = DEMO_MARKETPLACE_STORES.filter((s) => s.category === "pharmacy").map((s) => ({ id: s.id, name: s.name, address: s.address ?? null, phone: s.phone ?? null }));
+    if (method === "GET" && path === "/v1/pharmacy/pharmacies") return jsonResponse({ pharmacies });
+    if (method === "POST" && path === "/v1/pharmacy/uploads") return jsonResponse({ key: `rx/practice-user/practice-${Date.now()}.jpg` }, 201);
+    if (method === "GET" && path === "/v1/pharmacy/prescriptions") return jsonResponse({ prescriptions: readRx() });
+    if (method === "POST" && path === "/v1/pharmacy/prescriptions") {
+      const pharmacy = pharmacies.find((p) => p.id === body.pharmacyId) ?? pharmacies[0];
+      const prescription = {
+        id: `rx_practice_${Date.now()}`, customerName: "You", customerPhone: null, pharmacyId: pharmacy?.id ?? "", pharmacyName: pharmacy?.name ?? "Practice pharmacy",
+        hasImage: true, imagePath: null, patientNotes: String(body.patientNotes ?? ""), patientAge: typeof body.patientAge === "number" ? body.patientAge : null,
+        patientGender: typeof body.patientGender === "string" ? body.patientGender : null, status: "pending_review", pharmacistNotes: "", dosageInstructions: "",
+        quotedItems: [], quotedTotalUgx: 0, deliveryAddress: String(body.deliveryAddress ?? ""), deliveryFeeUgx: 5_000, createdAt: nowIso(), updatedAt: nowIso(),
+      };
+      writeRx([prescription, ...readRx()]);
+      return jsonResponse({ ok: true, prescription }, 201);
+    }
+    const rxCancel = path.match(/^\/v1\/pharmacy\/prescriptions\/([^/]+)\/cancel$/);
+    if (method === "POST" && rxCancel) {
+      writeRx(readRx().map((rx) => (rx.id === rxCancel[1] ? { ...rx, status: "cancelled", updatedAt: nowIso() } : rx)));
+      return jsonResponse({ ok: true });
+    }
+  }
+
+  if (role === "gas" && path.startsWith("/v1/gas/relay/")) return practiceRelayParcel(path, method, body, state, save);
+  if (path.startsWith("/v1/education/")) return practiceEducationRequest(path, method, body, query);
+
   if (method === "GET" && path === "/v1/chat/threads") return jsonResponse({ threads: [] });
   if (method === "GET" && path === "/v1/restaurants/me/chat") return jsonResponse({ threads: [] });
   if (method === "GET" && path.startsWith("/v1/calls/incoming")) return jsonResponse({ call: null });
+
+  return practiceError();
+}
+
+// Relay parcels at the station: the attendant receives a sample parcel with the
+// matatu's code and hands it over with the customer's. The codes are shown on
+// the sample parcel so the journey can be completed without anyone else.
+const PRACTICE_PARCEL_ID = "ord_practice_relay_parcel";
+const PRACTICE_MATATU_CODE = "246810";
+const PRACTICE_COLLECT_CODE = "135790";
+
+function practiceRelayParcel(path: string, method: string, body: Record<string, unknown>, state: PracticeState, save: (patch: Partial<PracticeState>) => void): Response {
+  const parcel = state.relayParcel ?? { status: "incoming" as const, heldAt: null, releasedAt: null };
+  const code = String(body.code ?? "");
+  if (method === "POST" && path === "/v1/gas/relay/receive") {
+    if (parcel.status !== "incoming" || code !== PRACTICE_MATATU_CODE) return jsonResponse({ error: "not_found", message: `No parcel with that code. In practice, the matatu's code is ${PRACTICE_MATATU_CODE}.` }, 404);
+    save({ relayParcel: { ...parcel, status: "held", heldAt: nowIso() } });
+    return jsonResponse({ orderId: PRACTICE_PARCEL_ID });
+  }
+  if (method === "POST" && path === "/v1/gas/relay/release") {
+    if (parcel.status !== "held" || code !== PRACTICE_COLLECT_CODE) return jsonResponse({ error: "not_found", message: parcel.status === "incoming" ? "Receive the parcel from the matatu first." : `No parcel with that code. In practice, the customer's code is ${PRACTICE_COLLECT_CODE}.` }, 404);
+    save({ relayParcel: { ...parcel, status: "collected", releasedAt: nowIso() } });
+    return jsonResponse({ orderId: PRACTICE_PARCEL_ID });
+  }
+  const customerName = `Amina (practice) · code ${PRACTICE_COLLECT_CODE}`;
+  if (method === "GET" && path === "/v1/gas/relay/parcels") {
+    return jsonResponse({
+      incoming: parcel.status === "incoming"
+        ? [{ order_id: PRACTICE_PARCEL_ID, from_name: "Kampala Old Taxi Park", matatu_status: "arrived", vehicle_plate: "PRACTICE 14", operator_name: `Practice matatu · code ${PRACTICE_MATATU_CODE}`, started_at: nowIso(-40 * 60_000) }]
+        : [],
+      held: parcel.status === "held"
+        ? [{ order_id: PRACTICE_PARCEL_ID, last_mile: "collect", held_at: parcel.heldAt ?? nowIso(), customer_name: customerName, customer_phone: "0700000000", rider_status: null, rider_name: null, release_code: null }]
+        : [],
+      recent: parcel.status === "collected"
+        ? [{ order_id: PRACTICE_PARCEL_ID, released_to: "customer", released_at: parcel.releasedAt ?? nowIso(), customer_name: "Amina (practice)" }]
+        : [],
+    });
+  }
+  if (method === "GET" && path === `/v1/gas/relay/parcels/${PRACTICE_PARCEL_ID}`) {
+    const leg = (n: 1 | 2, kind: "boda" | "matatu", fromName: string, toName: string, providerName: string, vehiclePlate: string, startedMin: number, handedMin: number | null) => ({
+      id: `practice-relay-leg-${n}`, leg: n, kind, fromName, fromLat: null, fromLng: null, toName, toLat: null, toLng: null, distanceKm: null, fee: 0,
+      status: handedMin == null ? "arrived" : "done", providerName, vehiclePlate, startedAt: nowIso(-startedMin * 60_000), handedOverAt: handedMin == null ? null : nowIso(-handedMin * 60_000),
+    });
+    return jsonResponse({
+      order: { id: PRACTICE_PARCEL_ID, stage: parcel.status === "collected" ? "Settle" : "Deliver", destinationArea: "Entebbe" },
+      relay: {
+        routeName: "Kampala - Entebbe (practice)", direction: "KLA - EBB", routeCode: "KLA ⇄ EBB", dropMode: "station", lastMile: "collect",
+        station: { name: "Peebee Practice Station", address: null, lat: null, lng: null, phone: null },
+        heldAt: parcel.heldAt, releasedAt: parcel.releasedAt, releasedTo: parcel.status === "collected" ? "customer" : null,
+        legs: [
+          leg(1, "boda", "Nakasero", "Kampala Old Taxi Park", "Daniel", "PRACTICE 02", 75, 60),
+          leg(2, "matatu", "Kampala Old Taxi Park", "Peebee Practice Station", "Practice matatu", "PRACTICE 14", 60, parcel.status === "incoming" ? null : 1),
+        ],
+      },
+      events: [
+        { stage: "Deliver", note: "Picked up from the sender", created_at: nowIso(-75 * 60_000) },
+        { stage: "Deliver", note: "On the matatu to Entebbe", created_at: nowIso(-60 * 60_000) },
+        ...(parcel.heldAt ? [{ stage: "Deliver", note: "Received at the station", created_at: parcel.heldAt }] : []),
+        ...(parcel.releasedAt ? [{ stage: "Settle", note: "Collected by the customer", created_at: parcel.releasedAt }] : []),
+      ],
+    });
+  }
+  return practiceError();
+}
+
+function practiceEducationRequest(path: string, method: string, body: Record<string, unknown>, searchParams: URLSearchParams): Response {
+  const studio = handleStudioSandbox(path, method, body);
+  if (studio) return studio;
+  if (method === "GET" && path === "/v1/education/streams") return jsonResponse({ ok: true, streams: EDUCATION_STREAMS });
+  if (method === "GET" && path === "/v1/education/institutions") return jsonResponse({ ok: true, institutions: DEMO_INSTITUTIONS });
+  if (method === "GET" && path.startsWith("/v1/education/institutions/")) return jsonResponse({ ok: true, institution: DEMO_INSTITUTIONS[0] });
+  if (method === "GET" && path === "/v1/education/creators") return jsonResponse({ ok: true, creators: DEMO_CREATORS });
+  if (method === "GET" && path === "/v1/education/courses") return jsonResponse({ ok: true, courses: DEMO_CREATOR_COURSES });
+
+  // 1. Sprouts
+  if (method === "GET" && path === "/v1/education/sprouts/activities") {
+    return jsonResponse({
+      ok: true,
+      activities: DEMO_SPROUTS_ACTIVITIES,
+      screenTimer: DEMO_SPROUTS_TIMER,
+      coPlayPrompt: DEMO_SPROUTS_COPLAY,
+    });
+  }
+  if (method === "POST" && path === "/v1/education/sprouts/timer/unlock") {
+    return jsonResponse({ ok: true, unlocked: true, message: "Screen timer unlocked by parent PIN." });
+  }
+
+  // 2. Foundations
+  if (method === "GET" && path === "/v1/education/foundations/worksheets") {
+    return jsonResponse({
+      ok: true,
+      worksheets: DEMO_FOUNDATIONS_WORKSHEETS,
+      submissions: DEMO_FOUNDATIONS_SUBMISSIONS,
+      meritWallet: DEMO_FOUNDATIONS_MERITS,
+    });
+  }
+  if (method === "POST" && path === "/v1/education/foundations/worksheets/submit") {
+    const newSubmission = {
+      id: `sub_practice_${Date.now()}`,
+      worksheetId: String(body.worksheetId ?? DEMO_FOUNDATIONS_WORKSHEETS[0].id),
+      worksheetTitle: DEMO_FOUNDATIONS_WORKSHEETS[0].title,
+      subject: DEMO_FOUNDATIONS_WORKSHEETS[0].subject,
+      studentId: "stud_timothy",
+      studentName: "Timothy Mukasa",
+      scannedPhotoUrls: ["/sample-homework-scan.jpg"],
+      parentSigned: true,
+      parentSignerName: String(body.parentSignerName ?? "Grace Mukasa"),
+      parentSignedAt: "Just now",
+      status: "graded",
+      meritPointsEarned: 25,
+      teacherRemarks: "Sample practice worksheet verified! Parent signature confirmed.",
+      submittedAt: "Just now",
+    };
+    return jsonResponse({ ok: true, submission: newSubmission });
+  }
+
+  // 3. Academy
+  if (method === "GET" && path === "/v1/education/academy/dashboard") {
+    return jsonResponse({
+      ok: true,
+      timetable: DEMO_ACADEMY_TIMETABLE,
+      activeExam: DEMO_ACADEMY_EXAM,
+      reportCard: DEMO_ACADEMY_REPORT_CARD,
+    });
+  }
+  if (method === "POST" && path === "/v1/education/academy/exam/submit") {
+    return jsonResponse({
+      ok: true,
+      scorePercent: 88,
+      passed: true,
+      message: "Practice UNEB examination graded successfully. Report card generated.",
+    });
+  }
+
+  // 4. Compass
+  if (method === "GET" && path === "/v1/education/compass/course") {
+    return jsonResponse({
+      ok: true,
+      course: DEMO_COMPASS_COURSE,
+      peerReview: DEMO_COMPASS_PEER_REVIEW,
+      credential: DEMO_COMPASS_CREDENTIAL,
+    });
+  }
+  if (method === "POST" && path === "/v1/education/compass/notes") {
+    return jsonResponse({ ok: true, noteId: `note_practice_${Date.now()}` });
+  }
+  if (method === "POST" && path === "/v1/education/compass/peer-review/submit") {
+    return jsonResponse({ ok: true, isComplete: true });
+  }
+
+  // 5. Skills
+  if (method === "GET" && path === "/v1/education/skills/course") {
+    return jsonResponse({
+      ok: true,
+      course: DEMO_SKILLS_COURSE,
+      submission: DEMO_SKILLS_SUBMISSION,
+      logbook: DEMO_SKILLS_LOGBOOK,
+    });
+  }
+  if (method === "POST" && path === "/v1/education/skills/practical/submit") {
+    return jsonResponse({ ok: true, submission: DEMO_SKILLS_SUBMISSION });
+  }
+  if (method === "POST" && path === "/v1/education/skills/critiques") {
+    return jsonResponse({
+      ok: true,
+      critique: {
+        id: `crit_practice_${Date.now()}`,
+        timestampSeconds: Number(body.timestampSeconds) || 30,
+        instructorName: "Master Alex Mukasa",
+        critiqueText: String(body.critiqueText || "Practice technique correction."),
+        severity: "technique_correction",
+        resolved: true,
+      },
+    });
+  }
+  if (method === "POST" && path === "/v1/education/skills/logbook") {
+    return jsonResponse({
+      ok: true,
+      entry: {
+        id: `log_practice_${Date.now()}`,
+        studentId: "stud_denis",
+        studentName: "Denis Kigozi",
+        date: new Date().toISOString().slice(0, 10),
+        practicalHours: Number(body.practicalHours) || 4.0,
+        taskPerformed: String(body.taskPerformed || "Practice workshop haircut"),
+        workshopLocation: "Peebee Barber Studio",
+        supervisorName: "Master Alex Mukasa",
+        supervisorSignatureRecorded: true,
+        supervisorSignedAt: "Just now",
+      },
+    });
+  }
+
+  // Tuition & Billing
+  if (method === "GET" && path === "/v1/education/tuition") {
+    return jsonResponse({
+      ok: true,
+      invoice: DEMO_TUITION_INVOICE,
+      passes: DEMO_SUBSCRIPTION_PASSES,
+      guardianAlerts: DEMO_GUARDIAN_ALERTS,
+    });
+  }
+  if (method === "POST" && path === "/v1/education/tuition/pay") {
+    return jsonResponse({
+      ok: true,
+      receiptId: `REC_PRACTICE_${Date.now()}`,
+      newBalanceUgx: 0,
+      status: "paid",
+    });
+  }
+
+  // Live Meetings & Classroom Video
+  if (method === "GET" && path === "/v1/education/live/meetings") {
+    const stream = searchParams.get("stream");
+    const filtered = stream ? DEMO_LIVE_MEETINGS.filter((m) => m.stream === stream) : DEMO_LIVE_MEETINGS;
+    return jsonResponse({ ok: true, meetings: filtered, activeMeeting: DEMO_LIVE_MEETINGS[0] });
+  }
+  if (method === "GET" && path.startsWith("/v1/education/live/meetings/")) {
+    const id = path.split("/").pop();
+    const meeting = DEMO_LIVE_MEETINGS.find((m) => m.id === id || m.roomCode === id) || DEMO_LIVE_MEETINGS[0];
+    return jsonResponse({
+      ok: true,
+      meeting,
+      participants: DEMO_LIVE_PARTICIPANTS,
+      messages: DEMO_LIVE_CHAT_MESSAGES,
+    });
+  }
+
+  // Live Tutor Chat
+  if (method === "GET" && path === "/v1/education/chat/tutors") {
+    return jsonResponse({ ok: true, tutors: DEMO_TUTOR_CONTACTS });
+  }
+  if (method === "GET" && path === "/v1/education/chat/messages") {
+    return jsonResponse({ ok: true, messages: DEMO_LIVE_CHAT_MESSAGES });
+  }
+  if (method === "POST" && path === "/v1/education/chat/send") {
+    return jsonResponse({
+      ok: true,
+      message: {
+        id: `msg_practice_${Date.now()}`,
+        roomId: body.roomId,
+        channelId: body.channelId,
+        senderId: "part_denis",
+        senderName: "Denis Kigozi",
+        senderRole: "student",
+        text: String(body.text || ""),
+        timestamp: "Just now",
+        isQuestion: Boolean(body.isQuestion),
+        upvotes: 0,
+      },
+    });
+  }
 
   return practiceError();
 }

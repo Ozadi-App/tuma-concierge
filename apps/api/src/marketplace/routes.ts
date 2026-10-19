@@ -1,14 +1,17 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { requireAuth, requireRole } from "../auth/middleware.js";
-import { db } from "../db/client.js";
+import { db, executeBatch } from "../db/client.js";
 import { newId } from "../lib/ids.js";
 import { getDeliverySettings, getMarketplaceSettings, getMatchingSettings, getPlatformEnvironment } from "../lib/settings.js";
 import { hasColumn, hasTable } from "../lib/schema.js";
 import { haversineKm } from "../lib/geo.js";
+import { round1, roadLegsKm, shortestPickupOrder } from "../lib/road-distance.js";
 import { roundFare, type MatchingMode } from "@peebee/shared";
 import { snapshotTimeFees } from "../orders/time-fees.js";
 import { notifyUser } from "../lib/webpush.js";
+import { insertRelayLegs, planRelay, relayChargeFor, resolveLastMile, type RelayLastMile, type RelayMeet, type RelayPlan } from "../relay/service.js";
+import { getRelaySettings } from "../relay/settings.js";
 
 export const marketplaceRoutes = new Hono();
 
@@ -38,7 +41,8 @@ export const DEMO_MARKETPLACE_STORES = [
     pro_tier: "pro_live",
     is_live: 1,
     live_channel_title: "Fresh Morning Harvest! 🥑 Unpacking avocado crates & dairy offers",
-    live_stream_url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+    live_stream_url: "https://customer.peebee.online/demo-video/market.mp4",
+    live_stream_poster_url: "https://customer.peebee.online/demo-video/market.jpg",
     live_viewer_count: 142,
     status: "active",
   },
@@ -64,7 +68,8 @@ export const DEMO_MARKETPLACE_STORES = [
     pro_tier: "pro_live",
     is_live: 1,
     live_channel_title: "Fitting Room Live! 🧥 Trying on the new Autumn linen collection",
-    live_stream_url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
+    live_stream_url: "https://customer.peebee.online/demo-video/fashion.mp4",
+    live_stream_poster_url: "https://customer.peebee.online/demo-video/fashion.jpg",
     live_viewer_count: 289,
     status: "active",
   },
@@ -90,7 +95,8 @@ export const DEMO_MARKETPLACE_STORES = [
     pro_tier: "pro_live",
     is_live: 1,
     live_channel_title: "Tech Unboxing Live 🎧 Testing Noise Cancelling Wireless Headphones & Powerbanks",
-    live_stream_url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4",
+    live_stream_url: "https://customer.peebee.online/demo-video/earbuds.mp4",
+    live_stream_poster_url: "https://customer.peebee.online/demo-video/earbuds.jpg",
     live_viewer_count: 215,
     status: "active",
   },
@@ -116,7 +122,8 @@ export const DEMO_MARKETPLACE_STORES = [
     pro_tier: "pro_live",
     is_live: 1,
     live_channel_title: "Live Baking 🥖 Shaping Sourdough & Glazing Cinnamon Rolls",
-    live_stream_url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4",
+    live_stream_url: "https://customer.peebee.online/demo-video/bakery.mp4",
+    live_stream_poster_url: "https://customer.peebee.online/demo-video/bakery.jpg",
     live_viewer_count: 98,
     status: "active",
   },
@@ -142,7 +149,8 @@ export const DEMO_MARKETPLACE_STORES = [
     pro_tier: "pro_live",
     is_live: 1,
     live_channel_title: "Live Skincare Routine 🧴 Testing African Black Soap & Niacinamide",
-    live_stream_url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyBlazes.mp4",
+    live_stream_url: "https://customer.peebee.online/demo-video/skincare.mp4",
+    live_stream_poster_url: "https://customer.peebee.online/demo-video/skincare.jpg",
     live_viewer_count: 175,
     status: "active",
   },
@@ -168,7 +176,8 @@ export const DEMO_MARKETPLACE_STORES = [
     pro_tier: "pro_live",
     is_live: 1,
     live_channel_title: "Sneaker Drop Live 👟 Exclusive Unboxing of Retro High-Tops & Sizing Advice",
-    live_stream_url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/SubaruOutbackSeeTheWorld.mp4",
+    live_stream_url: "https://customer.peebee.online/demo-video/sneakers.mp4",
+    live_stream_poster_url: "https://customer.peebee.online/demo-video/sneakers.jpg",
     live_viewer_count: 188,
     status: "active",
   },
@@ -788,7 +797,8 @@ export const DEMO_MARKETPLACE_SPOTLIGHT = [
     store_logo: "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=200&q=80",
     store_category: "groceries",
     type: "live" as const,
-    media_url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+    media_url: "https://customer.peebee.online/demo-video/market.mp4",
+    poster_url: "https://customer.peebee.online/demo-video/market.jpg",
     title: "Fresh Morning Harvest! 🥑 Unpacking avocado crates & dairy offers",
     description: "Watch live as we unpack fresh farm organic avocados and cold milk pouches directly from Mbale orchards.",
     product: {
@@ -810,7 +820,8 @@ export const DEMO_MARKETPLACE_SPOTLIGHT = [
     store_logo: "https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=200&q=80",
     store_category: "stores",
     type: "video" as const,
-    media_url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
+    media_url: "https://customer.peebee.online/demo-video/fashion.mp4",
+    poster_url: "https://customer.peebee.online/demo-video/fashion.jpg",
     title: "Summer Linen Collection ☀️ Styling relaxed fit Cuban shirts for weekend vibes",
     description: "Breathable 100% natural linen shirt with spread collar. Watch our fitting room walkthrough.",
     product: {
@@ -832,7 +843,8 @@ export const DEMO_MARKETPLACE_SPOTLIGHT = [
     store_logo: "https://images.unsplash.com/photo-1509440159596-0249088772ff?auto=format&fit=crop&w=200&q=80",
     store_category: "groceries",
     type: "live" as const,
-    media_url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4",
+    media_url: "https://customer.peebee.online/demo-video/bakery.mp4",
+    poster_url: "https://customer.peebee.online/demo-video/bakery.jpg",
     title: "Live Baking 🥐 Glazing Cinnamon Swirls & Butter Croissants Fresh from Oven",
     description: "Watch the master baker glaze golden pastry layers live. Order now for 20-min express delivery in Kampala.",
     product: {
@@ -882,7 +894,8 @@ export const DEMO_MARKETPLACE_SPOTLIGHT = [
     store_logo: "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&w=200&q=80",
     store_category: "stores",
     type: "video" as const,
-    media_url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
+    media_url: "https://customer.peebee.online/demo-video/earbuds.mp4",
+    poster_url: "https://customer.peebee.online/demo-video/earbuds.jpg",
     title: "Active Noise Cancelling Test 🎧 40hr Battery & Crystal Clear Bass Unboxing",
     description: "Testing Bluetooth 5.3 instant pairing and wireless fast charge. Works with both iOS and Android.",
     product: {
@@ -1400,7 +1413,7 @@ marketplaceRoutes.post("/merchants/me/store/live/start", requireAuth, async (c) 
   const body = await c.req.json().catch(() => ({}));
   const sessionId = newId("live");
   const title = body.title || `${store.name} Live Showcase! ✨`;
-  const streamUrl = body.streamUrl || "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4";
+  const streamUrl = body.streamUrl || "https://customer.peebee.online/demo-video/earbuds.mp4";
   const isRestream = body.isRestream ? 1 : 0;
 
   await db.execute({
@@ -1718,6 +1731,11 @@ const marketplaceCheckoutSchema = z.object({
   destinationArea: z.string().optional(),
   destinationLat: z.number().optional(),
   destinationLng: z.number().optional(),
+  /** A long delivery dropped at a petrol station: bring it to the door, or collect it there. */
+  relayLastMile: z.enum(["door", "collect", "meet"]).optional(),
+  relayMeetStageId: z.string().max(80).optional(),
+  /** A long trip: by matatu relay (the default when one is offered) or one rider all the way. */
+  deliveryMode: z.enum(["rider", "relay"]).optional(),
 });
 
 // Marketplace Cart Checkout -> Real Orders linked to Boda Delivery System
@@ -1744,63 +1762,23 @@ marketplaceRoutes.post("/marketplace/checkout", requireAuth, async (c) => {
   const paymentRail = d.paymentRail ?? (d.paymentMethod === "cod" ? "float" : "escrow");
   const stage = paymentRail === "float" ? "Match" : "Create";
 
-  const itemsByStore = new Map<string, typeof d.items>();
-  for (const it of d.items) {
-    const list = itemsByStore.get(it.storeId) ?? [];
-    list.push(it);
-    itemsByStore.set(it.storeId, list);
+  const bag = await planMarketplaceDelivery(d.items, d, environment);
+  const stops = bag.stops;
+  const relay = bag.mode === "relay" ? bag.relay : null;
+  if (relay && paymentRail === "float") {
+    return c.json({ error: "relay_requires_prepay", message: "Long-distance deliveries are paid in the app, not in cash." }, 409);
   }
-
   const createdOrders: Row[] = [];
   const supportsStoreId = (await hasColumn("orders", "store_id")) && (await hasTable("stores"));
 
-  for (const [storeId, storeItems] of itemsByStore.entries()) {
-    await ensureDemoStoreInDb(storeId, environment);
-
-    let storeName = "Marketplace Store";
-    let storeAddress: string | null = null;
-    let storeLat: number | null = null;
-    let storeLng: number | null = null;
-
-    if (await hasTable("stores")) {
-      const sRes = await db.execute({ sql: "SELECT id, name, address, lat, lng, category FROM stores WHERE id = ?", args: [storeId] });
-      const sRow = sRes.rows[0] as Row | undefined;
-      if (sRow) {
-        storeName = String(sRow.name ?? storeName);
-        storeAddress = (sRow.address as string | null) ?? null;
-        storeLat = (sRow.lat as number | null) ?? null;
-        storeLng = (sRow.lng as number | null) ?? null;
-      }
-    }
-
-    if (storeName === "Marketplace Store") {
-      const demo = DEMO_MARKETPLACE_STORES.find((s) => s.id === storeId);
-      if (demo) {
-        storeName = demo.name;
-        storeAddress = demo.address;
-        storeLat = demo.lat ?? null;
-        storeLng = demo.lng ?? null;
-      }
-    }
-
-    const itemsTotal = storeItems.reduce((sum, it) => sum + it.price * it.quantity, 0);
-
-    let distanceKm: number | null = null;
-    if (storeLat != null && storeLng != null && d.destinationLat != null && d.destinationLng != null) {
-      distanceKm = Math.round(haversineKm(storeLat, storeLng, d.destinationLat, d.destinationLng) * 10) / 10;
-    }
-
-    const deliveryFee = distanceKm != null
-      ? roundFare(distanceKm * deliverySettings.deliveryRatePerKm, deliverySettings.minimumDeliveryFee)
-      : roundFare(deliverySettings.shoppingDeliveryFee);
-
+  for (const [stopIndex, stop] of stops.entries()) {
     const listId = newId("list");
     await db.execute({
       sql: "INSERT INTO lists (id, customer_id, title, status, environment) VALUES (?, ?, ?, 'active', ?)",
-      args: [listId, user.sub, `${storeName} Order`, environment],
+      args: [listId, user.sub, `${stop.storeName} Order`, environment],
     });
 
-    for (const it of storeItems) {
+    for (const it of stop.items) {
       const itemName = it.variantTitle ? `${it.title} (${it.variantTitle})` : it.title;
       await db.execute({
         sql: "INSERT INTO list_items (id, list_id, name, quantity, unit_price) VALUES (?, ?, ?, ?, ?)",
@@ -1811,8 +1789,9 @@ marketplaceRoutes.post("/marketplace/checkout", requireAuth, async (c) => {
     const orderId = newId("ord");
     const storeCol = supportsStoreId ? ", store_id" : "";
     const storeVal = supportsStoreId ? ", ?" : "";
-    const storeArgs = supportsStoreId ? [storeId] : [];
+    const storeArgs = supportsStoreId ? [stop.storeId] : [];
 
+    // The total is the items plus this stop's share of the delivery fee, which is what the customer pays.
     await db.execute({
       sql: `INSERT INTO orders (
               id, list_id, customer_id, stage, type, payment_rail, estimated_total, delivery_fee,
@@ -1827,17 +1806,17 @@ marketplaceRoutes.post("/marketplace/checkout", requireAuth, async (c) => {
         user.sub,
         stage,
         paymentRail,
-        itemsTotal,
-        deliveryFee,
-        storeAddress,
-        storeAddress,
-        storeLat,
-        storeLng,
+        stop.itemsTotal + stop.deliveryFee,
+        stop.deliveryFee,
+        stop.storeName,
+        stop.storeAddress,
+        stop.lat,
+        stop.lng,
         d.destinationArea ?? null,
         d.destinationAddress ?? null,
         d.destinationLat ?? null,
         d.destinationLng ?? null,
-        distanceKm,
+        stop.distanceKm,
         matchingMode,
         matchingDeadlineAt,
         environment,
@@ -1847,150 +1826,235 @@ marketplaceRoutes.post("/marketplace/checkout", requireAuth, async (c) => {
 
     await db.execute({
       sql: "INSERT INTO order_events (id, order_id, stage, note, actor_id) VALUES (?, ?, ?, ?, ?)",
-      args: [newId("evt"), orderId, stage, `Order placed from ${storeName}`, user.sub],
+      args: [newId("evt"), orderId, stage, `Order placed from ${stop.storeName}`, user.sub],
     });
 
-    await snapshotTimeFees(orderId, deliveryFee);
-
-    // Notify online verified riders via WebPush
-    try {
-      const onlineRiders = await db.execute({
-        sql: `SELECT u.id FROM riders r JOIN users u ON u.id = r.user_id
-              WHERE r.verified = 1 AND r.is_online = 1`,
-        args: [],
+    await snapshotTimeFees(orderId, stop.deliveryFee);
+    if (relay) {
+      // Every store's order rides the same relay; only the first pickup carries its fees (the
+      // others' legs are free and are handed over with it, one code for the whole bag).
+      const plan = stopIndex === 0 ? relay.plan : { ...relay.plan, legs: relay.plan.legs.map((leg) => ({ ...leg, fee: 0 })), total: 0, collectTotal: 0 };
+      await insertRelayLegs(orderId, plan, relay.lastMile, relay.meet);
+      await db.execute({
+        sql: "INSERT INTO order_events (id, order_id, stage, note, actor_id) VALUES (?, ?, ?, ?, ?)",
+        args: [newId("evt"), orderId, stage, `Relay delivery by boda and matatu (${relay.plan.direction})`, user.sub],
       });
-      for (const rider of onlineRiders.rows as Row[]) {
-        notifyUser(rider.id as string, {
-          title: `New delivery order: ${storeName}`,
-          body: `Pickup at ${storeName} · Delivery fee: UGX ${deliveryFee.toLocaleString()}`,
-          url: "/riders",
-          tag: `order-${orderId}`,
-        }).catch(() => {});
+    }
+    createdOrders.push({ id: orderId });
+  }
+
+  // Several stores in one bag are one delivery: one rider collects from every
+  // store in turn, and the customer pays once (see orders/bundle-funding.ts).
+  if (createdOrders.length > 1 && (await hasColumn("orders", "delivery_bundle_id"))) {
+    const leadId = String(createdOrders[0].id);
+    await executeBatch(createdOrders.map((order) => ({
+      sql: "UPDATE orders SET delivery_bundle_id = ? WHERE id = ?",
+      args: [leadId, String(order.id)],
+    })));
+  }
+
+  const ids = createdOrders.map((order) => String(order.id));
+  const full = await db.execute({
+    sql: `SELECT o.*, c.name as customer_name, r.name as rider_name FROM orders o
+          LEFT JOIN users c ON c.id = o.customer_id
+          LEFT JOIN users r ON r.id = o.rider_id
+          WHERE o.id IN (${ids.map(() => "?").join(",")})`,
+    args: ids,
+  });
+  const byId = new Map((full.rows as Row[]).map((row) => [String(row.id), row]));
+  const orders = ids.map((id) => byId.get(id)).filter(Boolean) as Row[];
+
+  // One notice per delivery, not one per store.
+  try {
+    const onlineRiders = await db.execute("SELECT u.id FROM riders r JOIN users u ON u.id = r.user_id WHERE r.verified = 1 AND r.is_online = 1");
+    const deliveryFee = stops.reduce((sum, stop) => sum + stop.deliveryFee, 0);
+    const where = stops.map((stop) => stop.storeName).join(", ");
+    for (const rider of onlineRiders.rows as Row[]) {
+      notifyUser(rider.id as string, {
+        title: stops.length > 1 ? `New delivery: ${stops.length} pickups` : `New delivery order: ${where}`,
+        body: `Pickup at ${where} · Delivery fee: UGX ${deliveryFee.toLocaleString()}`,
+        url: "/riders",
+        tag: `order-${ids[0]}`,
+      }).catch(() => {});
+    }
+  } catch {
+    // Ignore notification broadcast failures
+  }
+
+  return c.json({ ok: true, orders, order: orders[0] }, 201);
+});
+
+const quoteSchema = marketplaceCheckoutSchema.pick({ items: true, destinationLat: true, destinationLng: true, relayLastMile: true, relayMeetStageId: true, deliveryMode: true });
+
+/** The exact delivery fee a bag will be charged, split by store. Checkout shows this, never an estimate. */
+marketplaceRoutes.post("/marketplace/checkout/quote", requireAuth, async (c) => {
+  const parsed = quoteSchema.safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) return c.json({ error: "invalid_body", issues: parsed.error.issues }, 400);
+  const bag = await planMarketplaceDelivery(parsed.data.items, parsed.data, await getPlatformEnvironment());
+  const { stops, trip } = bag;
+  const relayed = bag.relay;
+  const itemsTotal = stops.reduce((sum, stop) => sum + stop.itemsTotal, 0);
+  const deliveryFee = stops.reduce((sum, stop) => sum + stop.deliveryFee, 0);
+  return c.json({
+    itemsTotal,
+    deliveryFee,
+    total: itemsTotal + deliveryFee,
+    /** Which way this quote delivers; the customer can switch when a relay is offered. */
+    deliveryMode: bag.mode,
+    /** The delivery fee each way, so both choices show their price. */
+    options: { rider: trip?.fee ?? deliveryFee, relay: relayed?.fee ?? null },
+    /** "Direct" (one rider all the way) is promised in under this many hours (admin setting). */
+    directMaxHours: (await getRelaySettings()).directMaxHours,
+    stores: stops.map((stop) => ({ storeId: stop.storeId, storeName: stop.storeName, itemsTotal: stop.itemsTotal, deliveryFee: stop.deliveryFee })),
+    // One rider's whole trip along the road: each leg, the direct trip and the distance the other stops add.
+    trip,
+    // A long trip by matatu relay: the rider collects from every store, then each leg as priced.
+    relay: relayed
+      ? {
+          routeName: relayed.plan.routeName,
+          direction: relayed.plan.direction,
+          routeCode: relayed.plan.routeCode,
+          dropMode: relayed.plan.dropMode,
+          station: relayed.plan.station?.name ?? null,
+          lastMile: relayed.lastMile,
+          doorTotal: relayed.plan.total,
+          collectTotal: relayed.plan.collectTotal ?? null,
+          choiceAtOrder: relayed.plan.dropMode === "station" && relayed.lastMile !== "pending",
+          meetStages: (relayed.plan.meetStages ?? []).map((stage) => ({ id: stage.id, name: stage.name, distanceKm: stage.distanceKm, isStation: !!stage.outletId })),
+          meetStage: relayed.meet?.name ?? null,
+          legs: relayed.plan.legs.map((leg) => ({ leg: leg.leg, kind: leg.kind, fromName: leg.fromName, toName: leg.toName, distanceKm: leg.distanceKm, fee: leg.fee })),
+        }
+      : null,
+  });
+});
+
+type CheckoutItem = z.infer<typeof checkoutItemSchema>;
+type DeliveryStop = {
+  storeId: string; storeName: string; storeAddress: string | null; lat: number | null; lng: number | null;
+  items: CheckoutItem[]; itemsTotal: number; distanceKm: number | null; deliveryFee: number;
+};
+/** One rider's whole trip: store to store in the shortest order, then to the customer, along the road. */
+type BagTrip = {
+  legs: Array<{ fromName: string; toName: string; km: number }>;
+  totalKm: number;
+  /** The first store straight to the customer, and what the other stops add. */
+  directKm: number; directFee: number;
+  addedKm: number; addedFee: number;
+  fee: number;
+};
+type BagRelay = { plan: RelayPlan; lastMile: RelayLastMile; meet: RelayMeet | null; fee: number };
+type BagPlan = { stops: DeliveryStop[]; mode: "rider" | "relay"; trip: BagTrip | null; relay: BagRelay | null };
+
+/**
+ * Prices a bag's delivery. One rider collects from every store, in the order
+ * that makes the whole trip shortest, then rides to the customer; the fee is
+ * that trip's road distance at the admin's rate. When the trip is longer than
+ * the admin's relay distance a matatu relay is offered as well (and chosen by
+ * default): the rider collects from every store, then hands the bag to a matatu.
+ * Each store's order carries its share so the orders add up to the fee charged.
+ */
+async function planMarketplaceDelivery(
+  items: CheckoutItem[],
+  destination: { destinationLat?: number; destinationLng?: number; relayLastMile?: "door" | "collect" | "meet"; relayMeetStageId?: string; deliveryMode?: "rider" | "relay" },
+  environment: Awaited<ReturnType<typeof getPlatformEnvironment>>,
+): Promise<BagPlan> {
+  const settings = await getDeliverySettings();
+  const byStore = new Map<string, CheckoutItem[]>();
+  for (const it of items) byStore.set(it.storeId, [...(byStore.get(it.storeId) ?? []), it]);
+
+  let stops: DeliveryStop[] = [];
+  for (const [storeId, storeItems] of byStore.entries()) {
+    await ensureDemoStoreInDb(storeId, environment);
+    let storeName = "Marketplace Store";
+    let storeAddress: string | null = null;
+    let lat: number | null = null;
+    let lng: number | null = null;
+    if (await hasTable("stores")) {
+      const row = (await db.execute({ sql: "SELECT name, address, lat, lng FROM stores WHERE id = ?", args: [storeId] })).rows[0] as Row | undefined;
+      if (row) {
+        storeName = String(row.name ?? storeName);
+        storeAddress = (row.address as string | null) ?? null;
+        lat = (row.lat as number | null) ?? null;
+        lng = (row.lng as number | null) ?? null;
       }
-    } catch {
-      // Ignore notification broadcast failures
     }
-
-    const createdOrder = await db.execute({
-      sql: `SELECT o.*, c.name as customer_name, r.name as rider_name FROM orders o
-            LEFT JOIN users c ON c.id = o.customer_id
-            LEFT JOIN users r ON r.id = o.rider_id
-            WHERE o.id = ?`,
-      args: [orderId],
+    // A demo store saved before it had a map pin still has its pin in the demo catalogue.
+    if (lat == null || lng == null) {
+      const demo = DEMO_MARKETPLACE_STORES.find((store) => store.id === storeId);
+      if (demo?.lat != null && demo.lng != null) { lat = demo.lat; lng = demo.lng; }
+    }
+    if (storeName === "Marketplace Store") {
+      const demo = DEMO_MARKETPLACE_STORES.find((store) => store.id === storeId);
+      if (demo) {
+        storeName = demo.name;
+        storeAddress = demo.address;
+        lat = demo.lat ?? null;
+        lng = demo.lng ?? null;
+      }
+    }
+    stops.push({
+      storeId, storeName, storeAddress, lat, lng, items: storeItems,
+      itemsTotal: storeItems.reduce((sum, it) => sum + it.price * it.quantity, 0),
+      distanceKm: null, deliveryFee: 0,
     });
-    if (createdOrder.rows[0]) {
-      createdOrders.push(createdOrder.rows[0]);
-    }
   }
 
-  return c.json({ ok: true, orders: createdOrders, order: createdOrders[0] }, 201);
-});
+  const { destinationLat, destinationLng } = destination;
+  const located = destinationLat != null && destinationLng != null && stops.every((stop) => stop.lat != null && stop.lng != null);
+  if (!located) {
+    // Without coordinates there's no route: the admin's flat shopping fee, once for the whole bag.
+    stops.forEach((stop, i) => { stop.deliveryFee = i === 0 ? roundFare(settings.shoppingDeliveryFee) : 0; });
+    return { stops, mode: "rider", trip: null, relay: null };
+  }
 
-// ---------------------------------------------------------------------------
-// Pharmacy Prescription Endpoints
-// ---------------------------------------------------------------------------
-
-interface InMemPrescription {
-  id: string;
-  customerId: string;
-  customerName: string;
-  customerPhone: string;
-  pharmacyId?: string;
-  pharmacyName?: string;
-  prescriptionImageUrl: string;
-  patientNotes?: string;
-  patientAge?: number;
-  patientGender?: string;
-  status: string;
-  pharmacistNotes?: string;
-  dosageInstructions?: string;
-  quotedItems: any[];
-  quotedTotalUgx: number;
-  deliveryAddress?: string;
-  deliveryFeeUgx: number;
-  createdAt: string;
-  updatedAt: string;
-}
-
-const MEMORY_PRESCRIPTIONS: InMemPrescription[] = [
-  {
-    id: "rx_demo_01",
-    customerId: "cust_demo_01",
-    customerName: "Prossy Kembabazi",
-    customerPhone: "+256 772 344 556",
-    pharmacyId: "store_demo_vine_pharmacy",
-    pharmacyName: "Vine Pharmacy — Acacia Mall",
-    prescriptionImageUrl: "https://images.unsplash.com/photo-1584017911766-d451b3d0e843?auto=format&fit=crop&w=600&q=80",
-    patientNotes: "Chesty cough x 3 days, low fever, throat irritation. Allergic to Amoxicillin/Penicillin.",
-    patientAge: 32,
-    patientGender: "female",
-    status: "pending_review",
-    quotedItems: [],
-    quotedTotalUgx: 35000,
-    deliveryAddress: "Kisementi, Plot 14 Acacia Avenue",
-    deliveryFeeUgx: 5000,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-];
-
-marketplaceRoutes.post("/pharmacy/prescriptions", async (c) => {
-  const user = c.get("user" as any);
-  const body = await c.req.json().catch(() => ({}));
-
-  const newRx: InMemPrescription = {
-    id: `rx_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-    customerId: user?.id || "anonymous_customer",
-    customerName: user?.name || "Customer",
-    customerPhone: user?.phone || "+256 700 000 000",
-    pharmacyId: body.pharmacyId || "store_demo_vine_pharmacy",
-    pharmacyName: body.pharmacyName || "Vine Pharmacy — Acacia Mall",
-    prescriptionImageUrl: body.prescriptionImageUrl || "",
-    patientNotes: body.patientNotes || "",
-    patientAge: body.patientAge,
-    patientGender: body.patientGender || "female",
-    deliveryAddress: body.deliveryAddress || "Kampala",
-    status: "pending_review",
-    quotedItems: [],
-    quotedTotalUgx: 0,
-    deliveryFeeUgx: 5000,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
+  const door = { lat: destinationLat!, lng: destinationLng! };
+  const at = (stop: DeliveryStop) => ({ lat: stop.lat!, lng: stop.lng! });
+  stops = shortestPickupOrder(stops as Array<DeliveryStop & { lat: number; lng: number }>, door);
+  const legKm = await roadLegsKm([...stops.map(at), door]);
+  const directKm = stops.length > 1 ? (await roadLegsKm([at(stops[0]), door]))[0] : legKm[0];
+  const totalKm = legKm.reduce((sum, km) => sum + km, 0);
+  const fee = roundFare(totalKm * settings.deliveryRatePerKm, settings.minimumDeliveryFee);
+  const directFee = Math.min(fee, roundFare(directKm * settings.deliveryRatePerKm, settings.minimumDeliveryFee));
+  const trip: BagTrip = {
+    legs: legKm.map((km, i) => ({ fromName: stops[i].storeName, toName: stops[i + 1]?.storeName ?? "You", km: round1(km) })),
+    totalKm: round1(totalKm),
+    directKm: round1(directKm), directFee,
+    addedKm: round1(Math.max(0, totalKm - directKm)), addedFee: fee - directFee,
+    fee,
   };
+  stops.forEach((stop, i) => { stop.distanceKm = round1(i === stops.length - 1 ? legKm[i] : legKm.slice(i).reduce((a, b) => a + b, 0)); });
 
-  MEMORY_PRESCRIPTIONS.unshift(newRx);
-  return c.json({ ok: true, prescription: newRx }, 201);
-});
-
-marketplaceRoutes.get("/pharmacy/prescriptions", async (c) => {
-  const user = c.get("user" as any);
-  const userId = user?.id;
-  const list = userId
-    ? MEMORY_PRESCRIPTIONS.filter((p) => p.customerId === userId)
-    : MEMORY_PRESCRIPTIONS;
-  return c.json({ prescriptions: list });
-});
-
-marketplaceRoutes.get("/pharmacy/pharmacist/prescriptions", async (c) => {
-  return c.json({ prescriptions: MEMORY_PRESCRIPTIONS });
-});
-
-marketplaceRoutes.patch("/pharmacy/pharmacist/prescriptions/:id", async (c) => {
-  const id = c.req.param("id");
-  const body = await c.req.json().catch(() => ({}));
-  const rx = MEMORY_PRESCRIPTIONS.find((p) => p.id === id);
-
-  if (!rx) {
-    return c.json({ ok: false, error: "Prescription not found" }, 404);
+  // Long trips: a relay by matatu, the rider first collecting from every store.
+  let relay: BagRelay | null = null;
+  const between = legKm.slice(0, -1).reduce((sum, km) => sum + km, 0);
+  const last = stops[stops.length - 1];
+  const plan = await planRelay(
+    { lat: last.lat!, lng: last.lng!, name: last.storeName },
+    { ...door, name: "Your door" },
+    { start: { lat: stops[0].lat!, lng: stops[0].lng!, name: stops[0].storeName }, leadInKm: between, tripKm: totalKm },
+  );
+  if (plan) {
+    const { lastMile, meet } = await resolveLastMile(plan, destination.relayLastMile, destination.relayMeetStageId);
+    relay = { plan, lastMile, meet, fee: relayChargeFor(plan, lastMile) };
   }
 
-  if (body.status) rx.status = body.status;
-  if (body.pharmacistNotes) rx.pharmacistNotes = body.pharmacistNotes;
-  if (body.dosageInstructions) rx.dosageInstructions = body.dosageInstructions;
-  if (body.quotedItems) rx.quotedItems = body.quotedItems;
-  if (typeof body.quotedTotalUgx === "number") rx.quotedTotalUgx = body.quotedTotalUgx;
-  rx.updatedAt = new Date().toISOString();
-
-  return c.json({ ok: true, prescription: rx });
-});
-
+  const mode = relay && destination.deliveryMode !== "rider" ? "relay" : "rider";
+  if (mode === "relay") {
+    // The whole relay is paid with the first pickup; the other stores ride along.
+    stops.forEach((stop, i) => { stop.deliveryFee = i === 0 ? relay!.fee : 0; });
+  } else {
+    // The first store carries the direct trip; each further store the extra road it adds.
+    const extraKm = legKm.slice(0, -1);
+    const extraTotal = extraKm.reduce((sum, km) => sum + km, 0);
+    let shared = 0;
+    stops.forEach((stop, i) => {
+      if (i === 0) { stop.deliveryFee = directFee; return; }
+      stop.deliveryFee = i === stops.length - 1
+        ? trip.addedFee - shared
+        // Whole fare steps (UGX 500), the last store taking what's left, so no store shows odd shillings.
+        : extraTotal > 0 ? Math.floor((trip.addedFee * extraKm[i - 1]) / extraTotal / 500) * 500 : 0;
+      shared += stop.deliveryFee;
+    });
+  }
+  return { stops, mode, trip, relay };
+}

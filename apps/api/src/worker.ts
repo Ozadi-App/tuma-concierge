@@ -9,9 +9,12 @@ import { sweepExpiredOrders } from "./orders/expiry.js";
 import { sweepScheduledRides } from "./car/scheduled.js";
 import { releaseStaleSeats } from "./car/carpool.js";
 import { sweepRentalRequests } from "./car/selfdrive.js";
+import { sweepWork } from "./work/scheduled.js";
+import { expireStaleVouchers } from "./gas/vouchers.js";
 import { sweepStageEscalations, sweepStageFines, sweepElectionSessions } from "./stages/escalation.js";
 import { sweepActivationMessages } from "./onboarding/service.js";
 import { sweepFoodHours } from "./restaurants/hours.js";
+import { sweepSandboxRelay } from "./relay/sandbox-demo.js";
 
 /** Minimal local stand-in so we don't need @cloudflare/workers-types (which
  * conflicts with @types/node's DOM-lib globals) just for one field. */
@@ -76,9 +79,24 @@ export default {
         .catch((err) => console.error("Carpool seat release sweep failed:", err)),
     );
     ctx.waitUntil(
+      sweepWork()
+        .then((r) => console.log("Peebee Work sweep:", JSON.stringify(r)))
+        .catch((err) => console.error("Peebee Work sweep failed:", err)),
+    );
+    ctx.waitUntil(
+      expireStaleVouchers()
+        .then((n) => console.log("Fuel voucher expiry sweep:", n))
+        .catch((err) => console.error("Fuel voucher expiry sweep failed:", err)),
+    );
+    ctx.waitUntil(
       sweepRentalRequests()
         .then((n) => console.log("Self-drive request sweep:", n))
         .catch((err) => console.error("Self-drive request sweep failed:", err)),
+    );
+    ctx.waitUntil(
+      sweepSandboxRelay()
+        .then((steps) => console.log("Sandbox relay demo sweep:", steps))
+        .catch((err) => console.error("Sandbox relay demo sweep failed:", err)),
     );
     ctx.waitUntil(
       sweepElectionSessions()

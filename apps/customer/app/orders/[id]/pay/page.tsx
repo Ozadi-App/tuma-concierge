@@ -10,10 +10,12 @@ import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApplicantPicker } from "../../../../components/ApplicantPicker";
 import { MobileNumberPicker } from "../../../../components/MobileNumberPicker";
+import { OrderBreakdown } from "../../../../components/OrderBreakdown";
 import { api, errorMessage } from "../../../../lib/api";
 import { formatUgx } from "../../../../lib/order-display";
 import { useLivePolling } from "../../../../lib/use-live-polling";
 import { useNetworkStatus } from "../../../../lib/use-network-status";
+import { useRegisterNavPrimaryAction, useRegisterNavBack } from "../../../../lib/nav-primary-action";
 
 type Method = "mobile_money" | "wallet" | "cash";
 type Quote = Awaited<ReturnType<typeof api.getOrderCheckout>>;
@@ -37,7 +39,6 @@ export default function PaymentPage() {
   const [walletError, setWalletError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [canAddPickup, setCanAddPickup] = useState(false);
   const paying = useRef(false);
   const polling = useRef(false);
   const load = useCallback(async () => {
@@ -45,16 +46,29 @@ export default function PaymentPage() {
     polling.current = true;
     try {
       let current = await api.getOrder(id);
+      // A combined delivery is paid once, from its first pickup.
+      const bundleLead = current.order.delivery_bundle_id && current.order.delivery_bundle_id !== id
+        ? current.bundleStops?.find((stop) => stop.id === current.order.delivery_bundle_id)
+        : undefined;
+      if (bundleLead && ["Create", "Match", "Fund"].includes(bundleLead.stage) && ["Create", "Match"].includes(current.order.stage)) {
+        router.replace(`/orders/${current.order.delivery_bundle_id}/pay`);
+        return;
+      }
       let bundleWindowOpen = false;
       if (!current.order.delivery_bundle_id && current.order.stage === "Create") {
         try {
           const candidates = await api.getDeliveryBundleCandidates();
           bundleWindowOpen = candidates.orders.some((candidate) => candidate.id === id);
-          setCanAddPickup(bundleWindowOpen);
+          // Adding another restaurant happens while ordering, not at payment: a lone order simply
+          // continues here, so its pickup-choice hold is closed automatically.
+          if (bundleWindowOpen) {
+            await api.closeDeliveryBundleWindow(id);
+            bundleWindowOpen = false;
+          }
         } catch {
-          setCanAddPickup(false);
+          bundleWindowOpen = false;
         }
-      } else setCanAddPickup(false);
+      }
       if (!bundleWindowOpen && !current.order.rider_id && ["Create", "Match"].includes(current.order.stage)) {
         await api.matchOrder(id).catch(() => {});
         current = await api.getOrder(id);
@@ -71,11 +85,17 @@ export default function PaymentPage() {
       }
       setDetail(current);
       setQuote(nextQuote);
-      if (!["Create", "Match", "Fund"].includes(current.order.stage)) router.replace(`/orders/${id}`);
+      // Paid already (a relay paid before its rider): nothing left to do here, the order page follows it.
+      const paid = current.payments.some((p) => p.type === "collection" && p.status === "successful");
+      if (!["Create", "Match", "Fund"].includes(current.order.stage) || (paid && current.order.stage !== "Fund")) router.replace(`/orders/${id}`);
     } catch (err) { setError(errorMessage(err)); }
     finally { polling.current = false; }
   }, [id, router]);
   useLivePolling(() => void load(), 4000, [load]);
+  // A relay is paid in the app, never in cash.
+  useEffect(() => {
+    if (quote?.payBeforeRider && method === "cash") setMethod("mobile_money");
+  }, [quote?.payBeforeRider, method]);
 
   useEffect(() => {
     let active = true;
@@ -95,24 +115,16 @@ export default function PaymentPage() {
   const amount = quote ? (method === "mobile_money" ? quote.mobileMoney : quote[method]) : null;
   const network = detectMobileMoneyNetwork(phone);
   const pending = detail?.payments.some((p) => p.type === "collection" && ["pending", "unknown"].includes(p.status)) ?? false;
-  const ready = detail?.order.stage === "Match" && !!detail.order.rider_id && !pending;
+  const combinedStops = detail?.bundleStops ?? [];
+  // Relay: pay straight away, before any rider (admin setting). Direct: wait until a rider accepts.
+  const payFirst = !!quote?.payBeforeRider;
+  const ready = !pending && (payFirst || (detail?.order.stage === "Match" && !!detail.order.rider_id
+    && (combinedStops.length < 2 || combinedStops.every((stop) => stop.stage === "Match"))));
+  const methods = payFirst ? METHODS.filter((m) => m.id !== "cash") : METHODS;
   const insufficient = method === "wallet" && selectedWallet?.balance != null && amount != null && selectedWallet.balance < amount;
   const disabled = busy || !online || !ready || amount == null ||
     (method === "mobile_money" && !network) ||
     (method === "wallet" && (!selectedWallet || selectedWallet.balance == null || insufficient));
-
-  async function continueWithOnePickup() {
-    setBusy(true);
-    setError(null);
-    try {
-      await api.closeDeliveryBundleWindow(id);
-      await load();
-    } catch (err) {
-      setError(errorMessage(err));
-    } finally {
-      setBusy(false);
-    }
-  }
 
   async function pay() {
     if (disabled || paying.current || amount == null) return;
@@ -127,13 +139,27 @@ export default function PaymentPage() {
       });
       if (result.redirectUrl) { window.location.href = result.redirectUrl; return; }
       if (result.funded || result.payment?.status === "successful") {
-        const nextUnpaidPickup = detail?.bundleStops?.find((stop) => stop.id !== id && stop.stage === "Match");
+        // A combined delivery is paid once (quote.bundle); only an older part-paid one still chains to the next pickup.
+        const nextUnpaidPickup = quote?.bundle ? undefined : detail?.bundleStops?.find((stop) => stop.id !== id && stop.stage === "Match");
         router.replace(nextUnpaidPickup ? `/orders/${nextUnpaidPickup.id}/pay` : `/orders/${id}`);
       }
       else await load();
     } catch (err) { setError(errorMessage(err)); await load(); }
     finally { paying.current = false; setBusy(false); }
   }
+
+  // The final pay step is the bottom nav's gold right capsule (both themes),
+  // wired to the same pay() with the same disabled rules.
+  // Pay step: nav Back returns to the order.
+  useRegisterNavBack(true, () => router.push(`/orders/${id}`));
+  useRegisterNavPrimaryAction({
+    tone: "gold",
+    label: busy ? "Please wait…" : pending ? "Waiting for payment" : method === "cash" ? "Continue with cash" : `Pay${amount == null ? "" : ` ${formatUgx(amount)}`}`,
+    sublabel: !busy && !pending && method === "mobile_money" && network ? `with ${mobileMoneyNetworkLabel(network)}` : method === "wallet" && !busy && !pending ? "from wallet" : undefined,
+    disabled,
+    busy: busy || pending,
+    onClick: () => void pay(),
+  });
 
   return (
     <div className="mx-auto max-w-lg space-y-5 px-4 pt-5">
@@ -142,9 +168,12 @@ export default function PaymentPage() {
         <h1 className="text-2xl font-bold text-ink">Payment</h1>
         <p className="text-sm text-ink-500">How would you like to pay?</p>
       </div>
-      <fieldset disabled={busy || pending} className="grid grid-cols-3 gap-2">
+      {detail && !detail.order.rider_id && payFirst && (
+        <p className="rounded-xl bg-gold/10 p-3 text-sm leading-6 text-ink">Pay now. We&apos;ll assign your riders and matatu for same-day delivery.</p>
+      )}
+      <fieldset disabled={busy || pending} className={`grid gap-2 ${methods.length === 2 ? "grid-cols-2" : "grid-cols-3"}`}>
         <legend className="sr-only">Payment method</legend>
-        {METHODS.map(({ id: value, label, icon: Icon }) => (
+        {methods.map(({ id: value, label, icon: Icon }) => (
           <label key={value} className={`flex min-h-24 cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border-2 p-2 text-center text-sm font-bold ${method === value ? "border-gold bg-gold/10 text-ink" : "border-[var(--border-faint)] text-ink-500"}`}>
             <input type="radio" name="payment-method" value={value} checked={method === value} onChange={() => setMethod(value)} className="sr-only peer" />
             <Icon className="h-6 w-6 peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-gold" aria-hidden />
@@ -153,8 +182,8 @@ export default function PaymentPage() {
         ))}
       </fieldset>
       <section className="home-card space-y-4">
-        {canAddPickup && <div className="rounded-2xl border border-gold/30 bg-gold/10 p-4"><h2 className="font-bold text-ink">Add another pickup?</h2><p className="mt-1 text-sm text-ink-500">Your rider has not been assigned yet. Add one food or shopping pickup and we’ll calculate the extra route fee. This choice stays open for 30 minutes.</p><div className="mt-3 flex flex-wrap gap-2"><Link href="/restaurants" className="inline-flex min-h-11 items-center rounded-full bg-gold px-5 text-sm font-bold text-ink-gold">Add another restaurant</Link><button type="button" onClick={continueWithOnePickup} disabled={busy} className="min-h-11 rounded-full border border-[var(--border-faint)] px-4 text-sm font-bold text-ink">Keep this order only</button></div></div>}
-        <fieldset disabled={busy || pending} hidden={method !== "mobile_money"}>
+
+        <fieldset disabled={busy || pending} hidden={method !== "mobile_money"} className="min-w-0">
           <MobileNumberPicker purpose="payment" value={phone} onChange={setPhone} prominent autoSave />
           <p className="mt-3 text-sm text-ink-500">Enter your MTN MoMo or Airtel Money number. We detect the network automatically.</p>
         </fieldset>
@@ -188,13 +217,27 @@ export default function PaymentPage() {
         {method !== "cash" && <p className="rounded-xl bg-gold/10 p-3 text-sm leading-6 text-ink">Your money is held safely in the app. Your rider receives it only after your delivery or ride is completed.</p>}
       </section>
       <section className="home-card space-y-2" aria-live="polite">
-        {quote && amount != null && amount > quote.baseAmount && <>
-          <div className="flex justify-between text-sm text-ink-500"><span>Order amount</span><span>{formatUgx(quote.baseAmount)}</span></div>
-          <div className="flex justify-between text-sm text-ink-500"><span>Payment and service fees</span><span>{formatUgx(amount - quote.baseAmount)}</span></div>
-        </>}
-        <div className="flex justify-between gap-3 text-lg font-bold text-ink"><span>Total</span><span>{amount == null ? "Loading…" : formatUgx(amount)}</span></div>
+        {quote?.delivery && quote.items && quote.itemsSubtotal != null ? (
+          // Items, their subtotal, a faint line, the delivery and its breakdown, then the total.
+          <OrderBreakdown
+            items={quote.items}
+            itemsSubtotal={quote.itemsSubtotal}
+            delivery={quote.delivery}
+            fees={amount != null ? amount - quote.baseAmount : 0}
+            total={amount}
+            deliveryLabel={detail?.order.is_ride ? "Fare" : undefined}
+          />
+        ) : (
+          <>
+            {quote && amount != null && amount > quote.baseAmount && <>
+              <div className="flex justify-between text-sm text-ink-500"><span>Order amount</span><span>{formatUgx(quote.baseAmount)}</span></div>
+              <div className="flex justify-between text-sm text-ink-500"><span>Payment and service fees</span><span>{formatUgx(amount - quote.baseAmount)}</span></div>
+            </>}
+            <div className="flex justify-between gap-3 text-lg font-bold text-ink"><span>Total</span><span>{amount == null ? "Loading…" : formatUgx(amount)}</span></div>
+          </>
+        )}
       </section>
-      {detail && !detail.order.rider_id && (
+      {detail && !detail.order.rider_id && !payFirst && (
         <section className="home-card">
           {detail.order.matching_mode === "customer_selects" ? <ApplicantPicker orderId={id} onSelected={() => void load()} /> :
             <p className="text-sm text-ink-500">Finding your rider. You can choose your payment option while you wait.</p>}
@@ -204,9 +247,6 @@ export default function PaymentPage() {
       {!pending && ready && detail?.payments.some((p) => p.type === "collection" && p.status === "failed") && <p role="status" className="text-sm text-ink-500">Your previous payment did not complete. You can try again or choose another payment option.</p>}
       {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
       {!online && <p role="alert" className="text-sm text-ink-500">Connect to the internet to continue.</p>}
-      <button type="button" onClick={() => void pay()} disabled={disabled} className="min-h-14 w-full rounded-full bg-gold px-4 text-base font-bold text-ink-gold disabled:opacity-50">
-        {busy ? "Please wait…" : pending ? "Waiting for payment" : method === "cash" ? "Continue with cash" : `Pay${amount == null ? "" : ` ${formatUgx(amount)}`}${method === "mobile_money" && network ? ` with ${mobileMoneyNetworkLabel(network)}` : ""}`}
-      </button>
     </div>
   );
 }

@@ -203,16 +203,27 @@ export async function ensureOrderBudget(orderId: string): Promise<Row> {
 export async function activateMerchantAllocationsForFundedOrder(orderId: string): Promise<boolean> {
   const orderResult = await db.execute({ sql: "SELECT * FROM orders WHERE id = ?", args: [orderId] });
   const order = orderResult.rows[0] as Row | undefined;
-  if (!order || order.payment_rail !== "escrow") return false;
+  // Only shopping orders buy goods from merchants; a parcel or ride has no shopping principal.
+  if (!order || order.payment_rail !== "escrow" || order.type !== "shopping") return false;
   const environment = order.environment as PlatformEnvironment;
   if (!(await merchantPaymentsEnabled(environment))) return false;
-  if (!order.rider_id) throw new Error("Merchant-funded order must have an assigned rider");
+  // A relay paid before any rider: allocations start when the first-leg rider is
+  // assigned (assignRider in ../orders/routes.ts calls this again then).
+  if (!order.rider_id) return false;
   const existingLock = await db.execute({
     sql: "SELECT order_id FROM rider_order_locks WHERE rider_id = ?",
     args: [String(order.rider_id)],
   });
   if (existingLock.rows[0] && String((existingLock.rows[0] as Row).order_id) !== orderId) {
-    throw new Error("Rider already has another active funded order");
+    // One lock per rider, but a combined delivery's pickups are one job: the rider holds the lock
+    // under the first pickup and may carry every pickup of that same delivery.
+    const sameDelivery = order.delivery_bundle_id
+      ? await db.execute({
+          sql: "SELECT 1 FROM orders WHERE id = ? AND delivery_bundle_id = ?",
+          args: [String((existingLock.rows[0] as Row).order_id), String(order.delivery_bundle_id)],
+        })
+      : null;
+    if (!sameDelivery || sameDelivery.rows.length === 0) throw new Error("Rider already has another active funded order");
   }
   await ensureOrderBudget(orderId);
   await db.execute({

@@ -51,6 +51,11 @@ export function formatDateTime(ts: string): string {
   return parseDbTimestamp(ts).toLocaleString("en-UG", { dateStyle: "medium", timeStyle: "short" });
 }
 
+/** Clock time only, e.g. "14:05". */
+export function formatTime(ts: string): string {
+  return parseDbTimestamp(ts).toLocaleTimeString("en-UG", { hour: "2-digit", minute: "2-digit", hour12: false });
+}
+
 /** How long between two SQLite timestamps, in a compact "1h 20m" / "45 min" form. */
 export function formatDuration(startTs: string, endTs: string): string {
   const minutes = Math.max(0, Math.round((parseDbTimestamp(endTs).getTime() - parseDbTimestamp(startTs).getTime()) / 60000));

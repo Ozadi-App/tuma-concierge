@@ -1,4 +1,5 @@
 import { Hono, type Context } from "hono";
+import { roadKm } from "../lib/road-distance.js";
 import { z } from "zod";
 import type { InArgs } from "@libsql/client";
 import { db, executeBatch } from "../db/client.js";
@@ -16,6 +17,7 @@ import {
   getMonetizationSettings,
   getPlatformEnvironment,
   getRiderReserveSettings,
+  getRideExtrasSettings,
   isServiceEnabled,
   type ServiceKey,
 } from "../lib/settings.js";
@@ -23,11 +25,27 @@ import { servicePaused } from "../lib/service-gate.js";
 import { getRideTrackingSettings } from "../settings/ride-tracking.js";
 import { computeCheckoutFees, isCashDepositOk, riderPayout } from "../lib/monetization.js";
 import { notifyUser } from "../lib/webpush.js";
-import { currentVisibilityRadiusKm, orderMatchPoint, parseDbTimestamp } from "./matching.js";
+import { beyondRiderRange, currentVisibilityRadiusKm, orderMatchPoint, ownRangeKm, parseDbTimestamp, riderRangeKm } from "./matching.js";
 import { redactOrder } from "./visibility.js";
-import { assignAvailableRider } from "./assignment.js";
+import { assignAvailableRider, PAID_ESCROW } from "./assignment.js";
 import { computeBidding, loadBiddingContext, validateBid } from "./bidding.js";
 import { hasColumn, hasTable } from "../lib/schema.js";
+import {
+  MAX_STOPS_HARD,
+  fareBand,
+  insertStops,
+  loadStops,
+  offerSummary,
+  rememberIdempotent,
+  replayIdempotent,
+  rideExtrasAvailable,
+  type OrderStop,
+  rideQuote,
+  rideStopSchema,
+  timestampMs,
+  validateOffer,
+  validateStops,
+} from "./ride-extras.js";
 import { findCarCandidate, isCarOrder, settleCarBooking, stampCarBooking } from "../car/service.js";
 import { getApplicantProfile } from "./applicant-profile.js";
 import { buildLugandaListNarration } from "./list-narration.js";
@@ -46,7 +64,11 @@ import {
 import { getR2Bucket, uploadResponseHeaders } from "../storage/r2.js";
 import { appBaseUrl } from "../verify/service.js";
 import { payFromWallet } from "../wallet/service.js";
+import { checkoutBreakdown, deliveryOrders } from "./checkout-breakdown.js";
+import { bundleCheckoutQuote, fundBundle, notifyRiderOfCombinedDelivery, prepaidBundleGroup, unfundedBundleGroup, unpaidBundleGroup } from "./bundle-funding.js";
+import { stepSandboxRelay } from "../relay/sandbox-demo.js";
 import { isSubscriptionCurrent } from "../riders/subscription.js";
+import { insertRelayLegs, planRelay, relayChargeFor, resolveLastMile, type RelayLastMile, type RelayMeet, relayAwaitingCollection, relayBlocksFinalSteps, relayPaysBeforeRider, relayView, settleRelayPayouts, type RelayPlan } from "../relay/service.js";
 import {
   activateMerchantAllocationsForFundedOrder,
   refundUnusedOrderPrincipal,
@@ -303,6 +325,16 @@ const createOrderSchema = z.object({
   estimatedTotal: z.number().int().nonnegative().optional(),
   /** A ride booked for someone else: the booker pays, this person rides. */
   passenger: passengerSchema.optional(),
+  /** Boda rides only: ordered stops between pickup and destination (migration 0104). */
+  stops: z.array(rideStopSchema).max(MAX_STOPS_HARD).optional(),
+  /** Boda rides only: Name your fare — the customer's own price, within the band around the app's quote. */
+  fareOffer: z.number().int().positive().max(100_000_000).optional(),
+  /** A long parcel dropped at a petrol station: bring it to the door, or the customer collects it. */
+  relayLastMile: z.enum(["door", "collect", "meet"]).optional(),
+  /** With relayLastMile "meet": the stage on the route where the customer meets the matatu. */
+  relayMeetStageId: z.string().max(80).optional(),
+  /** A long goods parcel: by matatu relay (the default when one is offered) or one boda all the way. */
+  deliveryMode: z.enum(["rider", "relay"]).optional(),
 });
 
 orderRoutes.post("/orders", async (c) => {
@@ -353,6 +385,31 @@ export async function createOrderFromInput(
   // migrations/0025_order_delivery_fee.sql.
   let deliveryFee: number | null = null;
   const isRide = d.type === "parcel" && d.isRide === true;
+  // A goods parcel too far for one boda is relayed boda -> matatu -> boda,
+  // each leg priced at its own rate (see ../relay/service.ts).
+  let relayPlan: RelayPlan | null = null;
+  let relayLastMile: RelayLastMile = "door";
+  let relayMeet: RelayMeet | null = null;
+  const stops = d.stops ?? [];
+  const wantsExtras = stops.length > 0 || d.fareOffer != null;
+  const extras = wantsExtras ? await getRideExtrasSettings() : null;
+  if (wantsExtras) {
+    if (!isRide || car) {
+      return c.json({ error: "invalid_body", message: "Stops and fare offers are only for boda rides." }, 400);
+    }
+    const available = await rideExtrasAvailable();
+    if ((stops.length > 0 && !available.stops) || (d.fareOffer != null && !available.offers)) {
+      return c.json({ error: "feature_unavailable", code: "feature_unavailable", message: "This option isn't available yet. Book at the standard fare instead." }, 503);
+    }
+    const pickupPoint = d.pickupLat != null && d.pickupLng != null ? { lat: d.pickupLat, lng: d.pickupLng } : null;
+    const destinationPoint = d.destinationLat != null && d.destinationLng != null ? { lat: d.destinationLat, lng: d.destinationLng } : null;
+    const stopError = validateStops(stops, extras!.maxStops, pickupPoint, destinationPoint);
+    if (stopError) return c.json({ error: "invalid_stops", message: stopError }, 400);
+    if (d.fareOffer != null && (!pickupPoint || !destinationPoint)) {
+      return c.json({ error: "invalid_body", message: "Pin the pickup and destination to name your fare." }, 400);
+    }
+  }
+  let offer: { amount: number; quote: number } | null = null;
   if (car) {
     if (d.pickupLat != null && d.pickupLng != null && d.destinationLat != null && d.destinationLng != null) {
       distanceKm = haversineKm(d.pickupLat, d.pickupLng, d.destinationLat, d.destinationLng);
@@ -361,7 +418,10 @@ export async function createOrderFromInput(
     deliveryFee = car.fare;
   } else if (d.type === "parcel") {
     if (d.pickupLat != null && d.pickupLng != null && d.destinationLat != null && d.destinationLng != null) {
-      distanceKm = haversineKm(d.pickupLat, d.pickupLng, d.destinationLat, d.destinationLng);
+      // A goods parcel is priced along the road (the quote uses the same); a ride keeps its own fare rules.
+      distanceKm = isRide
+        ? haversineKm(d.pickupLat, d.pickupLng, d.destinationLat, d.destinationLng)
+        : await roadKm({ lat: d.pickupLat, lng: d.pickupLng }, { lat: d.destinationLat, lng: d.destinationLng });
     }
     const { deliveryRatePerKm, minimumDeliveryFee, rideRatePerKm, rideMinimumFare } = await getDeliverySettings();
     const rate = isRide ? rideRatePerKm : deliveryRatePerKm;
@@ -370,6 +430,38 @@ export async function createOrderFromInput(
     // passenger) even when pickup and destination are barely apart —
     // distance × rate is never allowed to round down toward a near-free ride.
     estimatedTotal = roundFare(distanceKm != null ? distanceKm * rate : (d.estimatedTotal ?? 0), minimum);
+    if (!isRide && distanceKm != null) {
+      relayPlan = await planRelay(
+        { lat: d.pickupLat!, lng: d.pickupLng!, name: d.pickupArea ?? d.pickupAddress },
+        { lat: d.destinationLat!, lng: d.destinationLng!, name: d.destinationArea ?? d.destinationAddress },
+        { tripKm: distanceKm },
+      );
+      // The customer may keep one boda all the way instead of the relay offered.
+      if (relayPlan && d.deliveryMode === "rider") relayPlan = null;
+      if (relayPlan) {
+        if (d.paymentRail === "float") {
+          return c.json({ error: "relay_requires_prepay", message: "Long-distance parcels are paid in the app, not in cash." }, 409);
+        }
+        ({ lastMile: relayLastMile, meet: relayMeet } = await resolveLastMile(relayPlan, d.relayLastMile, d.relayMeetStageId));
+        estimatedTotal = relayChargeFor(relayPlan, relayLastMile);
+      }
+    }
+    if (isRide && extras && stops.length > 0) {
+      // Multi-stop: the distance runs through every stop, plus a flat fee per stop.
+      const quote = rideQuote(
+        { pickup: { lat: d.pickupLat!, lng: d.pickupLng! }, destination: { lat: d.destinationLat!, lng: d.destinationLng! }, stops },
+        { ratePerKm: rate, minimumFare: minimum, stopFee: extras.stopFee },
+      );
+      distanceKm = quote.distanceKm;
+      estimatedTotal = quote.total;
+    }
+    if (isRide && extras && d.fareOffer != null) {
+      // Name your fare: the offer replaces the total, but only inside the fair band around the quote.
+      const checked = validateOffer(d.fareOffer, fareBand(estimatedTotal, extras));
+      if ("error" in checked) return c.json({ error: "offer_out_of_range", message: checked.error, band: fareBand(estimatedTotal, extras), quote: estimatedTotal }, 400);
+      offer = { amount: checked.amount, quote: estimatedTotal };
+      estimatedTotal = checked.amount;
+    }
     // A parcel ride (goods or passenger) has no items — its whole total IS the delivery fee.
     deliveryFee = estimatedTotal;
   } else if (d.type === "shopping") {
@@ -470,7 +562,32 @@ export async function createOrderFromInput(
     args: [d.listId],
   });
   await logEvent(orderId, "Create", "Order created", user.sub);
+  if (relayPlan) {
+    await insertRelayLegs(orderId, relayPlan, relayLastMile, relayMeet);
+    await logEvent(
+      orderId,
+      "Create",
+      relayPlan.dropMode === "station"
+        ? relayMeet
+          ? `Relay delivery by boda and matatu (${relayPlan.direction}); customer meets the matatu at ${relayMeet.name}`
+          : `Relay delivery by boda and matatu (${relayPlan.direction}) to ${relayPlan.station?.name}${relayLastMile === "door" ? ", then boda to the door" : ""}`
+        : `Relay delivery by boda, matatu (${relayPlan.direction}) and boda`,
+      user.sub,
+    );
+  }
   await snapshotTimeFees(orderId, deliveryFee ?? estimatedTotal ?? 0);
+
+  if (stops.length > 0) {
+    await insertStops(orderId, stops);
+    await logEvent(orderId, "Create", `Ride with ${stops.length} stop${stops.length === 1 ? "" : "s"} on the way`, user.sub);
+  }
+  if (offer && extras) {
+    await db.execute({
+      sql: "UPDATE orders SET fare_offer = ?, fare_offer_quote = ?, fare_offer_expires_at = ? WHERE id = ?",
+      args: [offer.amount, offer.quote, new Date(Date.now() + extras.offerTtlMinutes * 60_000).toISOString(), orderId],
+    });
+    await logEvent(orderId, "Create", `Customer offers ${formatAmount(offer.amount)} (app fare ${formatAmount(offer.quote)})`, user.sub);
+  }
 
   // Booking for someone else: only for passenger rides, only while the admin
   // switch is on and its migration is applied. Anything else ignores it.
@@ -507,7 +624,11 @@ orderRoutes.post("/orders/:id/resend", async (c) => {
   if (running.rows.length > 0) return c.json({ error: "already_resent", message: "This order was already resent." }, 409);
 
   const isRide = old.is_ride === 1 || old.is_ride === true;
+  // A multi-stop ride goes out again with the same stops, at the standard fare
+  // (an old offer would be priced against an old quote).
+  const oldStops = isRide && Number(old.stop_count ?? 0) > 0 ? await loadStops(String(old.id)) : [];
   const response = await createOrderFromInput(c, {
+    stops: oldStops.length ? oldStops.map((stop) => ({ area: stop.area ?? undefined, address: stop.address ?? undefined, lat: stop.lat, lng: stop.lng })) : undefined,
     listId: String(old.list_id),
     type: old.type === "parcel" ? "parcel" : "shopping",
     isRide: isRide || undefined,
@@ -571,18 +692,23 @@ orderRoutes.get("/orders/active", async (c) => {
   // Surfaced here too (not just on the order's own detail page) so the
   // home screen can flag a pending rider fee proposal without the customer
   // having to open the order first — see components/home/FeeProposalCard.
+  const counterKinds = await hasColumn("fee_proposals", "kind");
   const proposalRes = await db.execute({
-    sql: "SELECT * FROM fee_proposals WHERE order_id = ? AND status = 'pending' ORDER BY created_at DESC LIMIT 1",
+    sql: `SELECT * FROM fee_proposals WHERE order_id = ? AND status = 'pending' ${counterKinds ? "AND kind = 'adjust'" : ""} ORDER BY created_at DESC LIMIT 1`,
     args: [activeOrder.id as string],
   });
-  return c.json({ activeOrder, pendingFeeProposal: proposalRes.rows[0] ?? null });
+  return c.json({
+    activeOrder,
+    pendingFeeProposal: proposalRes.rows[0] ?? null,
+    ...(await rideExtrasFor(activeOrder as Row)),
+  });
 });
 
 orderRoutes.get("/orders/bundle-candidates", requireRole("customer"), async (c) => {
   if (!await hasColumn("orders", "delivery_bundle_id") || !await hasColumn("orders", "delivery_bundle_hold")) return c.json({ orders: [] });
   const res = await db.execute({
     sql: `SELECT o.id,o.restaurant_id,o.pickup_lat,o.pickup_lng,o.pickup_address,o.destination_lat,o.destination_lng,
-                 o.delivery_fee,o.delivery_bundle_id,r.name AS restaurant_name
+                 o.delivery_fee,o.estimated_total,o.delivery_bundle_id,r.name AS restaurant_name
           FROM orders o LEFT JOIN restaurants r ON r.id=o.restaurant_id
           WHERE o.customer_id=? AND o.environment=? AND o.type='shopping' AND o.stage='Create'
             AND o.rider_id IS NULL AND o.delivery_bundle_id IS NULL AND o.delivery_bundle_hold=1 AND o.created_at>datetime('now','-30 minutes')
@@ -611,10 +737,14 @@ orderRoutes.post("/orders/:id/bundle-window/close", async (c) => {
 orderRoutes.get("/orders/:id", async (c) => {
   const id = c.req.param("id");
   const user = c.get("user");
-  const order = await getOrder(id);
+  let order = await getOrder(id);
   if (!order) return c.json({ error: "not_found" }, 404);
   if (order.customer_id !== user.sub && order.rider_id !== user.sub && user.role !== "admin") {
     return c.json({ error: "forbidden" }, 403);
+  }
+  // A sandbox relay parcel: the demo riders, matatu and station take their next step as it's watched.
+  if (order.environment === "sandbox" && order.type === "parcel" && (await stepSandboxRelay(id).catch(() => null))) {
+    order = (await getOrder(id)) ?? order;
   }
 
   const bundlesAvailable = await hasColumn("orders", "delivery_bundle_id");
@@ -624,9 +754,12 @@ orderRoutes.get("/orders/:id", async (c) => {
     db.execute({ sql: "SELECT * FROM substitutions WHERE order_id = ? ORDER BY created_at ASC", args: [id] }),
     db.execute({ sql: "SELECT * FROM payments WHERE order_id = ? ORDER BY created_at ASC", args: [id] }),
     db.execute({ sql: "SELECT rating, comment, recommended FROM order_ratings WHERE order_id = ?", args: [id] }),
-    db.execute({ sql: "SELECT * FROM fee_proposals WHERE order_id = ? ORDER BY created_at ASC", args: [id] }),
+    db.execute({
+      sql: `SELECT * FROM fee_proposals WHERE order_id = ? ${(await hasColumn("fee_proposals", "kind")) ? "AND kind = 'adjust'" : ""} ORDER BY created_at ASC`,
+      args: [id],
+    }),
     bundlesAvailable && order.delivery_bundle_id
-      ? db.execute({ sql: `SELECT o.id,o.stage,o.pickup_address,o.pickup_lat,o.pickup_lng,r.name AS restaurant_name,mo.name AS outlet_name
+      ? db.execute({ sql: `SELECT o.id,o.stage,o.pickup_address,o.pickup_lat,o.pickup_lng,COALESCE(r.name,o.pickup_area) AS restaurant_name,mo.name AS outlet_name
                           FROM orders o LEFT JOIN restaurants r ON r.id=o.restaurant_id LEFT JOIN merchant_outlets mo ON mo.id=r.outlet_id
                           WHERE o.delivery_bundle_id=? ORDER BY CASE WHEN o.id=? THEN 0 ELSE 1 END,o.created_at,o.id`, args: [String(order.delivery_bundle_id), id] })
       : Promise.resolve({ rows: [] }),
@@ -642,6 +775,8 @@ orderRoutes.get("/orders/:id", async (c) => {
     feeProposals: feeProposals.rows,
     bundleStops: bundleStops.rows,
     timeFees: await getOrderTimeFees(order),
+    relay: await relayView(order, user.sub),
+    ...(await rideExtrasFor(order, order.customer_id === user.sub)),
   });
 });
 
@@ -789,6 +924,41 @@ orderRoutes.put("/me/matching-preference", async (c) => {
   return c.json({ defaultMatchingMode: parsed.data.defaultMatchingMode });
 });
 
+/** Stops + Name-your-fare state for a ride, for its customer (and the rider's stops). */
+async function rideExtrasFor(order: Row, isCustomer = true): Promise<{ rideStops?: OrderStop[]; fareOffer?: unknown; fareCounters?: unknown[] }> {
+  const out: { rideStops?: OrderStop[]; fareOffer?: unknown; fareCounters?: unknown[] } = {};
+  if (Number(order.stop_count ?? 0) > 0) out.rideStops = await loadStops(String(order.id));
+  if (order.fare_offer != null) {
+    const settings = await getRideExtrasSettings();
+    out.fareOffer = offerSummary(order, settings);
+    if (isCustomer && order.stage === "Create" && !order.rider_id) out.fareCounters = await openCounters(String(order.id));
+  }
+  return out;
+}
+
+/** Riders' counters to a customer's offer that are still waiting for an answer. */
+async function openCounters(orderId: string): Promise<Row[]> {
+  const res = await db.execute({
+    sql: `SELECT fp.id, fp.proposed_total AS amount, fp.previous_total AS offer, fp.rider_id, fp.expires_at, fp.created_at,
+                 u.name AS rider_name, r.verified AS rider_verified,
+                 (SELECT ROUND(AVG(orr.rating), 1) FROM order_ratings orr WHERE orr.rider_id = fp.rider_id) AS rider_rating
+          FROM fee_proposals fp
+          LEFT JOIN users u ON u.id = fp.rider_id
+          LEFT JOIN riders r ON r.user_id = fp.rider_id
+          WHERE fp.order_id = ? AND fp.kind = 'counter' AND fp.status = 'pending'
+          ORDER BY fp.proposed_total ASC, fp.created_at ASC`,
+    args: [orderId],
+  });
+  const now = Date.now();
+  return (res.rows as Row[])
+    .filter((row) => !(timestampMs(row.expires_at) <= now))
+    .map((row) => ({
+      ...row,
+      // First name only, like the open-job feed does the other way round.
+      rider_name: typeof row.rider_name === "string" ? row.rider_name.trim().split(/\s+/)[0] : null,
+    }));
+}
+
 // ---------------------------------------------------------------------------
 // Match
 // ---------------------------------------------------------------------------
@@ -799,7 +969,8 @@ orderRoutes.put("/me/matching-preference", async (c) => {
  * can end in an assignment: the first_to_claim auto-poll and claim button,
  * the nearest_window auto-resolve, and the customer_selects pick.
  */
-async function assignRider(
+/** Assigns a rider who passed the claim checks (also used by the sandbox relay demo for its own riders). */
+export async function assignRider(
   id: string,
   order: Row,
   riderId: string,
@@ -807,9 +978,14 @@ async function assignRider(
   outOfRange: boolean,
 ): Promise<boolean> {
   if (await isBundleWindowOpen(order)) return false;
+  // An order already paid (a relay paid before any rider, or a paid order whose
+  // rider cancelled) goes straight to Shop: assignAvailableRider decides that in
+  // the same statement, so the escrow already held is never asked for again.
   const nextStage = order.payment_rail === "float" ? "Shop" : "Match";
   const assigned = await assignAvailableRider(id, riderId, nextStage, outOfRange, String(order.environment));
   if (!assigned) return false;
+  const prepaid = order.payment_rail === "escrow" &&
+    (await db.execute({ sql: "SELECT stage FROM orders WHERE id = ?", args: [id] })).rows[0]?.stage === "Shop";
 
   if (await hasColumn("orders", "delivery_bundle_id") && order.delivery_bundle_id) {
     const bundled = await db.execute({
@@ -819,7 +995,7 @@ async function assignRider(
     const bundleOrderIds = (bundled.rows as Row[]).map((row) => String(row.id));
     if (bundleOrderIds.length) {
       await executeBatch(bundleOrderIds.map((bundleOrderId) => ({
-        sql: `UPDATE orders SET rider_id=?,stage=?,matched_out_of_range=?,updated_at=datetime('now') WHERE id=? AND delivery_bundle_id=? AND rider_id IS NULL AND stage IN ('Create','Match') AND environment=? AND EXISTS(SELECT 1 FROM orders anchor WHERE anchor.id=? AND anchor.rider_id=?)`,
+        sql: `UPDATE orders SET rider_id=?,stage=CASE WHEN ${PAID_ESCROW} THEN 'Shop' ELSE ? END,matched_out_of_range=?,updated_at=datetime('now') WHERE id=? AND delivery_bundle_id=? AND rider_id IS NULL AND stage IN ('Create','Match') AND environment=? AND EXISTS(SELECT 1 FROM orders anchor WHERE anchor.id=? AND anchor.rider_id=?)`,
         args: [riderId, nextStage, outOfRange ? 1 : 0, bundleOrderId, String(order.delivery_bundle_id), String(order.environment), id, riderId],
       })));
       if (order.funds_model === "merchant_allocations_v1") {
@@ -832,7 +1008,9 @@ async function assignRider(
         await db.execute({ sql: "UPDATE chat_messages SET rider_id=? WHERE order_id=? AND rider_id IS NULL", args: [riderId, bundleOrderId] });
         await logEvent(bundleOrderId, "Match", `Combined delivery assigned to rider ${riderName}`, riderId);
         if (order.payment_rail === "float") await logEvent(bundleOrderId, "Fund", "Cash rail — rider fronting funds, no payment needed upfront", riderId);
+        await startPrepaidOrder(bundleOrderId, riderId);
       }
+      await notifyRiderOfCombinedDelivery(id);
     }
   }
 
@@ -862,8 +1040,21 @@ async function assignRider(
   if (order.payment_rail === "float") {
     await logEvent(id, "Fund", "Cash rail — rider fronting funds, no payment needed upfront", riderId);
   }
+  if (prepaid) await startPrepaidOrder(id, riderId);
   if (await isCarOrder(id)) await stampCarBooking(id, riderId);
   return true;
+}
+
+/** A paid order just got its rider: start the merchant allocations its payment was waiting on. */
+async function startPrepaidOrder(orderId: string, riderId: string): Promise<void> {
+  const current = (await db.execute({ sql: "SELECT stage, payment_rail FROM orders WHERE id = ?", args: [orderId] })).rows[0] as Row | undefined;
+  if (current?.stage !== "Shop" || current.payment_rail !== "escrow") return;
+  try {
+    await activateMerchantAllocationsForFundedOrder(orderId);
+  } catch (error) {
+    console.error("Could not start merchant allocations for a paid order on assignment", orderId, error);
+  }
+  await logEvent(orderId, "Shop", "Already paid — shopping started", riderId);
 }
 
 /**
@@ -879,12 +1070,16 @@ async function findAutoMatchCandidate(
   order: Row,
 ): Promise<{ riderId: string; riderName: string; outOfRange: boolean } | null> {
   if (await isSecondaryBundleOrder(id, order)) return null;
+  // Name your fare: riders accept the customer's price themselves — nobody is
+  // auto-assigned to a fare they never agreed to.
+  if (order.fare_offer != null) return null;
   // A car ride is only ever offered to drivers of its vehicle category.
   if (await isCarOrder(id)) return findCarCandidate(id, order);
-  const { serviceRangeKm } = await getDeliverySettings();
+  const { serviceRangeKm, riderVisibilityRangeKm } = await getDeliverySettings();
   const matchPoint = orderMatchPoint(order);
   const visibleRadiusKm = currentVisibilityRadiusKm(order.updated_at as string);
   const fullyOpen = visibleRadiusKm == null;
+  const ownRangeColumn = (await hasColumn("riders", "visibility_range_km")) ? ", r.visibility_range_km" : "";
 
   // Skips a lapsed subscriber entirely when one's required — auto-match
   // never hands work to a rider who couldn't have claimed it themselves.
@@ -892,7 +1087,7 @@ async function findAutoMatchCandidate(
     ? "AND r.subscription_status = 'active' AND r.subscription_paid_through >= datetime('now')"
     : "";
   const eligible = await db.execute({
-    sql: `SELECT u.id, u.name, r.stage_lat, r.stage_lng, r.area FROM riders r JOIN users u ON u.id = r.user_id
+    sql: `SELECT u.id, u.name, r.stage_lat, r.stage_lng, r.area${ownRangeColumn} FROM riders r JOIN users u ON u.id = r.user_id
           WHERE r.verified = 1 AND r.is_online = 1
           ${subscriptionGate}
           AND u.id NOT IN (
@@ -910,6 +1105,7 @@ async function findAutoMatchCandidate(
     if (matchPoint && riderLat != null && riderLng != null) {
       const distanceKm = haversineKm(matchPoint.lat, matchPoint.lng, riderLat, riderLng);
       if (!fullyOpen && distanceKm > (visibleRadiusKm as number)) continue; // not their turn yet
+      if (beyondRiderRange(distanceKm, ownRangeKm(row.visibility_range_km, riderVisibilityRangeKm))) continue; // past their range
       if (!nearestKnown || distanceKm < nearestKnown.distanceKm) nearestKnown = { row, distanceKm };
     } else {
       unknownLocation.push(row);
@@ -1093,6 +1289,9 @@ orderRoutes.post("/orders/:id/claim", requireRole("rider"), async (c) => {
       ? haversineKm(matchPoint.lat, matchPoint.lng, riderLat, riderLng)
       : null;
 
+  if (beyondRiderRange(distanceKm, await riderRangeKm(user.sub))) {
+    return c.json({ error: "out_of_range", message: "This job is outside your range." }, 403);
+  }
   if (distanceKm != null) {
     const visibleRadiusKm = currentVisibilityRadiusKm(order.updated_at as string);
     if (visibleRadiusKm != null && distanceKm > visibleRadiusKm) {
@@ -1194,6 +1393,9 @@ orderRoutes.post("/orders/:id/apply", requireRole("rider"), async (c) => {
       ? haversineKm(matchPoint.lat, matchPoint.lng, riderLat, riderLng)
       : null;
 
+  if (beyondRiderRange(distanceKm, await riderRangeKm(user.sub))) {
+    return c.json({ error: "out_of_range", message: "This job is outside your range." }, 403);
+  }
   if (distanceKm != null) {
     const visibleRadiusKm = currentVisibilityRadiusKm(order.updated_at as string);
     if (visibleRadiusKm != null && distanceKm > visibleRadiusKm) {
@@ -1448,8 +1650,9 @@ orderRoutes.post("/orders/:id/cancel", async (c) => {
 
 // ---------------------------------------------------------------------------
 // Customer-initiated cancel/delete — only while nothing has actually
-// happened yet: no rider assigned (which also means no money has been
-// collected, since funding only ever follows a rider being matched). Once
+// happened yet: no rider assigned. A relay may already be paid before any
+// rider (relayPaysBeforeRider): cancel refunds it to the wallet, and delete
+// refuses a paid order so no payment is ever dropped. Once
 // a rider's attached, backing out affects someone else's day and goes
 // through support instead of a self-service button.
 // ---------------------------------------------------------------------------
@@ -1497,6 +1700,11 @@ orderRoutes.post("/orders/:id/customer-delete", async (c) => {
     if (e instanceof HttpError) return c.json({ error: "cannot_delete", message: e.message }, e.status);
     throw e;
   }
+  // A relay can be paid before any rider: a paid order is cancelled (and refunded) instead, never just deleted.
+  const anyPayment = await db.execute({ sql: "SELECT 1 FROM payments WHERE order_id = ? AND type = 'collection' AND status IN ('pending', 'unknown', 'successful') LIMIT 1", args: [id] });
+  if (anyPayment.rows.length > 0) {
+    return c.json({ error: "cannot_delete", message: "This order is paid. Cancel it instead and the payment goes back to your Peebee wallet." }, 409);
+  }
 
   await touchOrder(id, { stage: "Cancelled" });
   await db.execute({
@@ -1534,6 +1742,18 @@ orderRoutes.get("/orders/:id/checkout", async (c) => {
   const order = await getOrder(c.req.param("id"));
   if (!order) return c.json({ error: "not_found" }, 404);
   if (order.customer_id !== c.get("user").sub) return c.json({ error: "forbidden" }, 403);
+  // A combined delivery is paid once, from its first pickup: the quote is the total for every pickup,
+  // from the moment it's ordered (before a rider accepts it too).
+  const bundleGroup = await unpaidBundleGroup(order);
+  // A relay can be paid straight away, before any rider (admin switch): the pay screen shows Pay now.
+  const payBeforeRider = (await relayPaysBeforeRider(order)) &&
+    (await db.execute({ sql: "SELECT 1 FROM payments WHERE order_id = ? AND type = 'collection' AND status IN ('pending', 'unknown', 'successful') LIMIT 1", args: [String(order.id)] })).rows.length === 0 &&
+    (await prepaidBundleGroup(order)) !== "not_ready";
+  // Each quote also carries its breakdown (items, subtotal, delivery and its legs) over exactly
+  // the orders it charges for, so items + delivery + fees is the amount paid.
+  if (bundleGroup && String(bundleGroup.lead.id) === String(order.id)) {
+    return c.json({ ...(await bundleCheckoutQuote(bundleGroup)), ...(await checkoutBreakdown(bundleGroup.members)), payBeforeRider });
+  }
   const baseAmount = Number(order.final_total ?? order.estimated_total ?? 0);
   const settings = await getMonetizationSettings();
   const input = { baseAmount, deliveryFee: Number(order.delivery_fee ?? 0), orderType: order.type as "parcel" | "shopping" };
@@ -1542,7 +1762,19 @@ orderRoutes.get("/orders/:id/checkout", async (c) => {
     mobileMoney: baseAmount + computeCheckoutFees(settings, { ...input, payingWithWallet: false }).totalSurcharge,
     wallet: baseAmount + computeCheckoutFees(settings, { ...input, payingWithWallet: true }).totalSurcharge,
     cash: baseAmount,
+    ...(await checkoutBreakdown([order])),
+    payBeforeRider,
   });
+});
+
+/** The order page's money breakdown: every live order of a combined delivery (at any stage), or the order alone. */
+orderRoutes.get("/orders/:id/breakdown", async (c) => {
+  const order = await getOrder(c.req.param("id"));
+  if (!order) return c.json({ error: "not_found" }, 404);
+  if (order.customer_id !== c.get("user").sub) return c.json({ error: "forbidden" }, 403);
+  const orders = (await hasColumn("orders", "delivery_bundle_id")) ? await deliveryOrders(order) : [order];
+  const breakdown = await checkoutBreakdown(orders);
+  return c.json({ ...breakdown, total: breakdown.itemsSubtotal + breakdown.delivery.total });
 });
 
 orderRoutes.post("/orders/:id/fund", async (c) => {
@@ -1556,7 +1788,10 @@ orderRoutes.post("/orders/:id/fund", async (c) => {
     if (e instanceof HttpError) return c.json({ error: e.message }, e.status);
     throw e;
   }
-  if (order.stage !== "Match") {
+  // A relay order may be paid as soon as it is placed (admin switch), before any rider:
+  // it is held in escrow and goes straight to Shop once the first-leg rider is assigned.
+  const payFirst = await relayPaysBeforeRider(order);
+  if (order.stage !== "Match" && !payFirst) {
     return c.json({ error: "invalid_stage", message: `Cannot fund from stage ${order.stage}` }, 409);
   }
 
@@ -1568,7 +1803,27 @@ orderRoutes.post("/orders/:id/fund", async (c) => {
   const body = await c.req.json().catch(() => ({}));
   const parsed = fundSchema.safeParse(order.payment_rail === "float" && !body?.paymentMethod ? { ...body, paymentMethod: "cash" } : body);
   if (!parsed.success) return c.json({ error: "invalid_body", issues: parsed.error.issues }, 400);
-  if (!order.rider_id) return c.json({ error: "invalid_stage", message: "Please select a rider before confirming payment." }, 409);
+  if (!order.rider_id && !payFirst) return c.json({ error: "invalid_stage", message: "Please select a rider before confirming payment." }, 409);
+  if (payFirst && parsed.data.paymentMethod === "cash") {
+    return c.json({ error: "relay_requires_prepay", message: "Relay deliveries are paid in the app, not in cash." }, 409);
+  }
+
+  // Combined delivery (two pickups, one rider): one payment from the first pickup covers every pickup.
+  const bundleGroup = payFirst ? await prepaidBundleGroup(order) : await unfundedBundleGroup(order);
+  if (bundleGroup === "not_ready") return c.json({ error: "invalid_stage", message: "This order has changed. Refresh before paying." }, 409);
+  if (bundleGroup) {
+    if (String(bundleGroup.lead.id) !== id) {
+      return c.json({ error: "bundled_stop", message: "This pickup is paid together with the first one. Pay for the combined delivery from there.", payWithOrderId: String(bundleGroup.lead.id) }, 409);
+    }
+    return fundBundle({
+      c,
+      user,
+      group: bundleGroup,
+      body: parsed.data,
+      payFirst,
+      deps: { getOrder, touchOrder, logEvent, paymentReturnUrl },
+    });
+  }
 
   if (parsed.data.paymentMethod === "cash") {
     // Float rail: the customer hands the rider the full cash amount —
@@ -1605,6 +1860,11 @@ orderRoutes.post("/orders/:id/fund", async (c) => {
   if (parsed.data.acceptedAmount != null && parsed.data.acceptedAmount !== amount) {
     return c.json({ error: "amount_changed", message: "The total has changed. Review the updated amount before paying." }, 409);
   }
+  // Who may hold the order while it is being paid: its matched rider, or (a relay paid
+  // first) nobody yet. A paid relay with no rider waits in Match; otherwise shopping starts.
+  const holdWhere = payFirst ? "stage IN ('Create', 'Match') AND rider_id IS NULL" : "stage = 'Match' AND rider_id = ?";
+  const holdArgs = payFirst ? [] : [String(order.rider_id)];
+  const startStage = String(order.stage);
   const hasFees = fees.serviceFee > 0 || fees.processingFeeCustomer > 0 || fees.processingFeeRider > 0 || fees.deliveryCommission > 0;
   if (hasFees) {
     await db.execute({
@@ -1637,7 +1897,7 @@ orderRoutes.post("/orders/:id/fund", async (c) => {
 
     // Reserve funding before debiting; cancellation and duplicate funding
     // requests cannot race a wallet payment.
-    const funding = await db.execute({ sql: "UPDATE orders SET payment_rail = 'escrow', stage = 'Fund', updated_at = datetime('now') WHERE id = ? AND stage = 'Match' AND rider_id = ? AND COALESCE(final_total, estimated_total, 0) = ? AND NOT EXISTS (SELECT 1 FROM payments WHERE order_id = ? AND status IN ('pending', 'unknown', 'successful'))", args: [id, String(order.rider_id), baseAmount, id] });
+    const funding = await db.execute({ sql: `UPDATE orders SET payment_rail = 'escrow', stage = 'Fund', updated_at = datetime('now') WHERE id = ? AND ${holdWhere} AND COALESCE(final_total, estimated_total, 0) = ? AND NOT EXISTS (SELECT 1 FROM payments WHERE order_id = ? AND status IN ('pending', 'unknown', 'successful'))`, args: [id, ...holdArgs, baseAmount, id] });
     if (!funding.rowsAffected) return c.json({ error: "invalid_stage", message: "This order has changed. Refresh before paying." }, 409);
 
     const paymentId = await payFromWallet({
@@ -1650,10 +1910,16 @@ orderRoutes.post("/orders/:id/fund", async (c) => {
       walletId,
     });
     if (!paymentId) {
-      await db.execute({ sql: "UPDATE orders SET stage = 'Match' WHERE id = ? AND stage = 'Fund'", args: [id] });
+      await db.execute({ sql: "UPDATE orders SET stage = ? WHERE id = ? AND stage = 'Fund'", args: [startStage, id] });
       return c.json({ error: "insufficient_wallet_balance" }, 409);
     }
 
+    if (payFirst) {
+      // Held in escrow; merchant allocations start once the first-leg rider is assigned.
+      await touchOrder(id, { stage: "Match" });
+      await logEvent(id, "Fund", sharedSpend ? "Paid from a shared wallet — held until a rider is assigned" : "Paid from wallet — held until a rider is assigned", user.sub);
+      return c.json({ order: await getOrder(id), payment: { id: paymentId, status: "successful", network: null } });
+    }
     await touchOrder(id, { stage: "Shop" });
     await activateMerchantAllocationsForFundedOrder(id);
     await logEvent(id, "Fund", sharedSpend ? "Paid from a shared wallet — shopping started" : "Paid from wallet — shopping started", user.sub);
@@ -1663,7 +1929,7 @@ orderRoutes.post("/orders/:id/fund", async (c) => {
   const paymentId = newId("pay");
   const fundingToken = newId("fund");
   const funding = await executeBatch([
-    { sql: "UPDATE orders SET payment_rail = 'escrow', stage = 'Fund', time_action_token = ?, updated_at = datetime('now') WHERE id = ? AND stage = 'Match' AND rider_id = ? AND COALESCE(final_total, estimated_total, 0) = ? AND NOT EXISTS (SELECT 1 FROM payments WHERE order_id = ? AND status IN ('pending', 'unknown', 'successful'))", args: [fundingToken, id, String(order.rider_id), baseAmount, id] },
+    { sql: `UPDATE orders SET payment_rail = 'escrow', stage = 'Fund', time_action_token = ?, updated_at = datetime('now') WHERE id = ? AND ${holdWhere} AND COALESCE(final_total, estimated_total, 0) = ? AND NOT EXISTS (SELECT 1 FROM payments WHERE order_id = ? AND status IN ('pending', 'unknown', 'successful'))`, args: [fundingToken, id, ...holdArgs, baseAmount, id] },
     {
       sql: `INSERT INTO payments (id, order_id, type, provider, provider_ref, msisdn, amount, currency, status)
             SELECT ?, id, 'collection', 'unassigned', NULL, ?, ?, 'UGX', 'pending' FROM orders WHERE id = ? AND time_action_token = ?`,
@@ -1691,7 +1957,7 @@ orderRoutes.post("/orders/:id/fund", async (c) => {
   } catch (err) {
     await executeBatch([
       { sql: "UPDATE payments SET status = 'failed', updated_at = datetime('now') WHERE id = ?", args: [paymentId] },
-      { sql: "UPDATE orders SET stage = 'Match', updated_at = datetime('now') WHERE id = ? AND stage = 'Fund'", args: [id] },
+      { sql: "UPDATE orders SET stage = ?, updated_at = datetime('now') WHERE id = ? AND stage = 'Fund'", args: [startStage, id] },
     ]);
     if (err instanceof UnsupportedNetworkError) {
       return c.json({ error: "unsupported_network", message: err.message }, 400);
@@ -2012,6 +2278,7 @@ orderRoutes.post("/orders/:id/fee-proposals/:proposalId/decision", async (c) => 
   });
   const proposal = propRes.rows[0] as Row | undefined;
   if (!proposal) return c.json({ error: "not_found" }, 404);
+  if (proposal.kind === "counter") return decideFareCounter(c, id, order, proposal, parsed.data.approve, user.sub);
 
   const status = parsed.data.approve ? "approved" : "rejected";
   await db.execute({
@@ -2034,6 +2301,309 @@ orderRoutes.post("/orders/:id/fee-proposals/:proposalId/decision", async (c) => 
 
   return c.json({ order: await getOrder(id) });
 });
+
+// ---------------------------------------------------------------------------
+// Name your fare + multi-stop rides (migration 0104)
+// ---------------------------------------------------------------------------
+
+const OFFER_RATE_LIMIT = { count: 12, windowSeconds: 10 * 60 };
+const COUNTER_RATE_LIMIT = { count: 30, windowSeconds: 10 * 60 };
+
+/** The new ride options need migration 0104; until it is applied they answer this instead of failing. */
+function featureUnavailable(c: Context) {
+  return c.json({ error: "feature_unavailable", code: "feature_unavailable", message: "This option isn't available yet. Book at the standard fare instead." }, 503);
+}
+
+function idempotencyKey(c: Context): string | undefined {
+  const key = c.req.header("Idempotency-Key")?.trim();
+  return key ? key.slice(0, 120) : undefined;
+}
+
+async function respondOnce(c: Context, userId: string, orderId: string, status: 200 | 201, body: Record<string, unknown>) {
+  await rememberIdempotent(userId, idempotencyKey(c), orderId, status, body);
+  return c.json(body, status);
+}
+
+/** The app's quote for a boda ride, through any stops, with the Name-your-fare band. */
+orderRoutes.get("/rides/quote", async (c) => {
+  const num = (key: string) => {
+    const raw = c.req.query(key);
+    const n = raw == null || raw === "" ? NaN : Number(raw);
+    return Number.isFinite(n) ? n : null;
+  };
+  const pickupLat = num("pickupLat"), pickupLng = num("pickupLng"), destinationLat = num("destinationLat"), destinationLng = num("destinationLng");
+  if (pickupLat == null || pickupLng == null || destinationLat == null || destinationLng == null) {
+    return c.json({ error: "invalid_query", message: "pickupLat, pickupLng, destinationLat and destinationLng are required" }, 400);
+  }
+  // stops=lat,lng;lat,lng
+  const stopsRaw = (c.req.query("stops") ?? "").trim();
+  const stops = stopsRaw
+    ? stopsRaw.split(";").slice(0, MAX_STOPS_HARD + 1).map((pair) => {
+        const [lat, lng] = pair.split(",").map(Number);
+        return { lat, lng };
+      })
+    : [];
+  if (stops.some((p) => !Number.isFinite(p.lat) || !Number.isFinite(p.lng) || Math.abs(p.lat) > 90 || Math.abs(p.lng) > 180)) {
+    return c.json({ error: "invalid_query", message: "stops must be lat,lng pairs separated by ;" }, 400);
+  }
+  const [settings, delivery, available] = await Promise.all([getRideExtrasSettings(), getDeliverySettings(), rideExtrasAvailable()]);
+  const maxStops = available.stops ? Math.min(settings.maxStops, MAX_STOPS_HARD) : 0;
+  const pickup = { lat: pickupLat, lng: pickupLng }, destination = { lat: destinationLat, lng: destinationLng };
+  const stopError = validateStops(stops, maxStops, pickup, destination);
+  if (stopError) return c.json({ error: "invalid_stops", message: stopError, maxStops }, 400);
+  const quote = rideQuote({ pickup, destination, stops }, { ratePerKm: delivery.rideRatePerKm, minimumFare: delivery.rideMinimumFare, stopFee: settings.stopFee });
+  return c.json({
+    quote: quote.total,
+    base: quote.base,
+    stopFees: quote.stopFees,
+    stopFee: settings.stopFee,
+    stops: stops.length,
+    distanceKm: Math.round(quote.distanceKm * 10) / 10,
+    maxStops,
+    offers: available.offers
+      ? { ...fareBand(quote.total, settings), ttlMinutes: settings.offerTtlMinutes, maxRaises: settings.maxRaises }
+      : null,
+  });
+});
+
+const fareOfferSchema = z.union([
+  z.object({ amount: z.number().int().positive().max(100_000_000) }),
+  z.object({ standard: z.literal(true) }),
+]);
+
+/** Customer raises their offer (or switches to the app's standard fare) while riders are still deciding. */
+orderRoutes.post("/orders/:id/fare-offer", requireRole("customer"), async (c) => {
+  const id = c.req.param("id") as string;
+  const user = c.get("user");
+  const replay = await replayIdempotent(user.sub, idempotencyKey(c));
+  if (replay) return c.json(replay.body as Record<string, unknown>, replay.status as 200);
+  const parsed = fareOfferSchema.safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) return c.json({ error: "invalid_body", issues: parsed.error.issues }, 400);
+  if (!(await rideExtrasAvailable()).offers) return featureUnavailable(c);
+  const order = await getOrder(id);
+  if (!order) return c.json({ error: "not_found" }, 404);
+  if (order.customer_id !== user.sub) return c.json({ error: "forbidden" }, 403);
+  if (order.fare_offer == null || order.fare_offer_quote == null) return c.json({ error: "no_offer", message: "This ride wasn't booked with your own fare." }, 409);
+  if (order.stage !== "Create" || order.rider_id) return c.json({ error: "invalid_stage", message: "A rider has already taken this ride." }, 409);
+  const limited = await consume(`fare-offer:${user.sub}`, OFFER_RATE_LIMIT.count, OFFER_RATE_LIMIT.windowSeconds);
+  if (!limited.allowed) return tooManyRequests(c, limited, "Too many fare changes. Try again shortly.");
+
+  const settings = await getRideExtrasSettings();
+  const quote = Number(order.fare_offer_quote);
+  const current = Number(order.fare_offer);
+  let amount: number;
+  if ("standard" in parsed.data) {
+    amount = quote;
+  } else {
+    const checked = validateOffer(parsed.data.amount, fareBand(quote, settings));
+    if ("error" in checked) return c.json({ error: "offer_out_of_range", message: checked.error, band: fareBand(quote, settings) }, 400);
+    amount = checked.amount;
+  }
+  if (amount <= current) return c.json({ error: "offer_not_higher", message: "You can only raise your offer while riders are deciding." }, 400);
+  if (Number(order.fare_offer_raises ?? 0) >= settings.maxRaises) {
+    return c.json({ error: "too_many_raises", message: "You've raised this offer as many times as allowed. Accept a counter or use the standard fare." }, 409);
+  }
+  const expiresAt = new Date(Date.now() + settings.offerTtlMinutes * 60_000).toISOString();
+  // updated_at is deliberately left alone: it drives the staged visibility
+  // radius, and raising the price shouldn't shrink who can see the job.
+  const changed = await db.execute({
+    sql: `UPDATE orders SET fare_offer = ?, estimated_total = ?, delivery_fee = ?, fare_offer_expires_at = ?,
+            fare_offer_raises = fare_offer_raises + 1, time_fee_policy = NULL
+          WHERE id = ? AND customer_id = ? AND stage = 'Create' AND rider_id IS NULL AND fare_offer = ?
+            AND NOT EXISTS (SELECT 1 FROM payments WHERE order_id = ?)`,
+    args: [amount, amount, amount, expiresAt, id, user.sub, current, id],
+  });
+  if (!changed.rowsAffected) return c.json({ error: "invalid_stage", message: "This ride has changed. Refresh and try again." }, 409);
+  await snapshotTimeFees(id, amount);
+  // Counters at or below the new offer are moot: those riders can simply accept it.
+  await db.execute({
+    sql: `UPDATE fee_proposals SET status = 'rejected', closed_reason = 'superseded', updated_at = datetime('now')
+          WHERE order_id = ? AND kind = 'counter' AND status = 'pending' AND proposed_total <= ?`,
+    args: [id, amount],
+  });
+  await logEvent(id, "Create", amount === quote ? `Customer switched to the standard fare ${formatAmount(amount)}` : `Customer raised their offer to ${formatAmount(amount)}`, user.sub);
+  const fresh = (await getOrder(id))!;
+  return respondOnce(c, user.sub, id, 200, { order: fresh, fareOffer: offerSummary(fresh, settings), fareCounters: await openCounters(id) });
+});
+
+orderRoutes.get("/orders/:id/fare-counters", requireRole("customer"), async (c) => {
+  const id = c.req.param("id") as string;
+  const user = c.get("user");
+  const order = await getOrder(id);
+  if (!order) return c.json({ error: "not_found" }, 404);
+  if (order.customer_id !== user.sub) return c.json({ error: "forbidden" }, 403);
+  if (order.fare_offer == null) return c.json({ fareOffer: null, counters: [] });
+  const settings = await getRideExtrasSettings();
+  const open = order.stage === "Create" && !order.rider_id;
+  return c.json({ fareOffer: offerSummary(order, settings), counters: open ? await openCounters(id) : [] });
+});
+
+const counterSchema = z.object({ amount: z.number().int().positive().max(100_000_000) });
+
+/** A rider answers a customer's offer with their own price. One open counter per rider per ride. */
+orderRoutes.post("/orders/:id/fare-counters", requireRole("rider"), async (c) => {
+  const id = c.req.param("id") as string;
+  const user = c.get("user");
+  const replay = await replayIdempotent(user.sub, idempotencyKey(c));
+  if (replay) return c.json(replay.body as Record<string, unknown>, replay.status as 201);
+  const parsed = counterSchema.safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) return c.json({ error: "invalid_body", issues: parsed.error.issues }, 400);
+  if (!(await rideExtrasAvailable()).offers) return featureUnavailable(c);
+  const order = await getOrder(id);
+  if (!order) return c.json({ error: "not_found" }, 404);
+  if (order.fare_offer == null || order.fare_offer_quote == null) return c.json({ error: "no_offer", message: "This ride is at a fixed fare." }, 409);
+  if (order.stage !== "Create" || order.rider_id) return c.json({ error: "already_claimed", message: "This job has already been taken" }, 409);
+  if (await isCarOrder(id)) return c.json({ error: "car_order" }, 403);
+  const settings = await getRideExtrasSettings();
+  const summary = offerSummary(order, settings)!;
+  if (summary.expired) return c.json({ error: "offer_expired", message: "The customer's offer has closed for counters. You can still accept their fare." }, 409);
+
+  const excluded = await db.execute({ sql: "SELECT 1 FROM order_rider_exclusions WHERE order_id = ? AND rider_id = ?", args: [id, user.sub] });
+  if (excluded.rows.length) return c.json({ error: "not_eligible", message: "You previously declined this order" }, 403);
+  const riderRes = await db.execute({
+    sql: "SELECT r.verified, r.is_online, r.subscription_status, r.subscription_paid_through FROM riders r WHERE r.user_id = ?",
+    args: [user.sub],
+  });
+  const rider = riderRes.rows[0] as Row | undefined;
+  if (!rider?.verified) return c.json({ error: "not_verified" }, 403);
+  if (!rider.is_online) return c.json({ error: "not_online", message: "Go online to answer offers" }, 409);
+  if ((await getMonetizationSettings()).subscriptionEnabled && !isSubscriptionCurrent(rider)) {
+    return c.json({ error: "subscription_required", message: "Pay your subscription to start taking jobs" }, 403);
+  }
+  const limited = await consume(`fare-counter:${user.sub}`, COUNTER_RATE_LIMIT.count, COUNTER_RATE_LIMIT.windowSeconds);
+  if (!limited.allowed) return tooManyRequests(c, limited, "Too many counters. Try again shortly.");
+
+  const checked = validateOffer(parsed.data.amount, { min: summary.min, max: summary.max });
+  if ("error" in checked) return c.json({ error: "counter_out_of_range", message: checked.error.replace("Your offer", "Your counter") }, 400);
+  if (checked.amount <= summary.amount) {
+    return c.json({ error: "counter_not_higher", message: `That's at or below the customer's offer — just accept ${formatAmount(summary.amount)}.` }, 400);
+  }
+  // A new counter replaces this rider's previous one.
+  await db.execute({
+    sql: `UPDATE fee_proposals SET status = 'rejected', closed_reason = 'superseded', updated_at = datetime('now')
+          WHERE order_id = ? AND kind = 'counter' AND rider_id = ? AND status = 'pending'`,
+    args: [id, user.sub],
+  });
+  const counterId = newId("fee");
+  const expiresAt = new Date(Date.now() + settings.counterTtlSeconds * 1000).toISOString();
+  await db.execute({
+    sql: `INSERT INTO fee_proposals (id, order_id, previous_total, proposed_total, reason, kind, rider_id, expires_at)
+          VALUES (?, ?, ?, ?, NULL, 'counter', ?, ?)`,
+    args: [counterId, id, summary.amount, checked.amount, user.sub, expiresAt],
+  });
+  await logEvent(id, "Create", `A rider countered with ${formatAmount(checked.amount)} (offer ${formatAmount(summary.amount)})`, user.sub);
+  await notifyUser(String(order.customer_id), {
+    title: "A rider countered your fare",
+    body: `${user.name || "A rider"} will take you for ${formatAmount(checked.amount)}. Accept or wait for others.`,
+    url: "/ride",
+    tag: `fare-counter-${id}`,
+  });
+  return respondOnce(c, user.sub, id, 201, { counter: { id: counterId, amount: checked.amount, expiresAt } });
+});
+
+/** Customer's answer to a rider's counter: accept = that rider is assigned at that price. */
+async function decideFareCounter(c: Context, id: string, order: Row, counter: Row, approve: boolean, customerId: string) {
+  if (!approve) {
+    await db.execute({
+      sql: "UPDATE fee_proposals SET status = 'rejected', closed_reason = 'declined', updated_at = datetime('now') WHERE id = ? AND status = 'pending'",
+      args: [counter.id as string],
+    });
+    await logEvent(id, String(order.stage), `Customer declined a counter of ${formatAmount(Number(counter.proposed_total))}`, customerId);
+    return c.json({ order: await getOrder(id), fareCounters: await openCounters(id) });
+  }
+  if (timestampMs(counter.expires_at) <= Date.now()) {
+    await db.execute({
+      sql: "UPDATE fee_proposals SET status = 'rejected', closed_reason = 'expired', updated_at = datetime('now') WHERE id = ? AND status = 'pending'",
+      args: [counter.id as string],
+    });
+    return c.json({ error: "counter_expired", message: "That counter has expired. Pick another or raise your offer." }, 410);
+  }
+  if (order.stage !== "Create" || order.rider_id) return c.json({ error: "already_claimed", message: "A rider has already taken this ride." }, 409);
+  const riderId = String(counter.rider_id);
+  const riderRow = await db.execute({ sql: "SELECT name FROM users WHERE id = ?", args: [riderId] });
+  const assigned = await assignRider(id, order, riderId, String(riderRow.rows[0]?.name ?? "rider"), false);
+  if (!assigned) {
+    await db.execute({
+      sql: "UPDATE fee_proposals SET status = 'rejected', closed_reason = 'expired', updated_at = datetime('now') WHERE id = ? AND status = 'pending'",
+      args: [counter.id as string],
+    });
+    return c.json({ error: "rider_unavailable", message: "That rider just took another job. Pick another counter." }, 409);
+  }
+  const amount = Number(counter.proposed_total);
+  // The agreed fare is what escrow charges: estimated_total + delivery_fee carry it into /fund.
+  await db.execute({
+    sql: `UPDATE orders SET fare_offer = ?, estimated_total = ?, delivery_fee = ?, time_fee_policy = NULL, updated_at = datetime('now')
+          WHERE id = ? AND rider_id = ? AND NOT EXISTS (SELECT 1 FROM payments WHERE order_id = ?)`,
+    args: [amount, amount, amount, id, riderId, id],
+  });
+  await snapshotTimeFees(id, amount);
+  await db.execute({ sql: "UPDATE fee_proposals SET status = 'approved', updated_at = datetime('now') WHERE id = ?", args: [counter.id as string] });
+  await db.execute({
+    sql: `UPDATE fee_proposals SET status = 'rejected', closed_reason = 'superseded', updated_at = datetime('now')
+          WHERE order_id = ? AND kind = 'counter' AND status = 'pending'`,
+    args: [id],
+  });
+  await logEvent(id, "Match", `Fare agreed at ${formatAmount(amount)} (rider's counter)`, customerId);
+  await notifyUser(riderId, { title: "Your counter was accepted", body: `The customer accepted ${formatAmount(amount)}. Head to the pickup once they pay.`, url: `/jobs/${id}`, tag: `fare-agreed-${id}` });
+  return c.json({ order: await getOrder(id) });
+}
+
+orderRoutes.get("/orders/:id/stops", async (c) => {
+  const id = c.req.param("id") as string;
+  const user = c.get("user");
+  const order = await getOrder(id);
+  if (!order) return c.json({ error: "not_found" }, 404);
+  if (order.customer_id !== user.sub && order.rider_id !== user.sub && user.role !== "admin") return c.json({ error: "forbidden" }, 403);
+  return c.json({ stops: await loadStops(id) });
+});
+
+/** Rider progress through a multi-stop ride: arrive at the next stop, then continue. Only while the passenger is aboard. */
+async function progressStop(c: Context, action: "arrived" | "continue") {
+  if (!(await rideExtrasAvailable()).stops) return featureUnavailable(c);
+  const id = c.req.param("id") as string;
+  const position = Number(c.req.param("position"));
+  const user = c.get("user");
+  const order = await getOrder(id);
+  if (!order) return c.json({ error: "not_found" }, 404);
+  try {
+    assertRider(order, user.sub);
+  } catch (e) {
+    if (e instanceof HttpError) return c.json({ error: e.message }, e.status);
+    throw e;
+  }
+  if (order.stage !== "PickedUp") return c.json({ error: "invalid_stage", message: "Stops start once the passenger is picked up." }, 409);
+  const stops = await loadStops(id);
+  const stop = stops.find((s) => s.position === position);
+  if (!stop) return c.json({ error: "not_found", message: "No such stop on this ride." }, 404);
+  const label = stop.area || stop.address || `stop ${position}`;
+  if (action === "arrived") {
+    const next = stops.find((s) => s.status !== "done");
+    if (!next || next.position !== position || next.status !== "pending") {
+      return c.json({ error: "out_of_order", message: next ? `Next is stop ${next.position}.` : "All stops are done." }, 409);
+    }
+    const res = await db.execute({
+      sql: "UPDATE order_stops SET status = 'arrived', arrived_at = datetime('now') WHERE order_id = ? AND position = ? AND status = 'pending'",
+      args: [id, position],
+    });
+    if (!res.rowsAffected) return c.json({ error: "out_of_order" }, 409);
+    await logEvent(id, "PickedUp", `Arrived at stop ${position}: ${label}`, user.sub);
+    await notifyUser(String(order.customer_id), { title: `Stop ${position}`, body: `You're at ${label}. Tell your rider when to continue.`, url: "/ride", tag: `ride-stop-${id}` });
+  } else {
+    if (stop.status !== "arrived") return c.json({ error: "out_of_order", message: "Mark the stop as arrived first." }, 409);
+    const res = await db.execute({
+      sql: "UPDATE order_stops SET status = 'done', departed_at = datetime('now') WHERE order_id = ? AND position = ? AND status = 'arrived'",
+      args: [id, position],
+    });
+    if (!res.rowsAffected) return c.json({ error: "out_of_order" }, 409);
+    const remaining = stops.filter((s) => s.position > position).length;
+    await logEvent(id, "PickedUp", remaining ? `Left stop ${position}, heading to stop ${position + 1}` : `Left stop ${position}, heading to the destination`, user.sub);
+  }
+  await db.execute({ sql: "UPDATE orders SET updated_at = datetime('now') WHERE id = ?", args: [id] });
+  return c.json({ stops: await loadStops(id), order: await getOrder(id) });
+}
+
+orderRoutes.post("/orders/:id/stops/:position/arrived", requireRole("rider"), (c) => progressStop(c, "arrived"));
+orderRoutes.post("/orders/:id/stops/:position/continue", requireRole("rider"), (c) => progressStop(c, "continue"));
 
 // A rider explaining a fee bump may not be comfortable typing it in
 // English — this carries the reason as raw audio instead of transcribing
@@ -2143,6 +2713,8 @@ orderRoutes.post("/orders/:id/location", async (c) => {
   const parsed = orderLocationSchema.safeParse(await c.req.json().catch(() => ({})));
   if (!parsed.success) return c.json({ error: "invalid_body", issues: parsed.error.issues }, 400);
   if (!(await getRideTrackingSettings()).enabled) return c.json({ error: "tracking_disabled" }, 409);
+  // A relay's last rider isn't carrying the parcel until they collect it from the matatu.
+  if (await relayAwaitingCollection(id)) return c.json({ ok: true });
 
   await db.execute({
     sql: "UPDATE orders SET rider_lat = ?, rider_lng = ?, rider_location_updated_at = datetime('now') WHERE id = ? AND rider_id = ? AND stage NOT IN ('Settle', 'Create', 'Cancelled', 'Handover')",
@@ -2222,6 +2794,9 @@ orderRoutes.post("/orders/:id/arrived", async (c) => {
   }
   if (order.stage !== "Deliver") {
     return c.json({ error: "invalid_stage", message: `Cannot mark arrived from stage ${order.stage}` }, 409);
+  }
+  if (await relayBlocksFinalSteps(id)) {
+    return c.json({ error: "relay_leg_pending", message: "This parcel is being relayed. The last rider marks arrival after collecting it from the matatu." }, 409);
   }
 
   const arrived = await db.execute({
@@ -2311,6 +2886,9 @@ orderRoutes.post("/orders/:id/handover", async (c) => {
   if (parsed.data.pin !== order.pin_code) {
     return c.json({ error: "pin_mismatch" }, 400);
   }
+  if (await relayBlocksFinalSteps(id)) {
+    return c.json({ error: "relay_leg_pending", message: "Your parcel hasn't reached the last rider yet." }, 409);
+  }
 
   if (!await finishWaiting(order, "Handover", user.sub)) return c.json({ error: "invalid_stage" }, 409);
   await logEvent(id, "Handover", "PIN confirmed, handover complete", user.sub);
@@ -2369,7 +2947,12 @@ orderRoutes.post("/orders/:id/settle", async (c) => {
       const riderProcessing = Number(feesRow?.processing_fee_rider ?? 0);
       payout = Math.max(0, deliveryFee - deliveryCommission - riderProcessing);
       const refunded = await refundUnusedOrderPrincipal(id, user.sub);
-      await settleMerchantOrderFinancials({ orderId: id, actorId: user.sub, riderPayout: payout });
+      // A relayed store order shares the payout between its riders and the matatu.
+      if (await settleRelayPayouts(order, payout, user.sub)) {
+        await logEvent(id, "Settle", "Relay payout shared between the riders and the matatu operator", user.sub);
+      } else {
+        await settleMerchantOrderFinancials({ orderId: id, actorId: user.sub, riderPayout: payout });
+      }
       if (refunded > 0) {
         await logEvent(id, "Settle", `${formatAmount(refunded)} unused shopping principal returned to the customer wallet`, user.sub);
       }
@@ -2386,7 +2969,10 @@ orderRoutes.post("/orders/:id/settle", async (c) => {
 
       // A car ride's pool is shared between its owner, driver and the
       // platform instead of going to a rider's wallet (see car/service.ts).
-      if (payout > 0 && (await isCarOrder(id))) {
+      // A relayed parcel's pool is shared between its riders and the matatu.
+      if (await settleRelayPayouts(order, payout, user.sub)) {
+        await logEvent(id, "Settle", "Relay payout shared between the riders and the matatu operator", user.sub);
+      } else if (payout > 0 && (await isCarOrder(id))) {
         await settleCarBooking(order, payout, user.sub);
       } else if (payout > 0) {
         const balanceColumn = order.environment === "sandbox" ? "wallet_balance_sandbox" : "wallet_balance";
