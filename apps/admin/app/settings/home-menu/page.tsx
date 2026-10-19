@@ -11,9 +11,9 @@ const CLUSTER_NOTE: Record<HomeClusterId, string> = {
   shopping: "List, Groceries, Stores, Pharma, Spotlight",
   food: "Restaurants, Kitchens, Streetfood, Juices, Bakeries",
   learn: "Opens the Learn home directly",
-  hive: "Laundry, Clean, Fix, and the door to Hire",
+  hive: "Clean, Laundry, Fix, Workers, Hire",
 };
-const SHORTCUT_NOTE = { laundry: "Laundry pickup and care", clean: "Cleaning for homes, offices and cars", fix: "Repairs and servicing", hire: "The Hire marketplace (shows only while Peebee Hire is switched on)" } as const;
+const SHORTCUT_NOTE = { clean: "Cleaning for homes, offices and cars", laundry: "Laundry pickup and care", fix: "Repairs and servicing", workers: "Quick odd jobs: find a worker nearby (shows only while Peebee Hire and worker search are on)", hire: "A project or longer contract (shows only while Peebee Hire is switched on)" } as const;
 
 export default function HomeMenuSettingsPage() {
   const [menu, setMenu] = useState<HomeMenuSettings>(() => structuredClone(DEFAULT_HOME_MENU));
@@ -77,8 +77,8 @@ export default function HomeMenuSettingsPage() {
       </section>
 
       <section className="home-card space-y-3">
-        <div><h2 className="font-bold">Hire banner</h2><p className="text-xs text-ink-500">The strip under the {menu.clusters.hive.label} cards that points to Hire, kept apart because hiring a person is different from a service Peebee delivers. It shows only while Peebee Hire is switched on.</p></div>
-        <label className="flex items-center gap-3 text-sm"><input type="checkbox" checked={menu.hive.hireBanner.enabled} onChange={(e) => change({ ...menu, hive: { ...menu.hive, hireBanner: { ...menu.hive.hireBanner, enabled: e.target.checked } } })} />Show the banner</label>
+        <div><h2 className="font-bold">Need-a-person section</h2><p className="text-xs text-ink-500">The section under the {menu.clusters.hive.label} cards that holds the Workers and Hire shortcuts, kept apart because finding a person is different from a service Peebee delivers. It shows only while Peebee Hire is switched on.</p></div>
+        <label className="flex items-center gap-3 text-sm"><input type="checkbox" checked={menu.hive.hireBanner.enabled} onChange={(e) => change({ ...menu, hive: { ...menu.hive, hireBanner: { ...menu.hive.hireBanner, enabled: e.target.checked } } })} />Show this section</label>
         <label className="block space-y-1 text-xs font-semibold text-ink-500"><span>Title</span><input required maxLength={60} value={menu.hive.hireBanner.title} onChange={(e) => change({ ...menu, hive: { ...menu.hive, hireBanner: { ...menu.hive.hireBanner, title: e.target.value } } })} className={field} /></label>
         <label className="block space-y-1 text-xs font-semibold text-ink-500"><span>Text</span><input required maxLength={160} value={menu.hive.hireBanner.text} onChange={(e) => change({ ...menu, hive: { ...menu.hive, hireBanner: { ...menu.hive.hireBanner, text: e.target.value } } })} className={field} /></label>
       </section>

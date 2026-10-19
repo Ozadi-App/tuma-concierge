@@ -5,9 +5,9 @@
 export const HOME_CLUSTER_IDS = ["ride", "shopping", "food", "learn", "hive"] as const;
 export type HomeClusterId = (typeof HOME_CLUSTER_IDS)[number];
 
-/** The shortcuts inside Hive. The first three are things Peebee delivers at a standard price;
- * "hire" is the separate marketplace for finding a person. */
-export const HIVE_SHORTCUT_IDS = ["laundry", "clean", "fix", "hire"] as const;
+/** The shortcuts inside Hive. Clean, Laundry and Fix are things Peebee delivers at a standard price.
+ * "workers" is for quick odd jobs and "hire" for a project or longer contract; both find a person through Peebee Hire. */
+export const HIVE_SHORTCUT_IDS = ["clean", "laundry", "fix", "workers", "hire"] as const;
 export type HiveShortcutId = (typeof HIVE_SHORTCUT_IDS)[number];
 
 export type HomeMenuSettings = {
@@ -17,7 +17,7 @@ export type HomeMenuSettings = {
     description: string;
     /** Order here is the order customers see. */
     shortcuts: { id: HiveShortcutId; label: string; enabled: boolean }[];
-    /** The strip under the Hive shortcuts that points to the Hire marketplace. */
+    /** The "Need a person instead?" section under the Hive services, which holds the Workers and Hire shortcuts. */
     hireBanner: { enabled: boolean; title: string; text: string };
   };
 };
@@ -34,15 +34,16 @@ export const DEFAULT_HOME_MENU: HomeMenuSettings = {
     eyebrow: "Peebee gets it done",
     description: "Laundry, cleaning and repairs at a clear price. Tell us what you need and Peebee takes care of it.",
     shortcuts: [
-      { id: "laundry", label: "Laundry", enabled: true },
       { id: "clean", label: "Clean", enabled: true },
+      { id: "laundry", label: "Laundry", enabled: true },
       { id: "fix", label: "Fix", enabled: true },
+      { id: "workers", label: "Workers", enabled: true },
       { id: "hire", label: "Hire", enabled: true },
     ],
     hireBanner: {
       enabled: true,
       title: "Need a person instead?",
-      text: "Hire someone for a quick job, a project or a longer contract.",
+      text: "Get a worker for a quick odd job, or hire someone for a project or a longer contract.",
     },
   },
 };
