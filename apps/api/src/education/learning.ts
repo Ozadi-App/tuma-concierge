@@ -1,7 +1,7 @@
 import { Hono, type Context } from "hono";
 import { SignJWT, jwtVerify } from "jose";
 import { z } from "zod";
-import type { LearnSettings } from "@peebee/shared";
+import { isAssessment, normaliseContentType, type LearnSettings } from "@peebee/shared";
 import { db } from "../db/client.js";
 import { newId } from "../lib/ids.js";
 import { consume, tooManyRequests } from "../lib/ratelimit.js";
@@ -10,6 +10,7 @@ import { getPlatformEnvironment, type PlatformEnvironment } from "../lib/setting
 import { getR2Bucket, uploadResponseHeaders } from "../storage/r2.js";
 import { creditWallet, debitWallet, resolveCustomerByIdentifier } from "../wallet/service.js";
 import { getLearnSettings } from "./settings.js";
+import { mark, newSeed, parseQuiz, readAttempt, serveQuestions, signAttempt, type Answer, type StoredQuiz } from "./quiz-engine.js";
 import {
   body as readBody,
   count,
@@ -435,13 +436,87 @@ async function courseAccess(userId: string, courseId: string): Promise<Access | 
   return enrolled ? { course, school, owner: false } : null;
 }
 
-function quizOf(raw: unknown): { title: string; passingScorePercent: number; questions: { question: string; options: string[]; correctIndex: number; explanation?: string }[] } | null {
+const quizOf = (raw: unknown): StoredQuiz | null => parseQuiz(raw);
+
+/** How many attempts this paper allows: its own limit, never above the platform's. 0 means unlimited. */
+export function attemptsAllowed(quiz: StoredQuiz, kind: "quiz" | "exam", settings: LearnSettings): number {
+  const platform = kind === "exam" ? settings.examMaxAttempts : settings.quizMaxAttempts;
+  const own = quiz.settings.maxAttempts;
+  return platform > 0 && (own === 0 || own > platform) ? platform : own;
+}
+
+function parseJson<T>(raw: unknown, fallback: T): T {
+  if (typeof raw !== "string" || !raw) return fallback;
   try {
-    const quiz = JSON.parse(String(raw ?? "null"));
-    return quiz && Array.isArray(quiz.questions) && quiz.questions.length ? quiz : null;
+    return JSON.parse(raw) as T;
   } catch {
-    return null;
+    return fallback;
   }
+}
+
+type LiveInfo = { startsAt: string; durationMinutes: number; url: string; notes: string };
+
+/** A live lesson's join window: from a little before the start until a short while after it should have ended. */
+function liveWindow(live: LiveInfo, settings: LearnSettings, now = Date.now()): { open: boolean; opensAt: number } {
+  const start = Date.parse(live.startsAt);
+  const opensAt = start - settings.liveLessonEarlyMinutes * 60_000;
+  const closesAt = start + (live.durationMinutes + 30) * 60_000;
+  return { open: Number.isFinite(start) && now >= opensAt && now <= closesAt, opensAt };
+}
+
+type LessonState = { done: Map<string, number | null>; media: Set<string>; attempts: Map<string, { n: number; best: number }> };
+
+function lessonView(l: Row, st: LessonState, settings: LearnSettings) {
+  const id = String(l.id);
+  const kind = normaliseContentType(String(l.content_type));
+  const quiz = quizOf(l.quiz_json);
+  const live = parseJson<LiveInfo | null>(l.live_json, null);
+  const slides = parseJson<unknown[]>(l.slides_json, []);
+  const tries = st.attempts.get(id);
+  const progressScore = st.done.get(id) ?? null;
+  return {
+    id,
+    title: String(l.title),
+    contentType: kind,
+    durationMinutes: Number(l.duration_minutes),
+    summary: String(l.summary ?? ""),
+    contentUrl: String(l.content_url ?? ""),
+    hasMedia: st.media.has(id),
+    completed: st.done.has(id),
+    bestScorePercent: progressScore ?? tries?.best ?? null,
+    slideCount: slides.length,
+    // The questions and choices are never in the course view; a learner gets them when starting an attempt.
+    quiz: quiz
+      ? {
+          title: quiz.title,
+          passingScorePercent: quiz.passingScorePercent,
+          questionCount: quiz.settings.questionsPerAttempt > 0 ? Math.min(quiz.settings.questionsPerAttempt, quiz.questions.length) : quiz.questions.length,
+          timeLimitMinutes: quiz.settings.timeLimitMinutes,
+          attemptsAllowed: attemptsAllowed(quiz, kind === "exam" ? "exam" : "quiz", settings),
+          attemptsUsed: tries?.n ?? 0,
+        }
+      : null,
+    // The meeting link is only handed out by /join, inside the join window.
+    live: live ? { startsAt: live.startsAt, durationMinutes: live.durationMinutes, joinOpen: liveWindow(live, settings).open, notes: live.notes ?? "" } : null,
+  };
+}
+
+async function lessonState(userId: string, courseId: string): Promise<LessonState> {
+  const progress = (await db.execute({ sql: "SELECT lesson_id, best_score_percent FROM edu_lesson_progress WHERE user_id = ? AND course_id = ?", args: [userId, courseId] })).rows as Row[];
+  const media = (await db.execute({ sql: "SELECT m.lesson_id FROM edu_lesson_media m JOIN edu_lessons l ON l.id = m.lesson_id WHERE l.course_id = ?", args: [courseId] })).rows as Row[];
+  const tries = (await db.execute({ sql: "SELECT lesson_id, COUNT(*) AS n, MAX(score_percent) AS best FROM edu_quiz_attempts WHERE user_id = ? AND course_id = ? GROUP BY lesson_id", args: [userId, courseId] })).rows as Row[];
+  return {
+    done: new Map(progress.map((p) => [String(p.lesson_id), p.best_score_percent === null ? null : Number(p.best_score_percent)])),
+    media: new Set(media.map((r) => String(r.lesson_id))),
+    attempts: new Map(tries.map((r) => [String(r.lesson_id), { n: Number(r.n), best: Number(r.best) }])),
+  };
+}
+
+async function lessonAccess(c: Context, lessonId: string, message: string): Promise<{ lesson: Row; access: Access } | Response> {
+  const lesson = await one("SELECT * FROM edu_lessons WHERE id = ?", [lessonId]);
+  const access = lesson ? await courseAccess(c.get("user").sub, String(lesson.course_id)) : null;
+  if (!lesson || !access) return fail(c, { status: 403, error: "not_enrolled", message });
+  return { lesson, access };
 }
 
 learnRoutes.get("/enrollments", async (c) => {
@@ -533,14 +608,11 @@ learnRoutes.get("/courses/:id", async (c) => {
   const user = c.get("user");
   const access = await courseAccess(user.sub, c.req.param("id"));
   if (!access) return fail(c, { status: 403, error: "not_enrolled", message: "Enrol in this course to open its lessons." });
+  const settings = await getLearnSettings();
   const id = String(access.course.id);
-  const modules = (await db.execute({ sql: "SELECT * FROM edu_modules WHERE course_id = ? ORDER BY position ASC LIMIT 500", args: [id] })).rows as Row[];
-  const lessons = (await db.execute({ sql: "SELECT * FROM edu_lessons WHERE course_id = ? ORDER BY position ASC LIMIT 5000", args: [id] })).rows as Row[];
-  const progress = (await db.execute({ sql: "SELECT lesson_id, best_score_percent FROM edu_lesson_progress WHERE user_id = ? AND course_id = ?", args: [user.sub, id] })).rows as Row[];
-  const done = new Map(progress.map((p) => [String(p.lesson_id), p.best_score_percent === null ? null : Number(p.best_score_percent)]));
-  const media = new Set(
-    ((await db.execute({ sql: "SELECT m.lesson_id FROM edu_lesson_media m JOIN edu_lessons l ON l.id = m.lesson_id WHERE l.course_id = ?", args: [id] })).rows as Row[]).map((r) => String(r.lesson_id)),
-  );
+  const modules = (await db.execute({ sql: "SELECT * FROM edu_modules WHERE course_id = ? ORDER BY position ASC, created_at ASC LIMIT 500", args: [id] })).rows as Row[];
+  const lessons = (await db.execute({ sql: "SELECT * FROM edu_lessons WHERE course_id = ? ORDER BY position ASC, created_at ASC LIMIT 5000", args: [id] })).rows as Row[];
+  const st = await lessonState(user.sub, id);
   return c.json({
     ok: true,
     owner: access.owner,
@@ -550,32 +622,30 @@ learnRoutes.get("/courses/:id", async (c) => {
       summary: String(access.course.summary ?? ""),
       stream: String(access.course.stream),
       schoolName: String(access.school.name),
-      progressPercent: lessons.length ? Math.round((done.size / lessons.length) * 100) : 0,
+      progressPercent: lessons.length ? Math.round((st.done.size / lessons.length) * 100) : 0,
       modules: modules.map((m) => ({
         id: String(m.id),
         title: String(m.title),
         description: String(m.description ?? ""),
-        lessons: lessons
-          .filter((l) => l.module_id === m.id)
-          .map((l) => {
-            const quiz = quizOf(l.quiz_json);
-            return {
-              id: String(l.id),
-              title: String(l.title),
-              contentType: String(l.content_type),
-              durationMinutes: Number(l.duration_minutes),
-              summary: String(l.summary ?? ""),
-              contentUrl: String(l.content_url ?? ""),
-              hasMedia: media.has(String(l.id)),
-              completed: done.has(String(l.id)),
-              bestScorePercent: done.get(String(l.id)) ?? null,
-              // The questions and choices, never the answers.
-              quiz: quiz
-                ? { title: quiz.title, passingScorePercent: quiz.passingScorePercent, questions: quiz.questions.map((q) => ({ question: q.question, options: q.options })) }
-                : null,
-            };
-          }),
+        lessons: lessons.filter((l) => l.module_id === m.id).map((l) => lessonView(l, st, settings)),
       })),
+    },
+  });
+});
+
+/** One lesson in full, for the player: the written body and the slides come only from here. */
+learnRoutes.get("/lessons/:id", async (c) => {
+  const found = await lessonAccess(c, c.req.param("id"), "Enrol in this course to open its lessons.");
+  if (isResponse(found)) return found;
+  const { lesson } = found;
+  const settings = await getLearnSettings();
+  const st = await lessonState(c.get("user").sub, String(lesson.course_id));
+  return c.json({
+    ok: true,
+    lesson: {
+      ...lessonView(lesson, st, settings),
+      body: String(lesson.body ?? ""),
+      slides: parseJson<unknown[]>(lesson.slides_json, []),
     },
   });
 });
@@ -591,57 +661,171 @@ learnRoutes.post("/lessons/:id/media-url", async (c) => {
   return c.json({ ok: true, url: `${base}/v1/education/media/${await signMediaToken(user.sub, String(lesson.id))}` });
 });
 
+/** Records an attempt and, on a pass, the lesson as done with its best score. The educator previewing their own course records nothing. */
+async function recordAttempt(userId: string, lesson: Row, owner: boolean, scorePercent: number, passed: boolean, answers: unknown): Promise<void> {
+  if (owner) return;
+  await db.execute({
+    sql: "INSERT INTO edu_quiz_attempts (id, user_id, lesson_id, course_id, score_percent, passed, answers_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    args: [newId("qza"), userId, lesson.id as string, lesson.course_id as string, scorePercent, passed ? 1 : 0, JSON.stringify(answers)],
+  });
+  if (passed) {
+    await db.execute({
+      sql: `INSERT INTO edu_lesson_progress (user_id, lesson_id, course_id, best_score_percent) VALUES (?, ?, ?, ?)
+            ON CONFLICT(user_id, lesson_id) DO UPDATE SET best_score_percent = MAX(COALESCE(best_score_percent, 0), excluded.best_score_percent)`,
+      args: [userId, lesson.id as string, lesson.course_id as string, scorePercent],
+    });
+  }
+}
+
+const kindOf = (lesson: Row): "quiz" | "exam" => (normaliseContentType(String(lesson.content_type)) === "exam" ? "exam" : "quiz");
+
+/** Starts an attempt: the questions without their answers, in this attempt's own order, and a signed token to send back. */
+learnRoutes.post("/lessons/:id/quiz/start", async (c) => {
+  const user = c.get("user");
+  const settings = await getLearnSettings();
+  const quota = await consume(`learn-quiz:${user.sub}`, settings.quizAttemptsPerHour, 60 * 60);
+  if (!quota.allowed) return tooManyRequests(c, quota, "That's a lot of attempts. Take a short break and try again.");
+  const found = await lessonAccess(c, c.req.param("id"), "Enrol in this course to take its quizzes.");
+  if (isResponse(found)) return found;
+  const { lesson, access } = found;
+  const quiz = quizOf(lesson.quiz_json);
+  if (!quiz) return fail(c, { status: 404, error: "no_quiz", message: "This lesson has no quiz." });
+
+  const allowed = attemptsAllowed(quiz, kindOf(lesson), settings);
+  const used = access.owner ? 0 : await count("SELECT COUNT(*) AS n FROM edu_quiz_attempts WHERE user_id = ? AND lesson_id = ?", [user.sub, lesson.id]);
+  if (!access.owner && allowed > 0 && used >= allowed) {
+    return fail(c, { status: 409, error: "no_attempts_left", message: allowed === 1 ? "You've already taken this." : `You've used all ${allowed} attempts.` });
+  }
+  const seed = newSeed();
+  return c.json({
+    ok: true,
+    attemptToken: await signAttempt(user.sub, String(lesson.id), seed, quiz.settings.timeLimitMinutes),
+    title: quiz.title || String(lesson.title),
+    passMark: quiz.passingScorePercent,
+    timeLimitMinutes: quiz.settings.timeLimitMinutes,
+    attemptsAllowed: allowed,
+    attemptsUsed: used,
+    questions: serveQuestions(quiz, seed),
+  });
+});
+
+const answerValue = z.union([z.number().int().min(-1).max(100), z.array(z.number().int().min(-1).max(100)).max(20), z.boolean(), z.string().max(300), z.null()]);
+
+/** Marks an attempt. The order the learner saw is rebuilt from the token, so nothing about the paper is stored per attempt. */
+learnRoutes.post("/lessons/:id/quiz/submit", async (c) => {
+  const user = c.get("user");
+  const settings = await getLearnSettings();
+  const parsed = await readBody(c, z.object({ attemptToken: z.string().max(2000), answers: z.record(z.string().max(60), answerValue) }));
+  if (!parsed.ok) return parsed.res;
+  const claims = await readAttempt(parsed.data.attemptToken);
+  if (!claims || claims.userId !== user.sub || claims.lessonId !== c.req.param("id")) {
+    return fail(c, { status: 400, error: "attempt_expired", message: "This attempt has expired. Start it again." });
+  }
+  const found = await lessonAccess(c, c.req.param("id"), "Enrol in this course to take its quizzes.");
+  if (isResponse(found)) return found;
+  const { lesson, access } = found;
+  const quiz = quizOf(lesson.quiz_json);
+  if (!quiz) return fail(c, { status: 404, error: "no_quiz", message: "This lesson has no quiz." });
+
+  const kind = kindOf(lesson);
+  const allowed = attemptsAllowed(quiz, kind, settings);
+  const used = access.owner ? 0 : await count("SELECT COUNT(*) AS n FROM edu_quiz_attempts WHERE user_id = ? AND lesson_id = ?", [user.sub, lesson.id]);
+  if (!access.owner && allowed > 0 && used >= allowed) {
+    return fail(c, { status: 409, error: "no_attempts_left", message: "You've used all your attempts." });
+  }
+  const reveal = kind === "exam" ? settings.revealExamAnswers : settings.revealQuizAnswers;
+  const marked = mark(quiz, claims.seed, parsed.data.answers as Record<string, Answer>, reveal);
+  await recordAttempt(user.sub, lesson, access.owner, marked.scorePercent, marked.passed, { seed: claims.seed, answers: parsed.data.answers });
+  return c.json({
+    ok: true,
+    scorePercent: marked.scorePercent,
+    passed: marked.passed,
+    passMark: quiz.passingScorePercent,
+    earned: marked.earned,
+    total: marked.total,
+    attemptsAllowed: allowed,
+    attemptsUsed: access.owner ? 0 : used + 1,
+    results: marked.results,
+  });
+});
+
+/**
+ * The first version of the quiz endpoint: one pass, single-choice only, answers in the creator's order. Kept so a
+ * TV or phone that hasn't picked up the new app yet keeps working.
+ */
 learnRoutes.post("/lessons/:id/quiz", async (c) => {
   const user = c.get("user");
   const settings = await getLearnSettings();
   const quota = await consume(`learn-quiz:${user.sub}`, settings.quizAttemptsPerHour, 60 * 60);
   if (!quota.allowed) return tooManyRequests(c, quota, "That's a lot of attempts. Take a short break and try again.");
-
-  const lesson = await one("SELECT * FROM edu_lessons WHERE id = ?", [c.req.param("id")]);
-  const access = lesson ? await courseAccess(user.sub, String(lesson.course_id)) : null;
-  if (!lesson || !access) return fail(c, { status: 403, error: "not_enrolled", message: "Enrol in this course to take its quizzes." });
+  const found = await lessonAccess(c, c.req.param("id"), "Enrol in this course to take its quizzes.");
+  if (isResponse(found)) return found;
+  const { lesson, access } = found;
   const quiz = quizOf(lesson.quiz_json);
   if (!quiz) return fail(c, { status: 404, error: "no_quiz", message: "This lesson has no quiz." });
+  const plain: StoredQuiz = { ...quiz, settings: { ...quiz.settings, shuffleOptions: false, shuffleQuestions: false, questionsPerAttempt: 0 } };
 
-  const parsed = await readBody(c, z.object({ answers: z.array(z.number().int().min(-1).max(20)).length(quiz.questions.length) }));
+  const parsed = await readBody(c, z.object({ answers: z.array(z.number().int().min(-1).max(20)).length(plain.questions.length) }));
   if (!parsed.ok) return parsed.res;
-  const answers: number[] = parsed.data.answers;
-
-  const correct = quiz.questions.map((q, i) => answers[i] === q.correctIndex);
-  const right = correct.filter(Boolean).length;
-  const scorePercent = Math.round((right / quiz.questions.length) * 100);
-  const passed = scorePercent >= quiz.passingScorePercent;
-
-  await db.execute({
-    sql: "INSERT INTO edu_quiz_attempts (id, user_id, lesson_id, course_id, score_percent, passed, answers_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
-    args: [newId("qza"), user.sub, lesson.id as string, lesson.course_id as string, scorePercent, passed ? 1 : 0, JSON.stringify(answers)],
-  });
-  if (passed && !access.owner) {
-    await db.execute({
-      sql: `INSERT INTO edu_lesson_progress (user_id, lesson_id, course_id, best_score_percent) VALUES (?, ?, ?, ?)
-            ON CONFLICT(user_id, lesson_id) DO UPDATE SET best_score_percent = MAX(COALESCE(best_score_percent, 0), excluded.best_score_percent)`,
-      args: [user.sub, lesson.id as string, lesson.course_id as string, scorePercent],
-    });
-  }
+  const sheet: Record<string, Answer> = {};
+  plain.questions.forEach((q, i) => (sheet[q.id] = parsed.data.answers[i]));
+  const marked = mark(plain, 0, sheet, true);
+  await recordAttempt(user.sub, lesson, access.owner, marked.scorePercent, marked.passed, parsed.data.answers);
   return c.json({
     ok: true,
-    scorePercent,
-    passed,
-    passMark: quiz.passingScorePercent,
-    // What was right or wrong is always shown. The correct answer and the reason are shown once the learner has passed.
-    results: quiz.questions.map((q, i) => ({
-      correct: correct[i],
-      ...(passed ? { correctIndex: q.correctIndex, explanation: q.explanation ?? "" } : {}),
+    scorePercent: marked.scorePercent,
+    passed: marked.passed,
+    passMark: plain.passingScorePercent,
+    results: marked.results.map((r, i) => ({
+      correct: r.correct,
+      ...(marked.passed ? { correctIndex: plain.questions[i].correctIndex, explanation: plain.questions[i].explanation ?? "" } : {}),
     })),
   });
 });
 
+/** Joining a live lesson: inside the join window the learner gets the meeting link and is marked as attending. */
+learnRoutes.post("/lessons/:id/join", async (c) => {
+  const user = c.get("user");
+  const settings = await getLearnSettings();
+  const found = await lessonAccess(c, c.req.param("id"), "Enrol in this course to join its live lessons.");
+  if (isResponse(found)) return found;
+  const { lesson, access } = found;
+  const live = parseJson<LiveInfo | null>(lesson.live_json, null);
+  if (!live) return fail(c, { status: 404, error: "not_live", message: "This isn't a live lesson." });
+  if (!settings.liveLessonsEnabled) return fail(c, { status: 503, error: "live_off", message: "Live video lessons are switched off right now." });
+  const win = liveWindow(live, settings);
+  if (!win.open) {
+    const past = Date.now() > win.opensAt;
+    return fail(c, {
+      status: 409,
+      error: past ? "live_over" : "live_not_open",
+      message: past ? "This live lesson has finished." : `You can join from ${new Date(win.opensAt).toISOString()}.`,
+    });
+  }
+  if (!access.owner) {
+    await db.execute({
+      sql: "INSERT OR IGNORE INTO edu_live_attendance (lesson_id, user_id, course_id) VALUES (?, ?, ?)",
+      args: [lesson.id as string, user.sub, lesson.course_id as string],
+    });
+    await db.execute({
+      sql: "INSERT OR IGNORE INTO edu_lesson_progress (user_id, lesson_id, course_id) VALUES (?, ?, ?)",
+      args: [user.sub, lesson.id as string, lesson.course_id as string],
+    });
+  }
+  return c.json({ ok: true, url: live.url });
+});
+
 learnRoutes.post("/lessons/:id/complete", async (c) => {
   const user = c.get("user");
-  const lesson = await one("SELECT * FROM edu_lessons WHERE id = ?", [c.req.param("id")]);
-  const access = lesson ? await courseAccess(user.sub, String(lesson.course_id)) : null;
-  if (!lesson || !access) return fail(c, { status: 403, error: "not_enrolled", message: "Enrol in this course to track your progress." });
-  if (quizOf(lesson.quiz_json)) return fail(c, { status: 409, error: "pass_quiz_first", message: "Pass this lesson's quiz to complete it." });
+  const found = await lessonAccess(c, c.req.param("id"), "Enrol in this course to track your progress.");
+  if (isResponse(found)) return found;
+  const { lesson, access } = found;
+  if (isAssessment(normaliseContentType(String(lesson.content_type))) || quizOf(lesson.quiz_json)) {
+    return fail(c, { status: 409, error: "pass_quiz_first", message: "Pass the quiz to complete this." });
+  }
+  if (normaliseContentType(String(lesson.content_type)) === "live") {
+    return fail(c, { status: 409, error: "join_first", message: "Join the live lesson to complete it." });
+  }
   if (!access.owner) {
     await db.execute({
       sql: "INSERT OR IGNORE INTO edu_lesson_progress (user_id, lesson_id, course_id) VALUES (?, ?, ?)",

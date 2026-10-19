@@ -16,30 +16,94 @@ export const SCHOOL_KINDS: { id: SchoolKind; label: string }[] = [
   { id: "independent_tutor", label: "Independent tutor" },
 ];
 
-export type LessonContentType = "video" | "audio_story" | "reading" | "interactive_h5p" | "practical_demo";
+/** What one item in a class section is. Quizzes and exams are items of their own, placed wherever the creator likes. */
+export type LessonContentType = "text" | "slides" | "audio" | "video" | "live" | "quiz" | "exam";
 
-export const LESSON_CONTENT_TYPES: { id: LessonContentType; label: string }[] = [
-  { id: "video", label: "Video" },
-  { id: "reading", label: "Reading" },
-  { id: "audio_story", label: "Audio story" },
-  { id: "practical_demo", label: "Practical demo" },
-  { id: "interactive_h5p", label: "Interactive activity" },
+export const LESSON_CONTENT_TYPES: { id: LessonContentType; label: string; hint: string }[] = [
+  { id: "text", label: "Text", hint: "A written lesson" },
+  { id: "slides", label: "Slides", hint: "A deck the learner swipes through" },
+  { id: "audio", label: "Audio", hint: "A recording or a link to one" },
+  { id: "video", label: "Video", hint: "An uploaded video or a link" },
+  { id: "live", label: "Live video", hint: "A scheduled live lesson on Zoom, Meet or Jitsi" },
+  { id: "quiz", label: "Quiz", hint: "Questions that can be retaken" },
+  { id: "exam", label: "Exam", hint: "A timed test, usually one attempt" },
 ];
+
+export const isAssessment = (type: string): boolean => type === "quiz" || type === "exam";
+
+/** Older lessons were saved with other type names; this reads any of them as one of the current ones. */
+export function normaliseContentType(raw: string): LessonContentType {
+  if (LESSON_CONTENT_TYPES.some((t) => t.id === raw)) return raw as LessonContentType;
+  if (raw === "reading" || raw === "interactive_h5p") return "text";
+  if (raw === "audio_story") return "audio";
+  return "video";
+}
 
 export type StudioStatus = "draft" | "published";
 export type SchoolStatus = "active" | "suspended";
 
+export type QuestionType = "single" | "multiple" | "true_false" | "fill_blank" | "short_answer" | "ordering" | "matching";
+
+export const QUESTION_TYPE_LABELS: { id: QuestionType; label: string; hint: string }[] = [
+  { id: "single", label: "One correct answer", hint: "Pick one choice" },
+  { id: "multiple", label: "Several correct answers", hint: "Pick every right choice" },
+  { id: "true_false", label: "True or false", hint: "A statement to judge" },
+  { id: "fill_blank", label: "Fill in the blank", hint: "Type the missing word" },
+  { id: "short_answer", label: "Short answer", hint: "Type a word or short phrase" },
+  { id: "ordering", label: "Put in order", hint: "Arrange the items" },
+  { id: "matching", label: "Match the pairs", hint: "Join each item to its partner" },
+];
+
+/** A question as the creator writes it. Which fields apply depends on `type` (older questions have none and are "single"). */
 export interface StudioQuizQuestion {
+  id?: string;
+  type?: QuestionType;
   question: string;
-  options: string[];
-  correctIndex: number;
   explanation?: string;
+  points?: number;
+  /** single, multiple: the choices. ordering: the items in their correct order. */
+  options?: string[];
+  correctIndex?: number;
+  correctIndexes?: number[];
+  answerBool?: boolean;
+  /** fill_blank, short_answer: every accepted answer. */
+  accepted?: string[];
+  /** matching */
+  pairs?: { left: string; right: string }[];
+}
+
+export interface StudioQuizSettings {
+  /** 0 means untimed. */
+  timeLimitMinutes: number;
+  /** 0 means the platform limit applies. */
+  maxAttempts: number;
+  shuffleQuestions: boolean;
+  shuffleOptions: boolean;
+  /** Draw this many questions for each attempt. 0 means all. */
+  questionsPerAttempt: number;
 }
 
 export interface StudioQuiz {
   title: string;
   passingScorePercent: number;
   questions: StudioQuizQuestion[];
+  settings?: Partial<StudioQuizSettings>;
+}
+
+export interface StudioSlide {
+  title: string;
+  body: string;
+  imageUrl: string;
+}
+
+/** A live lesson on someone else's meeting tool. */
+export interface StudioLive {
+  /** ISO time the lesson starts. */
+  startsAt: string;
+  durationMinutes: number;
+  /** The meeting link. */
+  url: string;
+  notes: string;
 }
 
 export interface StudioSchool {
@@ -106,6 +170,13 @@ export interface StudioLesson {
   summary: string;
   contentUrl: string;
   position: number;
+  /** Text lessons: the written body. */
+  body: string;
+  /** Slide lessons. */
+  slides: StudioSlide[];
+  /** Live lessons. */
+  live: StudioLive | null;
+  /** Quizzes and exams. */
   quiz: StudioQuiz | null;
   /** The uploaded video or audio, if any. */
   media: LessonMedia | null;
@@ -194,6 +265,24 @@ export interface LearnSettings {
   proPriceUgx: number;
   /** How many days one Pro purchase lasts. */
   proDays: number;
+  /** Most slides in one slide lesson. */
+  maxSlidesPerLesson: number;
+  /** Longest text lesson, in characters. */
+  maxLessonBodyChars: number;
+  /** Attempts a learner gets at a quiz. 0 means unlimited. */
+  quizMaxAttempts: number;
+  /** Attempts a learner gets at an exam. 0 means unlimited. */
+  examMaxAttempts: number;
+  /** After a quiz, show which answers were right. */
+  revealQuizAnswers: boolean;
+  /** After an exam, show which answers were right. */
+  revealExamAnswers: boolean;
+  /** Educators can schedule live lessons with a Zoom, Meet, Jitsi or similar link. */
+  liveLessonsEnabled: boolean;
+  /** Hosts a live lesson link may point to, comma separated. Subdomains are allowed. */
+  liveLessonHosts: string;
+  /** How many minutes before the start a learner can open a live lesson. */
+  liveLessonEarlyMinutes: number;
 }
 
 /** An educator's access to the TV classroom, and what Learn Pro costs. */
@@ -289,6 +378,15 @@ export const DEFAULT_LEARN_SETTINGS: LearnSettings = {
   tvProRequired: false,
   proPriceUgx: 50000,
   proDays: 30,
+  maxSlidesPerLesson: 30,
+  maxLessonBodyChars: 20000,
+  quizMaxAttempts: 0,
+  examMaxAttempts: 1,
+  revealQuizAnswers: true,
+  revealExamAnswers: false,
+  liveLessonsEnabled: true,
+  liveLessonHosts: "zoom.us,meet.google.com,meet.jit.si,teams.microsoft.com,whereby.com",
+  liveLessonEarlyMinutes: 15,
 };
 
 // ---------------------------------------------------------------------------
@@ -307,11 +405,24 @@ export interface LearnEnrollment {
   progressPercent: number;
 }
 
+/** What a learner sees about a quiz or exam before starting it. */
 export interface LearnerQuiz {
   title: string;
   passingScorePercent: number;
-  /** Questions and choices only. The answers stay on the server. */
-  questions: { question: string; options: string[] }[];
+  questionCount: number;
+  /** 0 means untimed. */
+  timeLimitMinutes: number;
+  /** 0 means unlimited. */
+  attemptsAllowed: number;
+  attemptsUsed: number;
+}
+
+export interface LearnerLive {
+  startsAt: string;
+  durationMinutes: number;
+  /** Whether the join button is open now. */
+  joinOpen: boolean;
+  notes: string;
 }
 
 export interface LearnerLesson {
@@ -324,7 +435,15 @@ export interface LearnerLesson {
   hasMedia: boolean;
   completed: boolean;
   bestScorePercent: number | null;
+  slideCount: number;
   quiz: LearnerQuiz | null;
+  live: LearnerLive | null;
+}
+
+/** One lesson in full, for the player. */
+export interface LearnerLessonDetail extends LearnerLesson {
+  body: string;
+  slides: StudioSlide[];
 }
 
 export interface LearnerCourse {
@@ -337,12 +456,41 @@ export interface LearnerCourse {
   modules: { id: string; title: string; description: string; lessons: LearnerLesson[] }[];
 }
 
+/** A question as served to a learner: no answers. Positions in `options`/`right` are what answers refer to. */
+export interface ServedQuestion {
+  id: string;
+  type: QuestionType;
+  question: string;
+  points: number;
+  options?: string[];
+  left?: string[];
+  right?: string[];
+}
+
+export interface QuizAttemptStart {
+  /** Send this back with the answers. */
+  attemptToken: string;
+  title: string;
+  passMark: number;
+  timeLimitMinutes: number;
+  attemptsAllowed: number;
+  attemptsUsed: number;
+  questions: ServedQuestion[];
+}
+
+/** One answer: a position (single), positions (multiple, ordering, matching), true/false, or text. */
+export type QuizAnswer = number | number[] | boolean | string | null;
+
 export interface QuizResult {
   scorePercent: number;
   passed: boolean;
   passMark: number;
-  /** correctIndex and explanation are present only after a pass. */
-  results: { correct: boolean; correctIndex?: number; explanation?: string }[];
+  earned: number;
+  total: number;
+  attemptsAllowed: number;
+  attemptsUsed: number;
+  /** answer and explanation are present only when the platform shows answers for this kind of paper. */
+  results: { id: string; correct: boolean; earned: number; points: number; reveal?: { answer: string; explanation?: string } }[];
 }
 
 export interface FeeInvoice {

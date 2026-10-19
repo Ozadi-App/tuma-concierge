@@ -18,6 +18,12 @@ function streams(raw: string | undefined): EducationStream[] {
   return EDUCATION_STREAM_IDS.filter((s) => wanted.has(s));
 }
 
+/** Comma separated host names, lower-cased and cleaned; falls back to the common meeting tools. */
+function hosts(raw: string | undefined): string {
+  const list = (raw ?? "").split(",").map((h) => h.trim().toLowerCase()).filter((h) => /^[a-z0-9.-]+\.[a-z]{2,}$/.test(h));
+  return (list.length ? list : ["zoom.us", "meet.google.com", "meet.jit.si", "teams.microsoft.com", "whereby.com"]).join(",");
+}
+
 /** The two trial codes: six digits each and never the same. Anything else falls back to the defaults. */
 function trialCodes(a: string | undefined, b: string | undefined): { trialCodeA: string; trialCodeB: string } {
   const ok = (v: string | undefined): v is string => typeof v === "string" && /^\d{6}$/.test(v);
@@ -34,6 +40,8 @@ export async function getLearnSettings(): Promise<LearnSettings> {
     "learn_live_enabled", "learn_live_max_participants", "learn_live_poll_seconds", "learn_live_max_cues", "learn_live_question_seconds", "learn_live_max_exam_minutes", "learn_max_screens_per_user", "learn_screen_pair_minutes",
     "learn_trial_classes_enabled", "learn_trial_code_a", "learn_trial_code_b", "learn_demo_visible",
     "learn_tv_pro_required", "learn_tv_learn_enabled", "learn_pro_price_ugx", "learn_pro_days",
+    "learn_max_slides", "learn_max_body_chars", "learn_quiz_max_attempts", "learn_exam_max_attempts", "learn_reveal_quiz_answers", "learn_reveal_exam_answers",
+    "learn_live_lessons_enabled", "learn_live_lesson_hosts", "learn_live_lesson_early_minutes",
   ] as const;
   const v = Object.fromEntries(await Promise.all(keys.map(async (k) => [k, await getSetting(k)]))) as Record<(typeof keys)[number], string>;
   return {
@@ -77,6 +85,15 @@ export async function getLearnSettings(): Promise<LearnSettings> {
     tvLearnEnabled: v.learn_tv_learn_enabled !== "0",
     proPriceUgx: int(v.learn_pro_price_ugx, 50000, 0, 100_000_000),
     proDays: int(v.learn_pro_days, 30, 1, 3650),
+    maxSlidesPerLesson: int(v.learn_max_slides, 30, 1, 100),
+    maxLessonBodyChars: int(v.learn_max_body_chars, 20000, 500, 100000),
+    quizMaxAttempts: int(v.learn_quiz_max_attempts, 0, 0, 50),
+    examMaxAttempts: int(v.learn_exam_max_attempts, 1, 0, 20),
+    revealQuizAnswers: v.learn_reveal_quiz_answers !== "0",
+    revealExamAnswers: v.learn_reveal_exam_answers === "1",
+    liveLessonsEnabled: v.learn_live_lessons_enabled !== "0",
+    liveLessonHosts: hosts(v.learn_live_lesson_hosts),
+    liveLessonEarlyMinutes: int(v.learn_live_lesson_early_minutes, 15, 0, 240),
   };
 }
 
@@ -121,5 +138,14 @@ export async function setLearnSettings(next: Partial<LearnSettings>): Promise<vo
   if (next.tvProRequired != null) put("learn_tv_pro_required", next.tvProRequired ? "1" : "0");
   if (next.proPriceUgx != null) put("learn_pro_price_ugx", String(next.proPriceUgx));
   if (next.proDays != null) put("learn_pro_days", String(next.proDays));
+  if (next.maxSlidesPerLesson != null) put("learn_max_slides", String(next.maxSlidesPerLesson));
+  if (next.maxLessonBodyChars != null) put("learn_max_body_chars", String(next.maxLessonBodyChars));
+  if (next.quizMaxAttempts != null) put("learn_quiz_max_attempts", String(next.quizMaxAttempts));
+  if (next.examMaxAttempts != null) put("learn_exam_max_attempts", String(next.examMaxAttempts));
+  if (next.revealQuizAnswers != null) put("learn_reveal_quiz_answers", next.revealQuizAnswers ? "1" : "0");
+  if (next.revealExamAnswers != null) put("learn_reveal_exam_answers", next.revealExamAnswers ? "1" : "0");
+  if (next.liveLessonsEnabled != null) put("learn_live_lessons_enabled", next.liveLessonsEnabled ? "1" : "0");
+  if (next.liveLessonHosts != null) put("learn_live_lesson_hosts", hosts(next.liveLessonHosts));
+  if (next.liveLessonEarlyMinutes != null) put("learn_live_lesson_early_minutes", String(next.liveLessonEarlyMinutes));
   await Promise.all(writes);
 }

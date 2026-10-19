@@ -169,7 +169,8 @@ test("a linked TV studies as its owner: courses, lessons, quizzes and progress a
 
   const opened = (await tv(`/courses/${course.id}`)).json.course;
   assert.equal(opened.modules[0].lessons.length, 2);
-  assert.ok(opened.modules[0].lessons[1].quiz.questions.every((q: Json) => q.correctIndex === undefined), "answers are never sent");
+  assert.equal(opened.modules[0].lessons[1].quiz.questionCount, 2);
+  assert.ok(!JSON.stringify(opened).includes("correctIndex"), "answers are never sent");
 
   assert.equal((await tv(`/lessons/${plain.id}/complete`, { method: "POST", body: {} })).status, 200);
   assert.equal((await tv(`/lessons/${quizzed.id}/complete`, { method: "POST", body: {} })).status, 409, "a quiz lesson needs the quiz");

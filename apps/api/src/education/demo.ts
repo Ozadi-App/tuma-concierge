@@ -4,7 +4,7 @@ import { hasColumn } from "../lib/schema.js";
 import { getR2Bucket } from "../storage/r2.js";
 import { liveReady } from "./classroom.js";
 import { demoVideoBytes } from "./demo-media.js";
-import { DEMO_EDUCATORS, DEMO_TRIALS, VIDEO_BY_STREAM, demoIds, findCourse, type DemoEducator, type DemoTrial } from "./demo/index.js";
+import { DEMO_EDUCATORS, DEMO_TRIALS, VIDEO_BY_STREAM, demoIds, findCourse, type DemoEducator, type DemoLesson, type DemoTrial } from "./demo/index.js";
 import { getLearnSettings } from "./settings.js";
 import { learningReady, studioReady } from "./studio.js";
 
@@ -52,7 +52,7 @@ export interface DemoStatus {
   expected: { educators: number; schools: number; classes: number; courses: number; lessons: number; videos: number; trials: number };
 }
 
-function expectedCounts() {
+function expectedCounts(wide: boolean) {
   let classes = 0;
   let courses = 0;
   let lessons = 0;
@@ -62,7 +62,7 @@ function expectedCounts() {
     for (const cls of e.classes) {
       courses += cls.courses.length;
       for (const c of cls.courses) for (const m of c.modules) for (const l of m.lessons) {
-        lessons += 1;
+        lessons += wide && l.quiz ? 2 : 1;
         if (l.video) videos += 1;
       }
     }
@@ -72,7 +72,7 @@ function expectedCounts() {
 
 export async function demoStatus(): Promise<DemoStatus> {
   const missing = await demoMissing();
-  const expected = expectedCounts();
+  const expected = expectedCounts(await hasColumn("edu_lessons", "body"));
   const empty = { educators: 0, schools: 0, classes: 0, courses: 0, lessons: 0, videos: 0, trials: 0 };
   if (missing.length > 0) return { ready: false, missing, installed: false, counts: empty, expected };
   const schools = "SELECT id FROM edu_schools WHERE is_demo = 1";
@@ -92,7 +92,7 @@ export async function demoStatus(): Promise<DemoStatus> {
 // Install
 // ---------------------------------------------------------------------------
 
-function educatorStatements(e: DemoEducator, passwordHash: string | null): { statements: DbStatement[]; videos: { lessonId: string; stream: keyof typeof VIDEO_BY_STREAM }[] } {
+function educatorStatements(e: DemoEducator, passwordHash: string | null, wide: boolean): { statements: DbStatement[]; videos: { lessonId: string; stream: keyof typeof VIDEO_BY_STREAM }[] } {
   const statements: DbStatement[] = [];
   const videos: { lessonId: string; stream: keyof typeof VIDEO_BY_STREAM }[] = [];
   const userId = demoIds.user(e.key);
@@ -139,23 +139,36 @@ function educatorStatements(e: DemoEducator, passwordHash: string | null): { sta
                 ON CONFLICT(id) DO UPDATE SET title = excluded.title, description = excluded.description, position = excluded.position`,
           args: [moduleId, courseId, module.title, module.description, mi],
         });
+        // Lessons first, then each lesson's quiz as an item of its own at the end of the section.
+        const quizzes: { id: string; title: string; quiz: NonNullable<DemoLesson["quiz"]> }[] = [];
         module.lessons.forEach((lesson, li) => {
           const lessonId = demoIds.lesson(course.key, mi, li);
-          const quiz = lesson.quiz
-            ? JSON.stringify({
-                title: lesson.quiz.title,
-                passingScorePercent: lesson.quiz.passingScorePercent,
-                questions: lesson.quiz.questions.map((q) => ({ question: q.question, options: q.options, correctIndex: q.correctIndex, ...(q.explanation ? { explanation: q.explanation } : {}) })),
-              })
-            : null;
+          const isText = lesson.type === "text";
           statements.push({
-            sql: `INSERT INTO edu_lessons (id, module_id, course_id, title, content_type, duration_minutes, summary, content_url, position, quiz_json)
-                  VALUES (?, ?, ?, ?, ?, ?, ?, '', ?, ?)
-                  ON CONFLICT(id) DO UPDATE SET title = excluded.title, content_type = excluded.content_type, duration_minutes = excluded.duration_minutes,
-                    summary = excluded.summary, position = excluded.position, quiz_json = excluded.quiz_json`,
-            args: [lessonId, moduleId, courseId, lesson.title, lesson.type, lesson.minutes, lesson.summary, li, quiz],
+            sql: wide
+              ? `INSERT INTO edu_lessons (id, module_id, course_id, title, content_type, duration_minutes, summary, content_url, position, quiz_json, body, slides_json)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, '', ?, NULL, ?, ?)
+                 ON CONFLICT(id) DO UPDATE SET title = excluded.title, content_type = excluded.content_type, duration_minutes = excluded.duration_minutes,
+                   summary = excluded.summary, position = excluded.position, quiz_json = NULL, body = excluded.body, slides_json = excluded.slides_json`
+              : `INSERT INTO edu_lessons (id, module_id, course_id, title, content_type, duration_minutes, summary, content_url, position, quiz_json)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, '', ?, ?)
+                 ON CONFLICT(id) DO UPDATE SET title = excluded.title, content_type = excluded.content_type, duration_minutes = excluded.duration_minutes,
+                   summary = excluded.summary, position = excluded.position, quiz_json = excluded.quiz_json`,
+            args: wide
+              ? [lessonId, moduleId, courseId, lesson.title, lesson.type, lesson.minutes, lesson.summary, li, isText ? lesson.summary : "", lesson.slides ? JSON.stringify(lesson.slides.map((s) => ({ ...s, imageUrl: "" }))) : null]
+              : [lessonId, moduleId, courseId, lesson.title, lesson.type === "text" || lesson.type === "slides" ? "reading" : lesson.type, lesson.minutes, lesson.summary, li, lesson.quiz ? JSON.stringify(quizJson(lesson.quiz)) : null],
           });
+          if (wide && lesson.quiz) quizzes.push({ id: `${lessonId}_q`, title: lesson.title, quiz: lesson.quiz });
           if (lesson.video) videos.push({ lessonId, stream: cls.stream });
+        });
+        quizzes.forEach((item, qi) => {
+          statements.push({
+            sql: `INSERT INTO edu_lessons (id, module_id, course_id, title, content_type, duration_minutes, summary, content_url, position, quiz_json, body)
+                  VALUES (?, ?, ?, ?, 'quiz', 5, '', '', ?, ?, '')
+                  ON CONFLICT(id) DO UPDATE SET title = excluded.title, content_type = 'quiz', duration_minutes = 5,
+                    position = excluded.position, quiz_json = excluded.quiz_json`,
+            args: [item.id, moduleId, courseId, `Quiz: ${item.title}`, module.lessons.length + qi, JSON.stringify(quizJson(item.quiz))],
+          });
         });
       });
     }
@@ -163,9 +176,17 @@ function educatorStatements(e: DemoEducator, passwordHash: string | null): { sta
   return { statements, videos };
 }
 
+function quizJson(quiz: NonNullable<DemoLesson["quiz"]>) {
+  return {
+    title: quiz.title,
+    passingScorePercent: quiz.passingScorePercent,
+    questions: quiz.questions.map((q) => ({ question: q.question, options: q.options, correctIndex: q.correctIndex, ...(q.explanation ? { explanation: q.explanation } : {}) })),
+  };
+}
+
 async function installEducator(e: DemoEducator, password: string | undefined): Promise<void> {
   const hash = password ? await bcrypt.hash(password, 10) : null;
-  const { statements, videos } = educatorStatements(e, hash);
+  const { statements, videos } = educatorStatements(e, hash, await hasColumn("edu_lessons", "body"));
   await executeBatch(statements);
 
   // Videos: one tiny placeholder per lesson that has one. Skip those already stored so a second install is quick.
@@ -306,6 +327,7 @@ export async function removeDemo(): Promise<RemoveResult> {
   const keys = ((await db.execute({ sql: `SELECT r2_key FROM edu_lesson_media WHERE lesson_id IN (${lessons})`, args: [] })).rows as Row[]).map((r) => String(r.r2_key));
   const schoolCount = await count("SELECT COUNT(*) AS n FROM edu_schools WHERE is_demo = 1");
 
+  if (await hasColumn("edu_lessons", "body")) await db.execute({ sql: `DELETE FROM edu_live_attendance WHERE course_id IN (${courses})`, args: [] });
   await executeBatch([
     { sql: `DELETE FROM edu_live_responses WHERE session_id IN (${sessions})` },
     { sql: `DELETE FROM edu_live_members WHERE session_id IN (${sessions})` },
