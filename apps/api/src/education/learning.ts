@@ -10,6 +10,7 @@ import { getPlatformEnvironment, type PlatformEnvironment } from "../lib/setting
 import { getR2Bucket, uploadResponseHeaders } from "../storage/r2.js";
 import { creditWallet, debitWallet, resolveCustomerByIdentifier } from "../wallet/service.js";
 import { getLearnSettings } from "./settings.js";
+import { BADGES, afterProgress, computeLocks, courseFinished, courseRules, proReady, type Lock } from "./rewards.js";
 import { mark, newSeed, parseQuiz, readAttempt, serveQuestions, signAttempt, type Answer, type StoredQuiz } from "./quiz-engine.js";
 import {
   body as readBody,
@@ -464,7 +465,7 @@ function liveWindow(live: LiveInfo, settings: LearnSettings, now = Date.now()): 
   return { open: Number.isFinite(start) && now >= opensAt && now <= closesAt, opensAt };
 }
 
-type LessonState = { done: Map<string, number | null>; media: Set<string>; attempts: Map<string, { n: number; best: number }> };
+type LessonState = { done: Map<string, number | null>; media: Set<string>; attempts: Map<string, { n: number; best: number }>; locks?: Map<string, Lock> };
 
 function lessonView(l: Row, st: LessonState, settings: LearnSettings) {
   const id = String(l.id);
@@ -496,6 +497,7 @@ function lessonView(l: Row, st: LessonState, settings: LearnSettings) {
           attemptsUsed: tries?.n ?? 0,
         }
       : null,
+    locked: st.locks?.get(id) ?? null,
     // The meeting link is only handed out by /join, inside the join window.
     live: live ? { startsAt: live.startsAt, durationMinutes: live.durationMinutes, joinOpen: liveWindow(live, settings).open, notes: live.notes ?? "" } : null,
   };
@@ -512,10 +514,27 @@ async function lessonState(userId: string, courseId: string): Promise<LessonStat
   };
 }
 
-async function lessonAccess(c: Context, lessonId: string, message: string): Promise<{ lesson: Row; access: Access } | Response> {
+/** The locks on a course for one learner. The educator previewing their own course sees nothing locked. */
+async function courseLocks(userId: string, access: Access, settings: LearnSettings, st: LessonState): Promise<{ locks: Map<string, Lock>; opens: Map<string, string>; modules: Row[]; lessons: Row[] }> {
+  const id = String(access.course.id);
+  const modules = (await db.execute({ sql: "SELECT * FROM edu_modules WHERE course_id = ? ORDER BY position ASC, created_at ASC LIMIT 500", args: [id] })).rows as Row[];
+  const lessons = (await db.execute({ sql: "SELECT * FROM edu_lessons WHERE course_id = ? ORDER BY position ASC, created_at ASC LIMIT 5000", args: [id] })).rows as Row[];
+  if (access.owner) return { locks: new Map(), opens: new Map(), modules, lessons };
+  const { locks, opens } = await computeLocks(userId, id, settings, modules, lessons, new Set(st.done.keys()));
+  return { locks, opens, modules, lessons };
+}
+
+async function lessonAccess(c: Context, lessonId: string, message: string, opts: { ignoreLock?: boolean } = {}): Promise<{ lesson: Row; access: Access } | Response> {
   const lesson = await one("SELECT * FROM edu_lessons WHERE id = ?", [lessonId]);
   const access = lesson ? await courseAccess(c.get("user").sub, String(lesson.course_id)) : null;
   if (!lesson || !access) return fail(c, { status: 403, error: "not_enrolled", message });
+  if (!access.owner && !opts.ignoreLock) {
+    const settings = await getLearnSettings();
+    const st = await lessonState(c.get("user").sub, String(lesson.course_id));
+    const { locks } = await courseLocks(c.get("user").sub, access, settings, st);
+    const lock = locks.get(String(lesson.id));
+    if (lock) return fail(c, { status: 403, error: "locked", message: lock.reason === "drip" ? `This isn't open yet. ${lock.message}.` : "Finish the earlier items in this class first." });
+  }
   return { lesson, access };
 }
 
@@ -555,6 +574,14 @@ learnRoutes.post("/courses/:id/enroll", async (c) => {
   const school = course ? await one("SELECT * FROM edu_schools WHERE id = ? AND status = 'active'", [course.school_id]) : null;
   if (!course || !school) return notFound(c, "course");
   if (school.owner_id === user.sub) return fail(c, { status: 400, error: "own_course", message: "This is your own course. You can already open it." });
+
+  if (settings.prerequisitesEnabled) {
+    const rules = await courseRules(String(course.id));
+    if (rules.prerequisiteCourseId && !(await courseFinished(user.sub, rules.prerequisiteCourseId))) {
+      const need = await one("SELECT title FROM edu_courses WHERE id = ?", [rules.prerequisiteCourseId]);
+      return fail(c, { status: 409, error: "prereq_not_met", message: `Finish “${String(need?.title ?? "the earlier course")}” first, then you can join this one.` });
+    }
+  }
 
   const price = Number(course.price_ugx);
   if (price > 0 && !settings.paidCoursesEnabled) {
@@ -613,11 +640,18 @@ learnRoutes.get("/courses/:id", async (c) => {
   const modules = (await db.execute({ sql: "SELECT * FROM edu_modules WHERE course_id = ? ORDER BY position ASC, created_at ASC LIMIT 500", args: [id] })).rows as Row[];
   const lessons = (await db.execute({ sql: "SELECT * FROM edu_lessons WHERE course_id = ? ORDER BY position ASC, created_at ASC LIMIT 5000", args: [id] })).rows as Row[];
   const st = await lessonState(user.sub, id);
+  const lock = await courseLocks(user.sub, access, settings, st);
+  st.locks = lock.locks;
+  const finished = !access.owner && (await proReady()) && (await courseFinished(user.sub, id));
+  const certificate = finished
+    ? ((await db.execute({ sql: "SELECT id FROM edu_certificates WHERE course_id = ? AND user_id = ?", args: [id, user.sub] })).rows[0] as Row | undefined)
+    : undefined;
   return c.json({
     ok: true,
     owner: access.owner,
     course: {
       id,
+      certificateId: certificate ? String(certificate.id) : null,
       title: String(access.course.title),
       summary: String(access.course.summary ?? ""),
       stream: String(access.course.stream),
@@ -627,6 +661,7 @@ learnRoutes.get("/courses/:id", async (c) => {
         id: String(m.id),
         title: String(m.title),
         description: String(m.description ?? ""),
+        opensAt: lock.opens.get(String(m.id)) ?? null,
         lessons: lessons.filter((l) => l.module_id === m.id).map((l) => lessonView(l, st, settings)),
       })),
     },
@@ -652,9 +687,9 @@ learnRoutes.get("/lessons/:id", async (c) => {
 
 learnRoutes.post("/lessons/:id/media-url", async (c) => {
   const user = c.get("user");
-  const lesson = await one("SELECT id, course_id FROM edu_lessons WHERE id = ?", [c.req.param("id")]);
-  const access = lesson ? await courseAccess(user.sub, String(lesson.course_id)) : null;
-  if (!lesson || !access) return fail(c, { status: 403, error: "not_enrolled", message: "Enrol in this course to watch its lessons." });
+  const found = await lessonAccess(c, c.req.param("id"), "Enrol in this course to watch its lessons.");
+  if (isResponse(found)) return found;
+  const { lesson } = found;
   const has = await one("SELECT 1 AS yes FROM edu_lesson_media WHERE lesson_id = ?", [lesson.id]);
   if (!has) return notFound(c, "video");
   const base = (process.env.PUBLIC_API_URL ?? "").replace(/\/$/, "");
@@ -674,6 +709,7 @@ async function recordAttempt(userId: string, lesson: Row, owner: boolean, scoreP
             ON CONFLICT(user_id, lesson_id) DO UPDATE SET best_score_percent = MAX(COALESCE(best_score_percent, 0), excluded.best_score_percent)`,
       args: [userId, lesson.id as string, lesson.course_id as string, scorePercent],
     });
+    await afterProgress(userId, String(lesson.course_id), await getLearnSettings());
   }
 }
 
@@ -811,6 +847,7 @@ learnRoutes.post("/lessons/:id/join", async (c) => {
       sql: "INSERT OR IGNORE INTO edu_lesson_progress (user_id, lesson_id, course_id) VALUES (?, ?, ?)",
       args: [user.sub, lesson.id as string, lesson.course_id as string],
     });
+    await afterProgress(user.sub, String(lesson.course_id), settings);
   }
   return c.json({ ok: true, url: live.url });
 });
@@ -831,8 +868,51 @@ learnRoutes.post("/lessons/:id/complete", async (c) => {
       sql: "INSERT OR IGNORE INTO edu_lesson_progress (user_id, lesson_id, course_id) VALUES (?, ?, ?)",
       args: [user.sub, lesson.id as string, lesson.course_id as string],
     });
+    await afterProgress(user.sub, String(lesson.course_id), await getLearnSettings());
   }
   return c.json({ ok: true });
+});
+
+// ---- Certificates and badges ------------------------------------------------
+
+const certShape = (r: Row) => ({
+  id: String(r.id),
+  code: String(r.code),
+  courseId: String(r.course_id),
+  courseTitle: String(r.course_title),
+  schoolName: String(r.school_name),
+  learnerName: String(r.learner_name),
+  scorePercent: r.score_percent === null || r.score_percent === undefined ? null : Number(r.score_percent),
+  issuedAt: String(r.issued_at),
+});
+
+learnRoutes.get("/certificates", async (c) => {
+  if (!(await proReady())) return c.json({ ok: true, certificates: [] });
+  const rows = (await db.execute({ sql: "SELECT * FROM edu_certificates WHERE user_id = ? ORDER BY issued_at DESC LIMIT 200", args: [c.get("user").sub] })).rows as Row[];
+  return c.json({ ok: true, certificates: rows.map(certShape) });
+});
+
+learnRoutes.get("/certificates/:id", async (c) => {
+  if (!(await proReady())) return notFound(c, "certificate");
+  const row = await one("SELECT * FROM edu_certificates WHERE id = ? AND user_id = ?", [c.req.param("id"), c.get("user").sub]);
+  return row ? c.json({ ok: true, certificate: certShape(row) }) : notFound(c, "certificate");
+});
+
+learnRoutes.get("/badges", async (c) => {
+  const settings = await getLearnSettings();
+  const earned = (await proReady()) ? ((await db.execute({ sql: "SELECT badge, awarded_at FROM edu_badges WHERE user_id = ?", args: [c.get("user").sub] })).rows as Row[]) : [];
+  const got = new Map(earned.map((r) => [String(r.badge), String(r.awarded_at)]));
+  return c.json({
+    ok: true,
+    enabled: settings.badgesEnabled,
+    badges: BADGES.map((b) => ({
+      key: b.key,
+      title: b.title,
+      description: b.key === "multi_course" ? `Finish ${settings.badgeCoursesThreshold} courses` : b.description,
+      icon: b.icon,
+      awardedAt: got.get(b.key) ?? null,
+    })),
+  });
 });
 
 // ---- School fees, paid from the learner's wallet ---------------------------

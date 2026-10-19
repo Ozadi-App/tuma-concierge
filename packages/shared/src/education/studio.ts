@@ -183,6 +183,8 @@ export interface StudioLesson {
 }
 
 export interface StudioModule {
+  /** Opens this many days after a learner enrols. 0 means straight away. */
+  dripDays?: number;
   id: string;
   courseId: string;
   title: string;
@@ -191,8 +193,20 @@ export interface StudioModule {
   lessons: StudioLesson[];
 }
 
+export interface StudioCourseRules {
+  /** Items must be finished in order. */
+  sequential: boolean;
+  /** A course the learner must finish before enrolling. */
+  prerequisiteCourseId: string | null;
+  /** Issue a certificate on completion. */
+  certificateEnabled: boolean;
+}
+
 export interface StudioCourseDetail extends StudioCourse {
   modules: StudioModule[];
+  rules: StudioCourseRules;
+  /** Other courses in the same school that can be a prerequisite. */
+  prerequisiteOptions: { id: string; title: string }[];
 }
 
 /** Every limit and switch the Learn Studio obeys. Set in Admin → Settings → Peebee Learn. */
@@ -283,6 +297,16 @@ export interface LearnSettings {
   liveLessonHosts: string;
   /** How many minutes before the start a learner can open a live lesson. */
   liveLessonEarlyMinutes: number;
+  /** Issue a certificate when a learner finishes a course. */
+  certificatesEnabled: boolean;
+  /** Award badges for milestones. */
+  badgesEnabled: boolean;
+  /** Educators can open sections some days after enrolment. */
+  dripEnabled: boolean;
+  /** Educators can require items in order, or another course first. */
+  prerequisitesEnabled: boolean;
+  /** Completed courses that earn the multi-course badge. */
+  badgeCoursesThreshold: number;
 }
 
 /** An educator's access to the TV classroom, and what Learn Pro costs. */
@@ -387,6 +411,11 @@ export const DEFAULT_LEARN_SETTINGS: LearnSettings = {
   liveLessonsEnabled: true,
   liveLessonHosts: "zoom.us,meet.google.com,meet.jit.si,teams.microsoft.com,whereby.com",
   liveLessonEarlyMinutes: 15,
+  certificatesEnabled: true,
+  badgesEnabled: true,
+  dripEnabled: true,
+  prerequisitesEnabled: true,
+  badgeCoursesThreshold: 3,
 };
 
 // ---------------------------------------------------------------------------
@@ -436,6 +465,8 @@ export interface LearnerLesson {
   completed: boolean;
   bestScorePercent: number | null;
   slideCount: number;
+  /** Set while the item can't be opened yet. */
+  locked: { reason: "drip" | "sequence"; opensAt: string | null; message: string } | null;
   quiz: LearnerQuiz | null;
   live: LearnerLive | null;
 }
@@ -453,7 +484,28 @@ export interface LearnerCourse {
   stream: EducationStream;
   schoolName: string;
   progressPercent: number;
-  modules: { id: string; title: string; description: string; lessons: LearnerLesson[] }[];
+  /** The id of the certificate earned for this course, if any. */
+  certificateId?: string | null;
+  modules: { id: string; title: string; description: string; opensAt?: string | null; lessons: LearnerLesson[] }[];
+}
+
+export interface LearnerCertificate {
+  id: string;
+  code: string;
+  courseId: string;
+  courseTitle: string;
+  schoolName: string;
+  learnerName: string;
+  scorePercent: number | null;
+  issuedAt: string;
+}
+
+export interface LearnerBadge {
+  key: string;
+  title: string;
+  description: string;
+  icon: string;
+  awardedAt: string | null;
 }
 
 /** A question as served to a learner: no answers. Positions in `options`/`right` are what answers refer to. */

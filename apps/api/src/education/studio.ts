@@ -24,6 +24,7 @@ import { consume, tooManyRequests } from "../lib/ratelimit.js";
 import { hasColumn } from "../lib/schema.js";
 import { getLearnSettings } from "./settings.js";
 import { normaliseQuestion, parseQuiz as readQuiz } from "./quiz-engine.js";
+import { courseRules, dripDays, proReady } from "./rewards.js";
 
 /**
  * The Learn Studio: school → class (or masterclass) → course → module → lesson.
@@ -318,6 +319,14 @@ async function purgeLiveSessions(column: "school_id" | "class_id" | "course_id",
 
 /** Same for whole courses: everything of the lessons, plus unfinished enrolment claims. */
 async function purgeCourseData(courseIds: string, args: unknown[]): Promise<void> {
+  // Rules, drip and certificates come with migration 0117.
+  const tolerate = (err: unknown) => {
+    if (!/no such table/i.test(String(err))) throw err;
+  };
+  await db.execute({ sql: `DELETE FROM edu_module_drip WHERE module_id IN (SELECT id FROM edu_modules WHERE course_id IN (${courseIds}))`, args: args as never }).catch(tolerate);
+  await db.execute({ sql: `UPDATE edu_course_rules SET prerequisite_course_id = NULL WHERE prerequisite_course_id IN (${courseIds})`, args: args as never }).catch(tolerate);
+  await db.execute({ sql: `DELETE FROM edu_course_rules WHERE course_id IN (${courseIds})`, args: args as never }).catch(tolerate);
+  await db.execute({ sql: `DELETE FROM edu_certificates WHERE course_id IN (${courseIds})`, args: args as never }).catch(tolerate);
   await purgeLessonData(`SELECT id FROM edu_lessons WHERE course_id IN (${courseIds})`, args);
   if (await learningReady()) await db.execute({ sql: `DELETE FROM edu_enrollments WHERE course_id IN (${courseIds})`, args: args as never });
 }
@@ -762,9 +771,13 @@ studioRoutes.get("/courses/:id", async (c) => {
   const modules = (await db.execute({ sql: "SELECT * FROM edu_modules WHERE course_id = ? ORDER BY position ASC, created_at ASC LIMIT 500", args: [id] })).rows as Row[];
   const lessons = (await db.execute({ sql: "SELECT * FROM edu_lessons WHERE course_id = ? ORDER BY position ASC, created_at ASC LIMIT 5000", args: [id] })).rows as Row[];
   const media = await mediaByLesson(id);
+  const drip = await dripDays(id);
+  const siblings = (await db.execute({ sql: "SELECT id, title FROM edu_courses WHERE school_id = ? AND id != ? ORDER BY title ASC LIMIT 200", args: [course.school_id as string, id] })).rows as Row[];
   const detail: StudioCourseDetail = {
     ...(await loadCourse(id))!,
-    modules: modules.map((m) => moduleShape(m, lessons.filter((l) => l.module_id === m.id).map((l) => lessonShape(l, media.get(String(l.id)) ?? null)))),
+    modules: modules.map((m) => ({ ...moduleShape(m, lessons.filter((l) => l.module_id === m.id).map((l) => lessonShape(l, media.get(String(l.id)) ?? null))), dripDays: drip.get(String(m.id)) ?? 0 })),
+    rules: await courseRules(id),
+    prerequisiteOptions: siblings.map((r) => ({ id: String(r.id), title: String(r.title) })),
   };
   return c.json({ ok: true, course: detail });
 });
@@ -866,6 +879,9 @@ studioRoutes.patch("/modules/:id", async (c) => {
 studioRoutes.delete("/modules/:id", async (c) => {
   const mod = await ownedModule(c.get("user").sub, c.req.param("id"));
   if (!mod) return notFound(c, "module");
+  await db.execute({ sql: "DELETE FROM edu_module_drip WHERE module_id = ?", args: [mod.id as string] }).catch((err) => {
+    if (!/no such table/i.test(String(err))) throw err;
+  });
   await purgeLessonData("SELECT id FROM edu_lessons WHERE module_id = ?", [mod.id]);
   await db.execute({ sql: "DELETE FROM edu_lessons WHERE module_id = ?", args: [mod.id as string] });
   await db.execute({ sql: "DELETE FROM edu_modules WHERE id = ?", args: [mod.id as string] });
@@ -1103,4 +1119,59 @@ studioRoutes.get("/lessons/:id/attendance", async (c) => {
   }
   const enrolled = await count("SELECT COUNT(*) AS n FROM edu_enrollments WHERE course_id = ? AND status = 'active'", [lesson.course_id]).catch(() => 0);
   return c.json({ ok: true, enrolled, attendees: rows.map((r) => ({ userId: String(r.user_id), name: String(r.name ?? ""), joinedAt: String(r.joined_at) })) });
+});
+
+// ---------------------------------------------------------------------------
+// Rules: order, prerequisite, certificate, and drip release
+// ---------------------------------------------------------------------------
+
+const rulesBody = z.object({
+  sequential: z.boolean(),
+  prerequisiteCourseId: z.string().max(80).nullable(),
+  certificateEnabled: z.boolean(),
+});
+
+studioRoutes.put("/courses/:id/rules", async (c) => {
+  const g = await gate(c);
+  if (isResponse(g)) return g;
+  const course = await ownedCourse(g.userId, c.req.param("id"));
+  if (!course) return notFound(c, "course");
+  if (!(await proReady())) return fail(c, { status: 503, error: "upgrade_pending", message: "Course rules need a platform update that hasn't finished yet. Try again shortly." });
+  const parsed = await body(c, rulesBody);
+  if (!parsed.ok) return parsed.res;
+  const d = parsed.data as z.infer<typeof rulesBody>;
+  if ((d.sequential || d.prerequisiteCourseId) && !g.settings.prerequisitesEnabled) {
+    return fail(c, { status: 403, error: "prerequisites_off", message: "Prerequisites are switched off right now." });
+  }
+  if (d.prerequisiteCourseId) {
+    const need = await one("SELECT id FROM edu_courses WHERE id = ? AND school_id = ? AND id != ?", [d.prerequisiteCourseId, course.school_id, course.id]);
+    if (!need) return fail(c, { status: 400, error: "bad_prerequisite", message: "Choose another course from this school." });
+    // A course can't be needed by something that needs it back, however far round.
+    let cursor: string | null = d.prerequisiteCourseId;
+    for (let hops = 0; cursor && hops < 50; hops++) {
+      if (cursor === String(course.id)) return fail(c, { status: 400, error: "prerequisite_loop", message: "That course already requires this one." });
+      cursor = (await courseRules(cursor)).prerequisiteCourseId;
+    }
+  }
+  await db.execute({
+    sql: `INSERT INTO edu_course_rules (course_id, sequential, prerequisite_course_id, certificate_enabled) VALUES (?, ?, ?, ?)
+          ON CONFLICT(course_id) DO UPDATE SET sequential = excluded.sequential, prerequisite_course_id = excluded.prerequisite_course_id,
+            certificate_enabled = excluded.certificate_enabled, updated_at = datetime('now')`,
+    args: [course.id as string, d.sequential ? 1 : 0, d.prerequisiteCourseId, d.certificateEnabled ? 1 : 0],
+  });
+  return c.json({ ok: true, rules: await courseRules(String(course.id)) });
+});
+
+studioRoutes.put("/modules/:id/drip", async (c) => {
+  const g = await gate(c);
+  if (isResponse(g)) return g;
+  const mod = await ownedModule(g.userId, c.req.param("id"));
+  if (!mod) return notFound(c, "section");
+  if (!(await proReady())) return fail(c, { status: 503, error: "upgrade_pending", message: "Drip release needs a platform update that hasn't finished yet. Try again shortly." });
+  const parsed = await body(c, z.object({ days: z.number().int().min(0).max(730) }));
+  if (!parsed.ok) return parsed.res;
+  const days = (parsed.data as { days: number }).days;
+  if (days > 0 && !g.settings.dripEnabled) return fail(c, { status: 403, error: "drip_off", message: "Drip release is switched off right now." });
+  await db.execute({ sql: "INSERT INTO edu_module_drip (module_id, drip_days) VALUES (?, ?) ON CONFLICT(module_id) DO UPDATE SET drip_days = excluded.drip_days", args: [mod.id as string, days] });
+  return c.json({ ok: true, days });
 });

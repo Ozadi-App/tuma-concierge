@@ -42,6 +42,7 @@ export async function getLearnSettings(): Promise<LearnSettings> {
     "learn_tv_pro_required", "learn_tv_learn_enabled", "learn_pro_price_ugx", "learn_pro_days",
     "learn_max_slides", "learn_max_body_chars", "learn_quiz_max_attempts", "learn_exam_max_attempts", "learn_reveal_quiz_answers", "learn_reveal_exam_answers",
     "learn_live_lessons_enabled", "learn_live_lesson_hosts", "learn_live_lesson_early_minutes",
+    "learn_certificates_enabled", "learn_badges_enabled", "learn_drip_enabled", "learn_prerequisites_enabled", "learn_badge_courses_threshold",
   ] as const;
   const v = Object.fromEntries(await Promise.all(keys.map(async (k) => [k, await getSetting(k)]))) as Record<(typeof keys)[number], string>;
   return {
@@ -94,6 +95,11 @@ export async function getLearnSettings(): Promise<LearnSettings> {
     liveLessonsEnabled: v.learn_live_lessons_enabled !== "0",
     liveLessonHosts: hosts(v.learn_live_lesson_hosts),
     liveLessonEarlyMinutes: int(v.learn_live_lesson_early_minutes, 15, 0, 240),
+    certificatesEnabled: v.learn_certificates_enabled !== "0",
+    badgesEnabled: v.learn_badges_enabled !== "0",
+    dripEnabled: v.learn_drip_enabled !== "0",
+    prerequisitesEnabled: v.learn_prerequisites_enabled !== "0",
+    badgeCoursesThreshold: int(v.learn_badge_courses_threshold, 3, 1, 100),
   };
 }
 
@@ -147,5 +153,10 @@ export async function setLearnSettings(next: Partial<LearnSettings>): Promise<vo
   if (next.liveLessonsEnabled != null) put("learn_live_lessons_enabled", next.liveLessonsEnabled ? "1" : "0");
   if (next.liveLessonHosts != null) put("learn_live_lesson_hosts", hosts(next.liveLessonHosts));
   if (next.liveLessonEarlyMinutes != null) put("learn_live_lesson_early_minutes", String(next.liveLessonEarlyMinutes));
+  if (next.certificatesEnabled != null) put("learn_certificates_enabled", next.certificatesEnabled ? "1" : "0");
+  if (next.badgesEnabled != null) put("learn_badges_enabled", next.badgesEnabled ? "1" : "0");
+  if (next.dripEnabled != null) put("learn_drip_enabled", next.dripEnabled ? "1" : "0");
+  if (next.prerequisitesEnabled != null) put("learn_prerequisites_enabled", next.prerequisitesEnabled ? "1" : "0");
+  if (next.badgeCoursesThreshold != null) put("learn_badge_courses_threshold", String(next.badgeCoursesThreshold));
   await Promise.all(writes);
 }
