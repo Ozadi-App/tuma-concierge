@@ -1,7 +1,7 @@
 "use client";
 
 import { EDUCATION_STREAMS, type EducationStream, type LearnEnrollment } from "@peebee/shared";
-import { ArrowRight, BookOpen, GraduationCap, Radio, Receipt, Search } from "lucide-react";
+import { ArrowRight, BookOpen, GraduationCap, Radio, Receipt, Search, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
@@ -20,6 +20,19 @@ function Skeleton({ className }: { className: string }) {
 function JoinLiveClass() {
   const router = useRouter();
   const [code, setCode] = useState("");
+  const [trials, setTrials] = useState<{ code: string; title: string }[]>([]);
+
+  // Practice classes anyone can try without a tutor. Quietly absent when they're off or you aren't signed in.
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .classroomTrial()
+      .then((res) => !cancelled && setTrials(res.classes))
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   function go(e: FormEvent) {
     e.preventDefault();
@@ -54,6 +67,27 @@ function JoinLiveClass() {
           Join
         </button>
       </form>
+      {trials.length > 0 && (
+        <div className="space-y-2 border-t border-[var(--border-faint)] pt-3">
+          <p className="flex items-center gap-1.5 text-xs font-semibold text-ink-500">
+            <Sparkles className="h-3.5 w-3.5 text-gold" aria-hidden /> No code yet? Try a practice class. It plays by itself.
+          </p>
+          <ul className="space-y-1.5">
+            {trials.map((t) => (
+              <li key={t.code}>
+                <button
+                  type="button"
+                  onClick={() => router.push(`/learn/live?code=${t.code}`)}
+                  className="flex w-full items-center justify-between gap-3 rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] px-3.5 py-2.5 text-left transition hover:border-gold/50"
+                >
+                  <span className="min-w-0 truncate text-sm font-semibold text-ink">{t.title.replace(/^Trial class: /, "")}</span>
+                  <span className="shrink-0 font-mono text-sm font-bold tracking-widest text-gold">{t.code}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </section>
   );
 }
@@ -271,6 +305,7 @@ export default function LearnHomePage() {
                   </div>
                   <p className="text-xs text-ink-500">
                     {c.schoolName} · {c.classLevel || c.className}
+                    {c.demo && <span className="ml-2 rounded-full bg-[rgb(var(--surface-muted))] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-ink-500">Demo</span>}
                   </p>
                   {c.summary && <p className="line-clamp-2 text-xs text-ink-500">{c.summary}</p>}
                   <p className="text-[11px] font-semibold text-ink-500">

@@ -426,6 +426,10 @@ const DEFAULTS = {
   learn_live_max_exam_minutes: "120",
   learn_max_screens_per_user: "5",
   learn_screen_pair_minutes: "10",
+  learn_trial_classes_enabled: "1",
+  learn_trial_code_a: "111222",
+  learn_trial_code_b: "222111",
+  learn_demo_visible: "1",
   /** Peebee Work: clean / fix / laundry jobs done by independent providers and companies */
   work_enabled: "1",
   work_service_types: "clean",

@@ -365,7 +365,7 @@ function AddCue({ lessons, onAdd, onCancel }: { lessons: StudioLesson[]; onAdd: 
         </>
       )}
       {kind === "lesson" && (
-        <Field label="Lesson" htmlFor={`${uid}-lesson`} hint="Plays on the TV from the course's uploaded video or audio">
+        <Field label="Lesson" htmlFor={`${uid}-lesson`} hint="Plays the lesson's video or audio on the TV or on students' phones">
           <select id={`${uid}-lesson`} required value={lessonId} onChange={(e) => setLessonId(e.target.value)} className={controlCls}>
             <option value="">Choose a lesson</option>
             {lessons.map((l) => (

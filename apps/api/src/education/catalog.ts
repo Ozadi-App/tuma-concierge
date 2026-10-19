@@ -2,6 +2,8 @@ import { Hono } from "hono";
 import { EDUCATION_STREAM_IDS } from "@peebee/shared";
 import { db } from "../db/client.js";
 import { clientIp, consume, tooManyRequests } from "../lib/ratelimit.js";
+import { hasColumn } from "../lib/schema.js";
+import { getLearnSettings } from "./settings.js";
 import { studioReady } from "./studio.js";
 
 /**
@@ -33,15 +35,19 @@ catalogRoutes.get("/courses", async (c) => {
   const stream = c.req.query("stream");
   const limit = Math.max(1, Math.min(50, Number(c.req.query("limit")) || 24));
   const filtered = stream && (EDUCATION_STREAM_IDS as readonly string[]).includes(stream);
+  // Demo schools are marked in the database once migration 0113 is applied; until then everything is treated as real.
+  const marked = await hasColumn("edu_schools", "is_demo");
+  const hideDemo = marked && !(await getLearnSettings()).demoContentVisible;
   const res = await db.execute({
     sql: `SELECT c.id, c.stream, c.title, c.summary, c.price_ugx, c.framework, c.outcomes_json,
+                 ${marked ? "s.is_demo AS is_demo," : ""}
                  s.name AS school_name, s.slug AS school_slug, k.name AS class_name, k.kind AS class_kind, k.level AS class_level,
                  (SELECT COUNT(*) FROM edu_lessons l WHERE l.course_id = c.id) AS lesson_count
           FROM edu_courses c
           JOIN edu_schools s ON s.id = c.school_id AND s.status = 'active'
           JOIN edu_classes k ON k.id = c.class_id
-          WHERE c.status = 'published' ${filtered ? "AND c.stream = ?" : ""}
-          ORDER BY c.updated_at DESC LIMIT ?`,
+          WHERE c.status = 'published' ${hideDemo ? "AND s.is_demo = 0" : ""} ${filtered ? "AND c.stream = ?" : ""}
+          ORDER BY ${marked ? "s.is_demo ASC, " : ""}c.updated_at DESC LIMIT ?`,
     args: (filtered ? [stream, limit] : [limit]) as never,
   });
   return c.json({
@@ -60,6 +66,7 @@ catalogRoutes.get("/courses", async (c) => {
       classKind: String(r.class_kind),
       classLevel: String(r.class_level ?? ""),
       lessonCount: Number(r.lesson_count ?? 0),
+      demo: Number(r.is_demo ?? 0) === 1,
     })),
   });
 });

@@ -27,6 +27,14 @@ function useSecondsLeft(endsAt: string | null | undefined, offsetMs: number): nu
 
 const clock = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 
+/** The lesson's video (or audio) played on the phone. The link is read once per item, so a refresh of the class never restarts it. */
+function LessonMedia({ cue }: { cue: PhoneCue }) {
+  const [media] = useState(cue.media ?? null);
+  if (!media) return null;
+  if (media.contentType.startsWith("audio/")) return <audio controls autoPlay preload="auto" src={media.url} className="w-full" />;
+  return <video controls autoPlay muted playsInline preload="auto" src={media.url} className="aspect-video w-full rounded-xl bg-black" />;
+}
+
 function Question({ cue, sessionId, left, onAnswered }: { cue: PhoneCue; sessionId: string; left: number | null; onAnswered: () => void }) {
   const [choice, setChoice] = useState<number | null>(cue.mine ?? null);
   const [busy, setBusy] = useState(false);
@@ -447,6 +455,7 @@ export default function LiveClassPage() {
             <div className={`${card} space-y-2 p-5`}>
               <p className="text-xs font-bold uppercase tracking-wider text-gold">{cue.kind === "lesson" ? "Now" : "Slide"}</p>
               <h2 className="text-xl font-bold text-ink">{cue.title}</h2>
+              {cue.media && <LessonMedia cue={cue} />}
               {cue.body && <p className="whitespace-pre-line text-sm text-ink">{cue.body}</p>}
               {/* eslint-disable-next-line @next/next/no-img-element */}
               {cue.imageUrl && <img src={cue.imageUrl} alt="" className="w-full rounded-xl" />}

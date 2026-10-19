@@ -3,6 +3,7 @@
 import { EDUCATION_STREAMS, hasPermission, type EducationStream, type LearnSettings, type SchoolStatus, type StudioSchool } from "@peebee/shared";
 import { AlertCircle, CheckCircle2, GraduationCap, Layers, ShieldAlert, Wallet } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { DemoContentCard } from "../../../components/learn/DemoContentCard";
 import { SettingsPageShell } from "../../../components/SettingsPageShell";
 import { api, errorMessage } from "../../../lib/api";
 import { useAuth } from "../../../lib/auth-context";
@@ -106,6 +107,10 @@ export default function LearnSettingsPage() {
         setError(`${limit.label} must be a whole number from ${limit.min} to ${limit.max}.`);
         return;
       }
+    }
+    if (!/^\d{6}$/.test(settings.trialCodeA) || !/^\d{6}$/.test(settings.trialCodeB) || settings.trialCodeA === settings.trialCodeB) {
+      setError("The two trial class codes must each be six digits and different from each other.");
+      return;
     }
     if (!Number.isInteger(settings.maxCoursePriceUgx) || settings.maxCoursePriceUgx < 0) {
       setError("Highest course price must be a whole number of 0 or more.");
@@ -214,6 +219,33 @@ export default function LearnSettingsPage() {
           </section>
 
           <section className="space-y-4 rounded-[24px] border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-5 shadow-sm">
+            <div>
+              <h2 className="text-base font-bold text-ink">Trial classes and demo content</h2>
+              <p className="text-xs text-ink-500">Two practice live classes that run themselves, opened with a code, and the visibility of demo courses</p>
+            </div>
+            <SwitchRow title="Trial live classes" hint="Anyone signed in can join a practice class with its code and see a class in progress with no tutor online" on={settings.trialClassesEnabled} disabled={!canManage} onChange={(v) => patch("trialClassesEnabled", v)} />
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {(["trialCodeA", "trialCodeB"] as const).map((key, i) => (
+                <div key={key} className="field-box flex flex-col rounded-2xl bg-[rgb(var(--surface-muted))] p-3">
+                  <label htmlFor={key} className="mb-1 text-xs font-bold text-ink-500">Trial class {i + 1} code</label>
+                  <input
+                    id={key}
+                    inputMode="numeric"
+                    pattern="[0-9]{6}"
+                    maxLength={6}
+                    value={settings[key]}
+                    disabled={!canManage}
+                    onChange={(e) => patch(key, e.target.value.replace(/\D/g, "").slice(0, 6))}
+                    className="w-full font-mono text-base font-bold tracking-widest text-ink outline-none"
+                  />
+                  <span className="mt-1 text-[10px] text-ink-500">Six digits. The two codes must be different.</span>
+                </div>
+              ))}
+            </div>
+            <SwitchRow title="Show demo courses" hint="Demo schools and courses appear in the catalogue after real ones, marked Demo. Turn off to hide them without removing them." on={settings.demoContentVisible} disabled={!canManage} onChange={(v) => patch("demoContentVisible", v)} />
+          </section>
+
+          <section className="space-y-4 rounded-[24px] border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-5 shadow-sm">
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gold/15 text-gold">
                 <Wallet className="h-5 w-5" />
@@ -275,6 +307,12 @@ export default function LearnSettingsPage() {
             </button>
           </div>
         </form>
+      )}
+
+      {settings && (
+        <div className="mb-6">
+          <DemoContentCard canManage={canManage} trialCodes={[settings.trialCodeA, settings.trialCodeB]} />
+        </div>
       )}
 
       {settings && (

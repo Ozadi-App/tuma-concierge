@@ -37,6 +37,7 @@ import type {
   LearnEnrollment,
   LearnerCourse,
   QuizResult,
+  LearnDemoStatus,
   LearnSettings,
   SchoolKind,
   SchoolStatus,
@@ -300,6 +301,8 @@ export function educationMethods(request: RequestFn) {
         courses: {
           id: string; stream: EducationStream; title: string; summary: string; priceUgx: number; framework: CurriculumFramework; outcomes: string[];
           schoolName: string; schoolSlug: string; className: string; classKind: ClassKind; classLevel: string; lessonCount: number;
+          /** Sample content from the Peebee demo, not a real school. */
+          demo: boolean;
         }[];
       }>(`/v1/education/catalog/courses${q}`);
     },
@@ -546,6 +549,10 @@ export function educationMethods(request: RequestFn) {
     // ----------------------------------------------------
     // Live classroom: the student's phone
     // ----------------------------------------------------
+    /** The practice classes anyone can try with a code. Empty when they are switched off. */
+    async classroomTrial() {
+      return request<{ ok: true; classes: { code: string; title: string; hostName: string; stream: EducationStream | null }[] }>("/v1/education/classroom/trial");
+    },
     async classroomJoin(code: string) {
       return request<{ ok: true; session: { id: string; title: string; hostName: string; pollSeconds: number } }>("/v1/education/classroom/join", { method: "POST", body: JSON.stringify({ code }) });
     },
@@ -567,6 +574,19 @@ export function educationMethods(request: RequestFn) {
     },
     async adminUpdateLearnSettings(learn: Partial<LearnSettings>) {
       return request<{ learn: LearnSettings }>("/v1/admin/learn-settings", { method: "PATCH", body: JSON.stringify(learn) });
+    },
+    async adminDemoStatus() {
+      return request<LearnDemoStatus>("/v1/admin/learn-demo");
+    },
+    /** Installs one step of the demo content; call for step 0 up to steps - 1. A password is optional and lets the demo educators sign in. */
+    async adminDemoInstall(step: number, password?: string) {
+      return request<{ ok: true; step: number; total: number; label: string; done: boolean }>("/v1/admin/learn-demo/install", {
+        method: "POST",
+        body: JSON.stringify({ step, ...(password ? { password } : {}) }),
+      });
+    },
+    async adminDemoRemove() {
+      return request<{ ok: true; schools: number; accountsRemoved: number; accountsKept: number }>("/v1/admin/learn-demo", { method: "DELETE" });
     },
     async adminLearnSchools() {
       return request<{ ok: true; schools: (StudioSchool & { ownerName: string; ownerId: string })[] }>("/v1/admin/learn-schools");

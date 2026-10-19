@@ -177,6 +177,25 @@ export interface LearnSettings {
   maxScreensPerUser: number;
   /** How long a TV's pairing code stays valid, in minutes. */
   screenPairMinutes: number;
+  /** Two practice classes that run themselves, so anyone can try the live classroom with a code and no tutor. */
+  trialClassesEnabled: boolean;
+  /** The 6-digit codes that open the two trial classes. */
+  trialCodeA: string;
+  trialCodeB: string;
+  /** Show the demo schools and courses in the catalogue next to real ones. */
+  demoContentVisible: boolean;
+}
+
+/** What the admin sees about the demo content: whether it is installed and what it holds. */
+export interface LearnDemoStatus {
+  ok: true;
+  steps: number;
+  ready: boolean;
+  /** Hand-applied migrations the demo still needs, if any. */
+  missing: string[];
+  installed: boolean;
+  counts: { educators: number; schools: number; classes: number; courses: number; lessons: number; videos: number; trials: number };
+  expected: { educators: number; schools: number; classes: number; courses: number; lessons: number; videos: number; trials: number };
 }
 
 /** A lesson's uploaded video or audio file. */
@@ -223,6 +242,10 @@ export const DEFAULT_LEARN_SETTINGS: LearnSettings = {
   liveMaxExamMinutes: 120,
   maxScreensPerUser: 5,
   screenPairMinutes: 10,
+  trialClassesEnabled: true,
+  trialCodeA: "111222",
+  trialCodeB: "222111",
+  demoContentVisible: true,
 };
 
 // ---------------------------------------------------------------------------
@@ -312,7 +335,7 @@ export type CueTarget = "screen" | "phones" | "both";
 /** Where each kind of item makes sense. The educator may pick any of these when pushing. */
 export const CUE_TARGETS: Record<CueKind, CueTarget[]> = {
   slide: ["screen", "both"],
-  lesson: ["screen", "both"],
+  lesson: ["screen", "phones", "both"],
   announcement: ["screen", "phones", "both"],
   timer: ["screen", "both"],
   question: ["screen", "phones", "both"],
@@ -400,6 +423,8 @@ export interface PhoneCue {
   title?: string;
   body?: string;
   imageUrl?: string | null;
+  /** A lesson's video or audio, played on the phone. */
+  media?: { url: string; contentType: string } | null;
   text?: string;
   label?: string;
   seconds?: number;
