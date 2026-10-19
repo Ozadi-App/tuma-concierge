@@ -5,7 +5,7 @@ import { requireAuth } from "../auth/middleware.js";
 import { newId } from "../lib/ids.js";
 import { randomInt } from "../lib/random.js";
 import { clientIp, consume, tooManyRequests } from "../lib/ratelimit.js";
-import { hasColumn } from "../lib/schema.js";
+import { hasColumn, tablesExist } from "../lib/schema.js";
 import { getLearnSettings } from "./settings.js";
 import { syncAutopilot } from "./autopilot.js";
 import { tvProRequired } from "./pro.js";
@@ -33,11 +33,7 @@ export async function liveReady(): Promise<boolean> {
   if (liveCache && (liveCache.ok || Date.now() - liveCache.at < 30_000)) return liveCache.ok;
   let ok = false;
   try {
-    const res = await db.execute({
-      sql: "SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table' AND name IN ('tv_devices', 'edu_live_sessions', 'edu_live_cues', 'edu_live_members', 'edu_live_responses')",
-      args: [],
-    });
-    ok = Number((res.rows[0] as Row).n) === 5;
+    ok = await tablesExist(["tv_devices", "edu_live_sessions", "edu_live_cues", "edu_live_members", "edu_live_responses"]);
   } catch {
     ok = false;
   }

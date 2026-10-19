@@ -35,13 +35,28 @@ export async function hasTable(table: "edu_educator_plans" | "edu_live_attendanc
   if (known && (known.exists || Date.now() - known.at < NO_TTL_MS)) return known.exists;
   let exists = false;
   try {
-    const res = await db.execute({ sql: "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", args: [table] });
-    exists = res.rows.length > 0;
+    exists = await tableExistsCheap(table);
   } catch {
     exists = false;
   }
   answers.set(key, { exists, at: Date.now() });
   return exists;
+}
+
+/**
+ * Does a table exist? Reads only that table's column list (about a dozen rows) through pragma_table_info.
+ * Looking the name up in sqlite_master has no index and reads every row of the schema (500+ here), and D1 bills
+ * every row read, so those probes alone were most of the daily read allowance. Not cached: callers cache the answer.
+ */
+export async function tableExistsCheap(name: string): Promise<boolean> {
+  if (!/^[a-z0-9_]+$/i.test(name)) return false;
+  const res = await db.execute({ sql: `SELECT 1 FROM pragma_table_info('${name}') LIMIT 1`, args: [] });
+  return res.rows.length > 0;
+}
+
+/** True when every named table exists. For the "is this hand-applied migration in yet" readiness checks. */
+export async function tablesExist(names: readonly string[]): Promise<boolean> {
+  return (await Promise.all(names.map(tableExistsCheap))).every(Boolean);
 }
 
 /** For tests that swap databases. */
