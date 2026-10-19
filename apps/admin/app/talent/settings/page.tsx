@@ -93,7 +93,7 @@ export default function TalentSettingsPage() {
       {ro && <p className="text-xs text-ink-500">You can view these settings but not change them.</p>}
       <section className="home-card space-y-3 !p-3.5">
         <h2 className="text-sm font-bold text-ink">Availability</h2>
-        <Toggle label="Peebee Jobs is on" hint="Master switch for customers. Staff keep access to finish open work." checked={form.enabled} disabled={ro} onChange={(v) => set("enabled", v)} />
+        <Toggle label="Peebee Hire is on" hint="Master switch for customers. Staff keep access to finish open work." checked={form.enabled} disabled={ro} onChange={(v) => set("enabled", v)} />
         <div className="space-y-1.5"><p className="text-xs font-semibold text-ink-500">Kinds of job people can post</p><div className="flex flex-wrap gap-1.5">{TYPES.map((t) => <Chip key={t} on={form.jobTypes.includes(t)} disabled={ro} onClick={() => set("jobTypes", form.jobTypes.includes(t) ? form.jobTypes.filter((x) => x !== t) : TYPES.filter((x) => x === t || form.jobTypes.includes(x)))}>{label(t)}</Chip>)}</div></div>
         <Toggle label="Find-a-worker search" hint="The directory where anyone can search for workers." checked={form.workerSearchEnabled} disabled={ro} onChange={(v) => set("workerSearchEnabled", v)} />
         <Toggle label="Riders can offer other work" checked={form.ridersCanWork} disabled={ro} onChange={(v) => set("ridersCanWork", v)} />

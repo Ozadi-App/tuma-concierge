@@ -50,9 +50,9 @@ export function PostJob() {
   const cats = config?.categories ?? [];
 
   if (configFailure) {
-    return <JobsPage eyebrow="Peebee Jobs" title="Post a job" backHref="/services/jobs" backLabel="Back to Jobs"><Unavailable failure={configFailure} /></JobsPage>;
+    return <JobsPage eyebrow="Peebee Hire" title="Post a job" backHref="/services/hire" backLabel="Back to Hire"><Unavailable failure={configFailure} /></JobsPage>;
   }
-  if (!config || !effectiveType) return <JobsPage eyebrow="Peebee Jobs" title="Post a job" backHref="/services/jobs" backLabel="Back to Jobs"><Spinner label="Loading" /></JobsPage>;
+  if (!config || !effectiveType) return <JobsPage eyebrow="Peebee Hire" title="Post a job" backHref="/services/hire" backLabel="Back to Hire"><Spinner label="Loading" /></JobsPage>;
 
   function locate() {
     if (!navigator.geolocation) return;
@@ -79,7 +79,7 @@ export function PostJob() {
       };
       const r = await api.talentPostJob(input);
       if (invite) await api.talentInvite(r.job.id, invite).catch(() => {});
-      router.replace(`/services/jobs/${encodeURIComponent(r.job.id)}${r.needsReview ? "?review=1" : ""}`);
+      router.replace(`/services/hire/${encodeURIComponent(r.job.id)}${r.needsReview ? "?review=1" : ""}`);
     } catch (err) {
       setFailure(jobsFailure(err));
       setBusy(false);
@@ -87,7 +87,7 @@ export function PostJob() {
   }
 
   return (
-    <JobsPage eyebrow="Peebee Jobs" title="Post a job" backHref="/services/jobs" backLabel="Back to Jobs">
+    <JobsPage eyebrow="Peebee Hire" title="Post a job" backHref="/services/hire" backLabel="Back to Hire">
       <ol className="flex gap-1.5" aria-label="Steps">
         {["Kind", "Details", "Pay & post"].map((s, i) => <li key={s} aria-current={i === step ? "step" : undefined} className={`h-1.5 flex-1 rounded-full ${i <= step ? "bg-gold" : "bg-[rgb(var(--surface-muted))]"}`} title={s} />)}
       </ol>
@@ -172,7 +172,7 @@ export function PostJob() {
             <button type="button" onClick={() => setStep(1)} className={secondaryBtn}>Back</button>
             <BusyButton busy={busy} disabled={!rules || !money || (effectiveType !== "hiring" && budgetNum <= 0)} onClick={submit} className={primaryBtn}>Post job</BusyButton>
           </div>
-          <Link href="/services/jobs" className="block text-center text-xs font-semibold text-ink-500 underline">Cancel</Link>
+          <Link href="/services/hire" className="block text-center text-xs font-semibold text-ink-500 underline">Cancel</Link>
         </section>
       ) : null}
     </JobsPage>

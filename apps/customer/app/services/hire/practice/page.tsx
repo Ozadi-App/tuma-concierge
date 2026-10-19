@@ -7,7 +7,7 @@ import { useEffect } from "react";
 export default function JobsPracticePage() {
   useEffect(() => {
     startPracticeMode("customer");
-    window.location.replace("/services/jobs");
+    window.location.replace("/services/hire");
   }, []);
   return <p className="px-4 py-16 text-center text-sm text-ink-500">Opening practice mode with sample jobs…</p>;
 }

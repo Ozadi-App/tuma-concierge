@@ -418,6 +418,8 @@ export type DeliverySettings = {
    * distance the way a parcel ride is. */
   shoppingDeliveryFee: number;
   shoppingUnits?: import("./shopping-units.js").ShoppingUnitSettings;
+  /** What the customer app's main menu is called, and the Hive shortcuts (admin-edited). */
+  homeMenu?: import("./home-menu.js").HomeMenuSettings;
   rideTracking?: import("./ride-tracking.js").RideTrackingSettings;
   /** A passenger ride's own per-km rate and floor — priced the same way as
    * a parcel (distance × rate, never below the floor) but tracked

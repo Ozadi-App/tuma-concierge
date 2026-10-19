@@ -13,8 +13,8 @@ const csv = (s: string, max: number) => s.split(",").map((x) => x.trim()).filter
 
 export function WorkerProfileEditor() {
   const { config, me, failure: loadFailure, reload } = useJobsConfig();
-  if (loadFailure) return <JobsPage eyebrow="Peebee Jobs" title="My worker profile" backHref="/services/jobs" backLabel="Back to Jobs"><Unavailable failure={loadFailure} /></JobsPage>;
-  if (!config || !me) return <JobsPage eyebrow="Peebee Jobs" title="My worker profile" backHref="/services/jobs" backLabel="Back to Jobs"><Spinner label="Loading" /></JobsPage>;
+  if (loadFailure) return <JobsPage eyebrow="Peebee Hire" title="My worker profile" backHref="/services/hire" backLabel="Back to Hire"><Unavailable failure={loadFailure} /></JobsPage>;
+  if (!config || !me) return <JobsPage eyebrow="Peebee Hire" title="My worker profile" backHref="/services/hire" backLabel="Back to Hire"><Spinner label="Loading" /></JobsPage>;
   return <Editor config={config} me={me} reload={reload} />;
 }
 
@@ -75,7 +75,7 @@ function Editor({ config, me, reload }: { config: TalentConfig; me: TalentMe; re
 
   const status = p?.status;
   return (
-    <JobsPage eyebrow="Peebee Jobs" title="My worker profile" backHref="/services/jobs" backLabel="Back to Jobs">
+    <JobsPage eyebrow="Peebee Hire" title="My worker profile" backHref="/services/hire" backLabel="Back to Hire">
       {!me.canWork ? <Notice text="Riders can't offer other work right now." /> : null}
       {p ? (
         <section className={`${cardClass} space-y-2`}>
@@ -91,7 +91,7 @@ function Editor({ config, me, reload }: { config: TalentConfig; me: TalentMe; re
           {status === "approved" && p.activated ? (
             <div className="grid grid-cols-2 gap-2 pt-1">
               <BusyButton busy={busy === "boost"} className={secondaryBtn} onClick={() => run("boost", async () => { const r = await api.talentBoostProfile(); return `Featured until ${r.featuredUntil.slice(0, 10)}.`; })}><Rocket className="h-4 w-4" aria-hidden />Boost{!config.freeAccess && boostRule?.model === "flat" ? ` ${formatUgx(boostRule.flatUgx)}` : ""}</BusyButton>
-              <Link href={`/services/jobs/workers/${p.id}`} className={secondaryBtn}>View public page</Link>
+              <Link href={`/services/hire/workers/${p.id}`} className={secondaryBtn}>View public page</Link>
             </div>
           ) : null}
           {p.activated ? (

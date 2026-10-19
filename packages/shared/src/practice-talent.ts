@@ -1,5 +1,5 @@
 /**
- * Peebee Jobs in practice mode: a browser-local simulator of /v1/talent.
+ * Peebee Hire in practice mode: a browser-local simulator of /v1/talent.
  *
  * Practice mode never reaches the real API for operational requests, so the Jobs
  * screens need their own sample backend. This one keeps everything in

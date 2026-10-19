@@ -419,7 +419,7 @@ profileRoutes.post("/report", async (c) => {
     sql: "INSERT INTO talent_reports (id, reporter_id, target_type, target_id, reason, source) VALUES (?, ?, ?, ?, ?, 'user')",
     args: [`trp_${crypto.randomUUID().replace(/-/g, "").slice(0, 20)}`, user.sub, parsed.data.targetType, parsed.data.targetId, parsed.data.reason],
   });
-  tell(user.sub, "Report received", "Thanks. Our team will review it.", "/services/jobs");
+  tell(user.sub, "Report received", "Thanks. Our team will review it.", "/services/hire");
   return c.json({ ok: true });
 });
 

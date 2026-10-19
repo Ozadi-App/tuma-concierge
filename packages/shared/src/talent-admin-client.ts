@@ -1,5 +1,5 @@
 /**
- * Typed calls for the Peebee Jobs admin endpoints (`/v1/talent/admin/*`).
+ * Typed calls for the Peebee Hire admin endpoints (`/v1/talent/admin/*`).
  * Mirrors apps/api/src/talent/admin.ts.
  */
 import type { TalentFeeKind, TalentJobType } from "./talent-client.js";

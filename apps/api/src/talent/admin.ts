@@ -341,7 +341,7 @@ for (const [action, spec] of Object.entries(workerActions)) {
     if (!res.rowsAffected) return c.json({ error: "not_found" }, 404);
     await db.execute({ sql: "UPDATE talent_reports SET status = 'actioned', resolved_by = ?, resolved_at = datetime('now') WHERE target_type = 'profile' AND target_id = ? AND source = 'screening' AND status = 'open'", args: [user.sub, id] });
     await logActivity({ actor: user, action: `talent.worker.${action}`, summary: `Worker profile ${spec.verb}`, entityType: "talent_profile", entityId: id, after: { status: spec.status }, ip: ip(c) });
-    tell(id, `Your Jobs profile was ${spec.verb}`, note.success && note.data.note ? note.data.note : spec.status === "approved" ? "You can now apply for work and appear in search." : "Open Jobs for details.", "/services/jobs");
+    tell(id, `Your Jobs profile was ${spec.verb}`, note.success && note.data.note ? note.data.note : spec.status === "approved" ? "You can now apply for work and appear in search." : "Open Jobs for details.", "/services/hire");
     return c.json({ ok: true });
   });
 }
@@ -395,7 +395,7 @@ adminRoutes.post("/admin/jobs/:id/approve", requirePermission("talent.manage"), 
   if (!res.rowsAffected) return c.json({ error: "not_pending", message: "This job isn't waiting for review." }, 409);
   await db.execute({ sql: "UPDATE talent_reports SET status = 'dismissed', resolution = 'approved', resolved_by = ?, resolved_at = datetime('now') WHERE target_type = 'job' AND target_id = ? AND status = 'open'", args: [user.sub, j.id] });
   await logActivity({ actor: user, action: "talent.job.approve", summary: `Approved job "${String(j.title)}"`, entityType: "talent_job", entityId: String(j.id), ip: ip(c) });
-  tell(String(j.employer_id), "Your job is live", `"${String(j.title)}" was approved.`, `/services/jobs/${j.id}`);
+  tell(String(j.employer_id), "Your job is live", `"${String(j.title)}" was approved.`, `/services/hire/${j.id}`);
   const fresh = (await db.execute({ sql: "SELECT * FROM talent_jobs WHERE id = ?", args: [j.id] })).rows[0] as Row;
   void alertMatchingWorkers(fresh, s);
   return c.json({ ok: true });
@@ -413,7 +413,7 @@ adminRoutes.post("/admin/jobs/:id/reject", requirePermission("talent.manage"), a
   await db.execute({ sql: "UPDATE talent_applications SET status = 'rejected', updated_at = datetime('now') WHERE job_id = ? AND status IN ('applied', 'shortlisted')", args: [j.id] });
   await db.execute({ sql: "UPDATE talent_reports SET status = 'actioned', resolution = ?, resolved_by = ?, resolved_at = datetime('now') WHERE target_type = 'job' AND target_id = ? AND status = 'open'", args: [parsed.data.reason, user.sub, j.id] });
   await logActivity({ actor: user, action: "talent.job.reject", summary: `Took down job "${String(j.title)}": ${parsed.data.reason}`, entityType: "talent_job", entityId: String(j.id), ip: ip(c) });
-  tell(String(j.employer_id), "Your job was removed", parsed.data.reason, `/services/jobs/${j.id}`);
+  tell(String(j.employer_id), "Your job was removed", parsed.data.reason, `/services/hire/${j.id}`);
   return c.json({ ok: true });
 });
 
@@ -500,7 +500,7 @@ adminRoutes.post("/admin/contracts/:id/resolve", requirePermission("talent.manag
   const result = await resolveDispute(ct, outcome, user.sub, d.note);
   if (!result.ok) return c.json({ error: "cannot_resolve", message: result.message }, 409);
   await logActivity({ actor: user, action: "talent.dispute.resolve", summary: `Resolved dispute on "${String(ct.title)}": ${d.outcome}${d.outcome === "split" ? ` (refund UGX ${d.refundUgx})` : ""}`, entityType: "talent_contract", entityId: String(ct.id), after: d, ip: ip(c) });
-  for (const id of [String(ct.employer_id), String(ct.worker_id)]) tell(id, "Problem resolved", `Peebee settled "${String(ct.title)}".`, `/services/jobs/contracts/${ct.id}`);
+  for (const id of [String(ct.employer_id), String(ct.worker_id)]) tell(id, "Problem resolved", `Peebee settled "${String(ct.title)}".`, `/services/hire/contracts/${ct.id}`);
   return c.json({ ok: true });
 });
 

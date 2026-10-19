@@ -5,7 +5,7 @@ import { balanceColumn, inDays, parseList, percentOf, toDb, type Row } from "./s
 import { getTalentSettings, type TalentSettings } from "./settings.js";
 
 /**
- * How Peebee Jobs earns, as data an admin edits rather than code:
+ * How Peebee Hire earns, as data an admin edits rather than code:
  *
  *  - FEE RULES (talent_fee_rules): a flat amount, a percentage (with a minimum and
  *    maximum), or nothing, for each thing that can be charged: onboarding, posting a
@@ -250,7 +250,7 @@ export async function charge(input: {
       args: [id, input.userId, input.kind, input.jobId ?? null, input.contractId ?? null, quote.amount, input.idempotencyKey, input.environment],
     });
   }
-  const paid = await payChargeRow(id, input.userId, quote.amount, input.environment, `Peebee Jobs fee: ${input.kind.replace(/_/g, " ")}`);
+  const paid = await payChargeRow(id, input.userId, quote.amount, input.environment, `Peebee Hire fee: ${input.kind.replace(/_/g, " ")}`);
   if (paid) return { ok: true, amount: quote.amount, waived: null, status: "paid" };
   if (input.allowDue) return { ok: true, amount: quote.amount, waived: null, status: "due" };
   await db.execute({ sql: "DELETE FROM talent_charges WHERE id = ? AND status = 'due'", args: [id] });
@@ -281,7 +281,7 @@ export async function chargeFixed(input: {
   });
   const row = (await db.execute({ sql: "SELECT id, status FROM talent_charges WHERE idempotency_key = ?", args: [input.idempotencyKey] })).rows[0] as Row;
   if (row.status === "paid") return { status: "paid" };
-  const paid = await payChargeRow(String(row.id), input.userId, input.amount, input.environment, `Peebee Jobs fee: ${input.kind.replace(/_/g, " ")}`);
+  const paid = await payChargeRow(String(row.id), input.userId, input.amount, input.environment, `Peebee Hire fee: ${input.kind.replace(/_/g, " ")}`);
   if (paid) return { status: "paid" };
   if (!input.allowDue) await db.execute({ sql: "DELETE FROM talent_charges WHERE id = ? AND status = 'due'", args: [row.id] });
   return { status: "due" };
@@ -309,7 +309,7 @@ export async function payDue(userId: string, env: PlatformEnvironment): Promise<
   const rows = (await db.execute({ sql: "SELECT * FROM talent_charges WHERE user_id = ? AND status = 'due' ORDER BY created_at LIMIT 50", args: [userId] })).rows as Row[];
   let paid = 0;
   for (const r of rows) {
-    if (await payChargeRow(String(r.id), userId, Number(r.amount_ugx), r.environment === "sandbox" ? "sandbox" : env, `Peebee Jobs fee: ${String(r.kind).replace(/_/g, " ")}`)) paid += Number(r.amount_ugx);
+    if (await payChargeRow(String(r.id), userId, Number(r.amount_ugx), r.environment === "sandbox" ? "sandbox" : env, `Peebee Hire fee: ${String(r.kind).replace(/_/g, " ")}`)) paid += Number(r.amount_ugx);
   }
   return { paid, stillOwed: await dueTotal(userId) };
 }
@@ -407,7 +407,7 @@ export async function subscribe(userId: string, planId: string, env: PlatformEnv
       {
         sql: `INSERT INTO wallet_ledger (id, user_id, type, amount, balance_after, note, environment)
               SELECT ?, ?, 'adjustment', ?, (SELECT ${col} FROM users WHERE id = ?), ?, ? WHERE changes() > 0`,
-        args: [newId("wl"), userId, -price, userId, `Peebee Jobs plan: ${plan.name}`, env],
+        args: [newId("wl"), userId, -price, userId, `Peebee Hire plan: ${plan.name}`, env],
       },
       {
         sql: `INSERT INTO talent_subscriptions (id, user_id, audience, plan_id, status, started_at, expires_at, auto_renew, price_paid_ugx, environment)
@@ -471,7 +471,7 @@ async function subscribeRenewal(userId: string, plan: Row, price: number, env: P
       {
         sql: `INSERT INTO wallet_ledger (id, user_id, type, amount, balance_after, note, environment)
               SELECT ?, ?, 'adjustment', ?, (SELECT ${col} FROM users WHERE id = ?), ?, ? WHERE changes() > 0`,
-        args: [newId("wl"), userId, -price, userId, `Peebee Jobs plan renewal: ${plan.name}`, env],
+        args: [newId("wl"), userId, -price, userId, `Peebee Hire plan renewal: ${plan.name}`, env],
       },
       {
         sql: `INSERT INTO talent_subscriptions (id, user_id, audience, plan_id, status, started_at, expires_at, auto_renew, price_paid_ugx, environment)

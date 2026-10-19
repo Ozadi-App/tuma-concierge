@@ -88,7 +88,7 @@ export async function applyMoney(moneyId: string): Promise<boolean> {
     {
       sql: `INSERT INTO wallet_ledger (id, user_id, type, amount, balance_after, note, environment)
             SELECT ?, ?, ?, ?, (SELECT ${col} FROM users WHERE id = ?), ?, ? WHERE ${PENDING}`,
-      args: [newId("wl"), row.user_id, ledgerType, row.amount_ugx, row.user_id, row.note || `Peebee Jobs ${row.kind}`, row.environment, moneyId],
+      args: [newId("wl"), row.user_id, ledgerType, row.amount_ugx, row.user_id, row.note || `Peebee Hire ${row.kind}`, row.environment, moneyId],
     },
     { sql: "UPDATE talent_money SET status = 'done', done_at = datetime('now') WHERE id = ? AND status = 'pending'", args: [moneyId] },
   ]);

@@ -16,6 +16,7 @@ export { UGANDA_DISTRICTS } from "./uganda-locations.js";
 export { CAR_MODEL_CATALOG } from "./car-model-catalog.js";
 export type { CarModel } from "./car-model-catalog.js";
 export * from "./shopping-units.js";
+export * from "./home-menu.js";
 export * from "./ride-tracking.js";
 export * from "./relay.js";
 export * from "./demo-marketplace.js";

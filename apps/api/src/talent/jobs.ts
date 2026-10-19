@@ -204,7 +204,7 @@ export async function alertMatchingWorkers(job: Row, s: TalentSettings) {
       const near = Number(job.remote) === 1 || Number(p.remote) === 1 || job.lat == null || p.lat == null || haversineKm(Number(p.lat), Number(p.lng), Number(job.lat), Number(job.lng)) <= Math.max(Number(p.radius_km), s.searchRadiusKm);
       if (!near) continue;
       if (!(await hasFeature(String(p.user_id), "job_alerts"))) continue;
-      tell(String(p.user_id), `New ${String(job.type)}: ${String(job.title)}`, String(job.area ?? "Remote"), `/services/jobs/${job.id}`, `talent-job-${job.id}`);
+      tell(String(p.user_id), `New ${String(job.type)}: ${String(job.title)}`, String(job.area ?? "Remote"), `/services/hire/${job.id}`, `talent-job-${job.id}`);
       sent += 1;
     }
   } catch (err) {
@@ -348,7 +348,7 @@ jobRoutes.post("/jobs/:id/close", async (c) => {
   if (!res.rowsAffected) return c.json({ error: "not_closable", message: "This job can't be closed now." }, 409);
   const rejected = (await db.execute({ sql: "SELECT worker_id FROM talent_applications WHERE job_id = ? AND status IN ('applied', 'shortlisted')", args: [j.id] })).rows as Row[];
   await db.execute({ sql: "UPDATE talent_applications SET status = 'rejected', updated_at = datetime('now') WHERE job_id = ? AND status IN ('applied', 'shortlisted')", args: [j.id] });
-  for (const r of rejected) tell(String(r.worker_id), "Job closed", `"${String(j.title)}" is no longer open.`, `/services/jobs/${j.id}`);
+  for (const r of rejected) tell(String(r.worker_id), "Job closed", `"${String(j.title)}" is no longer open.`, `/services/hire/${j.id}`);
   await logEvent({ jobId: String(j.id), actorId: user.sub, kind: "employer", action: "closed" });
   return c.json({ ok: true });
 });
@@ -378,7 +378,7 @@ jobRoutes.post("/jobs/:id/invite", async (c) => {
   if (!w || parsed.data.workerId === user.sub) return c.json({ error: "worker_not_found", message: "That worker isn't available." }, 404);
   if (!(await consume(`talent-invite:${user.sub}`, 30, 3600)).allowed) return c.json({ error: "rate_limited" }, 429);
   await db.execute({ sql: "INSERT OR IGNORE INTO talent_invites (job_id, worker_id) VALUES (?, ?)", args: [j.id, parsed.data.workerId] });
-  tell(parsed.data.workerId, "You've been invited to apply", `${employerName(j)} invited you to "${String(j.title)}".`, `/services/jobs/${j.id}`);
+  tell(parsed.data.workerId, "You've been invited to apply", `${employerName(j)} invited you to "${String(j.title)}".`, `/services/hire/${j.id}`);
   return c.json({ ok: true });
 });
 
@@ -435,7 +435,7 @@ jobRoutes.post("/jobs/:id/apply", async (c) => {
     await db.execute({ sql: "INSERT INTO talent_applications (id, job_id, worker_id, message, bid_ugx) VALUES (?, ?, ?, ?, ?)", args: [id, j.id, user.sub, d.message, bid] });
   }
   await db.execute({ sql: "UPDATE talent_jobs SET application_count = application_count + 1, updated_at = datetime('now') WHERE id = ?", args: [j.id] });
-  tell(String(j.employer_id), "New application", `${firstName(user.name)} applied to "${String(j.title)}".`, `/services/jobs/${j.id}`, `talent-app-${id}`);
+  tell(String(j.employer_id), "New application", `${firstName(user.name)} applied to "${String(j.title)}".`, `/services/hire/${j.id}`, `talent-app-${id}`);
   await logEvent({ jobId: String(j.id), actorId: user.sub, kind: "worker", action: "applied", detail: { bid } });
   return c.json({ application: { id, status: "applied", bidUgx: bid }, charged: fee.amount }, 201);
 });
@@ -519,7 +519,7 @@ jobRoutes.post("/applications/:id/shortlist", async (c) => {
   if (owned.job.type === "hiring" && !(await hasFeature(user.sub, "hiring_pipeline"))) return c.json(proRequired("hiring_pipeline"), 402);
   const res = await db.execute({ sql: "UPDATE talent_applications SET status = 'shortlisted', updated_at = datetime('now') WHERE id = ? AND status = 'applied'", args: [owned.app.id] });
   if (!res.rowsAffected) return c.json({ error: "not_shortlistable", message: "This applicant can't be shortlisted." }, 409);
-  tell(String(owned.app.worker_id), "You've been shortlisted", `For "${String(owned.job.title)}".`, `/services/jobs/${owned.job.id}`);
+  tell(String(owned.app.worker_id), "You've been shortlisted", `For "${String(owned.job.title)}".`, `/services/hire/${owned.job.id}`);
   return c.json({ ok: true });
 });
 
@@ -529,7 +529,7 @@ jobRoutes.post("/applications/:id/reject", async (c) => {
   if (!owned) return c.json({ error: "not_found" }, 404);
   const res = await db.execute({ sql: "UPDATE talent_applications SET status = 'rejected', updated_at = datetime('now') WHERE id = ? AND status IN ('applied', 'shortlisted')", args: [owned.app.id] });
   if (!res.rowsAffected) return c.json({ error: "not_rejectable", message: "This applicant can't be declined now." }, 409);
-  tell(String(owned.app.worker_id), "Application update", `"${String(owned.job.title)}" went with someone else.`, `/services/jobs/${owned.job.id}`);
+  tell(String(owned.app.worker_id), "Application update", `"${String(owned.job.title)}" went with someone else.`, `/services/hire/${owned.job.id}`);
   return c.json({ ok: true });
 });
 
@@ -554,7 +554,7 @@ jobRoutes.post("/applications/:id/hire", async (c) => {
     },
   ];
   await executeBatch(stmts);
-  tell(String(owned.app.worker_id), "You're hired!", `${employerName(owned.job)} chose you for "${String(owned.job.title)}".`, `/services/jobs/${owned.job.id}`);
+  tell(String(owned.app.worker_id), "You're hired!", `${employerName(owned.job)} chose you for "${String(owned.job.title)}".`, `/services/hire/${owned.job.id}`);
   await logEvent({ jobId: String(owned.job.id), actorId: user.sub, kind: "employer", action: "hired", detail: { workerId: owned.app.worker_id } });
   const phone = (await db.execute({ sql: "SELECT phone FROM users WHERE id = ?", args: [owned.app.worker_id] })).rows[0] as Row;
   return c.json({ ok: true, charged: fee.amount, workerPhone: String(phone.phone) });
@@ -622,6 +622,6 @@ jobRoutes.post("/applications/:id/messages", async (c) => {
   if (screen.state === "blocked") return c.json({ error: "prohibited_work", message: blockedMessage(screen) }, 422);
   const id = newId("tmg");
   await db.execute({ sql: "INSERT INTO talent_messages (id, application_id, sender_id, body) VALUES (?, ?, ?, ?)", args: [id, access.app.id, user.sub, parsed.data.body] });
-  tell(access.other, `New message about "${String(access.job.title)}"`, parsed.data.body.slice(0, 80), `/services/jobs/${access.job.id}`, `talent-msg-${access.app.id}`);
+  tell(access.other, `New message about "${String(access.job.title)}"`, parsed.data.body.slice(0, 80), `/services/hire/${access.job.id}`, `talent-msg-${access.app.id}`);
   return c.json({ message: { id, mine: true, body: parsed.data.body, createdAt: toDb() } }, 201);
 });

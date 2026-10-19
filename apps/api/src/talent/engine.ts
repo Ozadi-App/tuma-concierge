@@ -88,7 +88,7 @@ export async function createContract(input: {
   ];
   try {
     if (mode === "escrow") {
-      const { held: ok } = await holdFromEmployer({ moneyId, contractId, employerId, amount: held, environment: env, note: `Peebee Jobs escrow — ${String(job.title)}`, guard: open, then: stmts });
+      const { held: ok } = await holdFromEmployer({ moneyId, contractId, employerId, amount: held, environment: env, note: `Peebee Hire escrow — ${String(job.title)}`, guard: open, then: stmts });
       if (!ok) return fail(402, "insufficient_funds", `Your wallet needs ${ugx(held)} to hold for this job. Top up and try again.`, held);
     } else {
       await executeBatch(stmts);
@@ -100,7 +100,7 @@ export async function createContract(input: {
   const made = (await db.execute({ sql: "SELECT id FROM talent_contracts WHERE id = ?", args: [contractId] })).rows.length;
   if (!made) return fail(409, "conflict", "That application was just changed. Refresh and try again.");
 
-  tell(String(app.worker_id), "You got the job!", `${input.employerName} accepted you for "${String(job.title)}" at ${ugx(price)}.`, `/services/jobs/contracts/${contractId}`);
+  tell(String(app.worker_id), "You got the job!", `${input.employerName} accepted you for "${String(job.title)}" at ${ugx(price)}.`, `/services/hire/contracts/${contractId}`);
   await logEvent({ jobId: String(job.id), contractId, actorId: employerId, kind: "employer", action: input.action ?? "accepted", detail: { price, mode, held } });
   return { ok: true, contractId, priceUgx: price, heldUgx: held, paymentMode: mode, employerFeeUgx: employerFee, workerFeeUgx: workerFee };
 }

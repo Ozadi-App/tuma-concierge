@@ -77,6 +77,7 @@ import {
 import { clearCredential, PROVIDER_CREDENTIAL_FIELDS, saveCredentials } from "../payments/credentials.js";
 import { paymentsIntegrationStatus } from "../payments/service.js";
 import { getShoppingUnitSettings, shoppingUnitSettingsSchema } from "./shopping-units.js";
+import { getHomeMenuSettings, homeMenuSchema } from "./home-menu.js";
 import { getRideTrackingSettings, rideTrackingSchema } from "./ride-tracking.js";
 
 export const settingsRoutes = new Hono();
@@ -139,6 +140,7 @@ async function fullSettings() {
 
   return {
     shoppingUnits: await getShoppingUnitSettings(),
+    homeMenu: await getHomeMenuSettings(),
     rideTracking: await getRideTrackingSettings(),
     timeFees: await getTimeFeeSettings(),
     jobExpiry: await getJobExpirySettings(),
@@ -393,6 +395,7 @@ const updateSchema = z.object({
   routingServerUrl: z.union([z.literal(""), z.string().url().max(300).regex(/^https?:\/\//)]).optional(),
   shoppingDeliveryFee: z.number().int().nonnegative().max(1_000_000).optional(),
   shoppingUnits: shoppingUnitSettingsSchema.optional(),
+  homeMenu: homeMenuSchema.optional(),
   rideTracking: rideTrackingSchema.optional(),
   rideRatePerKm: z.number().positive().max(1_000_000).optional(),
   rideMinimumFare: z.number().int().nonnegative().max(1_000_000).optional(),
@@ -600,6 +603,7 @@ settingsRoutes.put(
 
     if (parsed.data.timeFees) await setSetting("time_fees", JSON.stringify(parsed.data.timeFees));
     if (parsed.data.shoppingUnits) await setSetting("shopping_units_config", JSON.stringify(parsed.data.shoppingUnits));
+    if (parsed.data.homeMenu) await setSetting("home_menu_config", JSON.stringify(parsed.data.homeMenu));
     if (parsed.data.rideTracking) await setSetting("ride_tracking", JSON.stringify(parsed.data.rideTracking));
     if (parsed.data.jobExpiry) await setJobExpirySettings(parsed.data.jobExpiry);
     if (parsed.data.bidding) await setBiddingSettings(parsed.data.bidding);

@@ -24,7 +24,7 @@ export default function TalentLayout({ children }: { children: React.ReactNode }
   if (!canView) {
     return (
       <div className="px-4 pt-6">
-        <h1 className="text-xl font-bold text-ink">Peebee Jobs</h1>
+        <h1 className="text-xl font-bold text-ink">Peebee Hire</h1>
         <p className="mt-2 text-sm text-ink-500">You don&apos;t have permission to view this.</p>
       </div>
     );
@@ -32,7 +32,7 @@ export default function TalentLayout({ children }: { children: React.ReactNode }
 
   return (
     <div className="space-y-4 px-4 pb-8 pt-4">
-      <h1 className="text-xl font-bold text-ink">Peebee Jobs</h1>
+      <h1 className="text-xl font-bold text-ink">Peebee Hire</h1>
       <nav aria-label="Jobs sections" className="flex gap-1.5 overflow-x-auto">
         {TABS.map((t) => {
           const active = t.href === "/talent" ? pathname === "/talent" : pathname.startsWith(t.href);
