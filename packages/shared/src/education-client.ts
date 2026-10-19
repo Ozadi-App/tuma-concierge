@@ -302,7 +302,7 @@ export function educationMethods(request: RequestFn) {
         ok: true;
         courses: {
           id: string; stream: EducationStream; title: string; summary: string; priceUgx: number; framework: CurriculumFramework; outcomes: string[];
-          schoolName: string; schoolSlug: string; className: string; classKind: ClassKind; classLevel: string; lessonCount: number;
+          schoolId: string; schoolName: string; schoolSlug: string; className: string; classKind: ClassKind; classLevel: string; lessonCount: number;
           /** Sample content from the Peebee demo, not a real school. */
           demo: boolean;
         }[];

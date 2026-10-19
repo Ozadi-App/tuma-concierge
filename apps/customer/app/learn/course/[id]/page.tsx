@@ -5,6 +5,7 @@ import { ArrowLeft, CheckCircle2, Circle, ExternalLink, HelpCircle, Lock } from 
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { LearnThumb } from "@peebee/shared/learn-thumb";
 import { api, errorMessage } from "../../../../lib/api";
 import { ApiError } from "@peebee/shared";
 
@@ -243,7 +244,9 @@ export default function LearnCoursePage() {
       )}
 
       {preview && (
-        <section className={`${card} space-y-4 p-5`}>
+        <section className={`${card} space-y-4 overflow-hidden`}>
+          <LearnThumb src={api.learnArtUrl("course", id)} className="max-w-xl" />
+          <div className="space-y-4 px-5 pb-5">
           <div className="space-y-1">
             <p className="text-xs font-bold uppercase tracking-wider text-gold">{preview.schoolName}</p>
             <h1 className="text-xl font-bold text-ink">{preview.title}</h1>
@@ -272,12 +275,14 @@ export default function LearnCoursePage() {
           <button type="button" onClick={enrol} disabled={busy} className="w-full rounded-xl bg-gold px-4 py-3 text-sm font-semibold text-ink-gold disabled:opacity-50">
             {busy ? "Enrolling…" : preview.priceUgx > 0 ? `Enrol for ${ugx(preview.priceUgx)} from your wallet` : "Enrol for free"}
           </button>
+          </div>
         </section>
       )}
 
       {course && (
         <>
           <header className="space-y-2">
+            <LearnThumb src={api.learnArtUrl("course", id)} className="max-w-xl rounded-2xl" />
             <p className="text-xs font-bold uppercase tracking-wider text-gold">{course.schoolName}</p>
             <h1 className="text-xl font-bold text-ink">{course.title}</h1>
             <div className="h-2 overflow-hidden rounded-full bg-[rgb(var(--surface-muted))]" role="progressbar" aria-valuenow={course.progressPercent} aria-valuemin={0} aria-valuemax={100} aria-label="Course progress">
@@ -304,6 +309,7 @@ export default function LearnCoursePage() {
                           }`}
                         >
                           {l.completed ? <CheckCircle2 className="h-4 w-4 shrink-0 text-green" aria-label="Complete" /> : <Circle className="h-4 w-4 shrink-0 text-ink-500" aria-label="Not done" />}
+                          <LearnThumb src={api.learnArtUrl("lesson", l.id)} className="w-14 shrink-0 rounded-md" />
                           <span className="min-w-0 flex-1 truncate text-ink">{l.title}</span>
                         </button>
                       </li>

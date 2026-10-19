@@ -5,6 +5,7 @@ import { observeNotificationSnapshot, type HiveShortcutId, type HomeMenuSettings
 import type { OrderRow } from "@peebee/shared";
 import {
   Ambulance,
+  Backpack,
   Bike,
   BookOpen,
   Briefcase,
@@ -19,8 +20,11 @@ import {
   Croissant,
   Crown,
   Flame,
+  GraduationCap,
+  Hammer,
   HardHat,
   Home,
+  Landmark,
   ListChecks,
   Package,
   Pill,
@@ -28,6 +32,7 @@ import {
   ShoppingBag,
   ShoppingBasket,
   Sparkles,
+  Sprout,
   Store,
   UtensilsCrossed,
   Truck,
@@ -36,8 +41,8 @@ import {
   Wrench,
 } from "lucide-react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth-context";
@@ -51,7 +56,7 @@ import { CartDrawer } from "./CartDrawer";
 import { useCart } from "../lib/cart";
 import { useNavBack, useNavPrimaryAction } from "../lib/nav-primary-action";
 
-type MenuGroup = "original" | "ride" | "shopping" | "food" | "hive";
+type MenuGroup = "original" | "ride" | "shopping" | "food" | "hive" | "learn";
 type MenuItem = { id: string; label: string; icon: LucideIcon; href?: string; group?: Exclude<MenuGroup, "original">; disabled?: boolean };
 
 // Five main buttons: Ride, Buy, Eat, Learn and Hive. Learn goes straight to its own home; the others open a row of shortcuts.
@@ -106,12 +111,33 @@ const staticSubmenuItems: Record<"shopping" | "food", MenuItem[]> = {
   ],
 };
 
+/** Learn's row: one shortcut per level. "Basics" is primary school (stream id "foundations"); "Campus" is university (stream id "compass"). */
+const learnItems: MenuItem[] = [
+  { id: "skills", label: "Skills", icon: Hammer, href: "/learn?stream=skills" },
+  { id: "sprouts", label: "Sprouts", icon: Sprout, href: "/learn?stream=sprouts" },
+  { id: "foundations", label: "Basics", icon: Backpack, href: "/learn?stream=foundations" },
+  { id: "academy", label: "Academy", icon: Landmark, href: "/learn?stream=academy" },
+  { id: "compass", label: "Campus", icon: GraduationCap, href: "/learn?stream=compass" },
+];
+
+const LEARN_STREAM_ITEMS = ["skills", "sprouts", "foundations", "academy", "compass"];
+
+/** Reports which Learn stream the address asks for, so the menu can highlight it. Kept apart so only this part waits on the query string. */
+function LearnStreamWatcher({ onStream }: { onStream: (stream: string | null) => void }) {
+  const stream = useSearchParams().get("stream");
+  useEffect(() => {
+    onStream(stream);
+  }, [stream, onStream]);
+  return null;
+}
+
 function groupForPath(pathname: string): MenuGroup {
   if (["/food", "/restaurants", "/kitchens", "/streetfood", "/juices", "/bakeries"].some((path) => pathname === path || pathname.startsWith(`${path}/`))) return "food";
   if (pathname === "/ride" || pathname === "/rent" || pathname === "/carpool" || pathname.startsWith("/ride/") || pathname === "/move") return "ride";
   // Parcel is part of Ride now (Send is no longer its own button).
   if (pathname === "/deliver" || pathname.startsWith("/deliver/")) return "ride";
   if (["/shopping", "/shoplist", "/groceries", "/stores", "/store", "/pharmacy", "/spotlight"].some((path) => pathname === path || pathname.startsWith(`${path}/`)) || pathname.startsWith("/orders")) return "shopping";
+  if (pathname === "/learn" || pathname.startsWith("/learn/")) return "learn";
   if (["/services", "/service"].some((path) => pathname === path || pathname.startsWith(`${path}/`))) return "hive";
   return "original";
 }
@@ -127,6 +153,12 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
   const [trackerDrawerOpen, setTrackerDrawerOpen] = useState(false);
   const [menuGroup, setMenuGroup] = useState<MenuGroup>(() => groupForPath(pathname));
   const [selectedItem, setSelectedItem] = useState<string | null>(null);
+  const onLearnStream = useCallback(
+    (stream: string | null) => {
+      if (pathname === "/learn") setSelectedItem(stream && LEARN_STREAM_ITEMS.includes(stream) ? stream : null);
+    },
+    [pathname],
+  );
   const t = useTranslate();
   const homeMenu = useHomeMenu();
   const special = useSpecialCarServices();
@@ -154,6 +186,7 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
     menuGroup === "original" ? originalMenu(homeMenu)
     : menuGroup === "ride" ? rideItems(special)
     : menuGroup === "hive" ? hiveItems(homeMenu, hireAvailability)
+    : menuGroup === "learn" ? learnItems
     : staticSubmenuItems[menuGroup];
   // Ride can grow to eight; past five the row scrolls sideways instead of squeezing the names.
   const scrolls = menuItems.length > 5;
@@ -183,7 +216,8 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
     else if (pathname === "/services/fix") setSelectedItem("fix");
     else if (pathname === "/services/hire/workers" || pathname.startsWith("/services/hire/workers/")) setSelectedItem("workers");
     else if (pathname === "/service" || pathname === "/services/hire" || pathname.startsWith("/services/hire/")) setSelectedItem("hire");
-    else if (pathname === "/services/learn" || pathname === "/learn" || pathname.startsWith("/learn/")) setSelectedItem("learn");
+    else if (pathname === "/learn") return; // the level in the address picks the item, see LearnStreamWatcher
+    else if (pathname === "/services/learn" || pathname.startsWith("/learn/")) setSelectedItem(null);
     else if (pathname === "/deliver" || pathname.startsWith("/deliver/")) setSelectedItem("parcel");
     else setSelectedItem(null);
   }, [pathname]);
@@ -242,6 +276,9 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
           bottom edge, fading to fully clear just above the nav buttons. */}
       <div aria-hidden className="customer-nav-scrim" />
       <nav ref={navRef} aria-label="Primary navigation" className={`customer-nav fixed inset-x-0 bottom-3 z-40 px-3 pointer-events-none pb-[env(safe-area-inset-bottom)] ${overlay ? "customer-nav-overlay" : ""}`}>
+        <Suspense fallback={null}>
+          <LearnStreamWatcher onStream={onLearnStream} />
+        </Suspense>
         <div className="mx-auto flex max-w-lg flex-col items-center gap-2">
           {/* Active Delivery Floating Capsule Chip */}
           {showActiveDeliveryBadge && (
@@ -452,6 +489,7 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
                                 shopping: "/shopping",
                                 food: "/food",
                                 hive: "/services",
+                                learn: "/learn",
                               }[item.group!]
                             );
                           }}

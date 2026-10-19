@@ -45,6 +45,7 @@ const settingsPatch = z
     commissionPercent: z.number().int().min(0).max(60),
     videoUploadsEnabled: z.boolean(),
     maxVideoMb: z.number().int().min(1).max(100),
+    maxCoverMb: z.number().int().min(0).max(10),
     quizAttemptsPerHour: z.number().int().min(1).max(200),
     feesEnabled: z.boolean(),
     examPassPercent: z.number().int().min(0).max(100),

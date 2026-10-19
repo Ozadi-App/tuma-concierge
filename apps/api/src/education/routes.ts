@@ -36,6 +36,7 @@ import {
 import { requireAuth } from "../auth/middleware.js";
 import { db } from "../db/client.js";
 import { clearFailures, checkLockout, consume, recordFailure, tooManyRequests } from "../lib/ratelimit.js";
+import { artRoutes } from "./art.js";
 import { catalogRoutes } from "./catalog.js";
 import { classroomRoutes } from "./classroom.js";
 import { proRoutes } from "./pro.js";
@@ -71,6 +72,7 @@ educationRoutes.get("/institutions/:slug", (c) => {
 });
 
 educationRoutes.route("/catalog", catalogRoutes);
+educationRoutes.route("/art", artRoutes);
 educationRoutes.route("/", mediaRoutes);
 
 // ----------------------------------------------------

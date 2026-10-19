@@ -25,6 +25,7 @@ const LIMITS: { key: NumberKey; label: string; hint: string; min: number; max: n
   { key: "maxLessonMinutes", label: "Longest lesson (minutes)", hint: "Upper limit for one lesson", min: 1, max: 1440 },
   { key: "commissionPercent", label: "Peebee's share (%)", hint: "Taken from every course sale and fee payment", min: 0, max: 60 },
   { key: "maxVideoMb", label: "Largest lesson file (MB)", hint: "Video or audio an educator can upload (100 MB is the most the platform accepts)", min: 1, max: 100 },
+  { key: "maxCoverMb", label: "Largest cover picture (MB)", hint: "Picture an educator can set for a school or course. 0 turns cover uploads off; a drawn cover is always shown instead", min: 0, max: 10 },
   { key: "quizAttemptsPerHour", label: "Quiz attempts per hour", hint: "Per learner, across all quizzes", min: 1, max: 200 },
   { key: "examPassPercent", label: "Exam pass mark (%)", hint: "For exams the server marks automatically", min: 0, max: 100 },
   { key: "liveMaxParticipants", label: "Students per live session", hint: "Phones that can join one classroom session", min: 1, max: 500 },

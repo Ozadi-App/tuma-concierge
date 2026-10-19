@@ -13,7 +13,7 @@ import { db } from "../db/client.js";
 const answers = new Map<string, { exists: boolean; at: number }>();
 const NO_TTL_MS = 30_000;
 
-export async function hasColumn(table: "edu_schools" | "edu_live_sessions" | "tv_devices" | "fee_proposals" | "menu_items" | "list_items" | "users" | "riders" | "restaurants" | "merchants" | "merchant_outlets" | "order_applications" | "orders" | "car_bookings" | "ai_api_keys" | "car_partners" | "vehicle_assignments" | "rental_listings" | "rentals" | "vehicles" | "fuel_pump_attendants" | "fuel_codes" | "fuel_station_withdrawals" | "pharmacy_prescriptions" | "vehicle_categories" | "relay_routes" | "fuel_station_outlets" | "order_relay", column: string): Promise<boolean> {
+export async function hasColumn(table: "edu_schools" | "edu_courses" | "edu_live_sessions" | "tv_devices" | "fee_proposals" | "menu_items" | "list_items" | "users" | "riders" | "restaurants" | "merchants" | "merchant_outlets" | "order_applications" | "orders" | "car_bookings" | "ai_api_keys" | "car_partners" | "vehicle_assignments" | "rental_listings" | "rentals" | "vehicles" | "fuel_pump_attendants" | "fuel_codes" | "fuel_station_withdrawals" | "pharmacy_prescriptions" | "vehicle_categories" | "relay_routes" | "fuel_station_outlets" | "order_relay", column: string): Promise<boolean> {
   const key = `${table}.${column}`;
   const known = answers.get(key);
   if (known && (known.exists || Date.now() - known.at < NO_TTL_MS)) return known.exists;

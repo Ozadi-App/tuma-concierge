@@ -417,6 +417,7 @@ const DEFAULTS = {
   learn_commission_percent: "10",
   learn_video_uploads_enabled: "1",
   learn_max_video_mb: "50",
+  learn_max_cover_mb: "2",
   learn_quiz_attempts_per_hour: "30",
   learn_fees_enabled: "1",
   learn_exam_pass_percent: "50",

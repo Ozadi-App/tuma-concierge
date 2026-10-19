@@ -1,10 +1,11 @@
 "use client";
 
 import { EDUCATION_STREAMS, type EducationStream, type LearnEnrollment } from "@peebee/shared";
-import { ArrowRight, BookOpen, GraduationCap, Radio, Receipt, Search, Sparkles } from "lucide-react";
+import { ArrowRight, BookOpen, Radio, Receipt, Search, Sparkles } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useMemo, useState, type FormEvent } from "react";
+import { LearnThumb } from "@peebee/shared/learn-thumb";
 import { api, errorMessage } from "../../lib/api";
 
 type CatalogCourse = Awaited<ReturnType<typeof api.getCatalogCourses>>["courses"][number];
@@ -143,13 +144,14 @@ function MyLearning() {
         <ul className="space-y-2">
           {shown.map((c) => (
             <li key={c.id}>
-              <Link href={`/learn/course/${c.courseId}`} className={`${card} block space-y-2 p-4 transition hover:border-gold/50`}>
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
+              <Link href={`/learn/course/${c.courseId}`} className={`${card} block space-y-2 p-3 transition hover:border-gold/50`}>
+                <div className="flex items-start gap-3">
+                  <LearnThumb src={api.learnArtUrl("course", c.courseId)} className="w-24 shrink-0 rounded-xl" />
+                  <div className="min-w-0 flex-1 pt-0.5">
                     <p className="truncate text-sm font-semibold text-ink">{c.title}</p>
                     <p className="truncate text-xs text-ink-500">{c.schoolName}</p>
                   </div>
-                  <span className="shrink-0 text-xs font-semibold text-gold">{c.progressPercent === 0 ? "Start" : "Continue"}</span>
+                  <span className="shrink-0 pt-0.5 text-xs font-semibold text-gold">{c.progressPercent === 0 ? "Start" : "Continue"}</span>
                 </div>
                 <div className="h-1.5 overflow-hidden rounded-full bg-[rgb(var(--surface-muted))]" role="progressbar" aria-valuenow={c.progressPercent} aria-valuemin={0} aria-valuemax={100} aria-label={`${c.title} progress`}>
                   <div className="h-full bg-gold" style={{ width: `${c.progressPercent}%` }} />
@@ -166,11 +168,16 @@ function MyLearning() {
   );
 }
 
-export default function LearnHomePage() {
+function LearnHome() {
+  const router = useRouter();
   const [courses, setCourses] = useState<CatalogCourse[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [stream, setStream] = useState<EducationStream | "all">("all");
+  // The level lives in the address (/learn?stream=skills) so the bottom menu, links and this page always agree.
+  const asked = useSearchParams().get("stream");
+  const stream: EducationStream | "all" = EDUCATION_STREAMS.some((s) => s.id === asked) ? (asked as EducationStream) : "all";
   const [school, setSchool] = useState<string | null>(null);
+  // A school belongs to one level, so changing level (from the menu or the chips) clears it.
+  useEffect(() => setSchool(null), [stream]);
   const [query, setQuery] = useState("");
 
   useEffect(() => {
@@ -191,9 +198,9 @@ export default function LearnHomePage() {
   const inStream = useMemo(() => (courses ?? []).filter((c) => stream === "all" || c.stream === stream), [courses, stream]);
 
   const schools = useMemo(() => {
-    const map = new Map<string, { slug: string; name: string; count: number }>();
+    const map = new Map<string, { id: string; slug: string; name: string; count: number }>();
     for (const c of inStream) {
-      const entry = map.get(c.schoolSlug) ?? { slug: c.schoolSlug, name: c.schoolName, count: 0 };
+      const entry = map.get(c.schoolSlug) ?? { id: c.schoolId, slug: c.schoolSlug, name: c.schoolName, count: 0 };
       entry.count += 1;
       map.set(c.schoolSlug, entry);
     }
@@ -245,7 +252,7 @@ export default function LearnHomePage() {
               role="radio"
               aria-checked={stream === o.id}
               onClick={() => {
-                setStream(o.id);
+                router.replace(o.id === "all" ? "/learn" : `/learn?stream=${o.id}`, { scroll: false });
                 setSchool(null);
               }}
               className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${stream === o.id ? "bg-gold text-ink-gold" : "border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] text-ink-500 hover:text-ink"}`}
@@ -265,7 +272,7 @@ export default function LearnHomePage() {
                 onClick={() => setSchool(school === s.slug ? null : s.slug)}
                 className={`flex shrink-0 items-center gap-2 rounded-xl border px-3 py-2 text-left text-xs transition ${school === s.slug ? "border-gold bg-gold/10 text-ink" : "border-[var(--border-faint)] bg-[rgb(var(--surface-card))] text-ink-500 hover:border-gold/50"}`}
               >
-                <GraduationCap className="h-4 w-4 text-gold" aria-hidden />
+                <LearnThumb src={api.learnArtUrl("school", s.id)} className="w-9 shrink-0 rounded-md" />
                 <span className="font-semibold text-ink">{s.name}</span>
                 <span>{s.count}</span>
               </button>
@@ -298,19 +305,22 @@ export default function LearnHomePage() {
           <ul className="space-y-2">
             {visible.map((c) => (
               <li key={c.id}>
-                <Link href={`/learn/course/${c.id}`} className={`${card} block space-y-1.5 p-4 transition hover:border-gold/50`}>
-                  <div className="flex items-start justify-between gap-3">
-                    <p className="text-sm font-semibold text-ink">{c.title}</p>
-                    <span className="shrink-0 rounded-full bg-gold/15 px-2.5 py-0.5 text-[11px] font-semibold text-gold">{ugx(c.priceUgx)}</span>
+                <Link href={`/learn/course/${c.id}`} className={`${card} flex gap-3 p-3 transition hover:border-gold/50`}>
+                  <LearnThumb src={api.learnArtUrl("course", c.id)} className="w-28 shrink-0 self-start rounded-xl sm:w-40" />
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="text-sm font-semibold text-ink">{c.title}</p>
+                      <span className="shrink-0 rounded-full bg-gold/15 px-2.5 py-0.5 text-[11px] font-semibold text-gold">{ugx(c.priceUgx)}</span>
+                    </div>
+                    <p className="text-xs text-ink-500">
+                      {c.schoolName} · {c.classLevel || c.className}
+                      {c.demo && <span className="ml-2 rounded-full bg-[rgb(var(--surface-muted))] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-ink-500">Demo</span>}
+                    </p>
+                    {c.summary && <p className="line-clamp-2 text-xs text-ink-500">{c.summary}</p>}
+                    <p className="text-[11px] font-semibold text-ink-500">
+                      {c.lessonCount} lesson{c.lessonCount === 1 ? "" : "s"}
+                    </p>
                   </div>
-                  <p className="text-xs text-ink-500">
-                    {c.schoolName} · {c.classLevel || c.className}
-                    {c.demo && <span className="ml-2 rounded-full bg-[rgb(var(--surface-muted))] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-ink-500">Demo</span>}
-                  </p>
-                  {c.summary && <p className="line-clamp-2 text-xs text-ink-500">{c.summary}</p>}
-                  <p className="text-[11px] font-semibold text-ink-500">
-                    {c.lessonCount} lesson{c.lessonCount === 1 ? "" : "s"}
-                  </p>
                 </Link>
               </li>
             ))}
@@ -334,5 +344,13 @@ export default function LearnHomePage() {
         </p>
       </footer>
     </div>
+  );
+}
+
+export default function LearnHomePage() {
+  return (
+    <Suspense fallback={null}>
+      <LearnHome />
+    </Suspense>
   );
 }

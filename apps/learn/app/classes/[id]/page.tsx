@@ -2,6 +2,7 @@
 
 import type { StudioClass, StudioCourse, StudioSchool } from "@peebee/shared";
 import { BookOpen, Pencil, Plus, Trash2 } from "lucide-react";
+import { LearnThumb } from "@peebee/shared/learn-thumb";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
@@ -212,7 +213,9 @@ export default function ClassPage() {
           <ul className="grid gap-3 sm:grid-cols-2">
             {courses.map((course) => (
               <li key={course.id}>
-                <Link href={`/courses/${course.id}`} className={`${cardCls} block space-y-2 p-4 transition hover:border-gold/50 hover:shadow-[var(--shadow-card-hover)]`}>
+                <Link href={`/courses/${course.id}`} className={`${cardCls} block space-y-2 overflow-hidden transition hover:border-gold/50 hover:shadow-[var(--shadow-card-hover)]`}>
+                  <LearnThumb src={api.learnArtUrl("course", course.id)} />
+                  <div className="space-y-2 px-4 pb-4">
                   <div className="flex items-start justify-between gap-2">
                     <h4 className="min-w-0 text-sm font-semibold text-ink">{course.title}</h4>
                     <Chip tone={course.status === "published" ? "green" : "muted"}>{course.status === "published" ? "Live" : "Draft"}</Chip>
@@ -221,6 +224,7 @@ export default function ClassPage() {
                   <p className="text-xs text-ink-500">
                     {plural(course.moduleCount, "module")} · {plural(course.lessonCount, "lesson")} · {formatUgx(course.priceUgx)}
                   </p>
+                  </div>
                 </Link>
               </li>
             ))}

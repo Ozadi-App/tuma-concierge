@@ -155,6 +155,8 @@ export interface LearnSettings {
   videoUploadsEnabled: boolean;
   /** Largest lesson video or audio file, in megabytes. */
   maxVideoMb: number;
+  /** Largest cover picture for a school or course, in megabytes. 0 switches cover uploads off. */
+  maxCoverMb: number;
   /** Quiz attempts one learner may make per hour. */
   quizAttemptsPerHour: number;
   /** Schools can issue fee invoices and learners can pay them. */
@@ -265,6 +267,7 @@ export const DEFAULT_LEARN_SETTINGS: LearnSettings = {
   commissionPercent: 10,
   videoUploadsEnabled: true,
   maxVideoMb: 50,
+  maxCoverMb: 2,
   quizAttemptsPerHour: 30,
   feesEnabled: true,
   examPassPercent: 50,

@@ -1955,6 +1955,24 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
       });
       return json<{ ok: true; media: { contentType: string; sizeBytes: number } }>(res);
     },
+    /** Where the picture for a school, course, lesson or stream is served. Public; drawn from the title unless the educator set a cover. */
+    learnArtUrl(kind: "school" | "course" | "lesson" | "stream", id: string) {
+      return `${root}/v1/education/art/${kind}/${encodeURIComponent(id)}`;
+    },
+    /** Sets the cover picture of a course or school (JPEG, PNG or WebP). */
+    async studioSetCover(kind: "course" | "school", id: string, file: Blob) {
+      const res = await f(`${root}/v1/education/studio/${kind}s/${encodeURIComponent(id)}/cover`, {
+        method: "PUT",
+        headers: { ...authHeaders(), "Content-Type": file.type || "application/octet-stream" },
+        body: file,
+      });
+      return json<{ ok: true }>(res);
+    },
+    /** Removes an uploaded cover, so the drawn picture shows again. */
+    async studioRemoveCover(kind: "course" | "school", id: string) {
+      const res = await f(`${root}/v1/education/studio/${kind}s/${encodeURIComponent(id)}/cover`, { method: "DELETE", headers: authHeaders() });
+      return json<{ ok: true }>(res);
+    },
     async submitPrescription(input: {
       pharmacyId: string;
       prescriptionImageKey: string;
