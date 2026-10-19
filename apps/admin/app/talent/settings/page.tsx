@@ -6,7 +6,7 @@ import { Chip, ErrorNote, Field, inputCls, label, Toggle, useTalentPermissions }
 import { api, errorMessage } from "../../../lib/api";
 
 type NumKey = "maxOpenJobs" | "applicationsPerDay" | "postsPerHour" | "minJobUgx" | "maxJobUgx" | "jobExpiryDays" | "autoConfirmHours" | "maxMilestones" | "maxWorkersPerJob" | "searchRadiusKm" | "maxSkills" | "boostDays" | "unpaidCommissionLimitUgx" | "trialDays"
-  | "recurringMaxActive" | "recurringMaxRuns" | "recurringMaxFailures" | "cancelFreeMinutes" | "lateCancelFeePercent" | "lateCancelPartySharePercent";
+  | "recurringMaxActive" | "recurringMaxRuns" | "recurringMaxFailures" | "cancelFreeMinutes" | "lateCancelFeeUgx" | "lateCancelFeePercent" | "lateCancelPartySharePercent";
 
 /** Ranges are exactly those in apps/api/src/talent/settings.ts. */
 const NUM: Record<NumKey, { label: string; min: number; max: number; hint?: string }> = {
@@ -28,14 +28,15 @@ const NUM: Record<NumKey, { label: string; min: number; max: number; hint?: stri
   recurringMaxRuns: { label: "Most times one job can repeat", min: 1, max: 520, hint: "A safety limit; employers can choose fewer" },
   recurringMaxFailures: { label: "Pause after this many failed repeats in a row", min: 1, max: 20, hint: "A repeat fails when, for example, the wallet can't cover it" },
   cancelFreeMinutes: { label: "Free cancellation for (minutes)", min: 0, max: 10080, hint: "After a job starts. Cancelling later can cost a fee" },
-  lateCancelFeePercent: { label: "Late-cancel fee (%)", min: 0, max: 50, hint: "Of the work not yet paid. 0 turns late fees off. Never charged while All free access is on" },
+  lateCancelFeeUgx: { label: "Late-cancel fee, flat (UGX)", min: 0, max: 10_000_000, hint: "Used when the fee type is Flat. Default 5,000. 0 turns late fees off. Never charged while All free access is on" },
+  lateCancelFeePercent: { label: "Late-cancel fee, percent (%)", min: 0, max: 50, hint: "Used when the fee type is Percent: a share of the work not yet paid" },
   lateCancelPartySharePercent: { label: "Share of the fee paid to the other person (%)", min: 0, max: 100, hint: "The rest is Peebee's" },
 };
 const SECTIONS: { title: string; keys: NumKey[] }[] = [
   { title: "Job limits", keys: ["minJobUgx", "maxJobUgx", "maxOpenJobs", "postsPerHour", "maxWorkersPerJob", "maxMilestones", "jobExpiryDays"] },
   { title: "Workers", keys: ["applicationsPerDay", "maxSkills", "searchRadiusKm", "boostDays"] },
   { title: "Payment", keys: ["autoConfirmHours", "unpaidCommissionLimitUgx", "trialDays"] },
-  { title: "Cancellation", keys: ["cancelFreeMinutes", "lateCancelFeePercent", "lateCancelPartySharePercent"] },
+  { title: "Cancellation", keys: ["cancelFreeMinutes", "lateCancelFeeUgx", "lateCancelFeePercent", "lateCancelPartySharePercent"] },
   { title: "Repeating jobs", keys: ["recurringMaxActive", "recurringMaxRuns", "recurringMaxFailures"] },
 ];
 const TYPES: TalentJobType[] = ["gig", "project", "hiring"];
@@ -126,6 +127,12 @@ export default function TalentSettingsPage() {
         <h2 className="text-sm font-bold text-ink">Charging</h2>
         <Toggle label="All free access" hint="Overrides every fee and plan. Set the fees in the Money tab." checked={form.freeAccess} disabled={ro} onChange={(v) => set("freeAccess", v)} />
         <Toggle label="Free onboarding" checked={form.freeOnboarding} disabled={ro} onChange={(v) => set("freeOnboarding", v)} />
+      </section>
+
+      <section className="home-card space-y-3 !p-3.5">
+        <h2 className="text-sm font-bold text-ink">Late-cancel fee type</h2>
+        <div className="flex flex-wrap gap-1.5">{(["flat", "percent"] as const).map((m) => <Chip key={m} on={form.lateCancelFeeMode === m} disabled={ro} onClick={() => set("lateCancelFeeMode", m)}>{m === "flat" ? "Flat amount" : "Percentage"}</Chip>)}</div>
+        <p className="text-xs text-ink-500">Flat is the default (UGX 5,000). The amounts are set under Cancellation below. The fee is never more than the work still to be paid for.</p>
       </section>
 
       {SECTIONS.map((sec) => (

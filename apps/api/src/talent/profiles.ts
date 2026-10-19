@@ -41,7 +41,7 @@ profileRoutes.get("/config", async (c) => {
     },
     recurring: { enabled: s.recurringEnabled, frequencies: s.recurringFrequencies, maxRuns: s.recurringMaxRuns, maxActive: s.recurringMaxActive },
     // Late-cancel fees only show while charging is on.
-    cancellation: { freeMinutes: s.cancelFreeMinutes, feePercent: s.freeAccess ? 0 : s.lateCancelFeePercent, partySharePercent: s.lateCancelPartySharePercent },
+    cancellation: { freeMinutes: s.cancelFreeMinutes, mode: s.lateCancelFeeMode, feeUgx: s.freeAccess ? 0 : s.lateCancelFeeUgx, feePercent: s.freeAccess ? 0 : s.lateCancelFeePercent, partySharePercent: s.lateCancelPartySharePercent },
     categories: await categoriesList(),
     fees: await publicFeeSchedule(s),
   });

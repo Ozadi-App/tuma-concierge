@@ -34,7 +34,7 @@ export type TalentConfig = {
     searchRadiusKm: number; boostDays: number; autoConfirmHours: number; jobExpiryDays: number;
   };
   recurring: { enabled: boolean; frequencies: TalentFrequency[]; maxRuns: number; maxActive: number };
-  cancellation: { freeMinutes: number; feePercent: number; partySharePercent: number };
+  cancellation: { freeMinutes: number; mode: "flat" | "percent"; feeUgx: number; feePercent: number; partySharePercent: number };
   categories: TalentCategory[];
   fees: TalentFee[];
 };
@@ -215,7 +215,7 @@ export type TalentContractDetail = {
   timeline: { action: string; by: string; at: string }[];
 };
 
-export type TalentCancelQuote = { feeUgx: number; compensationUgx: number; baseUgx: number; free: boolean; percent: number; freeUntil: string | null };
+export type TalentCancelQuote = { feeUgx: number; compensationUgx: number; baseUgx: number; free: boolean; mode: "flat" | "percent"; percent: number; flatUgx: number; freeUntil: string | null };
 
 export type TalentRecurrence = {
   id: string; kind: "rehire" | "repost"; title: string; priceUgx: number; frequency: TalentFrequency; nextRunAt: string; endsAt: string | null; maxRuns: number; runsDone: number;

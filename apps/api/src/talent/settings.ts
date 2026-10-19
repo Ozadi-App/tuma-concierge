@@ -68,7 +68,11 @@ export type TalentSettings = {
   recurringMaxFailures: number;
   /** Cancelling is free for this long after a contract starts. */
   cancelFreeMinutes: number;
-  /** After that, cancelling costs this percent of the work not yet paid. 0 means no late fee. */
+  /** After that, cancelling costs a flat amount (default UGX 5,000) or a percent of the work not yet paid. */
+  lateCancelFeeMode: "flat" | "percent";
+  /** The flat late-cancel fee in UGX. 0 means no late fee while the mode is flat. */
+  lateCancelFeeUgx: number;
+  /** The percent used when the mode is "percent". 0 means no late fee. */
   lateCancelFeePercent: number;
   /** Of a late-cancel fee, this percent goes to the person who was cancelled on; the rest is Peebee's. */
   lateCancelPartySharePercent: number;
@@ -82,7 +86,7 @@ const KEYS = [
   "talent_max_milestones", "talent_max_workers_per_job", "talent_search_radius_km", "talent_max_skills",
   "talent_boost_days", "talent_reviews_enabled", "talent_chat_enabled", "talent_hide_contacts", "talent_unpaid_commission_limit_ugx",
   "talent_recurring_enabled", "talent_recurring_frequencies", "talent_recurring_max_active", "talent_recurring_max_runs", "talent_recurring_max_failures",
-  "talent_cancel_free_minutes", "talent_late_cancel_fee_percent", "talent_late_cancel_party_share_percent",
+  "talent_cancel_free_minutes", "talent_late_cancel_fee_mode", "talent_late_cancel_fee_ugx", "talent_late_cancel_fee_percent", "talent_late_cancel_party_share_percent",
 ] as const;
 
 const int = (raw: string | undefined, fallback: number, min: number, max: number) => {
@@ -135,7 +139,9 @@ export async function getTalentSettings(): Promise<TalentSettings> {
     recurringMaxRuns: int(v.talent_recurring_max_runs, 52, 1, 520),
     recurringMaxFailures: int(v.talent_recurring_max_failures, 2, 1, 20),
     cancelFreeMinutes: int(v.talent_cancel_free_minutes, 30, 0, 7 * 24 * 60),
-    lateCancelFeePercent: int(v.talent_late_cancel_fee_percent, 0, 0, 50),
+    lateCancelFeeMode: v.talent_late_cancel_fee_mode === "percent" ? "percent" : "flat",
+    lateCancelFeeUgx: int(v.talent_late_cancel_fee_ugx, 5000, 0, 10_000_000),
+    lateCancelFeePercent: int(v.talent_late_cancel_fee_percent, 10, 0, 50),
     lateCancelPartySharePercent: int(v.talent_late_cancel_party_share_percent, 70, 0, 100),
   };
 }
@@ -176,6 +182,8 @@ export const talentSettingsSchema = z
     recurringMaxRuns: z.number().int().min(1).max(520),
     recurringMaxFailures: z.number().int().min(1).max(20),
     cancelFreeMinutes: z.number().int().min(0).max(10080),
+    lateCancelFeeMode: z.enum(["flat", "percent"]),
+    lateCancelFeeUgx: z.number().int().min(0).max(10_000_000),
     lateCancelFeePercent: z.number().int().min(0).max(50),
     lateCancelPartySharePercent: z.number().int().min(0).max(100),
   })
@@ -216,11 +224,12 @@ export async function setTalentSettings(next: TalentSettingsInput): Promise<void
     ["maxMilestones", "talent_max_milestones"], ["maxWorkersPerJob", "talent_max_workers_per_job"], ["searchRadiusKm", "talent_search_radius_km"],
     ["maxSkills", "talent_max_skills"], ["boostDays", "talent_boost_days"], ["unpaidCommissionLimitUgx", "talent_unpaid_commission_limit_ugx"],
     ["recurringMaxActive", "talent_recurring_max_active"], ["recurringMaxRuns", "talent_recurring_max_runs"], ["recurringMaxFailures", "talent_recurring_max_failures"],
-    ["cancelFreeMinutes", "talent_cancel_free_minutes"], ["lateCancelFeePercent", "talent_late_cancel_fee_percent"], ["lateCancelPartySharePercent", "talent_late_cancel_party_share_percent"],
+    ["cancelFreeMinutes", "talent_cancel_free_minutes"], ["lateCancelFeeUgx", "talent_late_cancel_fee_ugx"], ["lateCancelFeePercent", "talent_late_cancel_fee_percent"], ["lateCancelPartySharePercent", "talent_late_cancel_party_share_percent"],
   ];
   for (const [field, key] of nums) if (next[field] != null) put(key, String(next[field]));
   if (next.reviewsEnabled != null) put("talent_reviews_enabled", flag(next.reviewsEnabled));
   if (next.chatEnabled != null) put("talent_chat_enabled", flag(next.chatEnabled));
+  if (next.lateCancelFeeMode) put("talent_late_cancel_fee_mode", next.lateCancelFeeMode);
   if (next.recurringEnabled != null) put("talent_recurring_enabled", flag(next.recurringEnabled));
   if (next.recurringFrequencies) put("talent_recurring_frequencies", next.recurringFrequencies.join(","));
   if (next.hideContacts != null) put("talent_hide_contacts", flag(next.hideContacts));

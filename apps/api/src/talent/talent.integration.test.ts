@@ -882,7 +882,7 @@ async function runningGig(ctx: Awaited<ReturnType<typeof setup>>, o: { paymentMo
 test("talent: cancelling is free inside the grace window and while the fee is 0", async () => {
   const ctx = await setup();
   const { call, wallet, totalMoney } = ctx;
-  await setTalentSettings({ lateCancelFeePercent: 20, cancelFreeMinutes: 30 });
+  await setTalentSettings({ lateCancelFeeMode: "percent", lateCancelFeePercent: 20, cancelFreeMinutes: 30 });
   const { emp, contractId } = await runningGig(ctx);
   const before = await totalMoney();
   const quote = await call(`/contracts/${contractId}/cancel-quote`, { token: emp });
@@ -898,7 +898,7 @@ test("talent: cancelling is free inside the grace window and while the fee is 0"
 test("talent: employer cancels late (escrow) — fee comes out of the refund, shared with the worker", async () => {
   const ctx = await setup();
   const { call, wallet, totalMoney, dbRow } = ctx;
-  await setTalentSettings({ lateCancelFeePercent: 20, cancelFreeMinutes: 0, lateCancelPartySharePercent: 70 });
+  await setTalentSettings({ lateCancelFeeMode: "percent", lateCancelFeePercent: 20, cancelFreeMinutes: 0, lateCancelPartySharePercent: 70 });
   const { emp, contractId, worker } = await runningGig(ctx);
   const before = await totalMoney();
   await dbRow("UPDATE talent_contracts SET created_at = datetime('now', '-2 hours') WHERE id = ?", [contractId]);
@@ -930,7 +930,7 @@ test("talent: employer cancels late (escrow) — fee comes out of the refund, sh
 test("talent: worker cancels late — fee from their wallet, employer refunded in full and compensated", async () => {
   const ctx = await setup();
   const { call, wallet, totalMoney, dbRow } = ctx;
-  await setTalentSettings({ lateCancelFeePercent: 20, cancelFreeMinutes: 0 });
+  await setTalentSettings({ lateCancelFeeMode: "percent", lateCancelFeePercent: 20, cancelFreeMinutes: 0 });
   const { worker, contractId } = await runningGig(ctx, { workerWallet: 20000 });
   const before = await totalMoney();
   await dbRow("UPDATE talent_contracts SET created_at = datetime('now', '-2 hours') WHERE id = ?", [contractId]);
@@ -945,7 +945,7 @@ test("talent: worker cancels late — fee from their wallet, employer refunded i
 test("talent: a worker who can't cover the late fee owes it", async () => {
   const ctx = await setup();
   const { call, wallet, dbRow } = ctx;
-  await setTalentSettings({ lateCancelFeePercent: 20, cancelFreeMinutes: 0 });
+  await setTalentSettings({ lateCancelFeeMode: "percent", lateCancelFeePercent: 20, cancelFreeMinutes: 0 });
   const { worker, contractId } = await runningGig(ctx, { workerWallet: 1000 });
   await dbRow("UPDATE talent_contracts SET created_at = datetime('now', '-2 hours') WHERE id = ?", [contractId]);
   const res = await call(`/contracts/${contractId}/cancel`, { token: worker, body: { reason: "I am unwell", acceptFee: true } });
@@ -959,7 +959,7 @@ test("talent: a worker who can't cover the late fee owes it", async () => {
 test("talent: late fee on a directly-paid job, and none when charging is off", async () => {
   const ctx = await setup();
   const { call, wallet, dbRow } = ctx;
-  await setTalentSettings({ lateCancelFeePercent: 20, cancelFreeMinutes: 0 });
+  await setTalentSettings({ lateCancelFeeMode: "percent", lateCancelFeePercent: 20, cancelFreeMinutes: 0 });
   const { emp, contractId } = await runningGig(ctx, { paymentMode: "direct", employerWallet: 50000 });
   await dbRow("UPDATE talent_contracts SET created_at = datetime('now', '-2 hours') WHERE id = ?", [contractId]);
   assert.equal(await wallet("emp1"), 50000, "nothing held for direct pay");
@@ -980,7 +980,7 @@ test("talent: a late fee never exceeds what is held, and is capped at 50% by adm
   assert.equal(bad.status, 400);
   const bad2 = await call("/admin/settings", { method: "PUT", token: admin, body: { lateCancelPartySharePercent: 120 } });
   assert.equal(bad2.status, 400);
-  const ok = await call("/admin/settings", { method: "PUT", token: admin, body: { lateCancelFeePercent: 50, cancelFreeMinutes: 10, lateCancelPartySharePercent: 100 } });
+  const ok = await call("/admin/settings", { method: "PUT", token: admin, body: { lateCancelFeeMode: "percent", lateCancelFeePercent: 50, cancelFreeMinutes: 10, lateCancelPartySharePercent: 100 } });
   assert.equal(ok.json.settings.lateCancelFeePercent, 50);
 });
 
@@ -1116,3 +1116,47 @@ test("talent: recurring is switchable, limited, Pro-gatable and either side can 
   assert.equal((await call(`/recurrences/${made.json.id}/end`, { token: worker, body: {} })).status, 200, "but can leave it");
   assert.equal((await call("/recurrences", { token: emp })).json.recurrences.length, 0);
 });
+
+test("talent: late-cancel fee defaults to a flat UGX 5,000 and admin can change it", async () => {
+  const ctx = await setup();
+  const { call, wallet, dbRow, admin } = ctx;
+  await setTalentSettings({ cancelFreeMinutes: 0 });
+  const { emp, contractId } = await runningGig(ctx);
+  await dbRow("UPDATE talent_contracts SET created_at = datetime('now', '-2 hours') WHERE id = ?", [contractId]);
+  const q = await call(`/contracts/${contractId}/cancel-quote`, { token: emp });
+  assert.equal(q.json.mode, "flat");
+  assert.equal(q.json.feeUgx, 5000, "the default late-cancel fee");
+  assert.equal(q.json.compensationUgx, 3500);
+  const before = await wallet("emp1");
+  assert.equal((await call(`/contracts/${contractId}/cancel`, { token: emp, body: { reason: "Changed plans", acceptFee: true } })).status, 200);
+  assert.equal(await wallet("emp1"), before + 84000 - 5000);
+  assert.equal(await wallet("w1"), 3500);
+
+  // Admin changes the amount, then the type.
+  assert.equal((await call("/admin/settings", { method: "PUT", token: admin, body: { lateCancelFeeUgx: 8000 } })).json.settings.lateCancelFeeUgx, 8000);
+  const ctx2 = await runningGig2(ctx);
+  assert.equal((await call(`/contracts/${ctx2}/cancel-quote`, { token: emp })).json.feeUgx, 8000);
+  await call("/admin/settings", { method: "PUT", token: admin, body: { lateCancelFeeUgx: 0 } });
+  assert.equal((await call(`/contracts/${ctx2}/cancel-quote`, { token: emp })).json.feeUgx, 0, "0 turns the flat fee off");
+  await call("/admin/settings", { method: "PUT", token: admin, body: { lateCancelFeeMode: "percent", lateCancelFeePercent: 10 } });
+  assert.equal((await call(`/contracts/${ctx2}/cancel-quote`, { token: emp })).json.feeUgx, 8000, "10% of 80,000");
+  await setTalentSettings({ freeAccess: true });
+  assert.equal((await call(`/contracts/${ctx2}/cancel-quote`, { token: emp })).json.feeUgx, 0, "free access: no fee");
+});
+
+/** A second running gig for the same employer, aged past the free window. */
+async function runningGig2(ctx: Awaited<ReturnType<typeof setup>>) {
+  const { call, mkWorker, dbRow, gigBody } = ctx;
+  await mkWorker("w2");
+  const emp = (await ctx.client.execute("SELECT id FROM users WHERE id = 'emp1'")).rows.length ? await signTokenFor("emp1") : "";
+  const jobId = (await call("/jobs", { token: emp, body: gigBody({ title: "Second clean" }) })).json.job.id;
+  const w2 = await signTokenFor("w2");
+  await call(`/jobs/${jobId}/apply`, { token: w2, body: {} });
+  const appId = (await call(`/jobs/${jobId}/applications`, { token: emp })).json.applicants[0].id;
+  const contractId = (await call(`/applications/${appId}/accept`, { token: emp, body: {} })).json.contractId as string;
+  await dbRow("UPDATE talent_contracts SET created_at = datetime('now', '-2 hours') WHERE id = ?", [contractId]);
+  return contractId;
+}
+async function signTokenFor(id: string) {
+  return signToken({ sub: id, role: "customer" });
+}

@@ -485,7 +485,9 @@ const DEFAULTS = {
   talent_recurring_max_runs: "52",
   talent_recurring_max_failures: "2",
   talent_cancel_free_minutes: "30",
-  talent_late_cancel_fee_percent: "0",
+  talent_late_cancel_fee_mode: "flat",
+  talent_late_cancel_fee_ugx: "5000",
+  talent_late_cancel_fee_percent: "10",
   talent_late_cancel_party_share_percent: "70",
   // Relay delivery (boda -> matatu -> boda) for long parcel deliveries. Off until staff turn it on.
   relay_enabled: "0",

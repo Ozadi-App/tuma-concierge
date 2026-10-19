@@ -38,6 +38,8 @@ export type TalentAdminSettings = {
   recurringMaxRuns: number;
   recurringMaxFailures: number;
   cancelFreeMinutes: number;
+  lateCancelFeeMode: "flat" | "percent";
+  lateCancelFeeUgx: number;
   lateCancelFeePercent: number;
   lateCancelPartySharePercent: number;
 };

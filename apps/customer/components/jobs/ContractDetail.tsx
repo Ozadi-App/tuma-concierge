@@ -127,8 +127,8 @@ export function ContractDetail({ id }: { id: string }) {
                   <p><strong>Cancelling now costs {formatUgx(data.cancelQuote.feeUgx)}.</strong> The free cancellation period has ended. {formatUgx(data.cancelQuote.compensationUgx)} of it goes to {c.otherParty.name.split(" ")[0]} for the lost work.</p>
                   <label className="flex items-start gap-2 text-xs"><input type="checkbox" checked={feeOk} onChange={(e) => setFeeOk(e.target.checked)} className="mt-0.5 h-5 w-5 shrink-0" />I understand and want to cancel anyway.</label>
                 </div>
-              ) : dialog === "cancel" && data.cancelQuote.percent > 0 && data.cancelQuote.freeUntil ? (
-                <p className="rounded-2xl bg-[rgb(var(--surface-muted))] p-3 text-xs text-ink-500">Cancelling is free until {formatWorkDate(data.cancelQuote.freeUntil)}. After that it costs {data.cancelQuote.percent}% of the work not yet paid.</p>
+              ) : dialog === "cancel" && (data.cancelQuote.mode === "flat" ? data.cancelQuote.flatUgx > 0 : data.cancelQuote.percent > 0) && data.cancelQuote.freeUntil ? (
+                <p className="rounded-2xl bg-[rgb(var(--surface-muted))] p-3 text-xs text-ink-500">Cancelling is free until {formatWorkDate(data.cancelQuote.freeUntil)}. After that it costs {data.cancelQuote.mode === "flat" ? formatUgx(data.cancelQuote.flatUgx) : `${data.cancelQuote.percent}% of the work not yet paid`}.</p>
               ) : null}
               <Field label={dialog === "cancel" ? "Why are you cancelling?" : "What went wrong?"}><textarea rows={3} value={reason} onChange={(e) => setReason(e.target.value)} maxLength={500} className={fieldClass} /></Field>
               <div className="grid grid-cols-2 gap-2">

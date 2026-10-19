@@ -107,7 +107,7 @@ async function afterContractChange(contract: Row) {
 // Cancelling and refunding
 // ---------------------------------------------------------------------------
 
-export type CancelQuote = { feeUgx: number; compensationUgx: number; baseUgx: number; free: boolean; percent: number; freeUntil: string | null };
+export type CancelQuote = { feeUgx: number; compensationUgx: number; baseUgx: number; free: boolean; mode: "flat" | "percent"; percent: number; flatUgx: number; freeUntil: string | null };
 
 /**
  * What it costs to walk away now. Free during the admin's grace window after the contract
@@ -119,9 +119,12 @@ export function lateCancelQuote(contract: Row, milestones: Row[], settings: Tale
   const freeUntilMs = started + settings.cancelFreeMinutes * 60_000;
   const freeUntil = new Date(freeUntilMs).toISOString().slice(0, 19).replace("T", " ");
   const base = milestones.filter((m) => m.status !== "released").reduce((t, m) => t + Number(m.amount_ugx), 0);
-  const none: CancelQuote = { feeUgx: 0, compensationUgx: 0, baseUgx: base, free: true, percent: settings.lateCancelFeePercent, freeUntil };
-  if (settings.freeAccess || settings.lateCancelFeePercent <= 0 || now <= freeUntilMs || base <= 1) return none;
-  let fee = Math.min(percentOf(base, settings.lateCancelFeePercent), base - 1);
+  const flat = settings.lateCancelFeeMode === "flat";
+  const none: CancelQuote = { feeUgx: 0, compensationUgx: 0, baseUgx: base, free: true, mode: settings.lateCancelFeeMode, percent: settings.lateCancelFeePercent, flatUgx: settings.lateCancelFeeUgx, freeUntil };
+  const wanted = flat ? settings.lateCancelFeeUgx : percentOf(base, settings.lateCancelFeePercent);
+  if (settings.freeAccess || wanted <= 0 || now <= freeUntilMs || base <= 1) return none;
+  // Never more than the work still to be paid for.
+  let fee = Math.min(wanted, base - 1);
   // An employer's fee comes out of the money held, so it can never be more than is held.
   if (who === "employer" && contract.payment_mode === "escrow") fee = Math.min(fee, Math.max(0, Number(contract.held_ugx) - 1));
   if (fee <= 0) return none;
