@@ -88,7 +88,7 @@ const submenuItems: Record<Exclude<MenuGroup, "original">, MenuItem[]> = {
   services: [
     { id: "laundry", label: "Laundry", icon: WashingMachine, href: "/services/laundry" },
     { id: "fix", label: "Fix", icon: Wrench, href: "/services/fix" },
-    { id: "jobs", label: "Jobs", icon: Briefcase, href: "/service" },
+    { id: "jobs", label: "Jobs", icon: Briefcase, href: "/services/jobs" },
     { id: "learn", label: "Learn", icon: BookOpen, href: "/learn" },
   ],
 };
@@ -153,7 +153,7 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
     else if (pathname === "/spotlight") setSelectedItem("spotlight");
     else if (pathname === "/services/laundry") setSelectedItem("laundry");
     else if (pathname === "/services/fix") setSelectedItem("fix");
-    else if (pathname === "/service" || pathname === "/services/jobs") setSelectedItem("jobs");
+    else if (pathname === "/service" || pathname === "/services/jobs" || pathname.startsWith("/services/jobs/")) setSelectedItem("jobs");
     else if (pathname === "/services/learn" || pathname === "/learn" || pathname.startsWith("/learn/")) setSelectedItem("learn");
     else if (pathname === "/deliver/parcel") setSelectedItem("parcel");
     else setSelectedItem(null);

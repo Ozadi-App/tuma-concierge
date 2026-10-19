@@ -1,6 +1,7 @@
-import { redirect } from "next/navigation";
+import { JobsHub } from "../../../components/jobs/JobsHub";
 
-// Old entry point for "my jobs"; the Peebee Work job list now lives at /services/work.
-export default function ServicesJobsPage() {
-  redirect("/services/work");
+export const metadata = { title: "Jobs | Peebee" };
+
+export default function JobsPage() {
+  return <JobsHub />;
 }

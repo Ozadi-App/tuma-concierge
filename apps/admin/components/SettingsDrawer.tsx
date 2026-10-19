@@ -183,6 +183,13 @@ export function SettingsListContent({ onItemClick }: { onItemClick?: () => void 
       show: hasPermission(role, "work.view"),
     },
     {
+      href: "/talent",
+      icon: Users,
+      label: "Peebee Jobs",
+      value: "Workers, hiring & fees",
+      show: hasPermission(role, "talent.view"),
+    },
+    {
       href: "/settings/delivery",
       icon: Banknote,
       label: "Delivery pricing",
