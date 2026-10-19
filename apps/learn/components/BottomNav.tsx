@@ -10,7 +10,7 @@ export function BottomNav() {
   const tabs = [
     { href: "/", label: "Home", icon: Home },
     { href: "/schools", label: "Schools", icon: GraduationCap },
-    { href: "/live", label: "Live", icon: Video },
+    { href: "/classroom", label: "Live", icon: Video },
     { href: "/chat", label: "Students", icon: MessageSquare },
     { href: "/account", label: "Account", icon: UserRound },
   ];

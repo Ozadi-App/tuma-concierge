@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState, type FormEvent } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { api } from "../../lib/api";
 import {
   EDUCATION_STREAMS,
@@ -29,7 +31,6 @@ import {
   type EducationStreamId,
   type CreatorProfile,
   type CreatorCourse,
-  type CourseModule,
   type CourseLesson,
   type EducationLiveMeeting,
 } from "@peebee/shared";
@@ -99,6 +100,7 @@ function formatUgx(amount: number) {
 }
 
 export default function CustomerLearnPage() {
+  const router = useRouter();
   // Navigation & filter state
   const [activeTab, setActiveTab] = useState<WorkspaceTab>("explore");
   const [streamFilter, setStreamFilter] = useState<EducationStreamId | "all">("all");
@@ -150,30 +152,10 @@ export default function CustomerLearnPage() {
   const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null);
   const [selectedLessonId, setSelectedLessonId] = useState<string | null>(null);
 
-  // A published course's syllabus is fetched when it is opened.
+  // A course an educator published opens in the real course player (enrolment, video, quizzes, progress).
   useEffect(() => {
-    if (!selectedCourseId?.startsWith("crs_")) return;
-    const open = courses.find((c) => c.id === selectedCourseId);
-    if (!open || open.modules.length > 0) return;
-    let cancelled = false;
-    api
-      .getCatalogCourse(selectedCourseId)
-      .then((res) => {
-        if (cancelled) return;
-        const modules: CourseModule[] = res.course.modules.map((m, i) => ({
-          id: m.id,
-          title: m.title,
-          description: m.description,
-          order: i + 1,
-          lessons: m.lessons.map((l) => ({ id: l.id, title: l.title, durationMinutes: l.durationMinutes, contentType: l.contentType, summary: l.summary })),
-        }));
-        setCourses((prev) => prev.map((c) => (c.id === open.id ? { ...c, modules } : c)));
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedCourseId, courses]);
+    if (selectedCourseId?.startsWith("crs_")) router.push(`/learn/course/${selectedCourseId}`);
+  }, [selectedCourseId, router]);
   const [enrolledCourseIds, setEnrolledCourseIds] = useState<string[]>([
     "course_greenwood_math4",
     "course_fintech_101",
@@ -438,6 +420,9 @@ export default function CustomerLearnPage() {
             <p className="text-sm text-ink-500 mt-1">
               Enroll in partner schools, vocational guilds, and tutor-led courses across every age group.
             </p>
+            <Link href="/learn/my" className="mt-2 inline-flex items-center gap-1.5 rounded-xl bg-gold px-3.5 py-2 text-xs font-semibold text-ink-gold">
+              My courses &amp; school fees
+            </Link>
           </div>
 
           {/* Primary Workspace Switcher (Scrollable on small screens, never squished) */}

@@ -158,10 +158,10 @@ test("learn: chat identity comes from the session, and one account never sees an
 test("learn: nothing is graded, signed or paid without the real thing happening", async () => {
   const { edu, mkUser } = await setup();
   const token = await mkUser("stu_c");
-  const exam = await edu("/academy/exam/submit", { token, body: { examId: "exam_uace_math_01", answers: { q1: "A" }, tabSwitchCount: 3 } });
+  const exam = await edu("/academy/exam/submit", { token, body: { examId: "exam_uace_math_01", answers: { q1: "x = 2, x = -3" }, tabSwitchCount: 3 } });
   assert.equal(exam.status, 200);
-  assert.equal(exam.json.scorePercent, null, "no invented score");
-  assert.equal(exam.json.passed, null);
+  assert.equal(exam.json.scorePercent, 0, "the server marks it from its own key, not a made-up number");
+  assert.equal(exam.json.passed, false);
 
   const log = await edu("/skills/logbook", { token, body: { practicalHours: 4, taskPerformed: "Fades", workshopLocation: "Studio", supervisorName: "Master Alex" } });
   assert.equal(log.status, 200);
@@ -185,7 +185,7 @@ test("learn: nothing is graded, signed or paid without the real thing happening"
   assert.equal((await edu("/foundations/worksheets/submit", { token, body: { worksheetId: "ws_p4_math", scannedPhotoUrls: ["javascript:alert(1)"] } })).status, 400);
 
   const pay = await edu("/tuition/pay", { token, body: { amountUgx: 1_000_000 } });
-  assert.equal(pay.status, 503);
+  assert.equal(pay.status, 410, "the demo fee schedule can't take payment; real fees are invoices");
 
   const critique = await edu("/skills/critiques", { token, body: { timestampSeconds: 5, critiqueText: "Nice" } });
   assert.equal(critique.status, 403, "only an educator can critique");

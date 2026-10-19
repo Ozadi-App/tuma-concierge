@@ -95,7 +95,7 @@ export default function HomePage() {
                 </LinkButton>
               )
             )}
-            <LinkButton href="/live" variant="secondary">
+            <LinkButton href="/classroom" variant="secondary">
               <Radio className="h-4 w-4 text-gold" aria-hidden /> Host a live class
             </LinkButton>
           </div>
@@ -293,7 +293,7 @@ export default function HomePage() {
       {/* Tools */}
       <section aria-label="More tools" className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         {[
-          { href: "/live", icon: Radio, title: "Live classroom", body: "Teach in real time with chat and questions" },
+          { href: "/classroom", icon: Radio, title: "Live classroom", body: "Teach in real time with chat and questions" },
           { href: "/chat", icon: MessageSquare, title: "Student messages", body: "Reply to learners, parents and guardians" },
           { href: "/streams", icon: Eye, title: "Preview as a learner", body: "See each stream the way your students do" },
         ].map((tool) => (

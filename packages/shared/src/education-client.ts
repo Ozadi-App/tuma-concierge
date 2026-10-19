@@ -26,6 +26,17 @@ import type {
   LiveChatMessage,
 } from "./education/types.js";
 import type {
+  ConsoleView,
+  CueKind,
+  CueTarget,
+  LiveSessionSummary,
+  PhoneState,
+  TvDevice,
+  CourseStudent,
+  FeeInvoice,
+  LearnEnrollment,
+  LearnerCourse,
+  QuizResult,
   LearnSettings,
   SchoolKind,
   SchoolStatus,
@@ -427,6 +438,125 @@ export function educationMethods(request: RequestFn) {
     },
     async studioDeleteLesson(id: string) {
       return request<{ ok: true }>(`/v1/education/studio/lessons/${encodeURIComponent(id)}`, { method: "DELETE" });
+    },
+
+    async studioDeleteLessonMedia(lessonId: string) {
+      return request<{ ok: true }>(`/v1/education/studio/lessons/${encodeURIComponent(lessonId)}/media`, { method: "DELETE" });
+    },
+    async studioCourseStudents(courseId: string) {
+      return request<{ ok: true; students: CourseStudent[] }>(`/v1/education/studio/courses/${encodeURIComponent(courseId)}/students`);
+    },
+    async studioInvoices(schoolId: string) {
+      return request<{ ok: true; invoices: FeeInvoice[] }>(`/v1/education/studio/schools/${encodeURIComponent(schoolId)}/invoices`);
+    },
+    async studioCreateInvoice(schoolId: string, data: { student: string; title: string; amountUgx: number; dueDate?: string }) {
+      return request<{ ok: true; invoice: FeeInvoice }>(`/v1/education/studio/schools/${encodeURIComponent(schoolId)}/invoices`, { method: "POST", body: JSON.stringify(data) });
+    },
+    async studioCancelInvoice(id: string) {
+      return request<{ ok: true }>(`/v1/education/studio/invoices/${encodeURIComponent(id)}/cancel`, { method: "POST", body: JSON.stringify({}) });
+    },
+
+    // ----------------------------------------------------
+    // Learner: enrolment, lessons, quizzes and fees
+    // ----------------------------------------------------
+    async learnEnrollments() {
+      return request<{ ok: true; enrollments: LearnEnrollment[] }>("/v1/education/learn/enrollments");
+    },
+    async learnEnroll(courseId: string) {
+      return request<{ ok: true; enrolled: true; paidUgx: number }>(`/v1/education/learn/courses/${encodeURIComponent(courseId)}/enroll`, { method: "POST", body: JSON.stringify({}) });
+    },
+    async learnCourse(courseId: string) {
+      return request<{ ok: true; owner: boolean; course: LearnerCourse }>(`/v1/education/learn/courses/${encodeURIComponent(courseId)}`);
+    },
+    async learnLessonMediaUrl(lessonId: string) {
+      return request<{ ok: true; url: string }>(`/v1/education/learn/lessons/${encodeURIComponent(lessonId)}/media-url`, { method: "POST", body: JSON.stringify({}) });
+    },
+    async learnSubmitQuiz(lessonId: string, answers: number[]) {
+      return request<{ ok: true } & QuizResult>(`/v1/education/learn/lessons/${encodeURIComponent(lessonId)}/quiz`, { method: "POST", body: JSON.stringify({ answers }) });
+    },
+    async learnCompleteLesson(lessonId: string) {
+      return request<{ ok: true }>(`/v1/education/learn/lessons/${encodeURIComponent(lessonId)}/complete`, { method: "POST", body: JSON.stringify({}) });
+    },
+    async learnInvoices() {
+      return request<{ ok: true; invoices: FeeInvoice[] }>("/v1/education/learn/invoices");
+    },
+    async learnPayInvoice(id: string, amountUgx: number) {
+      return request<{ ok: true; receiptId: string; invoice: FeeInvoice }>(`/v1/education/learn/invoices/${encodeURIComponent(id)}/pay`, { method: "POST", body: JSON.stringify({ amountUgx }) });
+    },
+
+    // ----------------------------------------------------
+    // TV screens
+    // ----------------------------------------------------
+    async tvDevices() {
+      return request<{ ok: true; devices: TvDevice[] }>("/v1/tv/devices");
+    },
+    async tvPair(code: string, name?: string) {
+      return request<{ ok: true; device: { id: string; name: string } }>("/v1/tv/pair", { method: "POST", body: JSON.stringify({ code, name: name ?? "" }) });
+    },
+    async tvRename(id: string, name: string) {
+      return request<{ ok: true }>(`/v1/tv/devices/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ name }) });
+    },
+    async tvRemove(id: string) {
+      return request<{ ok: true }>(`/v1/tv/devices/${encodeURIComponent(id)}`, { method: "DELETE" });
+    },
+
+    // ----------------------------------------------------
+    // Live classroom: the educator's console
+    // ----------------------------------------------------
+    async classroomSessions() {
+      return request<{ ok: true; sessions: LiveSessionSummary[] }>("/v1/education/classroom/sessions");
+    },
+    async classroomCreate(data: { title: string; courseId?: string; classId?: string; schoolId?: string; screenDeviceId?: string | null; autoCues?: boolean }) {
+      return request<{ ok: true; session: LiveSessionSummary }>("/v1/education/classroom/sessions", { method: "POST", body: JSON.stringify(data) });
+    },
+    async classroomConsole(id: string) {
+      return request<{ ok: true } & ConsoleView>(`/v1/education/classroom/sessions/${encodeURIComponent(id)}`);
+    },
+    async classroomUpdate(id: string, data: { title?: string; screenDeviceId?: string | null }) {
+      return request<{ ok: true }>(`/v1/education/classroom/sessions/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(data) });
+    },
+    async classroomEnd(id: string) {
+      return request<{ ok: true }>(`/v1/education/classroom/sessions/${encodeURIComponent(id)}/end`, { method: "POST", body: JSON.stringify({}) });
+    },
+    async classroomAddCue(id: string, data: { kind: CueKind; target?: CueTarget; payload: Record<string, unknown> }) {
+      return request<{ ok: true; cueId: string }>(`/v1/education/classroom/sessions/${encodeURIComponent(id)}/cues`, { method: "POST", body: JSON.stringify(data) });
+    },
+    async classroomDeleteCue(cueId: string) {
+      return request<{ ok: true }>(`/v1/education/classroom/cues/${encodeURIComponent(cueId)}`, { method: "DELETE" });
+    },
+    async classroomPush(cueId: string, target?: CueTarget) {
+      return request<{ ok: true; target: CueTarget; endsAt: string | null }>(`/v1/education/classroom/cues/${encodeURIComponent(cueId)}/push`, { method: "POST", body: JSON.stringify({ target }) });
+    },
+    async classroomReveal(cueId: string) {
+      return request<{ ok: true }>(`/v1/education/classroom/cues/${encodeURIComponent(cueId)}/reveal`, { method: "POST", body: JSON.stringify({}) });
+    },
+    async classroomCloseCue(cueId: string) {
+      return request<{ ok: true }>(`/v1/education/classroom/cues/${encodeURIComponent(cueId)}/close`, { method: "POST", body: JSON.stringify({}) });
+    },
+    async classroomClear(id: string, channel: CueTarget) {
+      return request<{ ok: true }>(`/v1/education/classroom/sessions/${encodeURIComponent(id)}/clear`, { method: "POST", body: JSON.stringify({ channel }) });
+    },
+    async classroomPlayback(id: string, playing: boolean, at?: number) {
+      return request<{ ok: true }>(`/v1/education/classroom/sessions/${encodeURIComponent(id)}/playback`, { method: "POST", body: JSON.stringify({ playing, at }) });
+    },
+    async classroomLowerHand(id: string, userId: string) {
+      return request<{ ok: true }>(`/v1/education/classroom/sessions/${encodeURIComponent(id)}/hands/${encodeURIComponent(userId)}/clear`, { method: "POST", body: JSON.stringify({}) });
+    },
+
+    // ----------------------------------------------------
+    // Live classroom: the student's phone
+    // ----------------------------------------------------
+    async classroomJoin(code: string) {
+      return request<{ ok: true; session: { id: string; title: string; hostName: string; pollSeconds: number } }>("/v1/education/classroom/join", { method: "POST", body: JSON.stringify({ code }) });
+    },
+    async classroomState(id: string, since?: number) {
+      return request<PhoneState>(`/v1/education/classroom/sessions/${encodeURIComponent(id)}/state${since ? `?since=${since}` : ""}`);
+    },
+    async classroomRespond(id: string, cueId: string, answers: number[]) {
+      return request<{ ok: true; accepted: true }>(`/v1/education/classroom/sessions/${encodeURIComponent(id)}/respond`, { method: "POST", body: JSON.stringify({ cueId, answers }) });
+    },
+    async classroomHand(id: string, raised: boolean) {
+      return request<{ ok: true }>(`/v1/education/classroom/sessions/${encodeURIComponent(id)}/hand`, { method: "POST", body: JSON.stringify({ raised }) });
     },
 
     // ----------------------------------------------------

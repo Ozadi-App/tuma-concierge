@@ -1,12 +1,12 @@
 "use client";
 
 import type { EducationStream, StudioClass, StudioSchool } from "@peebee/shared";
-import { Layers, Pencil, Plus, Trash2 } from "lucide-react";
+import { Layers, Pencil, Plus, Receipt, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ClassForm, SchoolForm, type ClassInput, type SchoolInput } from "../../../components/studio/forms";
-import { Button, Chip, Crumbs, EmptyState, Notice, Skeleton, cardCls } from "../../../components/ui";
+import { Button, Chip, Crumbs, EmptyState, LinkButton, Notice, Skeleton, cardCls } from "../../../components/ui";
 import { api, errorMessage } from "../../../lib/api";
 import { useLearnAuth } from "../../../lib/auth-context";
 import { useStudioSettings } from "../../../lib/studio-config";
@@ -121,10 +121,17 @@ export default function SchoolPage() {
             {school.tagline && <p className="text-sm text-ink-500">{school.tagline}</p>}
             <p className="text-xs text-ink-500">{[school.location, school.badge].filter(Boolean).join(" · ")}</p>
           </div>
-          {canBuild && mode === "none" && (
-            <Button variant="secondary" onClick={() => setMode("edit")}>
-              <Pencil className="h-4 w-4" aria-hidden /> Edit details
-            </Button>
+          {mode === "none" && (
+            <div className="flex flex-wrap gap-2">
+              <LinkButton href={`/schools/${school.id}/fees`} variant="secondary">
+                <Receipt className="h-4 w-4" aria-hidden /> School fees
+              </LinkButton>
+              {canBuild && (
+                <Button variant="secondary" onClick={() => setMode("edit")}>
+                  <Pencil className="h-4 w-4" aria-hidden /> Edit details
+                </Button>
+              )}
+            </div>
           )}
         </div>
         <p className="text-xs text-ink-500">
