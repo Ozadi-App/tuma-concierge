@@ -82,7 +82,7 @@ test("reviews: only once part-way through, one per learner, with a reply from th
   await k.me(`/learn/lessons/${k.a.id}/complete`, { body: {} });
   assert.equal((await k.me(`/learn/courses/${k.course.id}/review`, { body: { rating: 5, body: "Great course" } })).status, 200);
   assert.equal((await k.me(`/learn/courses/${k.course.id}/review`, { body: { rating: 4, body: "Great, with edits" } })).status, 200, "a second post edits the first");
-  assert.equal((await k.teacher && await k.edu(`/learn/courses/${k.course.id}/review`, { body: { rating: 5 } })).json.error, "own_course");
+  assert.equal((await k.edu(`/learn/courses/${k.course.id}/review`, { body: { rating: 5 } })).json.error, "own_course");
   assert.equal((await k.them(`/learn/courses/${k.course.id}/review`, { body: { rating: 5 } })).status, 403, "not enrolled");
 
   const pub = (await k.ctx.request(`/v1/education/catalog/courses/${k.course.id}`)).json.course;
