@@ -24,6 +24,7 @@ export async function getLearnSettings(): Promise<LearnSettings> {
     "learn_max_schools_per_user", "learn_max_classes_per_school", "learn_max_courses_per_class", "learn_max_modules_per_course",
     "learn_max_lessons_per_module", "learn_max_quiz_questions", "learn_max_lesson_minutes", "learn_creates_per_hour", "learn_publish_by_default",
     "learn_enrolments_enabled", "learn_commission_percent", "learn_video_uploads_enabled", "learn_max_video_mb", "learn_quiz_attempts_per_hour", "learn_fees_enabled", "learn_exam_pass_percent",
+    "learn_live_enabled", "learn_live_max_participants", "learn_live_poll_seconds", "learn_live_max_cues", "learn_live_question_seconds", "learn_live_max_exam_minutes", "learn_max_screens_per_user", "learn_screen_pair_minutes",
   ] as const;
   const v = Object.fromEntries(await Promise.all(keys.map(async (k) => [k, await getSetting(k)]))) as Record<(typeof keys)[number], string>;
   return {
@@ -49,6 +50,14 @@ export async function getLearnSettings(): Promise<LearnSettings> {
     quizAttemptsPerHour: int(v.learn_quiz_attempts_per_hour, 30, 1, 200),
     feesEnabled: v.learn_fees_enabled !== "0",
     examPassPercent: int(v.learn_exam_pass_percent, 50, 0, 100),
+    liveEnabled: v.learn_live_enabled !== "0",
+    liveMaxParticipants: int(v.learn_live_max_participants, 60, 1, 500),
+    livePollSeconds: int(v.learn_live_poll_seconds, 3, 1, 30),
+    liveMaxCuesPerSession: int(v.learn_live_max_cues, 100, 5, 500),
+    liveQuestionSeconds: int(v.learn_live_question_seconds, 30, 5, 600),
+    liveMaxExamMinutes: int(v.learn_live_max_exam_minutes, 120, 1, 600),
+    maxScreensPerUser: int(v.learn_max_screens_per_user, 5, 1, 50),
+    screenPairMinutes: int(v.learn_screen_pair_minutes, 10, 1, 60),
   };
 }
 
@@ -76,5 +85,13 @@ export async function setLearnSettings(next: Partial<LearnSettings>): Promise<vo
   if (next.quizAttemptsPerHour != null) put("learn_quiz_attempts_per_hour", String(next.quizAttemptsPerHour));
   if (next.feesEnabled != null) put("learn_fees_enabled", next.feesEnabled ? "1" : "0");
   if (next.examPassPercent != null) put("learn_exam_pass_percent", String(next.examPassPercent));
+  if (next.liveEnabled != null) put("learn_live_enabled", next.liveEnabled ? "1" : "0");
+  if (next.liveMaxParticipants != null) put("learn_live_max_participants", String(next.liveMaxParticipants));
+  if (next.livePollSeconds != null) put("learn_live_poll_seconds", String(next.livePollSeconds));
+  if (next.liveMaxCuesPerSession != null) put("learn_live_max_cues", String(next.liveMaxCuesPerSession));
+  if (next.liveQuestionSeconds != null) put("learn_live_question_seconds", String(next.liveQuestionSeconds));
+  if (next.liveMaxExamMinutes != null) put("learn_live_max_exam_minutes", String(next.liveMaxExamMinutes));
+  if (next.maxScreensPerUser != null) put("learn_max_screens_per_user", String(next.maxScreensPerUser));
+  if (next.screenPairMinutes != null) put("learn_screen_pair_minutes", String(next.screenPairMinutes));
   await Promise.all(writes);
 }

@@ -1,0 +1,65 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Peebee palette (dark). A TV sits across a room, so everything here is big, high-contrast and slow-moving. */
+:root {
+  color-scheme: dark;
+  --color-gold: 201 162 39;
+  --color-gold-400: 224 185 61;
+  --color-cream: 14 14 14;
+  --color-ink: 245 245 245;
+  --color-ink-500: 176 176 176;
+  --color-ink-gold: 10 10 10;
+  --color-green: 47 168 106;
+  --surface-card: 30 30 30;
+  --surface-muted: 44 44 44;
+  --border-faint: rgba(247, 243, 238, 0.14);
+}
+
+html {
+  /* 1rem is about 1% of a 1080p screen's height, so everything scales with the screen. */
+  font-size: clamp(14px, 1.45vh + 0.4vw, 26px);
+  background: rgb(var(--color-cream));
+  cursor: none;
+}
+
+body {
+  background: rgb(var(--color-cream));
+  color: rgb(var(--color-ink));
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Google Sans", Inter, sans-serif;
+  min-height: 100vh;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* TVs crop the edges ("overscan"): keep everything inside a safe area. */
+.tv-safe {
+  padding: 3.5vh 4vw;
+}
+
+/* The one thing that tells you where the remote is pointing. It must be impossible to miss. */
+[data-focusable]:focus-visible,
+[data-focusable]:focus {
+  outline: 0.28rem solid rgb(var(--color-gold));
+  outline-offset: 0.3rem;
+  transform: scale(1.04);
+}
+
+[data-focusable] {
+  transition: transform 120ms ease;
+}
+
+@keyframes tv-fade-in {
+  from { opacity: 0; transform: translateY(1.2vh); }
+  to { opacity: 1; transform: none; }
+}
+
+.tv-fade-in {
+  animation: tv-fade-in 360ms ease both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tv-fade-in { animation: none; }
+  [data-focusable] { transition: none; }
+}

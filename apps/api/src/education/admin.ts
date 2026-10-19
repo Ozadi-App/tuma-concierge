@@ -41,6 +41,14 @@ const settingsPatch = z
     quizAttemptsPerHour: z.number().int().min(1).max(200),
     feesEnabled: z.boolean(),
     examPassPercent: z.number().int().min(0).max(100),
+    liveEnabled: z.boolean(),
+    liveMaxParticipants: z.number().int().min(1).max(500),
+    livePollSeconds: z.number().int().min(1).max(30),
+    liveMaxCuesPerSession: z.number().int().min(5).max(500),
+    liveQuestionSeconds: z.number().int().min(5).max(600),
+    liveMaxExamMinutes: z.number().int().min(1).max(600),
+    maxScreensPerUser: z.number().int().min(1).max(50),
+    screenPairMinutes: z.number().int().min(1).max(60),
   })
   .partial();
 

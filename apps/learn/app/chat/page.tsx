@@ -221,7 +221,7 @@ export default function TutorChatPage() {
             </div>
 
             <Link
-              href="/live"
+              href="/classroom"
               className="flex items-center gap-1.5 rounded-xl bg-gold px-3 py-1.5 text-xs font-black text-black shadow-sm transition hover:opacity-90"
             >
               <Video className="h-3.5 w-3.5" />

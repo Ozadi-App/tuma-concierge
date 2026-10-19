@@ -80,7 +80,7 @@ const MEDIA_AUDIENCE = "peebee-learn-media";
 const MEDIA_TTL = "2h";
 const key = () => new TextEncoder().encode(process.env.JWT_SECRET ?? "");
 
-async function signMediaToken(userId: string, lessonId: string): Promise<string> {
+export async function signMediaToken(userId: string, lessonId: string): Promise<string> {
   return new SignJWT({ lid: lessonId })
     .setProtectedHeader({ alg: "HS256" })
     .setSubject(userId)

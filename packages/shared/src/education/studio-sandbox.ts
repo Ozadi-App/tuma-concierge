@@ -219,7 +219,9 @@ export function handleStudioSandbox(path: string, method: string, body: Record<s
   }
 
   // Enrolment, payments, uploads and fees need the real service and real money, so the sandbox only lists nothing for them.
-  if (path.startsWith("/v1/education/learn/")) {
+  if (path.startsWith("/v1/education/learn/") || path.startsWith("/v1/education/classroom/") || path.startsWith("/v1/tv/")) {
+    if (method === "GET" && (path.endsWith("/devices") )) return json({ ok: true, devices: [] });
+    if (method === "GET" && path.endsWith("/sessions")) return json({ ok: true, sessions: [] });
     if (method === "GET" && path.endsWith("/enrollments")) return json({ ok: true, enrollments: [] });
     if (method === "GET" && path.endsWith("/invoices")) return json({ ok: true, invoices: [] });
     return problem(503, "sandbox_only", "This needs the live service. It isn't available in the sandbox.");

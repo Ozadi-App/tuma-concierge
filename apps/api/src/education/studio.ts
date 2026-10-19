@@ -279,6 +279,19 @@ async function purgeLessonData(lessonIds: string, args: unknown[]): Promise<void
   for (const key of keys) await getR2Bucket().delete(key).catch(() => undefined);
 }
 
+/** Removes live classroom sessions (and their cues, members and answers) that point at the given rows; a no-op until migration 0111 is applied. */
+async function purgeLiveSessions(column: "school_id" | "class_id" | "course_id", values: string, args: unknown[]): Promise<void> {
+  const sessions = `SELECT id FROM edu_live_sessions WHERE ${column} IN (${values})`;
+  try {
+    for (const table of ["edu_live_responses", "edu_live_members", "edu_live_cues"]) {
+      await db.execute({ sql: `DELETE FROM ${table} WHERE session_id IN (${sessions})`, args: args as never });
+    }
+    await db.execute({ sql: `DELETE FROM edu_live_sessions WHERE ${column} IN (${values})`, args: args as never });
+  } catch (err) {
+    if (!/no such table/i.test(String(err))) throw err;
+  }
+}
+
 /** Same for whole courses: everything of the lessons, plus unfinished enrolment claims. */
 async function purgeCourseData(courseIds: string, args: unknown[]): Promise<void> {
   await purgeLessonData(`SELECT id FROM edu_lessons WHERE course_id IN (${courseIds})`, args);
@@ -531,6 +544,7 @@ studioRoutes.delete("/schools/:id", async (c) => {
   if ((await learningReady()) && (await count("SELECT COUNT(*) AS n FROM edu_fee_invoices WHERE school_id = ? AND status != 'cancelled'", [id])) > 0) {
     return fail(c, { status: 409, error: "has_invoices", message: "This school has fee invoices. Cancel the unpaid ones; a school with payments can't be deleted." });
   }
+  await purgeLiveSessions("school_id", "?", [id]);
   await purgeCourseData(courses, [id]);
   if (await learningReady()) await db.execute({ sql: "DELETE FROM edu_fee_invoices WHERE school_id = ?", args: [id] });
   await db.execute({ sql: "DELETE FROM edu_lessons WHERE course_id IN (SELECT id FROM edu_courses WHERE school_id = ?)", args: [id] });
@@ -647,6 +661,8 @@ studioRoutes.delete("/classes/:id", async (c) => {
   const id = String(cls.id);
   const courses = "SELECT id FROM edu_courses WHERE class_id = ?";
   if ((await learnersIn(courses, [id])) > 0) return hasLearnersResponse(c);
+  await purgeLiveSessions("class_id", "?", [id]);
+  await purgeLiveSessions("course_id", courses, [id]);
   await purgeCourseData(courses, [id]);
   await db.execute({ sql: "DELETE FROM edu_lessons WHERE course_id IN (SELECT id FROM edu_courses WHERE class_id = ?)", args: [id] });
   await db.execute({ sql: "DELETE FROM edu_modules WHERE course_id IN (SELECT id FROM edu_courses WHERE class_id = ?)", args: [id] });
@@ -767,6 +783,7 @@ studioRoutes.delete("/courses/:id", async (c) => {
   const id = String(course.id);
   const ids = "SELECT id FROM edu_courses WHERE id = ?";
   if ((await learnersIn(ids, [id])) > 0) return hasLearnersResponse(c);
+  await purgeLiveSessions("course_id", ids, [id]);
   await purgeCourseData(ids, [id]);
   await db.execute({ sql: "DELETE FROM edu_lessons WHERE course_id = ?", args: [id] });
   await db.execute({ sql: "DELETE FROM edu_modules WHERE course_id = ?", args: [id] });

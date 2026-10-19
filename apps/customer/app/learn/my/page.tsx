@@ -114,6 +114,9 @@ export default function MyLearningPage() {
           <ArrowLeft className="h-3.5 w-3.5" aria-hidden /> Learn
         </Link>
         <h1 className="text-xl font-bold text-ink">My learning</h1>
+        <Link href="/learn/live" className="mt-2 inline-flex items-center gap-1.5 rounded-xl bg-gold px-3.5 py-2 text-xs font-semibold text-ink-gold">
+          Join a live class
+        </Link>
       </div>
 
       {error && (
