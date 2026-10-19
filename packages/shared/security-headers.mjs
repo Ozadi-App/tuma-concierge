@@ -69,7 +69,8 @@ export function buildSecurityHeaders({ apiUrl = "", dev = false } = {}) {
     // — leave it out and the button renders unstyled.
     // Mapbox GL and Google Maps load their own stylesheets/web fonts too.
     `style-src 'self' 'unsafe-inline' ${GOOGLE_SIGNIN} ${MAPBOX[0]} https://fonts.googleapis.com`,
-    `img-src 'self' data: blob: https://images.unsplash.com https://*.unsplash.com ${OSM_TILES} https://*.openstreetmap.org ${GOOGLE_AVATARS} ${TILE_PROVIDERS.join(" ")} ${MAPBOX[0]} ${GOOGLE_MAPS_DATA.join(" ")}`,
+    // The API's own origin serves the Learn thumbnails and uploaded cover pictures.
+    `img-src 'self' data: blob: https://images.unsplash.com https://*.unsplash.com ${OSM_TILES} https://*.openstreetmap.org ${GOOGLE_AVATARS} ${TILE_PROVIDERS.join(" ")} ${MAPBOX[0]} ${GOOGLE_MAPS_DATA.join(" ")} ${api}`.trim(),
     "font-src 'self' data: https://fonts.gstatic.com",
     `media-src 'self' blob: https://commondatastorage.googleapis.com ${api}`.trim(),
     `connect-src ${connect.join(" ")}`,

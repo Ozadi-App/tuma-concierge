@@ -30,7 +30,7 @@ export async function getLearnSettings(): Promise<LearnSettings> {
     "learn_enabled", "learn_streams", "learn_masterclasses_enabled", "learn_paid_courses_enabled", "learn_max_course_price_ugx",
     "learn_max_schools_per_user", "learn_max_classes_per_school", "learn_max_courses_per_class", "learn_max_modules_per_course",
     "learn_max_lessons_per_module", "learn_max_quiz_questions", "learn_max_lesson_minutes", "learn_creates_per_hour", "learn_publish_by_default",
-    "learn_enrolments_enabled", "learn_commission_percent", "learn_video_uploads_enabled", "learn_max_video_mb", "learn_quiz_attempts_per_hour", "learn_fees_enabled", "learn_exam_pass_percent",
+    "learn_enrolments_enabled", "learn_commission_percent", "learn_video_uploads_enabled", "learn_max_video_mb", "learn_max_cover_mb", "learn_quiz_attempts_per_hour", "learn_fees_enabled", "learn_exam_pass_percent",
     "learn_live_enabled", "learn_live_max_participants", "learn_live_poll_seconds", "learn_live_max_cues", "learn_live_question_seconds", "learn_live_max_exam_minutes", "learn_max_screens_per_user", "learn_screen_pair_minutes",
     "learn_trial_classes_enabled", "learn_trial_code_a", "learn_trial_code_b", "learn_demo_visible",
     "learn_tv_pro_required", "learn_pro_price_ugx", "learn_pro_days",
@@ -56,6 +56,8 @@ export async function getLearnSettings(): Promise<LearnSettings> {
     videoUploadsEnabled: v.learn_video_uploads_enabled !== "0",
     // 100 MB is the largest request body a Worker accepts, so it is the structural ceiling.
     maxVideoMb: int(v.learn_max_video_mb, 50, 1, 100),
+    // 0 switches cover uploads off; generated art is always available.
+    maxCoverMb: int(v.learn_max_cover_mb, 2, 0, 10),
     quizAttemptsPerHour: int(v.learn_quiz_attempts_per_hour, 30, 1, 200),
     feesEnabled: v.learn_fees_enabled !== "0",
     examPassPercent: int(v.learn_exam_pass_percent, 50, 0, 100),
@@ -98,6 +100,7 @@ export async function setLearnSettings(next: Partial<LearnSettings>): Promise<vo
   if (next.commissionPercent != null) put("learn_commission_percent", String(next.commissionPercent));
   if (next.videoUploadsEnabled != null) put("learn_video_uploads_enabled", next.videoUploadsEnabled ? "1" : "0");
   if (next.maxVideoMb != null) put("learn_max_video_mb", String(next.maxVideoMb));
+  if (next.maxCoverMb != null) put("learn_max_cover_mb", String(next.maxCoverMb));
   if (next.quizAttemptsPerHour != null) put("learn_quiz_attempts_per_hour", String(next.quizAttemptsPerHour));
   if (next.feesEnabled != null) put("learn_fees_enabled", next.feesEnabled ? "1" : "0");
   if (next.examPassPercent != null) put("learn_exam_pass_percent", String(next.examPassPercent));

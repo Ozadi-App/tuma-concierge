@@ -4,6 +4,7 @@ import type { FeeInvoice, LearnEnrollment } from "@peebee/shared";
 import { ArrowLeft, BookOpen, Receipt } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { LearnThumb } from "@peebee/shared/learn-thumb";
 import { api, errorMessage } from "../../../lib/api";
 
 const card = "rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))]";
@@ -142,9 +143,14 @@ export default function MyLearningPage() {
           <ul className="space-y-3">
             {enrollments.map((e) => (
               <li key={e.id}>
-                <Link href={`/learn/course/${e.courseId}`} className={`${card} block space-y-2 p-4 transition hover:border-gold/50`}>
-                  <p className="text-sm font-semibold text-ink">{e.title}</p>
-                  <p className="text-xs text-ink-500">{e.schoolName}</p>
+                <Link href={`/learn/course/${e.courseId}`} className={`${card} block space-y-2 p-3 transition hover:border-gold/50`}>
+                  <div className="flex gap-3">
+                    <LearnThumb src={api.learnArtUrl("course", e.courseId)} className="w-24 shrink-0 self-start rounded-xl" />
+                    <div className="min-w-0 flex-1 pt-0.5">
+                      <p className="text-sm font-semibold text-ink">{e.title}</p>
+                      <p className="text-xs text-ink-500">{e.schoolName}</p>
+                    </div>
+                  </div>
                   <div className="h-2 overflow-hidden rounded-full bg-[rgb(var(--surface-muted))]" role="progressbar" aria-valuenow={e.progressPercent} aria-valuemin={0} aria-valuemax={100} aria-label={`${e.title} progress`}>
                     <div className="h-full rounded-full bg-gold" style={{ width: `${e.progressPercent}%` }} />
                   </div>

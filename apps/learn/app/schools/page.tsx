@@ -2,6 +2,7 @@
 
 import { EDUCATION_STREAMS, type StudioSchool } from "@peebee/shared";
 import { GraduationCap, Plus } from "lucide-react";
+import { LearnThumb } from "@peebee/shared/learn-thumb";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
@@ -108,7 +109,9 @@ export default function SchoolsPage() {
         <ul className="grid gap-3 sm:grid-cols-2">
           {schools.map((school) => (
             <li key={school.id}>
-              <Link href={`/schools/${school.id}`} className={`${cardCls} block space-y-3 p-4 transition hover:border-gold/50 hover:shadow-[var(--shadow-card-hover)]`}>
+              <Link href={`/schools/${school.id}`} className={`${cardCls} block space-y-3 overflow-hidden transition hover:border-gold/50 hover:shadow-[var(--shadow-card-hover)]`}>
+                <LearnThumb src={api.learnArtUrl("school", school.id)} />
+                <div className="space-y-3 px-4 pb-4">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <h3 className="truncate text-base font-semibold text-ink">{school.name}</h3>
@@ -124,6 +127,7 @@ export default function SchoolsPage() {
                 <p className="text-xs text-ink-500">
                   {plural(school.classCount, "class", "classes")} · {plural(school.courseCount, "course")} ({school.publishedCourseCount} live) · {plural(school.lessonCount, "lesson")}
                 </p>
+                </div>
               </Link>
             </li>
           ))}

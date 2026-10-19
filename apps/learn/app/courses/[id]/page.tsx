@@ -4,6 +4,7 @@ import { CURRICULUM_FRAMEWORKS, LESSON_CONTENT_TYPES, type CourseStudent, type S
 import { Eye, EyeOff, HelpCircle, Layers, Pencil, Plus, Trash2, Upload, Users, Video } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { CoverPicker } from "../../../components/studio/CoverPicker";
 import { CourseForm, LessonForm, ModuleForm, type CourseInput, type LessonInput } from "../../../components/studio/forms";
 import { Button, Chip, Crumbs, EmptyState, Notice, Skeleton, cardCls } from "../../../components/ui";
 import { api, errorMessage } from "../../../lib/api";
@@ -142,6 +143,7 @@ export default function CoursePage() {
       />
 
       <header className={`${cardCls} space-y-3 p-4 sm:p-5`}>
+        <CoverPicker kind="course" id={id} maxMb={settings.maxCoverMb} disabled={!canBuild} published={published} />
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0 space-y-1">
             <div className="flex flex-wrap gap-1.5">

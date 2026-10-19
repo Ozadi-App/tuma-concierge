@@ -5,6 +5,7 @@ import { Layers, Pencil, Plus, Receipt, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { CoverPicker } from "../../../components/studio/CoverPicker";
 import { ClassForm, SchoolForm, type ClassInput, type SchoolInput } from "../../../components/studio/forms";
 import { Button, Chip, Crumbs, EmptyState, LinkButton, Notice, Skeleton, cardCls } from "../../../components/ui";
 import { api, errorMessage } from "../../../lib/api";
@@ -107,6 +108,7 @@ export default function SchoolPage() {
       <Crumbs items={[{ label: "Schools", href: "/schools" }, { label: school.name }]} />
 
       <header className={`${cardCls} space-y-3 p-4 sm:p-5`}>
+        <CoverPicker kind="school" id={school.id} maxMb={settings.maxCoverMb} disabled={!canBuild} />
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0 space-y-1">
             <div className="flex flex-wrap gap-1.5">

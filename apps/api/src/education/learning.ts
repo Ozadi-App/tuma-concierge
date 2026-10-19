@@ -5,6 +5,7 @@ import type { LearnSettings } from "@peebee/shared";
 import { db } from "../db/client.js";
 import { newId } from "../lib/ids.js";
 import { consume, tooManyRequests } from "../lib/ratelimit.js";
+import { hasColumn } from "../lib/schema.js";
 import { getPlatformEnvironment, type PlatformEnvironment } from "../lib/settings.js";
 import { getR2Bucket, uploadResponseHeaders } from "../storage/r2.js";
 import { creditWallet, debitWallet, resolveCustomerByIdentifier } from "../wallet/service.js";
@@ -250,6 +251,67 @@ studioLearningRoutes.delete("/lessons/:id/media", async (c) => {
   }
   return c.json({ ok: true });
 });
+
+/** Whether the first bytes are a JPEG, PNG or WebP picture. The type the browser claims is not trusted. */
+export function sniffImage(head: Uint8Array): { ext: string; type: string } | null {
+  if (head[0] === 0xff && head[1] === 0xd8 && head[2] === 0xff) return { ext: "jpg", type: "image/jpeg" };
+  if (head[0] === 0x89 && head[1] === 0x50 && head[2] === 0x4e && head[3] === 0x47) return { ext: "png", type: "image/png" };
+  const tag = (from: number) => String.fromCharCode(...head.slice(from, from + 4));
+  if (head.length >= 12 && tag(0) === "RIFF" && tag(8) === "WEBP") return { ext: "webp", type: "image/webp" };
+  return null;
+}
+
+type CoverTable = "edu_courses" | "edu_schools";
+
+/** Saves or clears the cover picture of a course or school the caller owns. */
+async function setCover(c: Context, table: CoverTable, owned: (g: { userId: string; settings: LearnSettings }) => Promise<Row | null>, replace: boolean) {
+  const g = await gate(c);
+  if (isResponse(g)) return g;
+  if (!(await hasColumn(table, "cover_key"))) return upgradePending(c);
+  if (replace && g.settings.maxCoverMb <= 0) return fail(c, { status: 503, error: "uploads_off", message: "Cover pictures are switched off right now. A cover is drawn for you instead." });
+  const row = await owned(g);
+  if (!row) return notFound(c, table === "edu_courses" ? "course" : "school");
+
+  if (!replace) {
+    if (row.cover_key) {
+      await db.execute({ sql: `UPDATE ${table} SET cover_key = NULL WHERE id = ?`, args: [row.id as string] });
+      await getR2Bucket().delete(String(row.cover_key)).catch(() => undefined);
+    }
+    return c.json({ ok: true });
+  }
+
+  const length = Number(c.req.header("content-length"));
+  if (!Number.isFinite(length) || length <= 0) return c.json({ error: "length_required", message: "Send the picture with its size." }, 411);
+  if (length > g.settings.maxCoverMb * 1024 * 1024) return c.json({ error: "file_too_large", message: `Cover pictures can be up to ${g.settings.maxCoverMb} MB.` }, 413);
+  const slow = await throttle(c, g.userId, g.settings);
+  if (slow) return slow;
+
+  const bytes = new Uint8Array(await c.req.arrayBuffer());
+  const detected = sniffImage(bytes);
+  if (!detected || bytes.length === 0 || bytes.length > g.settings.maxCoverMb * 1024 * 1024) return c.json({ error: "unsupported_file_type", message: "Use a JPEG, PNG or WebP picture." }, 400);
+
+  const r2Key = `learn/covers/${row.id}/${crypto.randomUUID()}.${detected.ext}`;
+  await getR2Bucket().put(r2Key, bytes, { httpMetadata: { contentType: detected.type } });
+  await db.execute({ sql: `UPDATE ${table} SET cover_key = ?, updated_at = datetime('now') WHERE id = ?`, args: [r2Key, row.id as string] });
+  if (row.cover_key) await getR2Bucket().delete(String(row.cover_key)).catch(() => undefined);
+  return c.json({ ok: true }, 201);
+}
+
+const ownedCourseRow = async (g: { userId: string }, id: string) => {
+  const course = await ownedCourse(g.userId, id);
+  if (!course) return null;
+  const school = await ownedSchool(g.userId, String(course.school_id));
+  return school?.status === "suspended" ? null : course;
+};
+const ownedSchoolRow = async (g: { userId: string }, id: string) => {
+  const school = await ownedSchool(g.userId, id);
+  return school?.status === "suspended" ? null : school;
+};
+
+studioLearningRoutes.put("/courses/:id/cover", (c) => setCover(c, "edu_courses", (g) => ownedCourseRow(g, c.req.param("id")), true));
+studioLearningRoutes.delete("/courses/:id/cover", (c) => setCover(c, "edu_courses", (g) => ownedCourseRow(g, c.req.param("id")), false));
+studioLearningRoutes.put("/schools/:id/cover", (c) => setCover(c, "edu_schools", (g) => ownedSchoolRow(g, c.req.param("id")), true));
+studioLearningRoutes.delete("/schools/:id/cover", (c) => setCover(c, "edu_schools", (g) => ownedSchoolRow(g, c.req.param("id")), false));
 
 studioLearningRoutes.get("/courses/:id/students", async (c) => {
   const course = await ownedCourse(c.get("user").sub, c.req.param("id"));
