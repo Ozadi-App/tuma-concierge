@@ -42,7 +42,7 @@ export async function getLearnSettings(): Promise<LearnSettings> {
     "learn_tv_pro_required", "learn_tv_learn_enabled", "learn_pro_price_ugx", "learn_pro_days",
     "learn_max_slides", "learn_max_body_chars", "learn_quiz_max_attempts", "learn_exam_max_attempts", "learn_reveal_quiz_answers", "learn_reveal_exam_answers",
     "learn_live_lessons_enabled", "learn_live_lesson_hosts", "learn_live_lesson_early_minutes",
-    "learn_certificates_enabled", "learn_badges_enabled", "learn_drip_enabled", "learn_prerequisites_enabled", "learn_badge_courses_threshold",
+    "learn_certificates_enabled", "learn_badges_enabled", "learn_drip_enabled", "learn_prerequisites_enabled", "learn_badge_courses_threshold", "learn_assignments_enabled", "learn_max_submission_chars",
   ] as const;
   const v = Object.fromEntries(await Promise.all(keys.map(async (k) => [k, await getSetting(k)]))) as Record<(typeof keys)[number], string>;
   return {
@@ -100,6 +100,8 @@ export async function getLearnSettings(): Promise<LearnSettings> {
     dripEnabled: v.learn_drip_enabled !== "0",
     prerequisitesEnabled: v.learn_prerequisites_enabled !== "0",
     badgeCoursesThreshold: int(v.learn_badge_courses_threshold, 3, 1, 100),
+    assignmentsEnabled: v.learn_assignments_enabled !== "0",
+    maxSubmissionChars: int(v.learn_max_submission_chars, 5000, 100, 50000),
   };
 }
 
@@ -158,5 +160,7 @@ export async function setLearnSettings(next: Partial<LearnSettings>): Promise<vo
   if (next.dripEnabled != null) put("learn_drip_enabled", next.dripEnabled ? "1" : "0");
   if (next.prerequisitesEnabled != null) put("learn_prerequisites_enabled", next.prerequisitesEnabled ? "1" : "0");
   if (next.badgeCoursesThreshold != null) put("learn_badge_courses_threshold", String(next.badgeCoursesThreshold));
+  if (next.assignmentsEnabled != null) put("learn_assignments_enabled", next.assignmentsEnabled ? "1" : "0");
+  if (next.maxSubmissionChars != null) put("learn_max_submission_chars", String(next.maxSubmissionChars));
   await Promise.all(writes);
 }

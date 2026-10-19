@@ -79,6 +79,8 @@ const settingsPatch = z
     dripEnabled: z.boolean(),
     prerequisitesEnabled: z.boolean(),
     badgeCoursesThreshold: z.number().int().min(1).max(100),
+    assignmentsEnabled: z.boolean(),
+    maxSubmissionChars: z.number().int().min(100).max(50000),
   })
   .partial();
 

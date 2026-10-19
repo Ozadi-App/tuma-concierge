@@ -10,6 +10,7 @@ import { getPlatformEnvironment, type PlatformEnvironment } from "../lib/setting
 import { getR2Bucket, uploadResponseHeaders } from "../storage/r2.js";
 import { creditWallet, debitWallet, resolveCustomerByIdentifier } from "../wallet/service.js";
 import { getLearnSettings } from "./settings.js";
+import { assignmentOf, assignmentsOfCourse, learnerAssignment, pastDue, submissionsOfUser, type SubmissionRow } from "./assignments.js";
 import { BADGES, afterProgress, computeLocks, courseFinished, courseRules, proReady, type Lock } from "./rewards.js";
 import { mark, newSeed, parseQuiz, readAttempt, serveQuestions, signAttempt, type Answer, type StoredQuiz } from "./quiz-engine.js";
 import {
@@ -465,7 +466,7 @@ function liveWindow(live: LiveInfo, settings: LearnSettings, now = Date.now()): 
   return { open: Number.isFinite(start) && now >= opensAt && now <= closesAt, opensAt };
 }
 
-type LessonState = { done: Map<string, number | null>; media: Set<string>; attempts: Map<string, { n: number; best: number }>; locks?: Map<string, Lock> };
+type LessonState = { done: Map<string, number | null>; media: Set<string>; attempts: Map<string, { n: number; best: number }>; locks?: Map<string, Lock>; assignments?: Map<string, import("@peebee/shared").StudioAssignment>; submissions?: Map<string, SubmissionRow> };
 
 function lessonView(l: Row, st: LessonState, settings: LearnSettings) {
   const id = String(l.id);
@@ -498,6 +499,7 @@ function lessonView(l: Row, st: LessonState, settings: LearnSettings) {
         }
       : null,
     locked: st.locks?.get(id) ?? null,
+    assignment: kind === "assignment" && st.assignments?.get(id) ? learnerAssignment(st.assignments.get(id)!, st.submissions?.get(id) ?? null) : null,
     // The meeting link is only handed out by /join, inside the join window.
     live: live ? { startsAt: live.startsAt, durationMinutes: live.durationMinutes, joinOpen: liveWindow(live, settings).open, notes: live.notes ?? "" } : null,
   };
@@ -511,6 +513,8 @@ async function lessonState(userId: string, courseId: string): Promise<LessonStat
     done: new Map(progress.map((p) => [String(p.lesson_id), p.best_score_percent === null ? null : Number(p.best_score_percent)])),
     media: new Set(media.map((r) => String(r.lesson_id))),
     attempts: new Map(tries.map((r) => [String(r.lesson_id), { n: Number(r.n), best: Number(r.best) }])),
+    assignments: await assignmentsOfCourse(courseId),
+    submissions: await submissionsOfUser(userId, courseId),
   };
 }
 
@@ -863,12 +867,57 @@ learnRoutes.post("/lessons/:id/complete", async (c) => {
   if (normaliseContentType(String(lesson.content_type)) === "live") {
     return fail(c, { status: 409, error: "join_first", message: "Join the live lesson to complete it." });
   }
+  if (normaliseContentType(String(lesson.content_type)) === "assignment") {
+    return fail(c, { status: 409, error: "hand_in_first", message: "Hand in your work. It counts as done once your tutor has marked it." });
+  }
   if (!access.owner) {
     await db.execute({
       sql: "INSERT OR IGNORE INTO edu_lesson_progress (user_id, lesson_id, course_id) VALUES (?, ?, ?)",
       args: [user.sub, lesson.id as string, lesson.course_id as string],
     });
     await afterProgress(user.sub, String(lesson.course_id), await getLearnSettings());
+  }
+  return c.json({ ok: true });
+});
+
+// ---- Assignments ------------------------------------------------------------
+
+learnRoutes.post("/lessons/:id/submission", async (c) => {
+  const user = c.get("user");
+  const settings = await getLearnSettings();
+  if (!settings.assignmentsEnabled) return fail(c, { status: 503, error: "assignments_off", message: "Assignments are switched off right now." });
+  const quota = await consume(`learn-submit:${user.sub}`, 60, 60 * 60);
+  if (!quota.allowed) return tooManyRequests(c, quota, "You're handing in a lot of work. Try again in a little while.");
+  const found = await lessonAccess(c, c.req.param("id"), "Enrol in this course to hand in work.");
+  if (isResponse(found)) return found;
+  const { lesson, access } = found;
+  const a = await assignmentOf(String(lesson.id));
+  if (!a) return fail(c, { status: 404, error: "not_assignment", message: "This isn't an assignment." });
+  if (access.owner) return fail(c, { status: 400, error: "own_course", message: "This is your own course, so there's nothing to hand in." });
+
+  const parsed = await readBody(c, z.object({ body: z.string().max(settings.maxSubmissionChars).default(""), link: z.string().max(500).default("") }));
+  if (!parsed.ok) return parsed.res;
+  const text = (parsed.data.body as string).trim();
+  const link = (parsed.data.link as string).trim();
+  if (!text && !link) return fail(c, { status: 400, error: "empty", message: "Write your answer or add a link to your work." });
+  if (link && !/^https:\/\//i.test(link)) return fail(c, { status: 400, error: "bad_link", message: "Links must start with https://" });
+  if (pastDue(a)) return fail(c, { status: 409, error: "past_due", message: "The deadline for this has passed." });
+
+  const existing = ((await db.execute({ sql: "SELECT * FROM edu_submissions WHERE lesson_id = ? AND user_id = ?", args: [lesson.id as string, user.sub] })).rows[0] as Row | undefined) ?? null;
+  if (existing) {
+    const view = learnerAssignment(a, { body: String(existing.body), link: String(existing.link), status: existing.status === "graded" ? "graded" : "submitted", score: existing.score === null ? null : Number(existing.score), feedback: String(existing.feedback ?? ""), submittedAt: String(existing.submitted_at) });
+    if (!view.open) return fail(c, { status: 409, error: "closed", message: a.allowResubmit ? "You've already passed this." : "You've already handed this in." });
+    await db.execute({
+      sql: "UPDATE edu_submissions SET body = ?, link = ?, status = 'submitted', score = NULL, feedback = '', submitted_at = datetime('now'), graded_at = NULL, graded_by = NULL WHERE id = ?",
+      args: [text, link, existing.id as string],
+    });
+    // A new hand-in is not done until it is marked again.
+    await db.execute({ sql: "DELETE FROM edu_lesson_progress WHERE user_id = ? AND lesson_id = ?", args: [user.sub, lesson.id as string] });
+  } else {
+    await db.execute({
+      sql: "INSERT INTO edu_submissions (id, lesson_id, course_id, user_id, body, link) VALUES (?, ?, ?, ?, ?, ?)",
+      args: [newId("sub"), lesson.id as string, lesson.course_id as string, user.sub, text, link],
+    });
   }
   return c.json({ ok: true });
 });

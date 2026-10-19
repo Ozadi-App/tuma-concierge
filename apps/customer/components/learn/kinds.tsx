@@ -1,5 +1,5 @@
 import type { LearnerLesson, LessonContentType } from "@peebee/shared";
-import { AudioLines, BookOpenText, ClipboardCheck, GraduationCap, Presentation, Radio, Video, type LucideIcon } from "lucide-react";
+import { AudioLines, BookOpenText, ClipboardCheck, GraduationCap, PenLine, Presentation, Radio, Video, type LucideIcon } from "lucide-react";
 
 export const KIND_ICON: Record<LessonContentType, LucideIcon> = {
   text: BookOpenText,
@@ -9,6 +9,7 @@ export const KIND_ICON: Record<LessonContentType, LucideIcon> = {
   live: Radio,
   quiz: ClipboardCheck,
   exam: GraduationCap,
+  assignment: PenLine,
 };
 
 export const KIND_LABEL: Record<LessonContentType, string> = {
@@ -19,6 +20,7 @@ export const KIND_LABEL: Record<LessonContentType, string> = {
   live: "Live video",
   quiz: "Quiz",
   exam: "Exam",
+  assignment: "Assignment",
 };
 
 export function whenLabel(iso: string): string {
@@ -34,6 +36,12 @@ export function metaLine(l: LearnerLesson): string {
     if (l.quiz.timeLimitMinutes > 0) bits.push(`${l.quiz.timeLimitMinutes} min`);
     bits.push(`pass ${l.quiz.passingScorePercent}%`);
     return bits.join(" · ");
+  }
+  if (l.contentType === "assignment" && l.assignment) {
+    const s = l.assignment.submission;
+    if (s?.status === "graded" && s.score !== null) return `Marked ${s.score}/${l.assignment.maxPoints}`;
+    if (s) return "Handed in · waiting to be marked";
+    return l.assignment.dueAt ? `Due ${whenLabel(l.assignment.dueAt)}` : `${l.assignment.maxPoints} points`;
   }
   if (l.contentType === "live" && l.live) return whenLabel(l.live.startsAt);
   if (l.contentType === "slides" && l.slideCount) return `${l.slideCount} slides`;

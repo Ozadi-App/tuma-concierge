@@ -42,6 +42,9 @@ import type {
   LearnerLessonDetail,
   StudioLive,
   StudioCourseRules,
+  StudioSubmission,
+  StudioAssignment,
+  Gradebook,
   LearnerCertificate,
   LearnerBadge,
   StudioSlide,
@@ -439,6 +442,7 @@ export function educationMethods(request: RequestFn) {
         body?: string;
         slides?: StudioSlide[];
         live?: StudioLive | null;
+        assignment?: StudioAssignment | null;
         quiz?: StudioQuiz | null;
       },
     ) {
@@ -458,6 +462,7 @@ export function educationMethods(request: RequestFn) {
         body?: string;
         slides?: StudioSlide[];
         live?: StudioLive | null;
+        assignment?: StudioAssignment | null;
         quiz?: StudioQuiz | null;
       },
     ) {
@@ -472,6 +477,15 @@ export function educationMethods(request: RequestFn) {
     },
     async studioSetModuleDrip(moduleId: string, days: number) {
       return request<{ ok: true; days: number }>(`/v1/education/studio/modules/${encodeURIComponent(moduleId)}/drip`, { method: "PUT", body: JSON.stringify({ days }) });
+    },
+    async studioSubmissions(lessonId: string) {
+      return request<{ ok: true; assignment: StudioAssignment | null; submissions: StudioSubmission[] }>(`/v1/education/studio/lessons/${encodeURIComponent(lessonId)}/submissions`);
+    },
+    async studioGradeSubmission(id: string, score: number, feedback: string) {
+      return request<{ ok: true; percent: number; passed: boolean }>(`/v1/education/studio/submissions/${encodeURIComponent(id)}/grade`, { method: "PUT", body: JSON.stringify({ score, feedback }) });
+    },
+    async studioGradebook(courseId: string) {
+      return request<{ ok: true; gradebook: Gradebook }>(`/v1/education/studio/courses/${encodeURIComponent(courseId)}/gradebook`);
     },
     async studioLessonAttendance(lessonId: string) {
       return request<{ ok: true; enrolled: number; attendees: { userId: string; name: string; joinedAt: string }[] }>(`/v1/education/studio/lessons/${encodeURIComponent(lessonId)}/attendance`);
@@ -510,6 +524,9 @@ export function educationMethods(request: RequestFn) {
     },
     async learnLessonMediaUrl(lessonId: string) {
       return request<{ ok: true; url: string }>(`/v1/education/learn/lessons/${encodeURIComponent(lessonId)}/media-url`, { method: "POST", body: JSON.stringify({}) });
+    },
+    async learnSubmitWork(lessonId: string, work: { body: string; link: string }) {
+      return request<{ ok: true }>(`/v1/education/learn/lessons/${encodeURIComponent(lessonId)}/submission`, { method: "POST", body: JSON.stringify(work) });
     },
     async learnCertificates() {
       return request<{ ok: true; certificates: LearnerCertificate[] }>("/v1/education/learn/certificates");

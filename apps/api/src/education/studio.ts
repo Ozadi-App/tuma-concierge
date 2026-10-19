@@ -24,7 +24,8 @@ import { consume, tooManyRequests } from "../lib/ratelimit.js";
 import { hasColumn } from "../lib/schema.js";
 import { getLearnSettings } from "./settings.js";
 import { normaliseQuestion, parseQuiz as readQuiz } from "./quiz-engine.js";
-import { courseRules, dripDays, proReady } from "./rewards.js";
+import { afterProgress, courseRules, dripDays, proReady } from "./rewards.js";
+import { assignmentOf, assignmentsOfCourse, assignmentsReady, saveAssignment } from "./assignments.js";
 
 /**
  * The Learn Studio: school → class (or masterclass) → course → module → lesson.
@@ -204,6 +205,13 @@ const liveSchema = z.object({
   notes: text(L.long).default(""),
 });
 
+const assignmentSchema = z.object({
+  maxPoints: z.number().int().min(1).max(1000).default(100),
+  passPercent: z.number().int().min(0).max(100).default(50),
+  dueAt: z.string().datetime({ offset: true }).nullable().default(null),
+  allowResubmit: z.boolean().default(true),
+});
+
 const lessonBody = z.object({
   title: text(L.name, 2),
   // Older clients still send the earlier type names; they're read as the current ones.
@@ -214,6 +222,7 @@ const lessonBody = z.object({
   body: z.string().max(100_000).default(""),
   slides: z.array(slideSchema).max(100).default([]),
   live: liveSchema.nullable().optional(),
+  assignment: assignmentSchema.nullable().optional(),
   quiz: quizSchema.optional(),
 });
 
@@ -297,6 +306,12 @@ async function purgeLessonData(lessonIds: string, args: unknown[]): Promise<void
   await db.execute({ sql: `DELETE FROM edu_lesson_media WHERE lesson_id IN (${lessonIds})`, args: args as never });
   await db.execute({ sql: `DELETE FROM edu_lesson_progress WHERE lesson_id IN (${lessonIds})`, args: args as never });
   await db.execute({ sql: `DELETE FROM edu_quiz_attempts WHERE lesson_id IN (${lessonIds})`, args: args as never });
+  // Assignments come with migration 0118.
+  for (const table of ["edu_submissions", "edu_assignments"]) {
+    await db.execute({ sql: `DELETE FROM ${table} WHERE lesson_id IN (${lessonIds})`, args: args as never }).catch((err) => {
+      if (!/no such table/i.test(String(err))) throw err;
+    });
+  }
   // Live attendance comes with migration 0116.
   await db.execute({ sql: `DELETE FROM edu_live_attendance WHERE lesson_id IN (${lessonIds})`, args: args as never }).catch((err) => {
     if (!/no such table/i.test(String(err))) throw err;
@@ -772,10 +787,11 @@ studioRoutes.get("/courses/:id", async (c) => {
   const lessons = (await db.execute({ sql: "SELECT * FROM edu_lessons WHERE course_id = ? ORDER BY position ASC, created_at ASC LIMIT 5000", args: [id] })).rows as Row[];
   const media = await mediaByLesson(id);
   const drip = await dripDays(id);
+  const assignments = await assignmentsOfCourse(id);
   const siblings = (await db.execute({ sql: "SELECT id, title FROM edu_courses WHERE school_id = ? AND id != ? ORDER BY title ASC LIMIT 200", args: [course.school_id as string, id] })).rows as Row[];
   const detail: StudioCourseDetail = {
     ...(await loadCourse(id))!,
-    modules: modules.map((m) => ({ ...moduleShape(m, lessons.filter((l) => l.module_id === m.id).map((l) => lessonShape(l, media.get(String(l.id)) ?? null))), dripDays: drip.get(String(m.id)) ?? 0 })),
+    modules: modules.map((m) => ({ ...moduleShape(m, lessons.filter((l) => l.module_id === m.id).map((l) => ({ ...lessonShape(l, media.get(String(l.id)) ?? null), assignment: assignments.get(String(l.id)) ?? null }))), dripDays: drip.get(String(m.id)) ?? 0 })),
     rules: await courseRules(id),
     prerequisiteOptions: siblings.map((r) => ({ id: String(r.id), title: String(r.title) })),
   };
@@ -898,6 +914,7 @@ type LessonDraft = {
   body?: string;
   slides?: unknown[];
   live?: { url: string } | null;
+  assignment?: unknown;
   quiz?: StudioQuiz | null;
 };
 
@@ -914,6 +931,9 @@ function lessonProblem(settings: LearnSettings, d: LessonDraft, kind: StudioLess
   }
   if (d.slides && d.slides.length > settings.maxSlidesPerLesson) {
     return { status: 400, error: "too_many_slides", message: `A slide lesson can have up to ${settings.maxSlidesPerLesson} slides.` };
+  }
+  if (kind === "assignment" && !settings.assignmentsEnabled) {
+    return { status: 403, error: "assignments_off", message: "Assignments are switched off right now." };
   }
   if (isAssessment(kind) && creating && !d.quiz) {
     return { status: 400, error: "quiz_needed", message: `Add at least one question to this ${kind}.` };
@@ -942,6 +962,9 @@ export function liveHostAllowed(url: string, hostsCsv: string): boolean {
 
 /** Items that need columns from migration 0116 can't be saved before it is applied. */
 async function needsUpgrade(c: Context, d: LessonDraft & { slides?: unknown[] }, kind: StudioLesson["contentType"]): Promise<Response | null> {
+  if (kind === "assignment" && !(await assignmentsReady())) {
+    return fail(c, { status: 503, error: "upgrade_pending", message: "Assignments need a platform update that hasn't finished yet. Try again shortly." });
+  }
   const wide = kind === "text" || kind === "slides" || kind === "live" || !!d.body || !!d.slides?.length || !!d.live;
   if (!wide || (await hasColumn("edu_lessons", "body"))) return null;
   return fail(c, { status: 503, error: "upgrade_pending", message: "Text, slide and live lessons need a platform update that hasn't finished yet. Try again shortly." });
@@ -987,12 +1010,13 @@ studioRoutes.post("/modules/:id/lessons", async (c) => {
           args: [id, mod.id, mod.course_id, d.title, d.contentType, d.durationMinutes, d.summary, d.contentUrl, existing + 1, quizJson] as never,
         },
   );
+  if (d.contentType === "assignment") await saveAssignment(id, { maxPoints: d.assignment?.maxPoints ?? 100, passPercent: d.assignment?.passPercent ?? 50, dueAt: d.assignment?.dueAt ?? null, allowResubmit: d.assignment?.allowResubmit ?? true });
   // With "publish by default" on, a course goes live as soon as it has something to teach.
   if (g.settings.publishByDefault && course.status !== "published") {
     await db.execute({ sql: "UPDATE edu_courses SET status = 'published', updated_at = datetime('now') WHERE id = ?", args: [course.id as string] });
   }
   const row = await one("SELECT * FROM edu_lessons WHERE id = ?", [id]);
-  return c.json({ ok: true, lesson: lessonShape(row!) }, 201);
+  return c.json({ ok: true, lesson: { ...lessonShape(row!), assignment: await assignmentOf(id) } }, 201);
 });
 
 // A patch only changes what it mentions, so none of the defaults may fill in the rest.
@@ -1005,6 +1029,7 @@ const lessonPatch = z.object({
   body: z.string().max(100_000).optional(),
   slides: z.array(slideSchema).max(100).optional(),
   live: liveSchema.nullable().optional(),
+  assignment: assignmentSchema.nullable().optional(),
   quiz: quizSchema.optional(),
 });
 
@@ -1042,8 +1067,12 @@ studioRoutes.patch("/lessons/:id", async (c) => {
   if (d.slides !== undefined) put("slides_json", d.slides.length ? JSON.stringify(d.slides) : null);
   if (d.live !== undefined) put("live_json", d.live ? JSON.stringify(d.live) : null);
   if (sets.length) await db.execute({ sql: `UPDATE edu_lessons SET ${sets.join(", ")} WHERE id = ?`, args: [...args, lesson.id] as never });
+  if (kind === "assignment" && d.assignment) {
+    const current = await assignmentOf(String(lesson.id));
+    await saveAssignment(String(lesson.id), { maxPoints: d.assignment.maxPoints ?? current?.maxPoints ?? 100, passPercent: d.assignment.passPercent ?? current?.passPercent ?? 50, dueAt: d.assignment.dueAt ?? null, allowResubmit: d.assignment.allowResubmit ?? current?.allowResubmit ?? true });
+  }
   const row = await one("SELECT * FROM edu_lessons WHERE id = ?", [lesson.id]);
-  return c.json({ ok: true, lesson: lessonShape(row!) });
+  return c.json({ ok: true, lesson: { ...lessonShape(row!), assignment: await assignmentOf(String(lesson.id)) } });
 });
 
 studioRoutes.delete("/lessons/:id", async (c) => {
@@ -1174,4 +1203,110 @@ studioRoutes.put("/modules/:id/drip", async (c) => {
   if (days > 0 && !g.settings.dripEnabled) return fail(c, { status: 403, error: "drip_off", message: "Drip release is switched off right now." });
   await db.execute({ sql: "INSERT INTO edu_module_drip (module_id, drip_days) VALUES (?, ?) ON CONFLICT(module_id) DO UPDATE SET drip_days = excluded.drip_days", args: [mod.id as string, days] });
   return c.json({ ok: true, days });
+});
+
+// ---------------------------------------------------------------------------
+// Assignments: what was handed in, marking, and the gradebook
+// ---------------------------------------------------------------------------
+
+studioRoutes.get("/lessons/:id/submissions", async (c) => {
+  const lesson = await ownedLesson(c.get("user").sub, c.req.param("id"));
+  if (!lesson) return notFound(c, "assignment");
+  if (!(await assignmentsReady())) return c.json({ ok: true, assignment: null, submissions: [] });
+  const rows = (
+    await db.execute({
+      sql: `SELECT s.*, u.name FROM edu_submissions s JOIN users u ON u.id = s.user_id WHERE s.lesson_id = ? ORDER BY CASE s.status WHEN 'submitted' THEN 0 ELSE 1 END, s.submitted_at ASC LIMIT 1000`,
+      args: [lesson.id as string],
+    })
+  ).rows as Row[];
+  return c.json({
+    ok: true,
+    assignment: await assignmentOf(String(lesson.id)),
+    submissions: rows.map((r) => ({
+      id: String(r.id),
+      userId: String(r.user_id),
+      learnerName: String(r.name ?? "Learner"),
+      body: String(r.body ?? ""),
+      link: String(r.link ?? ""),
+      status: r.status === "graded" ? "graded" : "submitted",
+      score: r.score === null ? null : Number(r.score),
+      feedback: String(r.feedback ?? ""),
+      submittedAt: String(r.submitted_at),
+      gradedAt: r.graded_at ? String(r.graded_at) : null,
+    })),
+  });
+});
+
+studioRoutes.put("/submissions/:id/grade", async (c) => {
+  const g = await gate(c);
+  if (isResponse(g)) return g;
+  if (!(await assignmentsReady())) return fail(c, { status: 503, error: "upgrade_pending", message: "Assignments need a platform update that hasn't finished yet. Try again shortly." });
+  const sub = await one(
+    `SELECT s.* FROM edu_submissions s JOIN edu_courses c ON c.id = s.course_id JOIN edu_schools sc ON sc.id = c.school_id WHERE s.id = ? AND sc.owner_id = ?`,
+    [c.req.param("id"), g.userId],
+  );
+  if (!sub) return notFound(c, "submission");
+  const a = await assignmentOf(String(sub.lesson_id));
+  if (!a) return notFound(c, "assignment");
+  const parsed = await body(c, z.object({ score: z.number().int().min(0).max(1000), feedback: text(2000).default("") }));
+  if (!parsed.ok) return parsed.res;
+  const d = parsed.data as { score: number; feedback: string };
+  if (d.score > a.maxPoints) return fail(c, { status: 400, error: "score_too_high", message: `The most you can give is ${a.maxPoints}.` });
+
+  await db.execute({
+    sql: "UPDATE edu_submissions SET status = 'graded', score = ?, feedback = ?, graded_at = datetime('now'), graded_by = ? WHERE id = ?",
+    args: [d.score, d.feedback, g.userId, sub.id as string],
+  });
+  const percent = Math.round((d.score / a.maxPoints) * 100);
+  const passed = percent >= a.passPercent;
+  if (passed) {
+    await db.execute({
+      sql: `INSERT INTO edu_lesson_progress (user_id, lesson_id, course_id, best_score_percent) VALUES (?, ?, ?, ?)
+            ON CONFLICT(user_id, lesson_id) DO UPDATE SET best_score_percent = excluded.best_score_percent`,
+      args: [sub.user_id as string, sub.lesson_id as string, sub.course_id as string, percent],
+    });
+    await afterProgress(String(sub.user_id), String(sub.course_id), g.settings);
+  } else {
+    await db.execute({ sql: "DELETE FROM edu_lesson_progress WHERE user_id = ? AND lesson_id = ?", args: [sub.user_id as string, sub.lesson_id as string] });
+  }
+  return c.json({ ok: true, percent, passed });
+});
+
+studioRoutes.get("/courses/:id/gradebook", async (c) => {
+  const course = await ownedCourse(c.get("user").sub, c.req.param("id"));
+  if (!course) return notFound(c, "course");
+  const id = String(course.id);
+  if (!(await learningReady())) return c.json({ ok: true, gradebook: { items: [], rows: [] } });
+  const modules = (await db.execute({ sql: "SELECT id FROM edu_modules WHERE course_id = ? ORDER BY position ASC, created_at ASC", args: [id] })).rows as Row[];
+  const lessons = (await db.execute({ sql: "SELECT id, title, content_type, module_id FROM edu_lessons WHERE course_id = ? ORDER BY position ASC, created_at ASC", args: [id] })).rows as Row[];
+  const items = modules.flatMap((m) => lessons.filter((l) => l.module_id === m.id)).map((l) => ({ lessonId: String(l.id), title: String(l.title), contentType: normaliseContentType(String(l.content_type)) }));
+  const learners = (await db.execute({ sql: "SELECT e.user_id, u.name FROM edu_enrollments e JOIN users u ON u.id = e.user_id WHERE e.course_id = ? AND e.status = 'active' ORDER BY u.name ASC LIMIT 1000", args: [id] })).rows as Row[];
+  const progress = (await db.execute({ sql: "SELECT user_id, lesson_id, best_score_percent FROM edu_lesson_progress WHERE course_id = ?", args: [id] })).rows as Row[];
+  const attempts = (await db.execute({ sql: "SELECT user_id, lesson_id, MAX(score_percent) AS best FROM edu_quiz_attempts WHERE course_id = ? GROUP BY user_id, lesson_id", args: [id] })).rows as Row[];
+  const subs = (await assignmentsReady()) ? ((await db.execute({ sql: "SELECT user_id, lesson_id, status, score FROM edu_submissions WHERE course_id = ?", args: [id] })).rows as Row[]) : [];
+  const assignments = await assignmentsOfCourse(id);
+  const key = (u: unknown, l: unknown) => `${String(u)}|${String(l)}`;
+  const done = new Map(progress.map((r) => [key(r.user_id, r.lesson_id), r.best_score_percent === null ? null : Number(r.best_score_percent)]));
+  const best = new Map(attempts.map((r) => [key(r.user_id, r.lesson_id), Number(r.best)]));
+  const handed = new Map(subs.map((r) => [key(r.user_id, r.lesson_id), r]));
+
+  const rows = learners.map((u) => {
+    const cells = items.map((it) => {
+      const k = key(u.user_id, it.lessonId);
+      const sub = handed.get(k);
+      const a = assignments.get(it.lessonId);
+      let score: number | null = done.get(k) ?? best.get(k) ?? null;
+      if (it.contentType === "assignment" && sub?.status === "graded" && sub.score !== null && a) score = Math.round((Number(sub.score) / a.maxPoints) * 100);
+      return { lessonId: it.lessonId, done: done.has(k), scorePercent: score, ...(sub && sub.status === "submitted" ? { needsMarking: true } : {}) };
+    });
+    const scored = cells.filter((x) => x.scorePercent !== null).map((x) => x.scorePercent as number);
+    return {
+      userId: String(u.user_id),
+      name: String(u.name ?? "Learner"),
+      progressPercent: items.length ? Math.round((cells.filter((x) => x.done).length / items.length) * 100) : 0,
+      averagePercent: scored.length ? Math.round(scored.reduce((a, b) => a + b, 0) / scored.length) : null,
+      cells,
+    };
+  });
+  return c.json({ ok: true, gradebook: { items, rows } });
 });

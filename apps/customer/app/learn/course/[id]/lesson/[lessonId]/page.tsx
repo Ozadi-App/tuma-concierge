@@ -6,6 +6,7 @@ import { LearnThumb } from "@peebee/shared/learn-thumb";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { AssignmentView } from "../../../../../../components/learn/AssignmentView";
 import { AudioPlayer } from "../../../../../../components/learn/AudioPlayer";
 import { KIND_ICON, KIND_LABEL, whenLabel } from "../../../../../../components/learn/kinds";
 import { QuizRunner } from "../../../../../../components/learn/QuizRunner";
@@ -122,7 +123,7 @@ export default function LessonPage() {
 
   const Icon = lesson ? KIND_ICON[lesson.contentType] : null;
   const assessment = lesson?.contentType === "quiz" || lesson?.contentType === "exam";
-  const needsButton = lesson && !assessment && lesson.contentType !== "live";
+  const needsButton = lesson && !assessment && lesson.contentType !== "live" && lesson.contentType !== "assignment";
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-[rgb(var(--color-cream))]">
@@ -148,7 +149,9 @@ export default function LessonPage() {
           {!lesson && !error && <div className="h-64 animate-pulse rounded-3xl bg-[rgb(var(--surface-muted))]" />}
           {lesson && Icon && (
             <>
-              {!assessment && (
+              {lesson.contentType === "assignment" && lesson.assignment && <AssignmentView lesson={lesson} onChanged={() => void refresh()} />}
+
+              {!assessment && lesson.contentType !== "assignment" && (
                 <div className="space-y-1.5">
                   <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-gold">
                     <Icon className="h-3.5 w-3.5" aria-hidden /> {KIND_LABEL[lesson.contentType]} · {lesson.durationMinutes} min
