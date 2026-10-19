@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { SECRET_KEY, TvAuthError, tvApi } from "./api";
+import { SECRET_KEY, TvAuthError, tvApi, type TrialSlot } from "./api";
 
 export type DeviceState =
   | { phase: "starting" }
@@ -14,6 +14,10 @@ type Ctx = {
   /** True while the TV can't reach Peebee. It keeps trying by itself. */
   offline: boolean;
   pollSeconds: number;
+  /** The practice class this screen is showing, if any. A TV can do this before it is paired. */
+  trial: TrialSlot | null;
+  /** Show a practice class on this screen, or pass null to stop. */
+  setTrial: (slot: TrialSlot | null) => Promise<void>;
   /** Forget this TV and show a fresh pairing code. */
   unpair: () => Promise<void>;
   /** A page that learns the TV is no longer registered calls this. */
@@ -44,6 +48,7 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
   const [secret, setSecret] = useState<string | null>(null);
   const [offline, setOffline] = useState(false);
   const [pollSeconds, setPollSeconds] = useState(3);
+  const [trial, setTrialState] = useState<TrialSlot | null>(null);
   const secretRef = useRef<string | null>(null);
 
   const reset = useCallback(() => {
@@ -96,6 +101,7 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
         if (cancelled) return;
         setOffline(false);
         setPollSeconds(me.pollSeconds);
+        setTrialState(me.trial ?? null);
         setState(me.status === "paired" ? { phase: "paired", name: me.name, ownerName: me.ownerName } : { phase: "pairing", code: me.code, expiresInSeconds: me.expiresInSeconds });
         timer = setTimeout(tick, Math.max(2, me.pollSeconds) * 1000);
       } catch (err) {
@@ -112,13 +118,21 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
     };
   }, [secret, reset]);
 
+  const setTrial = useCallback(async (slot: TrialSlot | null) => {
+    const current = secretRef.current;
+    if (!current) return;
+    if (slot) await tvApi.startTrial(current, slot);
+    else await tvApi.leaveTrial(current).catch(() => undefined);
+    setTrialState(slot);
+  }, []);
+
   const unpair = useCallback(async () => {
     const current = secretRef.current;
     if (current) await tvApi.unpair(current).catch(() => undefined);
     reset();
   }, [reset]);
 
-  const value = useMemo<Ctx>(() => ({ state, secret, offline, pollSeconds, unpair, lost: reset }), [state, secret, offline, pollSeconds, unpair, reset]);
+  const value = useMemo<Ctx>(() => ({ state, secret, offline, pollSeconds, trial, setTrial, unpair, lost: reset }), [state, secret, offline, pollSeconds, trial, setTrial, unpair, reset]);
   return <DeviceContext.Provider value={value}>{children}</DeviceContext.Provider>;
 }
 

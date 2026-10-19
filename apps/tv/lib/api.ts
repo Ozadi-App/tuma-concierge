@@ -22,13 +22,19 @@ async function call<T>(path: string, secret: string | null, init: RequestInit = 
 }
 
 export type PairStart = { deviceId: string; secret: string; code: string; expiresInSeconds: number; pollSeconds: number };
+export type TrialSlot = "a" | "b";
+export type TrialClass = { slot: TrialSlot; code: string; title: string; hostName: string; stream: string | null };
 export type Me =
-  | { status: "unpaired"; code: string | null; expiresInSeconds: number; pollSeconds: number }
-  | { status: "paired"; name: string; ownerName: string; pollSeconds: number };
+  | { status: "unpaired"; code: string | null; expiresInSeconds: number; pollSeconds: number; trial: TrialSlot | null }
+  | { status: "paired"; name: string; ownerName: string; pollSeconds: number; trial: TrialSlot | null };
 
 export const tvApi = {
   start: () => call<PairStart>("/v1/tv/pair/start", null, { method: "POST", body: "{}" }),
   me: (secret: string) => call<Me>("/v1/tv/me", secret),
   screen: (secret: string) => call<ScreenState>("/v1/tv/screen/state", secret),
+  /** The practice classes this screen can show. Public, so it works before the TV is paired. */
+  trials: () => call<{ ok: true; classes: TrialClass[] }>("/v1/tv/trial", null),
+  startTrial: (secret: string, slot: TrialSlot) => call<{ ok: true }>("/v1/tv/trial", secret, { method: "POST", body: JSON.stringify({ slot }) }),
+  leaveTrial: (secret: string) => call<{ ok: true }>("/v1/tv/trial", secret, { method: "DELETE" }),
   unpair: (secret: string) => call<{ ok: true }>("/v1/tv/me", secret, { method: "DELETE" }),
 };

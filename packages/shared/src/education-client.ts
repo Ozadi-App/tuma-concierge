@@ -38,6 +38,8 @@ import type {
   LearnerCourse,
   QuizResult,
   LearnDemoStatus,
+  LearnProEducator,
+  LearnProStatus,
   LearnSettings,
   SchoolKind,
   SchoolStatus,
@@ -550,6 +552,13 @@ export function educationMethods(request: RequestFn) {
     // Live classroom: the student's phone
     // ----------------------------------------------------
     /** The practice classes anyone can try with a code. Empty when they are switched off. */
+    async proStatus() {
+      return request<LearnProStatus>("/v1/education/pro");
+    },
+    /** Buys a period of Learn Pro from the wallet. Only offered when TV is a Pro feature. */
+    async proSubscribe() {
+      return request<{ ok: true; expiresAt: string; priceUgx: number }>("/v1/education/pro/subscribe", { method: "POST", body: "{}" });
+    },
     async classroomTrial() {
       return request<{ ok: true; classes: { code: string; title: string; hostName: string; stream: EducationStream | null }[] }>("/v1/education/classroom/trial");
     },
@@ -587,6 +596,18 @@ export function educationMethods(request: RequestFn) {
     },
     async adminDemoRemove() {
       return request<{ ok: true; schools: number; accountsRemoved: number; accountsKept: number }>("/v1/admin/learn-demo", { method: "DELETE" });
+    },
+    async adminProList() {
+      return request<{ ok: true; educators: LearnProEducator[] }>("/v1/admin/learn-pro");
+    },
+    async adminProGrant(identifier: string, days: number | null, note?: string) {
+      return request<{ ok: true; userId: string; name: string; expiresAt: string | null }>("/v1/admin/learn-pro/grant", {
+        method: "POST",
+        body: JSON.stringify({ identifier, days, ...(note ? { note } : {}) }),
+      });
+    },
+    async adminProRevoke(userId: string) {
+      return request<{ ok: true }>(`/v1/admin/learn-pro/${encodeURIComponent(userId)}`, { method: "DELETE" });
     },
     async adminLearnSchools() {
       return request<{ ok: true; schools: (StudioSchool & { ownerName: string; ownerId: string })[] }>("/v1/admin/learn-schools");

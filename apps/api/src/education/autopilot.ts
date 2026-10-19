@@ -121,8 +121,9 @@ export async function syncAutopilot(session: Row, nowMs: number = Date.now()): P
     });
   }
   statements.push({
-    sql: "UPDATE edu_live_sessions SET phones_cue_id = ?, screen_cue_id = NULL, version = version + 1 WHERE id = ?",
-    args: [cueId, sessionId],
+    // The TV and the phones follow the same item, so a screen and the students' phones stay in step.
+    sql: "UPDATE edu_live_sessions SET phones_cue_id = ?, screen_cue_id = ?, version = version + 1 WHERE id = ?",
+    args: [cueId, cueId, sessionId],
   });
   await executeBatch(statements);
   return reread(sessionId, session);

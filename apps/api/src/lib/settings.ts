@@ -430,6 +430,9 @@ const DEFAULTS = {
   learn_trial_code_a: "111222",
   learn_trial_code_b: "222111",
   learn_demo_visible: "1",
+  learn_tv_pro_required: "0",
+  learn_pro_price_ugx: "50000",
+  learn_pro_days: "30",
   /** Peebee Work: clean / fix / laundry jobs done by independent providers and companies */
   work_enabled: "1",
   work_service_types: "clean",

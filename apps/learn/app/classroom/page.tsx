@@ -7,11 +7,14 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useId, useState, type FormEvent } from "react";
 import { Button, Chip, EmptyState, Field, LinkButton, Notice, Skeleton, cardCls, controlCls } from "../../components/ui";
 import { api, errorMessage } from "../../lib/api";
+import { ProChip, ProUpgrade } from "../../components/ProNotice";
+import { useTvAccess } from "../../lib/pro";
 import { useStudioSettings } from "../../lib/studio-config";
 
 export default function ClassroomPage() {
   const router = useRouter();
   const settings = useStudioSettings();
+  const { status: pro, allowed } = useTvAccess();
   const id = useId();
   const [sessions, setSessions] = useState<LiveSessionSummary[] | null>(null);
   const [schools, setSchools] = useState<StudioSchool[]>([]);
@@ -97,7 +100,7 @@ export default function ClassroomPage() {
         </div>
         <div className="flex flex-wrap gap-2">
           <LinkButton href="/screens" variant="secondary">
-            <Monitor className="h-4 w-4" aria-hidden /> Screens
+            <Monitor className="h-4 w-4" aria-hidden /> Screens <ProChip status={pro} />
           </LinkButton>
           {!starting && (
             <Button onClick={() => setStarting(true)} disabled={schools.length === 0 || !settings.liveEnabled}>
@@ -107,6 +110,7 @@ export default function ClassroomPage() {
         </div>
       </header>
 
+      {pro && <ProUpgrade status={pro} />}
       {!settings.liveEnabled && <Notice tone="info">Live classroom is switched off right now.</Notice>}
       {error && <Notice tone="error">{error}</Notice>}
       {sessions !== null && schools.length === 0 && (
@@ -141,8 +145,8 @@ export default function ClassroomPage() {
                 ))}
               </select>
             </Field>
-            <Field label="TV screen" htmlFor={`${id}-screen`} hint={devices.length === 0 ? "No screens connected yet. You can still run a phones-only class." : undefined}>
-              <select id={`${id}-screen`} value={screenId} onChange={(e) => setScreenId(e.target.value)} className={controlCls}>
+            <Field label={allowed ? "TV screen" : "TV screen (Pro)"} htmlFor={`${id}-screen`} hint={!allowed ? "TV is a Pro feature. Your class can still run on students' phones." : devices.length === 0 ? "No screens connected yet. You can still run a phones-only class." : undefined}>
+              <select id={`${id}-screen`} value={screenId} disabled={!allowed} onChange={(e) => setScreenId(e.target.value)} className={controlCls}>
                 <option value="">Phones only (no TV)</option>
                 {freeScreens.map((d) => (
                   <option key={d.id} value={d.id}>

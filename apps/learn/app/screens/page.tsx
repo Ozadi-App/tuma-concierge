@@ -5,10 +5,13 @@ import { Monitor, Pencil, Plus, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useId, useState, type FormEvent } from "react";
 import { Button, Chip, EmptyState, Field, Notice, Skeleton, cardCls, controlCls } from "../../components/ui";
 import { api, errorMessage } from "../../lib/api";
+import { ProChip, ProUpgrade } from "../../components/ProNotice";
+import { useTvAccess } from "../../lib/pro";
 import { useStudioSettings } from "../../lib/studio-config";
 
 export default function ScreensPage() {
   const settings = useStudioSettings();
+  const { status: pro, allowed } = useTvAccess();
   const id = useId();
   const [devices, setDevices] = useState<TvDevice[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -86,17 +89,20 @@ export default function ScreensPage() {
     <div className="space-y-5 pb-6">
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <p className="text-xs font-bold uppercase tracking-wider text-gold">Peebee TV</p>
+          <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-gold">
+            Peebee TV <ProChip status={pro} />
+          </p>
           <h2 className="font-display text-2xl font-semibold text-ink">Your screens</h2>
           <p className="text-sm text-ink-500">Open Peebee TV on a smart TV, then connect it here with the code it shows.</p>
         </div>
         {!adding && (
-          <Button onClick={() => setAdding(true)} disabled={full || !settings.liveEnabled}>
+          <Button onClick={() => setAdding(true)} disabled={full || !settings.liveEnabled || !allowed}>
             <Plus className="h-4 w-4" aria-hidden /> Add a screen
           </Button>
         )}
       </header>
 
+      {pro && <ProUpgrade status={pro} />}
       {!settings.liveEnabled && <Notice tone="info">Live classroom is switched off right now.</Notice>}
       {full && !adding && <Notice tone="info">You&apos;ve connected the most screens allowed ({settings.maxScreensPerUser}). Remove one to add another.</Notice>}
       {notice && (
@@ -145,7 +151,7 @@ export default function ScreensPage() {
         <Skeleton className="h-28" />
       ) : devices.length === 0 ? (
         !adding && (
-          <EmptyState icon={Monitor} title="No screens yet" body="Connect a smart TV and your classes can show lessons, questions and results on the big screen while students answer on their phones." action={<Button onClick={() => setAdding(true)}>Add a screen</Button>} />
+          <EmptyState icon={Monitor} title="No screens yet" body="Connect a smart TV and your classes can show lessons, questions and results on the big screen while students answer on their phones." action={<Button onClick={() => setAdding(true)} disabled={!allowed}>Add a screen</Button>} />
         )
       ) : (
         <ul className="space-y-2">

@@ -184,6 +184,40 @@ export interface LearnSettings {
   trialCodeB: string;
   /** Show the demo schools and courses in the catalogue next to real ones. */
   demoContentVisible: boolean;
+  /** TV classroom is a Pro feature. Off (the default) means every educator can use it for free. */
+  tvProRequired: boolean;
+  /** What Learn Pro costs for one period, in UGX, taken from the educator's wallet. 0 makes it free to claim. */
+  proPriceUgx: number;
+  /** How many days one Pro purchase lasts. */
+  proDays: number;
+}
+
+/** An educator's access to the TV classroom, and what Learn Pro costs. */
+export interface LearnProStatus {
+  ok: true;
+  tv: {
+    /** TV is a Pro feature right now. False means it is free for everyone. */
+    required: boolean;
+    /** This educator has Learn Pro. */
+    pro: boolean;
+    /** This educator may use the TV classroom. */
+    allowed: boolean;
+    expiresAt: string | null;
+  };
+  priceUgx: number;
+  days: number;
+}
+
+/** One educator with Learn Pro, as staff see it. */
+export interface LearnProEducator {
+  userId: string;
+  name: string;
+  contact: string;
+  source: string;
+  expiresAt: string | null;
+  active: boolean;
+  pricePaidUgx: number;
+  note: string;
 }
 
 /** What the admin sees about the demo content: whether it is installed and what it holds. */
@@ -246,6 +280,9 @@ export const DEFAULT_LEARN_SETTINGS: LearnSettings = {
   trialCodeA: "111222",
   trialCodeB: "222111",
   demoContentVisible: true,
+  tvProRequired: false,
+  proPriceUgx: 50000,
+  proDays: 30,
 };
 
 // ---------------------------------------------------------------------------
@@ -475,7 +512,7 @@ export interface ScreenState {
   ok: true;
   device: { name: string };
   pollSeconds: number;
-  session: null | { id: string; title: string; code: string; joinUrl: string; participants: number; present: number; hands: number };
+  session: null | { id: string; title: string; code: string; joinUrl: string; participants: number; present: number; hands: number; /** A practice class that runs by itself. */ trial?: boolean };
   version?: number;
   serverNow?: string;
   playback?: { playing: boolean; at?: number | null; updatedAt?: string };
