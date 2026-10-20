@@ -58,7 +58,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        app: [admin, customer, merchant, partner, restaurant, rider, web, sales, work, learn, tv]
+        app: [admin, customer, merchant, partner, restaurant, rider, web, sales, work, learn, tv, gas, pharmacy]
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4

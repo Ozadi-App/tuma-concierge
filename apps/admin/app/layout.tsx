@@ -7,6 +7,7 @@ import { InstallPrompt } from "../components/InstallPrompt";
 import { OfflineBanner } from "../components/OfflineBanner";
 import { ServiceWorkerRegister } from "../components/ServiceWorkerRegister";
 import { AuthProvider } from "../lib/auth-context";
+import { DataRefresh } from "@peebee/shared/data-refresh";
 
 // Runs before paint so there's no flash of the wrong theme — reads the
 // user's saved choice, falling back to their OS preference.
@@ -59,7 +60,7 @@ export default function RootLayout({
         <ServiceWorkerRegister />
         <OfflineBanner />
         <AuthProvider>
-          <AppShell>{children}</AppShell>
+          <AppShell><DataRefresh>{children}</DataRefresh></AppShell>
         </AuthProvider>
         <InstallPrompt />
       </body>

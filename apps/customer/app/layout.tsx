@@ -16,6 +16,7 @@ import { AuthProvider } from "../lib/auth-context";
 import { CallsProvider } from "../lib/calls-context";
 import { LanguageProvider } from "../lib/i18n";
 import { SITE_URL } from "../lib/public-share";
+import { DataRefresh } from "@peebee/shared/data-refresh";
 
 // Runs before paint so there's no flash of the wrong theme — reads the
 // user's saved choice, falling back to their OS preference.
@@ -86,7 +87,7 @@ export default function RootLayout({
         <AuthProvider>
           <LanguageProvider>
             <CallsProvider>
-              <AppShell>{children}</AppShell>
+              <AppShell><DataRefresh>{children}</DataRefresh></AppShell>
               <PushNotifications />
               <CallOverlay />
             </CallsProvider>

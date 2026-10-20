@@ -4,6 +4,7 @@ import "./globals.css";
 import { AppShell } from "../components/AppShell";
 import { AuthProvider } from "../lib/auth-context";
 import { ServiceWorkerRegister } from "../components/ServiceWorkerRegister";
+import { DataRefresh } from "@peebee/shared/data-refresh";
 
 const THEME_INIT_SCRIPT = `
 (function () {
@@ -53,7 +54,7 @@ export default function RootLayout({ children }: { children: any }) {
       </head>
       <body><ServiceWorkerRegister />
         <AuthProvider>
-          <AppShell>{children}</AppShell>
+          <AppShell><DataRefresh>{children}</DataRefresh></AppShell>
         </AuthProvider>
       </body>
     </html>
