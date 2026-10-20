@@ -37,10 +37,13 @@ export type Matching = "broadcast" | "customer_picks" | "admin_assigns";
 export const MATCHING_LABEL: Record<Matching, string> = { broadcast: "First to accept", customer_picks: "Offers", admin_assigns: "Peebee assigns" };
 
 /** Where "Next" takes the customer: the trade's booking page with the sheet's choices carried over. */
-export function bookingHref(base: string, opts: { matching?: Matching | null; when: "now" | "later" }): string {
+export function bookingHref(base: string, opts: { matching?: Matching | null; when: "now" | "later"; at?: string | null }): string {
   const q = new URLSearchParams();
   if (opts.matching) q.set("matching", opts.matching);
-  if (opts.when === "later") q.set("when", "later");
+  if (opts.when === "later") {
+    q.set("when", "later");
+    if (opts.at) q.set("at", opts.at);
+  }
   const s = q.toString();
   return s ? `${base}?${s}` : base;
 }
@@ -51,4 +54,50 @@ export function nearbyHeadline(counts: Record<HiveTrade, number> | null, enabled
   const total = enabled.reduce((n, t) => n + (counts[t] ?? 0), 0);
   if (total === 0) return null;
   return `${total} provider${total === 1 ? "" : "s"} online near you`;
+}
+
+export type SchedulePreset = { id: string; label: string; at: string };
+export type ScheduleRules = {
+  minLeadMinutes: number;
+  maxAdvanceDays: number;
+  scheduleQuickHours?: number[];
+  scheduleTomorrowEnabled?: boolean;
+  scheduleTomorrowTime?: string;
+};
+
+const pad2 = (n: number) => String(n).padStart(2, "0");
+/** Local `YYYY-MM-DDTHH:mm`, the format a datetime-local input uses. */
+export function localInput(d: Date): string {
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+
+/** "9:00 am" from "09:00". */
+export function clockLabel(hhmm: string): string {
+  const [h, m] = hhmm.split(":").map(Number);
+  return `${h % 12 || 12}:${pad2(m ?? 0)} ${(h ?? 0) < 12 ? "am" : "pm"}`;
+}
+
+/** The quick "when" choices for a booking: N hours from now (rounded up to 5 minutes) and tomorrow, the following day, at the admin's time.
+ * Only choices inside the booking window (minimum lead, days ahead) are offered. Defaults apply when the API doesn't send the settings. */
+export function schedulePresets(rules: ScheduleRules, now: Date = new Date()): SchedulePreset[] {
+  const inside = (t: Date) => {
+    const lead = (t.getTime() - now.getTime()) / 60_000;
+    return lead >= rules.minLeadMinutes && lead <= rules.maxAdvanceDays * 1440;
+  };
+  const out: SchedulePreset[] = [];
+  for (const h of rules.scheduleQuickHours ?? [1, 3]) {
+    const t = new Date(now.getTime() + h * 3_600_000);
+    t.setSeconds(0, 0);
+    t.setMinutes(Math.ceil(t.getMinutes() / 5) * 5);
+    if (inside(t)) out.push({ id: `in-${h}`, label: h === 1 ? "In 1 hour" : `In ${h} hours`, at: localInput(t) });
+  }
+  if (rules.scheduleTomorrowEnabled ?? true) {
+    const time = rules.scheduleTomorrowTime ?? "09:00";
+    const [hh, mm] = time.split(":").map(Number);
+    const t = new Date(now);
+    t.setDate(t.getDate() + 1);
+    t.setHours(hh ?? 9, mm ?? 0, 0, 0);
+    if (inside(t)) out.push({ id: "tomorrow", label: `Tomorrow ${clockLabel(time)}`, at: localInput(t) });
+  }
+  return out;
 }

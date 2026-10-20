@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../lib/api";
+import { schedulePresets } from "../../lib/hive-home";
 import { useRegisterNavBack, useRegisterNavPrimaryAction } from "../../lib/nav-primary-action";
 import { cardClass, Notice, primaryBtn, Spinner, UnavailablePanel, WorkPage } from "./WorkUI";
 import { WorkTopUp } from "./WorkTopUp";
@@ -31,11 +32,11 @@ type Catalog = { services: WorkService[]; settings: WorkPublicSettings };
 type LoadState = { kind: "loading" } | { kind: "ready"; data: Catalog } | { kind: "error"; failure: WorkFailure };
 
 /** Choices carried over from the Hive home sheet (?matching=…&when=later). */
-function hivePrefill(): { matching?: WorkMatchingMode; later: boolean } {
+function hivePrefill(): { matching?: WorkMatchingMode; later: boolean; at?: string } {
   if (typeof window === "undefined") return { later: false };
   const q = new URLSearchParams(window.location.search);
   const m = q.get("matching");
-  return { matching: m === "broadcast" || m === "customer_picks" || m === "admin_assigns" ? m : undefined, later: q.get("when") === "later" };
+  return { matching: m === "broadcast" || m === "customer_picks" || m === "admin_assigns" ? m : undefined, later: q.get("when") === "later", at: /^\d{4}-\d\d-\d\dT\d\d:\d\d$/.test(q.get("at") ?? "") ? (q.get("at") as string) : undefined };
 }
 
 export function WorkBooking({ type }: { type: WorkServiceType }) {
@@ -105,7 +106,7 @@ function BookingForm({ type, services, settings }: { type: WorkServiceType; serv
   const [saved, setSaved] = useState<SavedLocation[]>([]);
   const prefill = useMemo(hivePrefill, []);
   const [when, setWhen] = useState<"asap" | "later">(prefill.later ? "later" : "asap");
-  const [whenValue, setWhenValue] = useState("");
+  const [whenValue, setWhenValue] = useState(prefill.later ? prefill.at ?? "" : "");
   const [matching, setMatching] = useState<WorkMatchingMode>(prefill.matching && settings.matchingModes.includes(prefill.matching) ? prefill.matching : settings.defaultMatching);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<WorkFailure | null>(null);
@@ -159,6 +160,7 @@ function BookingForm({ type, services, settings }: { type: WorkServiceType; serv
     setCoords(l.lat != null && l.lng != null ? { lat: l.lat, lng: l.lng } : null);
   }
 
+  const presets = schedulePresets(settings);
   const minLead = settings.minLeadMinutes;
   const minWhen = toLocalInput(new Date(Date.now() + (minLead + 1) * 60_000));
   const maxWhen = toLocalInput(new Date(Date.now() + settings.maxAdvanceDays * 86_400_000));
@@ -406,7 +408,17 @@ function BookingForm({ type, services, settings }: { type: WorkServiceType; serv
               ))}
             </div>
             {when === "later" ? (
-              <div>
+              <div className="space-y-3">
+                {presets.length > 0 ? (
+                  <div className="flex flex-wrap gap-2" role="group" aria-label="Quick times">
+                    {presets.map((p) => (
+                      <button key={p.id} type="button" aria-pressed={whenValue === p.at} onClick={() => setWhenValue(p.at)} className={`ride-chip ${whenValue === p.at ? "is-on" : ""}`}>
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+                <div>
                 <label htmlFor="work-when" className="mb-1 block text-xs text-ink-500">
                   Date and time
                 </label>
@@ -414,6 +426,7 @@ function BookingForm({ type, services, settings }: { type: WorkServiceType; serv
                 <p className="mt-1 text-xs text-ink-500">
                   At least {hoursLabelMinutes(minLead)} ahead, and up to {settings.maxAdvanceDays} days in advance.
                 </p>
+                </div>
               </div>
             ) : null}
           </section>

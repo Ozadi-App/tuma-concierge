@@ -86,6 +86,7 @@ function publicSettings(s: Awaited<ReturnType<typeof getWorkSettings>>, extras =
     enabled: s.enabled, serviceTypes: s.serviceTypes, pricingModes: s.pricingModes, matchingModes: s.matchingModes, defaultMatching: s.defaultMatching, providerKinds: s.providerKinds,
     quoteValidHours: s.quoteValidHours, freeCancelMinutes: s.freeCancelMinutes, lateCancelFeePercent: s.lateCancelFeePercent,
     autoConfirmHours: s.autoConfirmHours, disputeWindowHours: s.disputeWindowHours, minLeadMinutes: s.minLeadMinutes, maxAdvanceDays: s.maxAdvanceDays,
+    scheduleQuickHours: s.scheduleQuickHours, scheduleTomorrowEnabled: s.scheduleTomorrowEnabled, scheduleTomorrowTime: s.scheduleTomorrowTime,
   };
 }
 
