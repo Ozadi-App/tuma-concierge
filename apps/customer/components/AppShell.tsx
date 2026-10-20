@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { AuthGate } from "./AuthGate";
 import { BottomNav } from "./BottomNav";
 import { BrandHeader } from "./BrandHeader";
+import { ChatDrawerShell } from "../lib/chat-drawer";
 import { FoodBusinessTheme } from "./FoodBusinessTheme";
 import { OfflineBanner } from "./OfflineBanner";
 import { PracticeModeBanner, PracticeModeGuard, PracticeModePrompt } from "./PracticeMode";
@@ -39,6 +40,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthGate>
+      <ChatDrawerShell>
 
       <PracticeModeGuard role="customer" pathname={pathname} />
       {!isAuthPage && <PracticeModePrompt role="customer" />}
@@ -51,6 +53,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {foodBusinessId ? <FoodBusinessTheme key={foodBusinessId} id={foodBusinessId}>{children}</FoodBusinessTheme> : children}
       </main>
       {showNav && <BottomNav />}
+      </ChatDrawerShell>
     </AuthGate>
   );
 }

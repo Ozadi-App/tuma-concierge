@@ -55,6 +55,11 @@ export default function HomeMenuSettingsPage() {
       </section>
 
       <section className="home-card space-y-3">
+        <div><h2 className="font-bold">Top bar</h2><p className="text-xs text-ink-500">The bar at the top of the customer app.</p></div>
+        <label className="flex items-center gap-3 text-sm"><input type="checkbox" checked={menu.header.chatEnabled} onChange={(e) => change({ ...menu, header: { ...menu.header, chatEnabled: e.target.checked } })} />Show the chat icon (opens conversations in a side drawer)</label>
+      </section>
+
+      <section className="home-card space-y-3">
         <div><h2 className="font-bold">{menu.clusters.hive.label} page</h2><p className="text-xs text-ink-500">What the {menu.clusters.hive.label} button opens: Peebee-delivered services at a clear price.</p></div>
         <label className="block space-y-1 text-xs font-semibold text-ink-500"><span>Small heading</span><input required maxLength={60} value={menu.hive.eyebrow} onChange={(e) => change({ ...menu, hive: { ...menu.hive, eyebrow: e.target.value } })} className={field} /></label>
         <label className="block space-y-1 text-xs font-semibold text-ink-500"><span>Description</span><textarea required maxLength={200} rows={3} value={menu.hive.description} onChange={(e) => change({ ...menu, hive: { ...menu.hive, description: e.target.value } })} className={field} /></label>

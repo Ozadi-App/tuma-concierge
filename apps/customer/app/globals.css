@@ -1602,3 +1602,38 @@ select:focus {
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) .hive-tile.is-on .hive-pin-dot { box-shadow: inset 0 0 0 1px rgb(255 255 255 / .18); }
 }
+
+/* ------------------------------------------------------------------ */
+/* Chat drawer: the app (.app-stage) slides left leaving a slice at the left edge; chat eases up from under it. */
+/* ------------------------------------------------------------------ */
+.app-stage {
+  background-color: rgb(var(--color-cream));
+  transition: transform 420ms var(--ease-out-expo), border-radius 420ms var(--ease-out-expo), box-shadow 420ms var(--ease-out-expo);
+}
+/* Pinned to the viewport at the page's scroll offset, so fixed and sticky parts stay where they were. */
+.app-stage[data-lock="true"] { position: fixed; inset: 0; overflow: hidden; z-index: 60; }
+.app-stage[data-lock="true"] .app-stage__inner { margin-top: calc(var(--stage-scroll, 0px) * -1); }
+.app-stage[data-shown="true"] {
+  transform: translateX(calc(-100% + 20px));
+  border-radius: 0 28px 28px 0;
+  box-shadow: 10px 0 36px -8px rgb(0 0 0 / .35);
+}
+.chat-drawer {
+  position: fixed; inset: 0; z-index: 50; display: flex; flex-direction: column;
+  background-color: rgb(var(--color-cream)); color: rgb(var(--color-ink));
+  padding-left: 20px; /* the slice of the app covers this strip */
+  visibility: hidden; opacity: .5; transform: scale(.92);
+  transition: transform 420ms var(--ease-out-expo), opacity 320ms ease-out, visibility 0s linear 420ms;
+}
+.chat-drawer[data-shown="true"] { visibility: visible; opacity: 1; transform: none; transition-delay: 0s; }
+.chat-drawer__head { display: flex; align-items: center; gap: 4px; padding: calc(env(safe-area-inset-top, 0px) + 10px) 12px 6px 8px; }
+.chat-drawer__close { background: rgb(var(--surface-muted)); }
+.chat-drawer__close:focus-visible { outline: 2px solid rgb(var(--color-gold)); outline-offset: 2px; }
+.chat-drawer__body { min-height: 0; flex: 1 1 auto; overflow-y: auto; overscroll-behavior: contain; padding-bottom: env(safe-area-inset-bottom, 0px); }
+/* A tap target over the slice of the app. */
+.chat-drawer__slice { position: fixed; inset: 0 auto 0 0; width: 20px; z-index: 70; background: transparent; border: 0; pointer-events: none; }
+.chat-drawer__slice[data-shown="true"] { pointer-events: auto; }
+@media (prefers-reduced-motion: reduce) {
+  .app-stage, .chat-drawer { transition: none; }
+  .chat-drawer { transform: none; }
+}
