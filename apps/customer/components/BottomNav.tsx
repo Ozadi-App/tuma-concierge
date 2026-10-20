@@ -54,7 +54,7 @@ import { useLivePolling } from "../lib/use-live-polling";
 import { BottomDrawer } from "./BottomDrawer";
 import { CartDrawer } from "./CartDrawer";
 import { useCart } from "../lib/cart";
-import { useNavBack, useNavPrimaryAction } from "../lib/nav-primary-action";
+import { goBackOr, useNavBack, useNavPrimaryAction } from "../lib/nav-primary-action";
 
 type MenuGroup = "original" | "ride" | "shopping" | "food" | "hive" | "learn";
 type MenuItem = { id: string; label: string; icon: LucideIcon; href?: string; group?: Exclude<MenuGroup, "original">; disabled?: boolean };
@@ -151,6 +151,8 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
   const [activeOrder, setActiveOrder] = useState<OrderRow | null>(null);
   const [trackerDrawerOpen, setTrackerDrawerOpen] = useState(false);
   const [menuGroup, setMenuGroup] = useState<MenuGroup>(() => groupForPath(pathname));
+  // Set when Back should land on Home with a group's sub menu open (instead of the Home menu).
+  const pendingGroupRef = useRef<MenuGroup | null>(null);
   const [selectedItem, setSelectedItem] = useState<string | null>(null);
   const t = useTranslate();
   const homeMenu = useHomeMenu();
@@ -175,6 +177,21 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
     primaryAction ? "action" : cartCount > 0 && inShopping ? "cart" : "links";
   const actionTone = primaryAction?.tone ?? "gold";
 
+  // A screen that shows its own button (or the cart) in the right-hand block always gets Back instead of Home,
+  // even when it never registered a step back. Back returns one level: to that group's sub menu on Home, or to the
+  // previous screen for pages outside a group. A page's own step back (checkout, payment) still wins.
+  const screenGroup = groupForPath(pathname);
+  const defaultBack =
+    !navBack && pathname !== "/" && rightMode !== "links"
+      ? () => {
+          if (screenGroup !== "original" && screenGroup !== "learn") {
+            pendingGroupRef.current = screenGroup;
+            router.push("/");
+          } else goBackOr(router, screenGroup === "learn" ? "/learn" : "/");
+        }
+      : null;
+  const backAction = navBack ?? defaultBack;
+
   const menuItems: MenuItem[] =
     menuGroup === "original" ? originalMenu(homeMenu)
     : menuGroup === "ride" ? rideItems(special)
@@ -186,7 +203,9 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
 
   useEffect(() => {
     const group = groupForPath(pathname);
-    setMenuGroup(group);
+    const pending = pathname === "/" ? pendingGroupRef.current : null;
+    pendingGroupRef.current = null;
+    setMenuGroup(pending ?? group);
     if (pathname === "/restaurants" || pathname.startsWith("/restaurants/")) setSelectedItem("restaurant");
     else if (pathname === "/kitchens" || pathname.startsWith("/kitchens/")) setSelectedItem("kitchen");
     else if (pathname === "/streetfood" || pathname.startsWith("/streetfood/")) setSelectedItem("street_food");
@@ -295,12 +314,12 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
           <div className="pointer-events-auto flex w-full items-center gap-1.5">
             {/* Detached Home Capsule on Left */}
             <div className="customer-nav-capsule flex w-[64px] sm:w-[72px] shrink-0 items-center justify-center rounded-[24px] p-1.5 shadow-[var(--shadow-float-capsule)]">
-              {navBack ? (
+              {backAction ? (
               <button
                 key="nav-back"
                 type="button"
                 aria-label="Back"
-                onClick={navBack}
+                onClick={backAction}
                 className="customer-nav-item customer-nav-icon-swap relative flex h-[58px] w-full flex-col items-center justify-center gap-1 rounded-[18px] px-1 py-1 text-[11px] font-bold transition-all duration-200 active:scale-95"
               >
                 <ChevronLeft className="h-5 w-5" strokeWidth={2.2} aria-hidden />
