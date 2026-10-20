@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import Script from "next/script";
 import "./globals.css";
 import { ServiceWorkerRegister } from "../components/ServiceWorkerRegister";
+import { DataRefresh } from "../components/DataRefresh";
 
 const THEME_INIT_SCRIPT = `
 (function () {
@@ -43,7 +44,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <Script id="theme-init" strategy="beforeInteractive">
           {THEME_INIT_SCRIPT}
         </Script>
-        {children}
+        <DataRefresh>{children}</DataRefresh>
       </body>
     </html>
   );
