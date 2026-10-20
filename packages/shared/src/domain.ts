@@ -2965,4 +2965,6 @@ export type GuestTrack = {
   codeStatusEnabled: boolean;
   item?: string | null;
   status?: GuestTrackStatus;
+  /** Present only when the signed-in viewer owns the order: open it in the app. */
+  orderId?: string;
 };
