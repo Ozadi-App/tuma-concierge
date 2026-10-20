@@ -14,10 +14,12 @@ const nextConfig: NextConfig = {
     return [
       // The customer app moved from customer.peebee.online to app.peebee.online. Same path and query, so every old
       // link still works. Temporary (307) until the move has settled; switch to permanent after that.
+      // /sw.js is left alone on purpose: browsers refuse to update a service worker whose script is behind a redirect,
+      // so the old address must keep serving it. That worker redirects pages itself (see public/sw.js).
       {
-        source: "/:path*",
+        source: "/:path((?!sw\\.js$).*)",
         has: [{ type: "host", value: "customer.peebee.online" }],
-        destination: "https://app.peebee.online/:path*",
+        destination: "https://app.peebee.online/:path",
         permanent: false,
       },
       { source: "/services/jobs", destination: "/services/hire", permanent: true },
