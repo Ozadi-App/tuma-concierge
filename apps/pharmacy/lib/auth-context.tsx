@@ -35,6 +35,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 function clearSession() {
+  navigator.serviceWorker?.controller?.postMessage("clear-runtime-cache");
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(PHARMACIST_KEY);
   localStorage.removeItem(PHARMACY_STORE_KEY);
