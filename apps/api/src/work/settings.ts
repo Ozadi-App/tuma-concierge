@@ -80,8 +80,8 @@ export type WorkSettings = {
   onsiteWindowDays: number;
   /** Location trails are deleted after this many days. */
   locationRetentionDays: number;
-  /** Quick scheduling choices: this many hours from now (up to 4, each 1-72). */
-  scheduleQuickHours: number[];
+  /** Quick scheduling choices: this many minutes from now (up to 4, each 5-4320). */
+  scheduleQuickMinutes: number[];
   /** A "Tomorrow" choice at scheduleTomorrowTime (HH:MM, the customer's local time). */
   scheduleTomorrowEnabled: boolean;
   scheduleTomorrowTime: string;
@@ -97,11 +97,11 @@ const int = (raw: string | undefined, fallback: number, min: number, max: number
   return Number.isFinite(n) && raw !== undefined && raw !== "" ? Math.max(min, Math.min(max, Math.round(n))) : fallback;
 };
 
-/** "1,3" -> [1, 3]: whole hours 1-72, no repeats, at most four, ascending. Unset or unusable falls back to 1 and 3; an empty list means none. */
-function quickHours(raw: string | undefined): number[] {
-  if (raw === undefined) return [1, 3];
-  const hours = raw.split(",").map((h) => Number(h.trim())).filter((h) => Number.isInteger(h) && h >= 1 && h <= 72);
-  return [...new Set(hours)].sort((a, b) => a - b).slice(0, 4);
+/** "60,180" -> [60, 180]: whole minutes 5-4320 (72 hours), no repeats, at most four, ascending. Unset falls back to 1 and 3 hours; an empty list means none. */
+function quickMinutes(raw: string | undefined): number[] {
+  if (raw === undefined) return [60, 180];
+  const mins = raw.split(",").map((h) => Number(h.trim())).filter((m) => Number.isInteger(m) && m >= 5 && m <= 4320);
+  return [...new Set(mins)].sort((a, b) => a - b).slice(0, 4);
 }
 
 export async function getWorkSettings(): Promise<WorkSettings> {
@@ -114,7 +114,7 @@ export async function getWorkSettings(): Promise<WorkSettings> {
     "work_chat_enabled", "work_tracking_enabled",
     "work_onsite_check_enabled", "work_onsite_radius_m", "work_onsite_min_minutes", "work_onsite_action", "work_onsite_flag_no_location", "work_onsite_require_location",
     "work_onsite_suspend_after_flags", "work_onsite_window_days", "work_location_retention_days",
-    "work_schedule_quick_hours", "work_schedule_tomorrow_enabled", "work_schedule_tomorrow_time",
+    "work_schedule_quick_minutes", "work_schedule_tomorrow_enabled", "work_schedule_tomorrow_time",
   ] as const;
   const v = Object.fromEntries(await Promise.all(keys.map(async (k) => [k, await getSetting(k)]))) as Record<(typeof keys)[number], string>;
   const matchingModes = list(v.work_matching_modes, WORK_MATCHING_MODES);
@@ -157,7 +157,7 @@ export async function getWorkSettings(): Promise<WorkSettings> {
     onsiteSuspendAfterFlags: int(v.work_onsite_suspend_after_flags, 0, 0, 50),
     onsiteWindowDays: int(v.work_onsite_window_days, 30, 1, 365),
     locationRetentionDays: int(v.work_location_retention_days, 30, 1, 365),
-    scheduleQuickHours: quickHours(v.work_schedule_quick_hours),
+    scheduleQuickMinutes: quickMinutes(v.work_schedule_quick_minutes),
     scheduleTomorrowEnabled: v.work_schedule_tomorrow_enabled !== "0",
     scheduleTomorrowTime: /^([01]\d|2[0-3]):[0-5]\d$/.test(v.work_schedule_tomorrow_time ?? "") ? v.work_schedule_tomorrow_time : "09:00",
   };
@@ -202,7 +202,7 @@ export async function setWorkSettings(next: Partial<WorkSettings>): Promise<void
   if (next.onsiteSuspendAfterFlags != null) put("work_onsite_suspend_after_flags", String(next.onsiteSuspendAfterFlags));
   if (next.onsiteWindowDays != null) put("work_onsite_window_days", String(next.onsiteWindowDays));
   if (next.locationRetentionDays != null) put("work_location_retention_days", String(next.locationRetentionDays));
-  if (next.scheduleQuickHours) put("work_schedule_quick_hours", next.scheduleQuickHours.join(","));
+  if (next.scheduleQuickMinutes) put("work_schedule_quick_minutes", next.scheduleQuickMinutes.join(","));
   if (next.scheduleTomorrowEnabled != null) put("work_schedule_tomorrow_enabled", next.scheduleTomorrowEnabled ? "1" : "0");
   if (next.scheduleTomorrowTime) put("work_schedule_tomorrow_time", next.scheduleTomorrowTime);
   await Promise.all(writes);

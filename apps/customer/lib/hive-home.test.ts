@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { activeHiveJob, bookingHref, clockLabel, nearbyHeadline, schedulePresets, tradePrice, tradePriceLabel } from "./hive-home";
+import { activeHiveJob, bookingHref, clockLabel, durationLabel, nearbyHeadline, schedulePresets, tradePrice, tradePriceLabel } from "./hive-home";
 
 const svc = (type: any, pricingMode: any, unitPriceUgx: number, calloutFeeUgx = 0, unitLabel = "job") => ({ type, pricingMode, unitPriceUgx, calloutFeeUgx, unitLabel });
 
@@ -42,12 +42,16 @@ test("schedulePresets offers 1 hour, 3 hours and tomorrow with its time", () => 
 });
 
 test("schedulePresets follows the admin's settings and the booking window", () => {
-  const rules = { minLeadMinutes: 120, maxAdvanceDays: 30, scheduleQuickHours: [1, 3], scheduleTomorrowTime: "18:30" };
+  const rules = { minLeadMinutes: 120, maxAdvanceDays: 30, scheduleQuickMinutes: [60, 180], scheduleTomorrowTime: "18:30" };
   assert.deepEqual(schedulePresets(rules, NOW).map((x) => x.label), ["In 3 hours", "Tomorrow 6:30 pm"]);
-  assert.deepEqual(schedulePresets({ minLeadMinutes: 0, maxAdvanceDays: 30, scheduleQuickHours: [], scheduleTomorrowEnabled: false }, NOW), []);
+  assert.deepEqual(schedulePresets({ minLeadMinutes: 0, maxAdvanceDays: 30, scheduleQuickMinutes: [], scheduleTomorrowEnabled: false }, NOW), []);
   // Tomorrow is the following calendar day even late at night.
   const late = new Date(2026, 9, 20, 23, 30);
-  assert.equal(schedulePresets({ minLeadMinutes: 30, maxAdvanceDays: 30, scheduleQuickHours: [] }, late)[0]!.at, "2026-10-21T09:00");
+  assert.equal(schedulePresets({ minLeadMinutes: 30, maxAdvanceDays: 30, scheduleQuickMinutes: [] }, late)[0]!.at, "2026-10-21T09:00");
+});
+
+test("durationLabel reads naturally", () => {
+  assert.deepEqual([30, 60, 90, 180].map(durationLabel), ["In 30 min", "In 1 hour", "In 1 h 30 min", "In 3 hours"]);
 });
 
 test("clockLabel and bookingHref carry the chosen time", () => {

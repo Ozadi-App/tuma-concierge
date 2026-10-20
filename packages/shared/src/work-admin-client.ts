@@ -179,7 +179,7 @@ export type WorkAdminSettings = {
   onsiteSuspendAfterFlags?: number;
   onsiteWindowDays?: number;
   locationRetentionDays?: number;
-  scheduleQuickHours?: number[];
+  scheduleQuickMinutes?: number[];
   scheduleTomorrowEnabled?: boolean;
   scheduleTomorrowTime?: string;
 };
@@ -201,7 +201,7 @@ export const WORK_SETTINGS_EXTRA_DEFAULTS = {
   onsiteSuspendAfterFlags: 0,
   onsiteWindowDays: 30,
   locationRetentionDays: 30,
-  scheduleQuickHours: [1, 3] as number[],
+  scheduleQuickMinutes: [60, 180] as number[],
   scheduleTomorrowEnabled: true,
   scheduleTomorrowTime: "09:00",
 } as const;

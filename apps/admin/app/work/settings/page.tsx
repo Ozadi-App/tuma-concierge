@@ -102,7 +102,7 @@ export default function WorkSettingsPage() {
   const { canEditSettings, canManage } = useWorkPermissions();
   const [form, setForm] = useState<Form | null>(null);
   const [nums, setNums] = useState<Record<string, string>>({});
-  const [quick, setQuick] = useState("1, 3");
+  const [quick, setQuick] = useState("60, 180");
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -110,7 +110,7 @@ export default function WorkSettingsPage() {
   function apply(w: Partial<WorkAdminSettings> | undefined) {
     const next = withDefaults(w);
     setForm(next);
-    setQuick(next.scheduleQuickHours.join(", "));
+    setQuick(next.scheduleQuickMinutes.join(", "));
     setNums(Object.fromEntries((Object.keys(NUM) as NumKey[]).map((k) => [k, String(next[k])])));
   }
 
@@ -127,11 +127,11 @@ export default function WorkSettingsPage() {
   const setBool = (k: BoolKey, v: boolean) => { setSaved(false); setForm({ ...form, [k]: v }); };
   const setList = <K extends "serviceTypes" | "pricingModes" | "matchingModes" | "providerKinds">(k: K, v: Form[K]) => { setSaved(false); setForm({ ...form, [k]: v }); };
 
-  /** "1, 3" -> [1, 3]; null when it is not a list of up to four whole hours from 1 to 72. */
+  /** "30, 60, 180" -> [30, 60, 180]; null when it is not a list of up to four different whole minutes from 5 to 4320. */
   function parseQuick(text: string): number[] | null {
     const parts = text.split(",").map((t) => t.trim()).filter(Boolean);
     const hours = parts.map(Number);
-    if (parts.length > 4 || hours.some((h) => !Number.isInteger(h) || h < 1 || h > 72) || new Set(hours).size !== hours.length) return null;
+    if (parts.length > 4 || hours.some((h) => !Number.isInteger(h) || h < 5 || h > 4320) || new Set(hours).size !== hours.length) return null;
     return hours.sort((a, b) => a - b);
   }
 
@@ -142,7 +142,7 @@ export default function WorkSettingsPage() {
       const n = Number(nums[k]);
       if (nums[k] === "" || !Number.isInteger(n) || n < spec.min || n > spec.max) return `${spec.label} must be a whole number from ${spec.min.toLocaleString()} to ${spec.max.toLocaleString()}.`;
     }
-    if (parseQuick(quick) === null) return "Quick times must be up to four different whole hours from 1 to 72, like 1, 3.";
+    if (parseQuick(quick) === null) return "Quick times must be up to four different whole minutes from 5 to 4320, like 60, 180.";
     if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(form.scheduleTomorrowTime)) return "Choose a time for the Tomorrow option.";
     if (form.pricingModes.length === 0) return "Turn on at least one pricing mode.";
     if (form.matchingModes.length === 0) return "Turn on at least one matching mode.";
@@ -160,7 +160,7 @@ export default function WorkSettingsPage() {
     setError(null);
     setSaved(false);
     try {
-      const payload = { ...form, scheduleQuickHours: parseQuick(quick) ?? [], ...Object.fromEntries((Object.keys(NUM) as NumKey[]).map((k) => [k, Number(nums[k])])) } as WorkAdminSettings;
+      const payload = { ...form, scheduleQuickMinutes: parseQuick(quick) ?? [], ...Object.fromEntries((Object.keys(NUM) as NumKey[]).map((k) => [k, Number(nums[k])])) } as WorkAdminSettings;
       const res = await api.workAdminUpdateSettings(payload);
       apply(res.settings.work);
       setSaved(true);
@@ -255,7 +255,7 @@ export default function WorkSettingsPage() {
       <section className="home-card space-y-3">
         <h2 className="text-sm font-bold text-ink">Quick times when scheduling</h2>
         <p className="text-xs text-ink-500">Choices a customer can tap when they book for later, on the Hive home and the booking page. Only times inside the minimum lead time and days ahead above are shown.</p>
-        <Field label="Hours from now" hint="Up to four whole hours from 1 to 72, separated by commas. Leave empty for none.">
+        <Field label="Minutes from now" hint="Up to four durations in minutes, from 5 to 4320 (3 days), separated by commas. 60 shows as “In 1 hour”, 180 as “In 3 hours”. Leave empty for none.">
           <input disabled={ro} value={quick} onChange={(e) => { setSaved(false); setQuick(e.target.value.replace(/[^\d,\s]/g, "")); }} className={inputCls} inputMode="numeric" />
         </Field>
         <Toggle label="Offer “Tomorrow”" hint="The following day, at the time below (the customer's local time)." checked={form.scheduleTomorrowEnabled} disabled={ro} onChange={(v) => setBool("scheduleTomorrowEnabled", v)} />

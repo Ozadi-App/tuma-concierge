@@ -41,8 +41,8 @@ export type WorkPublicSettings = {
   disputeWindowHours: number;
   minLeadMinutes: number;
   maxAdvanceDays: number;
-  /** Quick scheduling choices; absent from an older API (the app then uses 1 and 3 hours, and tomorrow at 09:00). */
-  scheduleQuickHours?: number[];
+  /** Quick scheduling choices; absent from an older API (the app then uses 60 and 180 minutes, and tomorrow at 09:00). */
+  scheduleQuickMinutes?: number[];
   scheduleTomorrowEnabled?: boolean;
   scheduleTomorrowTime?: string;
 };

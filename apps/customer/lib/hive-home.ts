@@ -57,10 +57,18 @@ export function nearbyHeadline(counts: Record<HiveTrade, number> | null, enabled
 }
 
 export type SchedulePreset = { id: string; label: string; at: string };
+/** "In 30 min", "In 1 hour", "In 3 hours", "In 1 h 30 min". */
+export function durationLabel(minutes: number): string {
+  if (minutes < 60) return `In ${minutes} min`;
+  const h = Math.floor(minutes / 60), m = minutes % 60;
+  if (m === 0) return h === 1 ? "In 1 hour" : `In ${h} hours`;
+  return `In ${h} h ${m} min`;
+}
+
 export type ScheduleRules = {
   minLeadMinutes: number;
   maxAdvanceDays: number;
-  scheduleQuickHours?: number[];
+  scheduleQuickMinutes?: number[];
   scheduleTomorrowEnabled?: boolean;
   scheduleTomorrowTime?: string;
 };
@@ -77,7 +85,7 @@ export function clockLabel(hhmm: string): string {
   return `${h % 12 || 12}:${pad2(m ?? 0)} ${(h ?? 0) < 12 ? "am" : "pm"}`;
 }
 
-/** The quick "when" choices for a booking: N hours from now (rounded up to 5 minutes) and tomorrow, the following day, at the admin's time.
+/** The quick "when" choices for a booking: N minutes from now (rounded up to 5 minutes) and tomorrow, the following day, at the admin's time.
  * Only choices inside the booking window (minimum lead, days ahead) are offered. Defaults apply when the API doesn't send the settings. */
 export function schedulePresets(rules: ScheduleRules, now: Date = new Date()): SchedulePreset[] {
   const inside = (t: Date) => {
@@ -85,11 +93,11 @@ export function schedulePresets(rules: ScheduleRules, now: Date = new Date()): S
     return lead >= rules.minLeadMinutes && lead <= rules.maxAdvanceDays * 1440;
   };
   const out: SchedulePreset[] = [];
-  for (const h of rules.scheduleQuickHours ?? [1, 3]) {
-    const t = new Date(now.getTime() + h * 3_600_000);
+  for (const m of rules.scheduleQuickMinutes ?? [60, 180]) {
+    const t = new Date(now.getTime() + m * 60_000);
     t.setSeconds(0, 0);
     t.setMinutes(Math.ceil(t.getMinutes() / 5) * 5);
-    if (inside(t)) out.push({ id: `in-${h}`, label: h === 1 ? "In 1 hour" : `In ${h} hours`, at: localInput(t) });
+    if (inside(t)) out.push({ id: `in-${m}`, label: durationLabel(m), at: localInput(t) });
   }
   if (rules.scheduleTomorrowEnabled ?? true) {
     const time = rules.scheduleTomorrowTime ?? "09:00";

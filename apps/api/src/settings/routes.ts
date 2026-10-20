@@ -459,7 +459,7 @@ const updateSchema = z.object({
       onsiteSuspendAfterFlags: z.number().int().min(0).max(50),
       onsiteWindowDays: z.number().int().min(1).max(365),
       locationRetentionDays: z.number().int().min(1).max(365),
-      scheduleQuickHours: z.array(z.number().int().min(1).max(72)).max(4),
+      scheduleQuickMinutes: z.array(z.number().int().min(5).max(4320)).max(4),
       scheduleTomorrowEnabled: z.boolean(),
       scheduleTomorrowTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
     })
