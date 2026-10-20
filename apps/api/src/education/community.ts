@@ -98,6 +98,17 @@ communityLearnRoutes.delete("/courses/:id/review", async (c) => {
 
 // ---- Q&A ------------------------------------------------------------------
 
+/** Who teaches these courses: the school owner and any teacher added to the course. */
+async function teachersOf(courseIds: string[]): Promise<Map<string, Set<string>>> {
+  const out = new Map<string, Set<string>>(courseIds.map((id) => [id, new Set<string>()]));
+  if (courseIds.length === 0) return out;
+  const marks = courseIds.map(() => "?").join(",");
+  const owners = (await db.execute({ sql: `SELECT c.id AS course_id, s.owner_id AS user_id FROM edu_courses c JOIN edu_schools s ON s.id = c.school_id WHERE c.id IN (${marks})`, args: courseIds })).rows as Row[];
+  const extra = (await db.execute({ sql: `SELECT course_id, user_id FROM edu_course_instructors WHERE course_id IN (${marks})`, args: courseIds })).rows as Row[];
+  for (const r of [...owners, ...extra]) out.get(String(r.course_id))?.add(String(r.user_id));
+  return out;
+}
+
 async function thread(courseId: string, lessonId: string | null, userId: string, teacher: boolean) {
   const questions = (
     await db.execute({
@@ -111,10 +122,12 @@ async function thread(courseId: string, lessonId: string | null, userId: string,
     ? ((await db.execute({ sql: `SELECT a.*, u.name FROM edu_answers a JOIN users u ON u.id = a.user_id WHERE a.question_id IN (${ids.map(() => "?").join(",")}) ORDER BY a.created_at ASC`, args: ids })).rows as Row[])
     : [];
   const first = (n: unknown) => String(n ?? "Learner").split(" ")[0];
+  const teachers = (await teachersOf([courseId])).get(courseId) ?? new Set<string>();
   return questions.map((q) => ({
     id: String(q.id),
     lessonId: q.lesson_id ? String(q.lesson_id) : null,
     askedBy: first(q.name),
+    askedByTeacher: teachers.has(String(q.user_id)),
     body: String(q.body),
     createdAt: String(q.created_at),
     mine: q.user_id === userId,
@@ -124,6 +137,77 @@ async function thread(courseId: string, lessonId: string | null, userId: string,
       .map((a) => ({ id: String(a.id), by: first(a.name), byTeacher: Number(a.by_teacher) === 1, body: String(a.body), createdAt: String(a.created_at), mine: a.user_id === userId, canDelete: teacher || a.user_id === userId })),
   }));
 }
+
+/**
+ * Connect: the conversation across every course the person has joined or teaches, newest first.
+ * It is the same questions and replies as each course's discussion, so nothing needs migrating.
+ */
+communityLearnRoutes.get("/connect", async (c) => {
+  const userId = c.get("user").sub;
+  const settings = await getLearnSettings();
+  if (!settings.qaEnabled) return c.json({ ok: true, enabled: false, courses: [], topics: [] });
+  if (!(await communityReady())) return c.json({ ok: true, enabled: true, courses: [], topics: [] });
+
+  const rows = (
+    await db.execute({
+      sql: `SELECT c.id, c.title, s.name AS school_name, 0 AS teaching
+              FROM edu_enrollments e JOIN edu_courses c ON c.id = e.course_id JOIN edu_schools s ON s.id = c.school_id
+             WHERE e.user_id = ? AND e.status = 'active' AND c.status = 'published' AND s.status = 'active'
+            UNION
+            SELECT c.id, c.title, s.name, 1 FROM edu_courses c JOIN edu_schools s ON s.id = c.school_id WHERE s.owner_id = ?
+            UNION
+            SELECT c.id, c.title, s.name, 1 FROM edu_course_instructors i JOIN edu_courses c ON c.id = i.course_id JOIN edu_schools s ON s.id = c.school_id WHERE i.user_id = ?`,
+      args: [userId, userId, userId],
+    })
+  ).rows as Row[];
+  const byId = new Map<string, { id: string; title: string; schoolName: string; teaching: boolean }>();
+  for (const r of rows) {
+    const id = String(r.id);
+    const teaching = Number(r.teaching) === 1 || byId.get(id)?.teaching === true;
+    byId.set(id, { id, title: String(r.title), schoolName: String(r.school_name), teaching });
+  }
+  const courses = [...byId.values()].sort((a, b) => a.title.localeCompare(b.title));
+  const wanted = c.req.query("course");
+  const ids = (wanted && byId.has(wanted) ? [wanted] : courses.map((x) => x.id)).slice(0, 100);
+  if (ids.length === 0) return c.json({ ok: true, enabled: true, courses, topics: [] });
+
+  const marks = ids.map(() => "?").join(",");
+  const questions = (
+    await db.execute({
+      sql: `SELECT q.*, u.name, l.title AS lesson_title FROM edu_questions q JOIN users u ON u.id = q.user_id LEFT JOIN edu_lessons l ON l.id = q.lesson_id
+             WHERE q.course_id IN (${marks}) ORDER BY q.created_at DESC LIMIT 60`,
+      args: ids,
+    })
+  ).rows as Row[];
+  const qids = questions.map((q) => String(q.id));
+  const answers = qids.length
+    ? ((await db.execute({ sql: `SELECT a.*, u.name FROM edu_answers a JOIN users u ON u.id = a.user_id WHERE a.question_id IN (${qids.map(() => "?").join(",")}) ORDER BY a.created_at ASC`, args: qids })).rows as Row[])
+    : [];
+  const teachers = await teachersOf(ids);
+  const first = (n: unknown) => String(n ?? "Learner").split(" ")[0];
+  const topics = questions.map((q) => {
+    const course = byId.get(String(q.course_id))!;
+    const canModerate = course.teaching;
+    return {
+      id: String(q.id),
+      courseId: course.id,
+      courseTitle: course.title,
+      schoolName: course.schoolName,
+      lessonId: q.lesson_id ? String(q.lesson_id) : null,
+      lessonTitle: q.lesson_title ? String(q.lesson_title) : null,
+      askedBy: first(q.name),
+      askedByTeacher: teachers.get(course.id)?.has(String(q.user_id)) ?? false,
+      body: String(q.body),
+      createdAt: String(q.created_at),
+      mine: q.user_id === userId,
+      canDelete: canModerate || q.user_id === userId,
+      answers: answers
+        .filter((a) => a.question_id === q.id)
+        .map((a) => ({ id: String(a.id), by: first(a.name), byTeacher: Number(a.by_teacher) === 1, body: String(a.body), createdAt: String(a.created_at), mine: a.user_id === userId, canDelete: canModerate || a.user_id === userId })),
+    };
+  });
+  return c.json({ ok: true, enabled: true, courses, topics });
+});
 
 communityLearnRoutes.get("/courses/:id/qa", async (c) => {
   const user = c.get("user");

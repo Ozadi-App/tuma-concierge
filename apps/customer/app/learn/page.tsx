@@ -22,17 +22,11 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Bricolage_Grotesque, DM_Mono, DM_Sans } from "next/font/google";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LearnThumb } from "@peebee/shared/learn-thumb";
 import { useAuth } from "../../lib/auth-context";
 import { api, errorMessage } from "../../lib/api";
-
-// The Learn home has its own type: a display face for headings, a clean body face and a mono face for the class code.
-// The variables are set on the screen's root, so nothing outside this page changes.
-const display = Bricolage_Grotesque({ subsets: ["latin"], weight: ["500", "700"], variable: "--font-lh-display", display: "swap" });
-const bodyFont = DM_Sans({ subsets: ["latin"], weight: ["400", "500", "600", "700"], variable: "--font-lh-body", display: "swap" });
-const monoFont = DM_Mono({ subsets: ["latin"], weight: ["500"], variable: "--font-lh-mono", display: "swap" });
+import { bodyFont, display, monoFont } from "./fonts";
 
 type CatalogCourse = Awaited<ReturnType<typeof api.getCatalogCourses>>["courses"][number];
 type HomeConfig = Awaited<ReturnType<typeof api.getCatalogHomeConfig>>["home"];

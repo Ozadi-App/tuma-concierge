@@ -5,7 +5,6 @@ import { observeNotificationSnapshot, type HiveShortcutId, type HomeMenuSettings
 import type { OrderRow } from "@peebee/shared";
 import {
   Ambulance,
-  Backpack,
   Bike,
   BookOpen,
   Briefcase,
@@ -14,6 +13,7 @@ import {
   ChefHat,
   ChevronLeft,
   ChevronRight,
+  Compass,
   Loader2,
   Citrus,
   CookingPot,
@@ -21,19 +21,19 @@ import {
   Crown,
   Flame,
   GraduationCap,
-  Hammer,
   HardHat,
   Home,
-  Landmark,
   ListChecks,
+  MessagesSquare,
   Package,
   Pill,
+  Radio,
   Route,
   ShoppingBag,
   ShoppingBasket,
   Sparkles,
-  Sprout,
   Store,
+  Tv,
   UtensilsCrossed,
   Truck,
   UsersRound,
@@ -41,8 +41,8 @@ import {
   Wrench,
 } from "lucide-react";
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth-context";
@@ -111,23 +111,22 @@ const staticSubmenuItems: Record<"shopping" | "food", MenuItem[]> = {
   ],
 };
 
-/** Learn's row: one shortcut per level. "Basics" is primary school (stream id "foundations"); "Campus" is university (stream id "compass"). */
+/** Learn's row. Levels (Sprouts, Basics, Academy, Campus, Skills) are chosen on Discover. */
 const learnItems: MenuItem[] = [
-  { id: "skills", label: "Skills", icon: Hammer, href: "/learn?stream=skills" },
-  { id: "sprouts", label: "Sprouts", icon: Sprout, href: "/learn?stream=sprouts" },
-  { id: "foundations", label: "Basics", icon: Backpack, href: "/learn?stream=foundations" },
-  { id: "academy", label: "Academy", icon: Landmark, href: "/learn?stream=academy" },
-  { id: "compass", label: "Campus", icon: GraduationCap, href: "/learn?stream=compass" },
+  { id: "discover", label: "Discover", icon: Compass, href: "/learn" },
+  { id: "myclass", label: "My Class", icon: GraduationCap, href: "/learn/my" },
+  { id: "live", label: "Live", icon: Radio, href: "/learn/live" },
+  { id: "tv", label: "TV", icon: Tv, href: "/learn/tv" },
+  { id: "connect", label: "Connect", icon: MessagesSquare, href: "/learn/connect" },
 ];
 
-const LEARN_STREAM_ITEMS = ["skills", "sprouts", "foundations", "academy", "compass"];
-
-/** Reports which Learn stream the address asks for, so the menu can highlight it. Kept apart so only this part waits on the query string. */
-function LearnStreamWatcher({ onStream }: { onStream: (stream: string | null) => void }) {
-  const stream = useSearchParams().get("stream");
-  useEffect(() => {
-    onStream(stream);
-  }, [stream, onStream]);
+/** Which Learn item a page belongs to. Course and certificate pages sit under My Class. */
+function learnItemForPath(pathname: string): string | null {
+  if (pathname === "/learn") return "discover";
+  if (pathname === "/learn/my" || pathname.startsWith("/learn/course/") || pathname.startsWith("/learn/certificates")) return "myclass";
+  if (pathname === "/learn/live" || pathname.startsWith("/learn/live/")) return "live";
+  if (pathname === "/learn/tv" || pathname.startsWith("/learn/tv/")) return "tv";
+  if (pathname === "/learn/connect" || pathname.startsWith("/learn/connect/")) return "connect";
   return null;
 }
 
@@ -153,12 +152,6 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
   const [trackerDrawerOpen, setTrackerDrawerOpen] = useState(false);
   const [menuGroup, setMenuGroup] = useState<MenuGroup>(() => groupForPath(pathname));
   const [selectedItem, setSelectedItem] = useState<string | null>(null);
-  const onLearnStream = useCallback(
-    (stream: string | null) => {
-      if (pathname === "/learn") setSelectedItem(stream && LEARN_STREAM_ITEMS.includes(stream) ? stream : null);
-    },
-    [pathname],
-  );
   const t = useTranslate();
   const homeMenu = useHomeMenu();
   const special = useSpecialCarServices();
@@ -216,8 +209,8 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
     else if (pathname === "/services/fix") setSelectedItem("fix");
     else if (pathname === "/services/hire/workers" || pathname.startsWith("/services/hire/workers/")) setSelectedItem("workers");
     else if (pathname === "/service" || pathname === "/services/hire" || pathname.startsWith("/services/hire/")) setSelectedItem("hire");
-    else if (pathname === "/learn") return; // the level in the address picks the item, see LearnStreamWatcher
-    else if (pathname === "/services/learn" || pathname.startsWith("/learn/")) setSelectedItem(null);
+    else if (pathname === "/learn" || pathname.startsWith("/learn/")) setSelectedItem(learnItemForPath(pathname));
+    else if (pathname === "/services/learn") setSelectedItem(null);
     else if (pathname === "/deliver" || pathname.startsWith("/deliver/")) setSelectedItem("parcel");
     else setSelectedItem(null);
   }, [pathname]);
@@ -276,9 +269,6 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
           bottom edge, fading to fully clear just above the nav buttons. */}
       <div aria-hidden className="customer-nav-scrim" />
       <nav ref={navRef} aria-label="Primary navigation" className={`customer-nav fixed inset-x-0 bottom-3 z-40 px-3 pointer-events-none pb-[env(safe-area-inset-bottom)] ${overlay ? "customer-nav-overlay" : ""}`}>
-        <Suspense fallback={null}>
-          <LearnStreamWatcher onStream={onLearnStream} />
-        </Suspense>
         <div className="mx-auto flex max-w-lg flex-col items-center gap-2">
           {/* Active Delivery Floating Capsule Chip */}
           {showActiveDeliveryBadge && (
@@ -457,7 +447,7 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
                   const content = (
                     <>
                       <Icon className="h-5 w-5 shrink-0" strokeWidth={active ? 2.4 : 1.8} aria-hidden />
-                      <span className="leading-none truncate max-w-full text-[10px] sm:text-[11px] font-bold">
+                      <span className={`leading-none truncate max-w-full font-bold ${menuGroup === "learn" ? "text-[9.5px] tracking-tight sm:text-[10.5px]" : "text-[10px] sm:text-[11px]"}`}>
                         {item.label}
                       </span>
                       {active && (
