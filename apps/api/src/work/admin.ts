@@ -8,6 +8,7 @@ import { notifyUser } from "../lib/webpush.js";
 import { assignProvider, cancelJob, getJob, getProvider, jobView, settleJob } from "./jobs.js";
 import { dwellAt, suspendForReview, trailFor } from "./onsite.js";
 import { notifyCustomer, notifyProviders, workExtrasReady, workOnsiteReady, type Row } from "./service.js";
+import { DEMO_WALLET_UGX, installWorkDemo, removeWorkDemo, workDemoStatus, WorkDemoError } from "./demo.js";
 import { getWorkSettings, WORK_PRICING_MODES, WORK_SERVICE_TYPES } from "./settings.js";
 
 export const adminRoutes = new Hono();
@@ -299,4 +300,29 @@ adminRoutes.post("/admin/flags/:id/review", requirePermission("work.manage"), as
   }
   await logActivity({ actor: user, action: `work.flag.${outcome}`, summary: `Reviewed flag ${id}: ${outcome}`, entityType: "work_flag", entityId: id, after: { note, providerId: flag.provider_id }, ip: ip(c) });
   return c.json({ ok: true });
+});
+
+// ---------------------------------------------------------------------------
+// Demo accounts (sandbox only): a customer and Entebbe providers to test a job end to end
+// ---------------------------------------------------------------------------
+
+adminRoutes.get("/admin/demo", requirePermission("work.view"), async (c) => c.json({ ...(await workDemoStatus()), walletUgx: DEMO_WALLET_UGX }));
+
+adminRoutes.post("/admin/demo/install", requirePermission("work.manage"), async (c) => {
+  const parsed = z.object({ password: z.string().min(8).max(100) }).safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) return c.json({ error: "invalid_body", message: "Choose a password of at least 8 characters for the demo accounts." }, 400);
+  try {
+    const result = await installWorkDemo(parsed.data.password);
+    await logActivity({ actor: c.get("user"), action: "work.demo.install", summary: "Installed the Peebee Work sandbox demo accounts (Entebbe)", entityType: "work_demo", ip: ip(c) });
+    return c.json({ ok: true, ...result, ...(await workDemoStatus()) });
+  } catch (err) {
+    if (err instanceof WorkDemoError) return c.json({ error: err.code, message: err.message }, err.status);
+    throw err;
+  }
+});
+
+adminRoutes.delete("/admin/demo", requirePermission("work.manage"), async (c) => {
+  const result = await removeWorkDemo();
+  await logActivity({ actor: c.get("user"), action: "work.demo.remove", summary: "Removed the Peebee Work sandbox demo accounts", entityType: "work_demo", ip: ip(c) });
+  return c.json({ ok: true, ...result });
 });
