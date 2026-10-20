@@ -1,4 +1,5 @@
 import { db, executeBatch, type DbStatement } from "../db/client.js";
+import { tablesExist } from "../lib/schema.js";
 import { newId } from "../lib/ids.js";
 import type { PlatformEnvironment } from "../lib/settings.js";
 import { notifyUser } from "../lib/webpush.js";
@@ -37,11 +38,7 @@ export async function talentReady(): Promise<boolean> {
   if (readyCache && (readyCache.ok || Date.now() - readyCache.at < 30_000)) return readyCache.ok;
   let ok = false;
   try {
-    const res = await db.execute({
-      sql: `SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table' AND name IN (${REQUIRED_TABLES.map(() => "?").join(", ")})`,
-      args: REQUIRED_TABLES,
-    });
-    ok = Number((res.rows[0] as Row).n) === REQUIRED_TABLES.length;
+    ok = await tablesExist(REQUIRED_TABLES);
   } catch {
     ok = false;
   }

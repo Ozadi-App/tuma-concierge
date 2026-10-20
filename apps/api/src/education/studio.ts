@@ -21,7 +21,7 @@ import { db } from "../db/client.js";
 import { newId } from "../lib/ids.js";
 import { getR2Bucket } from "../storage/r2.js";
 import { consume, tooManyRequests } from "../lib/ratelimit.js";
-import { hasColumn, hasTable } from "../lib/schema.js";
+import { hasColumn, hasTable, tablesExist } from "../lib/schema.js";
 import { getLearnSettings } from "./settings.js";
 import { normaliseQuestion, parseQuiz as readQuiz } from "./quiz-engine.js";
 import { afterProgress, courseRules, dripDays, proReady } from "./rewards.js";
@@ -53,11 +53,7 @@ export async function studioReady(): Promise<boolean> {
   if (readyCache && (readyCache.ok || Date.now() - readyCache.at < 30_000)) return readyCache.ok;
   let ok = false;
   try {
-    const res = await db.execute({
-      sql: "SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table' AND name IN ('edu_schools', 'edu_classes', 'edu_courses', 'edu_modules', 'edu_lessons')",
-      args: [],
-    });
-    ok = Number((res.rows[0] as Row).n) === 5;
+    ok = await tablesExist(["edu_schools", "edu_classes", "edu_courses", "edu_modules", "edu_lessons"]);
   } catch {
     ok = false;
   }
@@ -77,11 +73,7 @@ export async function learningReady(): Promise<boolean> {
   if (learningCache && (learningCache.ok || Date.now() - learningCache.at < 30_000)) return learningCache.ok;
   let ok = false;
   try {
-    const res = await db.execute({
-      sql: "SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table' AND name IN ('edu_lesson_media', 'edu_enrollments', 'edu_lesson_progress', 'edu_quiz_attempts', 'edu_exam_submissions', 'edu_fee_invoices', 'edu_fee_payments')",
-      args: [],
-    });
-    ok = Number((res.rows[0] as Row).n) === 7;
+    ok = await tablesExist(["edu_lesson_media", "edu_enrollments", "edu_lesson_progress", "edu_quiz_attempts", "edu_exam_submissions", "edu_fee_invoices", "edu_fee_payments"]);
   } catch {
     ok = false;
   }

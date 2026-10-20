@@ -1,4 +1,5 @@
 import { db, executeBatch, type DbStatement } from "../db/client.js";
+import { tablesExist } from "../lib/schema.js";
 import { newId } from "../lib/ids.js";
 import { haversineKm } from "../lib/geo.js";
 import type { PlatformEnvironment } from "../lib/settings.js";
@@ -31,12 +32,8 @@ export function resetWorkSchemaCache() {
   onsiteCache = null;
 }
 export async function workReady(): Promise<boolean> {
-  if (readyCache && Date.now() - readyCache.at < 30_000) return readyCache.ok;
-  const res = await db.execute({
-    sql: "SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table' AND name IN ('work_services', 'work_providers', 'work_jobs', 'work_offers', 'work_money', 'work_events', 'work_provider_members', 'work_provider_services')",
-    args: [],
-  });
-  const ok = Number((res.rows[0] as Row).n) === 8;
+  if (readyCache && (readyCache.ok || Date.now() - readyCache.at < 30_000)) return readyCache.ok;
+  const ok = await tablesExist(["work_services", "work_providers", "work_jobs", "work_offers", "work_money", "work_events", "work_provider_members", "work_provider_services"]);
   readyCache = { at: Date.now(), ok };
   return ok;
 }
@@ -46,9 +43,7 @@ export async function workExtrasReady(): Promise<boolean> {
   if (extrasCache && (extrasCache.ok || Date.now() - extrasCache.at < 30_000)) return extrasCache.ok;
   let ok = false;
   try {
-    const tables = Number(
-      ((await db.execute({ sql: "SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table' AND name IN ('work_job_photos', 'work_messages')", args: [] })).rows[0] as Row).n,
-    );
+    const tables = (await tablesExist(["work_job_photos", "work_messages"])) ? 2 : 0;
     const col = (await db.execute({ sql: "SELECT 1 FROM pragma_table_info('work_jobs') WHERE name = 'rematch_count'", args: [] })).rows.length > 0;
     ok = tables === 2 && col;
   } catch {
@@ -63,10 +58,7 @@ export async function workOnsiteReady(): Promise<boolean> {
   if (onsiteCache && (onsiteCache.ok || Date.now() - onsiteCache.at < 30_000)) return onsiteCache.ok;
   let ok = false;
   try {
-    const n = Number(
-      ((await db.execute({ sql: "SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table' AND name IN ('work_job_locations', 'work_flags')", args: [] })).rows[0] as Row).n,
-    );
-    ok = n === 2;
+    ok = await tablesExist(["work_job_locations", "work_flags"]);
   } catch {
     ok = false;
   }

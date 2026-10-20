@@ -7,6 +7,7 @@ import { db, executeBatch } from "../db/client.js";
 import { encryptSecret, isCredentialsEncryptionConfigured } from "../lib/crypto.js";
 import { newId } from "../lib/ids.js";
 import { clientIp } from "../lib/ratelimit.js";
+import { invalidateSettingsCache } from "../lib/settings.js";
 import { emailKeyHash, emailKeysOverview, emailTablesReady } from "./email-keys.js";
 
 export const emailKeyRoutes = new Hono();
@@ -53,6 +54,7 @@ emailKeyRoutes.put("/admin/email-keys/settings", ...gate, async (c) => {
     ["resend_window_requests", String(windowRequests)], ["resend_window_seconds", String(windowSeconds)],
     ["resend_quota_retry_seconds", String(quotaRetrySeconds)],
   ].map(([key, value]) => ({ sql: "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')", args: [key, value] })));
+  invalidateSettingsCache();
   await logActivity({ actor: c.get("user"), action: "email_keys.settings", entityType: "settings", summary: `Resend: ${mode} mode, rotate every ${rotationSeconds} seconds`, before: { mode: before.mode, rotationSeconds: before.rotationSeconds, windowRequests: before.windowRequests, windowSeconds: before.windowSeconds, quotaRetrySeconds: before.quotaRetrySeconds }, after: parsed.data, ip: clientIp(c) });
   return c.json(await emailKeysOverview());
 });

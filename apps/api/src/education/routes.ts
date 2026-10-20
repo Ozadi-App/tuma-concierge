@@ -35,6 +35,7 @@ import {
 } from "@peebee/shared";
 import { requireAuth } from "../auth/middleware.js";
 import { db } from "../db/client.js";
+import { tableExistsCheap } from "../lib/schema.js";
 import { clearFailures, checkLockout, consume, recordFailure, tooManyRequests } from "../lib/ratelimit.js";
 import { artRoutes } from "./art.js";
 import { catalogRoutes } from "./catalog.js";
@@ -186,8 +187,7 @@ function pushBounded<T>(list: T[], item: T, front = false) {
 
 async function tableExists(name: string): Promise<boolean> {
   try {
-    const res = await db.execute({ sql: "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", args: [name] });
-    return res.rows.length > 0;
+    return await tableExistsCheap(name);
   } catch {
     return false;
   }
