@@ -4,6 +4,7 @@ import Script from "next/script";
 import "./globals.css";
 import "./food-theme.css";
 import "./pharmacy-theme.css";
+import "./buy-theme.css";
 import "./food-cards.css";
 import { AppShell } from "../components/AppShell";
 import { CallOverlay } from "../components/CallOverlay";

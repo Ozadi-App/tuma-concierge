@@ -365,7 +365,7 @@ export const DEMO_MARKETPLACE_PRODUCTS: Record<string, DemoProduct[]> = {
     {
       id: "prod_eggs_tray",
       store_id: "store_demo_fresh_mart",
-      title: "Farm Fresh Eggs (Crate of 30)",
+      title: "Farm Fresh Eggs",
       slug: "farm-fresh-eggs-crate",
       description: "Large golden yolk farm eggs, cleanly sorted and packaged.",
       price: 13500,

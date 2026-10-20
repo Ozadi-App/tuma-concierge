@@ -294,7 +294,7 @@ export const DEMO_MARKETPLACE_PRODUCTS: Record<string, any[]> = {
     {
       id: "prod_eggs_tray",
       store_id: "store_demo_fresh_mart",
-      title: "Farm Fresh Eggs (Crate of 30)",
+      title: "Farm Fresh Eggs",
       slug: "farm-fresh-eggs-crate",
       description: "Large golden yolk farm eggs, cleanly sorted and packaged.",
       price: 13500,
@@ -1293,7 +1293,7 @@ marketplaceRoutes.post("/merchants/me/products/starter-pack", requireAuth, async
             image_url: "https://images.unsplash.com/photo-1550583724-b2692b85b150?auto=format&fit=crop&w=600&q=80",
           },
           {
-            title: "Farm Fresh Eggs (Crate of 30)",
+            title: "Farm Fresh Eggs",
             category: "Dairy & Eggs",
             price: 13500,
             compare_at_price: 15000,
