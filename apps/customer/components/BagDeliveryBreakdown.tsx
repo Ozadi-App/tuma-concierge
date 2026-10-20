@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronRight, MapPin } from "lucide-react";
+import { ChevronDown, ChevronRight, MapPin } from "lucide-react";
 import type { BagTrip } from "@peebee/shared";
 import { placeSubtitle, type Place } from "../lib/places";
 import type { BagDeliveryMode, useBagQuote } from "../lib/bag-quote";
@@ -156,9 +156,9 @@ export function BagDeliveryBreakdown({
       )}
       {showTrip && bag.trip && !bag.failed ? (
         <details className={`group ${indent}`}>
-          <summary className="cursor-pointer select-none list-none text-[11px] font-semibold text-gold [&::-webkit-details-marker]:hidden">
-            <span className="group-open:hidden">Details</span>
-            <span className="hidden group-open:inline">Hide details</span>
+          <summary className="flex min-h-9 cursor-pointer select-none list-none items-center gap-1 text-[11px] font-semibold text-gold [&::-webkit-details-marker]:hidden">
+            Details
+            <ChevronDown className="h-3.5 w-3.5 transition-transform group-open:rotate-180 motion-reduce:transition-none" aria-hidden />
           </summary>
           <div className="mt-2">
             <BagTripBreakdown trip={bag.trip} />

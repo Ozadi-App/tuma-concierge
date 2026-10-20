@@ -1,5 +1,6 @@
 "use client";
 
+import { ChevronDown } from "lucide-react";
 import type { BagRelay } from "../lib/bag-quote";
 import { relayLegLabel } from "./OrderBreakdown";
 import { LastMileChoice, pickMeetStageId, type LastMileChoiceValue } from "./LastMileChoice";
@@ -82,9 +83,9 @@ export function BagRelayDetails({
         <p>Collect at {station}</p>
       ) : null}
       <details className="group">
-        <summary className="cursor-pointer select-none list-none text-[11px] font-semibold text-gold [&::-webkit-details-marker]:hidden">
-          <span className="group-open:hidden">Details</span>
-          <span className="hidden group-open:inline">Hide details</span>
+        <summary className="flex min-h-9 cursor-pointer select-none list-none items-center gap-1 text-[11px] font-semibold text-gold [&::-webkit-details-marker]:hidden">
+          Details
+          <ChevronDown className="h-3.5 w-3.5 transition-transform group-open:rotate-180 motion-reduce:transition-none" aria-hidden />
         </summary>
         <div className="mt-1.5 space-y-1.5">
       {legs.map((leg, i) => {
