@@ -103,6 +103,10 @@ export function BagRelayDetails({
           </div>
         );
       })}
+          <div className="flex justify-between gap-3 font-semibold text-ink">
+            <span>Total</span>
+            <span>UGX {legs.reduce((sum, leg) => sum + leg.fee, 0).toLocaleString()}</span>
+          </div>
         </div>
       </details>
     </div>

@@ -95,7 +95,7 @@ export function BagTripBreakdown({ trip }: { trip: BagTrip }) {
           </div>
         )}
         <div className="flex justify-between gap-3 font-semibold text-ink">
-          <span>Delivery total</span>
+          <span>Total</span>
           <span>{ugx(trip.fee)}</span>
         </div>
       </div>

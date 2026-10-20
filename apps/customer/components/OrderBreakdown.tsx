@@ -9,12 +9,12 @@ const km = (value: number | null | undefined) =>
 export const pickupList = (names: string[]) => names.map((name) => name.replace(/\.+$/, "")).join(", ");
 
 /**
- * The label of one relay leg, as charged: the first boda names every pickup, the matatu its
- * direction, and the last boda (when it brings the parcel to the door) reads "Boda to you".
+ * The label of one relay leg, as charged: the first boda names every pickup, the matatu leg is just
+ * from → to, and the last boda (when it brings the parcel to the door) reads "Boda to you".
  */
 export function relayLegLabel(leg: CheckoutDeliveryLeg, index: number, count: number, pickups: string[], toDoor: boolean): string {
   if (leg.kind === "matatu") {
-    return `Matatu${leg.direction ? ` ${leg.direction}` : ""}: ${leg.fromName ?? "Stage"} → ${leg.toName ?? "Stage"}${km(leg.distanceKm)}`;
+    return `${leg.fromName ?? "Stage"} → ${leg.toName ?? "Stage"}${km(leg.distanceKm)}`;
   }
   if (toDoor && index > 0 && index === count - 1) return `Boda to you${km(leg.distanceKm)}`;
   const from = index === 0 && pickups.length > 1 ? pickupList(pickups) : leg.fromName ?? "Pickup";
