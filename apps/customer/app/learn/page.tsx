@@ -13,6 +13,7 @@ import {
   Radio,
   Receipt,
   Search,
+  Sparkles,
   Sprout,
   Trophy,
   Tv,
@@ -21,10 +22,17 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { Bricolage_Grotesque, DM_Mono, DM_Sans } from "next/font/google";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LearnThumb } from "@peebee/shared/learn-thumb";
 import { useAuth } from "../../lib/auth-context";
 import { api, errorMessage } from "../../lib/api";
+
+// The Learn home has its own type: a display face for headings, a clean body face and a mono face for the class code.
+// The variables are set on the screen's root, so nothing outside this page changes.
+const display = Bricolage_Grotesque({ subsets: ["latin"], weight: ["500", "700"], variable: "--font-lh-display", display: "swap" });
+const bodyFont = DM_Sans({ subsets: ["latin"], weight: ["400", "500", "600", "700"], variable: "--font-lh-body", display: "swap" });
+const monoFont = DM_Mono({ subsets: ["latin"], weight: ["500"], variable: "--font-lh-mono", display: "swap" });
 
 type CatalogCourse = Awaited<ReturnType<typeof api.getCatalogCourses>>["courses"][number];
 type HomeConfig = Awaited<ReturnType<typeof api.getCatalogHomeConfig>>["home"];
@@ -32,7 +40,7 @@ type HomeConfig = Awaited<ReturnType<typeof api.getCatalogHomeConfig>>["home"];
 /** Used until (or unless) Admin's home settings load, so the screen never waits on them. */
 const DEFAULT_HOME: HomeConfig = { progress: true, tools: true, freeRail: true, railSize: 8, tv: true, certificates: true, fees: true, live: true, trialClasses: true };
 
-const card = "rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))]";
+const card = "rounded-[18px] border border-[var(--border-faint)] bg-[rgb(var(--surface-card))]";
 const ugx = (n: number) => (n > 0 ? `UGX ${n.toLocaleString("en-UG")}` : "Free");
 const LEARN_STUDIO_URL = process.env.NEXT_PUBLIC_LEARN_URL ?? "https://learn.peebee.online";
 /** The Learn home shows course pictures slightly taller than the 16:9 used everywhere else. */
@@ -40,11 +48,11 @@ const HOME_RATIO = "15 / 9";
 
 /** One door per level. Labels follow the bottom menu: "Basics" is primary school and "Campus" is university. */
 const DOORS: { id: EducationStream; label: string; blurb: string; icon: LucideIcon; glow: string }[] = [
-  { id: "skills", label: "Skills", blurb: "Learn anything practical", icon: Hammer, glow: "from-gold/70" },
-  { id: "sprouts", label: "Sprouts", blurb: "Ages 3–6, play and stories", icon: Sprout, glow: "from-green-600/60" },
-  { id: "foundations", label: "Basics", blurb: "Primary, ages 6–12", icon: Backpack, glow: "from-ink/30" },
-  { id: "academy", label: "Academy", blurb: "Secondary and exam prep", icon: Landmark, glow: "from-gold/50" },
-  { id: "compass", label: "Campus", blurb: "University and college", icon: GraduationCap, glow: "from-green-600/50" },
+  { id: "skills", label: "Skills", blurb: "Learn anything practical", icon: Hammer, glow: "bg-[radial-gradient(circle,rgb(var(--color-gold)),transparent_70%)]" },
+  { id: "sprouts", label: "Sprouts", blurb: "Ages 3–6, play and stories", icon: Sprout, glow: "bg-[radial-gradient(circle,rgb(var(--color-green)),transparent_70%)]" },
+  { id: "foundations", label: "Basics", blurb: "Primary, ages 6–12", icon: Backpack, glow: "bg-[radial-gradient(circle,rgb(var(--color-ink)/0.4),transparent_70%)]" },
+  { id: "academy", label: "Academy", blurb: "Secondary and exam prep", icon: Landmark, glow: "bg-[radial-gradient(circle,rgb(var(--color-gold)/0.6),transparent_70%)]" },
+  { id: "compass", label: "Campus", blurb: "University and college", icon: GraduationCap, glow: "bg-[radial-gradient(circle,rgb(var(--color-green)/0.6),transparent_70%)]" },
 ];
 
 /** What a new learner is asked first. Each one opens a level. */
@@ -59,16 +67,16 @@ function Skeleton({ className }: { className: string }) {
   return <div className={`animate-pulse rounded-2xl bg-[rgb(var(--surface-muted))] ${className}`} aria-hidden />;
 }
 
-function SectionHead({ id, title, href, action }: { id: string; title: string; href?: string; action?: string }) {
+function SectionHead({ id, title, onSeeAll }: { id: string; title: string; onSeeAll?: () => void }) {
   return (
     <div className="mb-2 flex items-baseline justify-between gap-3">
-      <h2 id={id} className="font-display text-base font-semibold text-ink">
+      <h2 id={id} className="font-[family-name:var(--font-lh-display)] text-sm font-bold text-ink">
         {title}
       </h2>
-      {href && action && (
-        <Link href={href} className="text-xs font-semibold text-gold">
-          {action}
-        </Link>
+      {onSeeAll && (
+        <button type="button" onClick={onSeeAll} className="text-[11px] font-semibold text-gold">
+          See all
+        </button>
       )}
     </div>
   );
@@ -119,7 +127,7 @@ function ProgressRing({ percent }: { percent: number }) {
           className="stroke-gold transition-[stroke-dashoffset] duration-[1100ms] ease-out motion-reduce:transition-none"
         />
       </svg>
-      <span className="absolute inset-0 grid place-items-center font-display text-[17px] font-bold">{percent}%</span>
+      <span className="absolute inset-0 grid place-items-center font-[family-name:var(--font-lh-display)] text-[17px] font-bold">{percent}%</span>
     </div>
   );
 }
@@ -128,14 +136,14 @@ function ContinueHero({ hero }: { hero: Hero }) {
   const { enrollment: e, next, others } = hero;
   const href = next ? `/learn/course/${e.courseId}/lesson/${next.id}` : `/learn/course/${e.courseId}`;
   return (
-    <div className="relative pb-6">
+    <div className="relative pb-7">
       <div className="relative z-[2] flex flex-col gap-3.5 overflow-hidden rounded-3xl border border-white/10 bg-[rgb(var(--color-black-700))] p-4 text-white">
         <span className="pointer-events-none absolute -right-10 -top-10 h-36 w-36 rounded-full bg-gold/30 blur-2xl" aria-hidden />
         <div className="relative flex items-center gap-3.5">
           <ProgressRing percent={e.progressPercent} />
           <div className="min-w-0">
             <p className="truncate text-[11px] text-white/60">Continue · {e.schoolName}</p>
-            <p className="font-display text-base font-semibold leading-tight">{e.title}</p>
+            <p className="font-[family-name:var(--font-lh-display)] text-base font-semibold leading-tight">{e.title}</p>
             <p className="text-[11px] text-white/60">
               {e.completedLessons} of {e.lessonCount} lessons done
             </p>
@@ -155,13 +163,10 @@ function ContinueHero({ hero }: { hero: Hero }) {
         </Link>
       </div>
       {others > 0 && (
-        <>
-          <div className={`absolute inset-x-3.5 bottom-3 z-[1] h-7 rounded-b-[20px] border border-t-0 border-[var(--border-faint)] bg-[rgb(var(--surface-card))]`} aria-hidden />
-          {others > 1 && <div className="absolute inset-x-7 bottom-1.5 h-7 rounded-b-[20px] border border-t-0 border-[var(--border-faint)] bg-[rgb(var(--surface-card))] opacity-70" aria-hidden />}
-          <Link href="/learn/my" className="absolute inset-x-0 bottom-0 z-[3] flex h-6 items-end justify-center text-[11px] font-semibold text-gold">
-            {others} more {others === 1 ? "course" : "courses"}
-          </Link>
-        </>
+        <Link href="/learn/my" aria-label={`${others} more ${others === 1 ? "course" : "courses"}`}>
+          <span className="absolute inset-x-3.5 bottom-3 z-[1] h-[30px] rounded-b-[20px] border border-t-0 border-[var(--border-faint)] bg-[rgb(var(--surface-card))]" aria-hidden />
+          {others > 1 && <span className="absolute inset-x-7 bottom-0.5 h-[30px] rounded-b-[20px] border border-t-0 border-[var(--border-faint)] bg-[rgb(var(--surface-card))] opacity-70" aria-hidden />}
+        </Link>
       )}
     </div>
   );
@@ -210,25 +215,31 @@ function ProgressStrip({ badges }: { badges: LearnerBadge[] }) {
         <Trophy className="h-[22px] w-[22px]" aria-hidden />
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block font-display text-[15px] font-semibold text-ink">
+        <span className="block font-[family-name:var(--font-lh-display)] text-[15px] font-bold text-ink">
           {earned.length} of {badges.length} badges
         </span>
-        <span className="block truncate text-[11px] text-ink-500">{next ? `${next.title}: ${next.description}` : "You have earned every badge"}</span>
+        <span className="block text-[11px] leading-snug text-ink-500">{next ? next.description : "You have earned every badge"}</span>
         <span className="mt-1.5 flex gap-1" aria-hidden>
           {badges.map((b) => (
             <i key={b.key} className={`h-[5px] w-3.5 rounded-full ${b.awardedAt ? "bg-gold" : "bg-[rgb(var(--surface-muted))]"}`} />
           ))}
         </span>
       </span>
+      {next && (
+        <span className="max-w-[84px] shrink-0 text-right text-[10px] leading-snug text-ink-500">
+          <b className="block text-[11px] font-bold text-ink">{next.title}</b>
+          Next badge
+        </span>
+      )}
     </Link>
   );
 }
 
-function LevelDoors({ stream, counts, onPick }: { stream: EducationStream | "all"; counts: Record<string, number>; onPick: (s: EducationStream | "all") => void }) {
+function LevelDoors({ stream, counts, onPick, onSeeAll }: { stream: EducationStream | "all"; counts: Record<string, number>; onPick: (s: EducationStream | "all") => void; onSeeAll: () => void }) {
   return (
     <section aria-labelledby="levels-h">
-      <SectionHead id="levels-h" title="Choose your level" />
-      <div role="radiogroup" aria-label="Level" className="-mx-4 flex snap-x snap-mandatory scroll-pl-4 gap-2.5 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <SectionHead id="levels-h" title="Choose your level" onSeeAll={onSeeAll} />
+      <div role="radiogroup" aria-label="Level" className="-mx-3.5 flex snap-x snap-mandatory scroll-pl-3.5 gap-2.5 overflow-x-auto px-3.5 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {DOORS.map((d) => {
           const on = stream === d.id;
           const Icon = d.icon;
@@ -242,12 +253,12 @@ function LevelDoors({ stream, counts, onPick }: { stream: EducationStream | "all
               onClick={() => onPick(on ? "all" : d.id)}
               className={`relative flex h-[168px] w-32 shrink-0 snap-start flex-col justify-between overflow-hidden rounded-[20px] border p-3 text-left transition active:scale-[0.98] ${on ? "border-gold ring-1 ring-gold" : "border-[var(--border-faint)] hover:border-gold/50"} bg-[rgb(var(--surface-card))]`}
             >
-              <span className={`pointer-events-none absolute -right-5 -top-5 h-24 w-24 rounded-full bg-gradient-to-br ${d.glow} to-transparent opacity-90`} aria-hidden />
+              <span className={`pointer-events-none absolute -right-[18px] -top-[18px] h-[90px] w-[90px] rounded-full opacity-90 ${d.glow}`} aria-hidden />
               <span className="relative flex h-[34px] w-[34px] items-center justify-center rounded-xl bg-[rgb(var(--color-ink))] text-[rgb(var(--surface-card))]">
                 <Icon className="h-4 w-4" aria-hidden />
               </span>
               <span className="relative">
-                <span className="block font-display text-base font-semibold text-ink">{d.label}</span>
+                <span className="block font-[family-name:var(--font-lh-display)] text-base font-bold text-ink">{d.label}</span>
                 <span className="block text-[10.5px] leading-snug text-ink-500">{d.blurb}</span>
                 <span className="mt-1 block text-[10px] font-bold tracking-wide text-gold">{n} {n === 1 ? "course" : "courses"}</span>
               </span>
@@ -334,13 +345,13 @@ function JoinLiveClass({ showTrials, newLearner }: { showTrials: boolean; newLea
           <Radio className="h-[18px] w-[18px]" aria-hidden />
         </span>
         <div className="min-w-0">
-          <h2 id="join-h" className="font-display text-sm font-semibold text-ink">
+          <h2 id="join-h" className="font-[family-name:var(--font-lh-display)] text-sm font-bold text-ink">
             Join a live class
           </h2>
           <p className="text-[11px] text-ink-500">Enter the code on your tutor&apos;s screen</p>
         </div>
       </div>
-      <div className="field-box flex divide-x divide-[var(--border-faint)] overflow-hidden rounded-2xl border border-[var(--border-faint)]" role="group" aria-label="Class code">
+      <div className="field-box flex gap-1.5 rounded-2xl !bg-[rgb(var(--surface-muted))] p-1.5" role="group" aria-label="Class code">
         {digits.map((d, i) => (
           <input
             key={i}
@@ -356,38 +367,23 @@ function JoinLiveClass({ showTrials, newLearner }: { showTrials: boolean; newLea
             onKeyDown={(e) => {
               if (e.key === "Backspace" && !digits[i] && i > 0) refs.current[i - 1]?.focus();
             }}
-            className="h-12 w-full min-w-0 flex-1 rounded-none border-0 p-0 text-center font-mono text-lg font-bold text-ink outline-none focus:ring-2 focus:ring-inset focus:ring-gold"
+            className="h-[42px] w-full min-w-0 flex-1 rounded-xl border-0 p-0 text-center font-[family-name:var(--font-lh-mono)] text-lg font-medium text-ink outline-none focus:ring-2 focus:ring-gold"
           />
         ))}
       </div>
-      {trials.length > 0 && (
-        <div className="space-y-2 pt-0.5">
-          <p className="flex items-center gap-1.5 text-[11px] text-ink-500">
-            <Radio className="h-3 w-3 text-gold" aria-hidden /> {newLearner ? "Try a practice class. It plays by itself." : "No code yet? Try a practice class. It plays by itself."}
-          </p>
-          {newLearner && (
+      {trials.length > 0 &&
+        (newLearner ? (
+          <div className="space-y-2 pt-0.5">
+            <p className="text-[11px] text-ink-500">Try a practice class. It plays by itself.</p>
             <button type="button" onClick={() => open(trials[0].code)} className="w-full rounded-2xl bg-gold px-3 py-2.5 text-[13px] font-bold text-ink-gold">
               Start practice class
             </button>
-          )}
-          {!newLearner && (
-            <ul className="space-y-1.5">
-              {trials.map((t) => (
-                <li key={t.code}>
-                  <button
-                    type="button"
-                    onClick={() => open(t.code)}
-                    className="flex w-full items-center justify-between gap-3 rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] px-3 py-2 text-left transition hover:border-gold/50"
-                  >
-                    <span className="min-w-0 truncate text-xs font-semibold text-ink">{t.title.replace(/^Trial class: /, "")}</span>
-                    <span className="shrink-0 font-mono text-xs font-bold tracking-widest text-gold">{t.code}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
+          </div>
+        ) : (
+          <button type="button" onClick={() => open(trials[0].code)} className="flex items-center gap-1.5 text-left text-[11px] text-ink-500">
+            <Sparkles className="h-3 w-3 shrink-0 text-gold" aria-hidden /> No code yet? Try a practice class. It plays by itself.
+          </button>
+        ))}
     </section>
   );
 }
@@ -412,10 +408,10 @@ function Tile({ href, icon: Icon, title, hint, badge, tone }: { href: string; ic
 function CourseCard({ course, wide }: { course: CatalogCourse; wide?: boolean }) {
   return (
     <Link href={`/learn/course/${course.id}`} className={`block ${wide ? "w-[200px] shrink-0 snap-start" : ""}`}>
-      <LearnThumb src={api.learnArtUrl("course", course.id)} ratio={HOME_RATIO} className="mb-2 w-full rounded-2xl" />
-      <p className="line-clamp-2 text-[13px] font-semibold leading-tight text-ink">{course.title}</p>
-      <p className="mt-0.5 truncate text-[11px] text-ink-500">{course.schoolName}</p>
-      <p className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-ink-500">
+      <LearnThumb src={api.learnArtUrl("course", course.id)} ratio={HOME_RATIO} className="mb-2 w-full rounded-[14px]" />
+      <p className="line-clamp-2 text-xs font-bold leading-tight text-ink">{course.title}</p>
+      <p className="mt-0.5 truncate text-[10.5px] text-ink-500">{course.schoolName}</p>
+      <p className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10.5px] text-ink-500">
         <span className="rounded-full bg-gold/15 px-2 py-0.5 font-bold text-gold">{ugx(course.priceUgx)}</span>
         <span>
           {course.lessonCount} lesson{course.lessonCount === 1 ? "" : "s"}
@@ -426,12 +422,12 @@ function CourseCard({ course, wide }: { course: CatalogCourse; wide?: boolean })
   );
 }
 
-function Rail({ id, title, courses }: { id: string; title: string; courses: CatalogCourse[] }) {
+function Rail({ id, title, courses, onSeeAll }: { id: string; title: string; courses: CatalogCourse[]; onSeeAll: () => void }) {
   if (courses.length === 0) return null;
   return (
     <section aria-labelledby={id}>
-      <SectionHead id={id} title={title} />
-      <div className="-mx-4 flex snap-x scroll-pl-4 gap-2.5 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <SectionHead id={id} title={title} onSeeAll={onSeeAll} />
+      <div className="-mx-3.5 flex snap-x scroll-pl-3.5 gap-2.5 overflow-x-auto px-3.5 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {courses.map((c) => (
           <CourseCard key={c.id} course={c} wide />
         ))}
@@ -459,9 +455,14 @@ function LearnHome() {
   const stream: EducationStream | "all" = EDUCATION_STREAMS.some((s) => s.id === asked) ? (asked as EducationStream) : "all";
   const [school, setSchool] = useState<string | null>(null);
   // A school belongs to one level, so changing level (from the menu or the doors) clears it.
-  useEffect(() => setSchool(null), [stream]);
+  useEffect(() => {
+    setSchool(null);
+    if (stream !== "all") setOnly(null);
+  }, [stream]);
   const [query, setQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
+  // "See all" on a row opens the course grid for that row ("free") or for every course ("all").
+  const [only, setOnly] = useState<"free" | "all" | null>(null);
 
   useEffect(() => setHello(greeting(user?.name)), [user?.name]);
 
@@ -529,6 +530,7 @@ function LearnHome() {
     (s: EducationStream | "all") => {
       router.replace(s === "all" ? "/learn" : `/learn?stream=${s}`, { scroll: false });
       setSchool(null);
+      setOnly(null);
     },
     [router],
   );
@@ -556,11 +558,12 @@ function LearnHome() {
     return inStream.filter(
       (c) =>
         (!school || c.schoolSlug === school) &&
+        (only !== "free" || c.priceUgx === 0) &&
         (!q || [c.title, c.summary, c.schoolName, c.className, c.classLevel].some((t) => t.toLowerCase().includes(q))),
     );
-  }, [inStream, school, query]);
+  }, [inStream, school, query, only]);
 
-  const browsing = stream !== "all" || query.trim() !== "" || searchOpen;
+  const browsing = stream !== "all" || query.trim() !== "" || searchOpen || only !== null;
   const dueInvoices = invoices.filter((i) => i.status === "unpaid" || i.status === "partial");
   const dueTotal = dueInvoices.reduce((sum, i) => sum + i.balanceUgx, 0);
   const newLearner = enrollments !== null && enrollments.length === 0;
@@ -573,18 +576,20 @@ function LearnHome() {
   const showTools = config.tools && !signedOut;
 
   return (
-    <div className="mx-auto max-w-3xl space-y-5 p-4 pb-44">
+    // The warm page colour is the Peebee cream; the app's own page colour stays for dark mode.
+    <div className={`${display.variable} ${bodyFont.variable} ${monoFont.variable} min-h-dvh bg-[#F7F3EE] font-[family-name:var(--font-lh-body)] dark:bg-cream`}>
+    <div className="mx-auto max-w-3xl space-y-[18px] px-3.5 pb-44 pt-4">
       <header className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-gold">Peebee Learn</p>
-          <h1 className="font-display text-[22px] font-bold leading-tight tracking-tight text-ink">{newLearner || signedOut ? "What do you want to learn?" : hello}</h1>
+          <h1 className="mt-[3px] font-[family-name:var(--font-lh-display)] text-[22px] font-bold leading-[1.1] tracking-[-0.02em] text-ink">{newLearner || signedOut ? "What do you want to learn?" : hello}</h1>
         </div>
         <button
           type="button"
           onClick={() => setSearchOpen((o) => !o)}
           aria-label={searchOpen ? "Close search" : "Search courses"}
           aria-expanded={searchOpen}
-          className={`${card} flex h-[38px] w-[38px] shrink-0 items-center justify-center text-ink`}
+          className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-[13px] border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] text-ink"
         >
           {searchOpen ? <X className="h-4 w-4" aria-hidden /> : <Search className="h-4 w-4" aria-hidden />}
         </button>
@@ -621,7 +626,7 @@ function LearnHome() {
         </>
       )}
 
-      <LevelDoors stream={stream} counts={counts} onPick={pickStream} />
+      <LevelDoors stream={stream} counts={counts} onPick={pickStream} onSeeAll={() => setOnly("all")} />
 
       {!browsing && config.live && <JoinLiveClass showTrials={config.trialClasses} newLearner={newLearner || signedOut} />}
 
@@ -647,18 +652,18 @@ function LearnHome() {
       {browsing ? (
         <section aria-labelledby="browse-h" className="space-y-3">
           <div className="flex items-baseline justify-between gap-3">
-            <h2 id="browse-h" className="font-display text-base font-semibold text-ink">
-              {stream === "all" ? "Courses" : `${EDUCATION_STREAMS.find((s) => s.id === stream)?.title} courses`}
+            <h2 id="browse-h" className="font-[family-name:var(--font-lh-display)] text-base font-semibold text-ink">
+              {stream !== "all" ? `${EDUCATION_STREAMS.find((s) => s.id === stream)?.title} courses` : only === "free" ? "Free courses" : "Courses"}
             </h2>
-            {stream !== "all" && (
+            {(stream !== "all" || only !== null) && (
               <button type="button" onClick={() => pickStream("all")} className="text-xs font-semibold text-gold">
-                All levels
+                {stream !== "all" ? "All levels" : "Back"}
               </button>
             )}
           </div>
 
           {schools.length > 1 && (
-            <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1" aria-label="Schools">
+            <div className="-mx-3.5 flex gap-2 overflow-x-auto px-3.5 pb-1" aria-label="Schools">
               {schools.map((s) => (
                 <button
                   key={s.slug}
@@ -707,8 +712,8 @@ function LearnHome() {
         </div>
       ) : (
         <>
-          {config.freeRail && <Rail id="free-h" title="Free to start" courses={freeCourses} />}
-          <Rail id="new-h" title="New on Learn" courses={newest} />
+          {config.freeRail && <Rail id="free-h" title="Free to start" courses={freeCourses} onSeeAll={() => setOnly("free")} />}
+          <Rail id="new-h" title="New on Learn" courses={newest} onSeeAll={() => setOnly("all")} />
           {courses.length === 0 && (
             <div className={`${card} flex flex-col items-center gap-2 px-5 py-10 text-center`}>
               <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gold/15 text-gold">
@@ -736,6 +741,7 @@ function LearnHome() {
           (sample data)
         </p>
       </footer>
+    </div>
     </div>
   );
 }
