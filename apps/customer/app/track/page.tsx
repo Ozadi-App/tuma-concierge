@@ -1,11 +1,60 @@
 "use client";
 
-import { ChevronRight, MapPin, MapPinned, User } from "lucide-react";
+import type { GuestTrack, GuestTrackStatus } from "@peebee/shared";
+import { ChevronRight, MapPin, MapPinned, Search, User } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { OrderKindIcon } from "../../components/OrderKindIcon";
+import { api, errorMessage } from "../../lib/api";
+import { tidyCode } from "../../lib/guest";
 import { loadTrackedOrders, orderKind, ORDER_KIND_LABEL, type TrackedOrder } from "../../lib/order-feed";
 import { stageLabel, stageProgressPct } from "../../lib/order-display";
+
+const CODE_STATUS: Record<GuestTrackStatus, string> = {
+  received: "Order received. The delivery is being arranged.",
+  preparing: "A rider is collecting the order.",
+  on_the_way: "On its way.",
+  arrived: "The rider has arrived.",
+  delivered: "Delivered.",
+  cancelled: "This order was cancelled.",
+};
+
+/** Follow an order by its tracking code (guest orders have one): any signed-in user can, whatever the public-status switch says. */
+function TrackByCode() {
+  const [code, setCode] = useState("");
+  const [result, setResult] = useState<GuestTrack | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function lookup(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true); setError(null); setResult(null);
+    try { setResult(await api.guestTrack(code)); }
+    catch (err) { setError(errorMessage(err)); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <section className="home-card space-y-3 !rounded-3xl" aria-label="Track with a code">
+      <form onSubmit={lookup} className="space-y-2">
+        <label htmlFor="track-code" className="block text-sm font-bold text-ink">Have a tracking code?</label>
+        <div className="flex gap-2">
+          <input id="track-code" value={code} onChange={(e) => setCode(tidyCode(e.target.value))} placeholder="PB-XXXXXXXX" autoCapitalize="characters" autoComplete="off" className="min-h-11 min-w-0 flex-1 rounded-xl px-3 text-base tracking-wider" />
+          <button type="submit" disabled={busy || code.length < 11} aria-label="Find order" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gold text-ink-gold disabled:opacity-50"><Search className="h-5 w-5" aria-hidden /></button>
+        </div>
+      </form>
+      {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
+      {result && (
+        <div className="space-y-2" aria-live="polite">
+          <p className="text-xs font-bold uppercase tracking-wide text-ink-500">Order {result.trackingCode}</p>
+          {result.item && <p className="font-bold text-ink">{result.item}</p>}
+          {result.status && <p className="text-sm text-ink">{CODE_STATUS[result.status]}</p>}
+          {result.orderId && <Link href={`/orders/${result.orderId}`} className="inline-flex min-h-11 items-center rounded-full bg-gold px-5 text-sm font-bold text-ink-gold">Open order</Link>}
+        </div>
+      )}
+    </section>
+  );
+}
 
 export default function TrackPage() {
   const [tracked, setTracked] = useState<TrackedOrder[]>([]);
@@ -25,6 +74,8 @@ export default function TrackPage() {
         <h1 className="text-xl font-bold text-ink">Track</h1>
         <p className="mt-0.5 text-sm text-ink-500">Parcels, marketplace buys and deliveries on the way</p>
       </div>
+
+      <TrackByCode />
 
       {state === "loading" && (
         <div className="space-y-3" aria-busy="true" aria-label="Loading">

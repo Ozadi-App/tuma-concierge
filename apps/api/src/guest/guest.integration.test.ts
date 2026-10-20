@@ -102,6 +102,17 @@ test("a guest buys from a shared product link, pays first, and is told about it"
   const login = await (await json("/guest/track/" + guest.trackingCode)).json() as { hasAccount: boolean };
   assert.equal(login.hasAccount, true);
 
+  // Signed-in users can follow any code in the app, even while the public status is off.
+  const { signToken } = await import("../auth/jwt.js");
+  await client.execute("INSERT INTO users (id, phone, name, password_hash, role) VALUES ('someone', '+256700555111', 'Someone', 'x', 'customer')");
+  const viewer = await signToken({ sub: "someone", role: "customer" });
+  const seen = await (await json(`/guest/track/${guest.trackingCode}`, { token: viewer })).json() as { status?: string; orderId?: string };
+  assert.equal(seen.status, "received");
+  assert.equal(seen.orderId, undefined, "someone else's order is not opened for them");
+  const owner = await signToken({ sub: String(user.id), role: "customer" });
+  assert.equal(((await (await json(`/guest/track/${guest.trackingCode}`, { token: owner })).json()) as { orderId?: string }).orderId, guest.orderId);
+  assert.equal(((await (await json(`/guest/track/${guest.trackingCode}`, { token: guest.token })).json()) as { status?: string }).status, undefined, "a guest token is not a sign-in");
+
   // Admin switches: the code now shows a status, and turning guest checkout off refuses new guests.
   await client.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('guest_checkout_code_status', '1')");
   const { invalidateSettingsCache } = await import("../lib/settings.js");

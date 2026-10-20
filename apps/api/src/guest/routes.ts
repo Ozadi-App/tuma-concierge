@@ -4,7 +4,7 @@ import { z } from "zod";
 import { logActivity } from "../admin/activity.js";
 import { requirePermission } from "../admin/permissions.js";
 import { requireAuth, requireRole } from "../auth/middleware.js";
-import { signToken } from "../auth/jwt.js";
+import { signToken, verifyToken } from "../auth/jwt.js";
 import { toAuthUser } from "../auth/serialize.js";
 import { db } from "../db/client.js";
 import { newId } from "../lib/ids.js";
@@ -197,27 +197,44 @@ guestRoutes.post("/guest/checkout", async (c) => {
   }, 201);
 });
 
+/** The user id behind a normal (not guest-scoped) sign-in token that still points at a live account, else null. */
+async function registeredViewer(header: string | undefined): Promise<string | null> {
+  const token = header?.startsWith("Bearer ") ? header.slice(7) : null;
+  if (!token) return null;
+  try {
+    const payload = await verifyToken(token);
+    if (payload.guestOrderId) return null;
+    const row = (await db.execute({ sql: "SELECT status FROM users WHERE id = ?", args: [payload.sub] })).rows[0] as Row | undefined;
+    return row && row.status !== "suspended" ? payload.sub : null;
+  } catch {
+    return null;
+  }
+}
+
 guestRoutes.get("/guest/track/:code", async (c) => {
   if (!(await hasTable("guest_orders"))) return c.json({ error: "not_found" }, 404);
   const limit = await consume(`ip:guest-track:${await hashKey(clientIp(c))}`, 30, 60);
   if (!limit.allowed) return tooManyRequests(c, limit, "Too many lookups. Please wait a moment.");
   const code = normalizeTrackingCode(c.req.param("code"));
   const row = (await db.execute({
-    sql: `SELECT g.tracking_code, g.existing_account, g.account_activated_at, g.created_at, o.stage, o.rider_id, o.environment,
+    sql: `SELECT g.tracking_code, g.user_id, g.order_id, g.existing_account, g.account_activated_at, g.created_at, o.stage, o.rider_id, o.environment,
                  (SELECT li.name FROM list_items li WHERE li.list_id = o.list_id LIMIT 1) AS item_name
           FROM guest_orders g JOIN orders o ON o.id = g.order_id WHERE g.tracking_code = ?`,
     args: [code],
   })).rows[0] as Row | undefined;
   if (!row) return c.json({ error: "not_found", message: "We couldn't find that tracking code." }, 404);
   const settings = await getGuestSettings();
+  // A signed-in Peebee user can follow any code in the app, whatever the public-status switch says.
+  const viewer = await registeredViewer(c.req.header("Authorization"));
   const base = {
     trackingCode: String(row.tracking_code),
     placedAt: String(row.created_at),
     canCreateAccount: !row.account_activated_at && !row.existing_account,
     hasAccount: !!row.account_activated_at || !!row.existing_account,
     codeStatusEnabled: settings.codeStatusEnabled,
+    ...(viewer === String(row.user_id) ? { orderId: String(row.order_id) } : {}),
   };
-  if (!settings.codeStatusEnabled) return c.json(base);
+  if (!settings.codeStatusEnabled && !viewer) return c.json(base);
   const stage = String(row.stage);
   const status = stage === "Settle" ? "delivered" : stage === "Arrived" || stage === "Handover" ? "arrived" : stage === "Deliver" ? "on_the_way" : stage === "Shop" ? "preparing" : stage === "Cancelled" ? "cancelled" : "received";
   return c.json({ ...base, item: row.item_name ? String(row.item_name) : null, status });
