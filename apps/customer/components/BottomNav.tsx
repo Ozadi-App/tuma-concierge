@@ -113,10 +113,10 @@ const staticSubmenuItems: Record<"shopping" | "food", MenuItem[]> = {
 
 /** Learn's row. Levels (Sprouts, Basics, Academy, Campus, Skills) are chosen on Discover. */
 const learnItems: MenuItem[] = [
-  { id: "discover", label: "Discover", icon: Compass, href: "/learn" },
   { id: "myclass", label: "My Class", icon: GraduationCap, href: "/learn/my" },
   { id: "live", label: "Live", icon: Radio, href: "/learn/live" },
   { id: "tv", label: "TV", icon: Tv, href: "/learn/tv" },
+  { id: "discover", label: "Discover", icon: Compass, href: "/learn" },
   { id: "connect", label: "Connect", icon: MessagesSquare, href: "/learn/connect" },
 ];
 
