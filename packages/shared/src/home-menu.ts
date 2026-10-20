@@ -12,6 +12,8 @@ export type HiveShortcutId = (typeof HIVE_SHORTCUT_IDS)[number];
 
 export type HomeMenuSettings = {
   clusters: Record<HomeClusterId, { label: string }>;
+  /** The bar at the top of the customer app. */
+  header: { chatEnabled: boolean };
   hive: {
     eyebrow: string;
     description: string;
@@ -23,6 +25,7 @@ export type HomeMenuSettings = {
 };
 
 export const DEFAULT_HOME_MENU: HomeMenuSettings = {
+  header: { chatEnabled: true },
   clusters: {
     ride: { label: "Ride" },
     shopping: { label: "Buy" },
@@ -68,6 +71,7 @@ export function resolveHomeMenu(stored: Partial<HomeMenuSettings> | null | undef
   for (const fallback of base.hive.shortcuts) if (!seen.has(fallback.id)) shortcuts.push({ ...fallback });
   const banner = stored?.hive?.hireBanner;
   return {
+    header: { chatEnabled: stored?.header?.chatEnabled ?? base.header.chatEnabled },
     clusters,
     hive: {
       eyebrow: stored?.hive?.eyebrow?.trim() || base.hive.eyebrow,

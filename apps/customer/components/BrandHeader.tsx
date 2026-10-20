@@ -9,6 +9,8 @@ import {api} from "../lib/api";
 import {useCart} from "../lib/cart";
 import {loadOrderFeed} from "../lib/order-feed";
 import {useResolvedTheme,useThemeMode} from "../lib/theme";
+import {useChatDrawer} from "../lib/chat-drawer";
+import {useHomeMenu} from "../lib/home-menu";
 import {BrandLogo} from "./BrandLogo";
 import {SavedCartsList,useCartRows} from "./SavedCarts";
 
@@ -52,6 +54,9 @@ export function BrandHeader() {
   const activeTheme=useResolvedTheme();
   const {totalQuantity:cartCount}=useCart();
   const [expanded,setExpanded]=useState(false);
+  const chat=useChatDrawer();
+  const chatEnabled=useHomeMenu().header.chatEnabled;
+  const [chatUnread,setChatUnread]=useState(false);
   // Every cart on this device (the bag, each restaurant's, the earlier ones), re-read each time the menu opens.
   const cartRows=useCartRows(expanded);
   const openCarts=cartRows.some(row=>row.kind!=="earlier");
@@ -66,6 +71,17 @@ export function BrandHeader() {
   const modeLabel=!practiceActive&&environment==="sandbox"?"*demo":null;
   const isDark=activeTheme==="dark";
   const close=()=>setExpanded(false);
+  useEffect(()=>{if(chat.open)setExpanded(false);},[chat.open]);
+  // A dot on the chat icon when any conversation has something unread. Quiet on failure: the icon just shows no dot.
+  useEffect(()=>{
+    if(!chatEnabled||chat.open)return;
+    let live=true;
+    Promise.allSettled([api.getChatThreads(),api.getMyRestaurantChatThreads()]).then(([riders,restaurants])=>{
+      if(!live)return;
+      setChatUnread((riders.status==="fulfilled"&&riders.value.threads.some(t=>t.unread))||(restaurants.status==="fulfilled"&&restaurants.value.threads.some(t=>t.unread)));
+    });
+    return()=>{live=false;};
+  },[chatEnabled,chat.open]);
   useEffect(()=>setExpanded(false),[pathname]);
   useEffect(()=>()=>{window.clearTimeout(releaseTimer.current);document.documentElement.classList.remove("customer-menu-open");},[]);
   useEffect(()=>{
@@ -103,10 +119,16 @@ export function BrandHeader() {
     <header className={`customer-header sticky top-0 z-40 ${expanded?"is-menu-open":""}`}>
       <div className="mx-auto flex h-16 max-w-lg items-center justify-between gap-3 px-4">
         <Link href="/" aria-label={`Go to home${modeLabel ? ", demo mode" : ""}`} className="flex shrink-0 items-start gap-1"><BrandLogo variant={isDark ? "dark" : "light"}/>{modeLabel&&<sup aria-hidden="true" className="pt-1 text-[10px] font-bold leading-none text-gold">{modeLabel}</sup>}</Link>
-        <button ref={toggleRef} type="button" aria-label={expanded?"Close menu":"Open menu"} aria-expanded={expanded} aria-controls="header-menu" onClick={()=>setExpanded(value=>!value)} className="customer-header-toggle relative flex h-11 w-11 items-center justify-center rounded-full">
-          <ChevronDown size={24} className={`transition-transform duration-300 ${expanded?"rotate-180":""}`} aria-hidden/>
-          {!expanded&&(cartCount>0||openCarts)&&<span aria-hidden className="customer-header-dot absolute right-1.5 top-1.5 h-2.5 w-2.5 rounded-full"/>}
-        </button>
+        <div className="flex shrink-0 items-center gap-1">
+          <button ref={toggleRef} type="button" aria-label={expanded?"Close menu":"Open menu"} aria-expanded={expanded} aria-controls="header-menu" onClick={()=>setExpanded(value=>!value)} className="customer-header-toggle relative flex h-11 w-11 items-center justify-center rounded-full">
+            <ChevronDown size={24} className={`transition-transform duration-300 ${expanded?"rotate-180":""}`} aria-hidden/>
+            {!expanded&&(cartCount>0||openCarts)&&<span aria-hidden className="customer-header-dot absolute right-1.5 top-1.5 h-2.5 w-2.5 rounded-full"/>}
+          </button>
+          {chatEnabled&&<button type="button" aria-label={chatUnread?"Open chat, unread messages":"Open chat"} aria-expanded={chat.open} aria-controls="chat-drawer" onClick={chat.openChat} className="customer-header-toggle relative flex h-11 w-11 items-center justify-center rounded-full">
+            <MessageCircle size={22} aria-hidden/>
+            {chatUnread&&<span aria-hidden className="customer-header-dot absolute right-1.5 top-1.5 h-2.5 w-2.5 rounded-full"/>}
+          </button>}
+        </div>
       </div>
       <div id="header-menu" className={`customer-profile-reveal customer-menu-reveal mx-auto grid max-w-lg ${expanded?"is-expanded":""}`} inert={!expanded} aria-hidden={!expanded}>
         <div className="min-h-0 overflow-hidden">

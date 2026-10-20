@@ -7,7 +7,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../lib/api";
-import { activeHiveJob, bookingHref, MATCHING_LABEL, nearbyHeadline, tradePrice, tradePriceLabel, type HiveTrade, type Matching } from "../../lib/hive-home";
+import { activeHiveJob, bookingHref, MATCHING_LABEL, nearbyHeadline, schedulePresets, tradePrice, tradePriceLabel, type HiveTrade, type Matching } from "../../lib/hive-home";
 import { useHireAvailability, useHomeMenu } from "../../lib/home-menu";
 import { useRegisterNavPrimaryAction, type NavPrimaryAction } from "../../lib/nav-primary-action";
 import { RideLiveMap } from "../ride/RideLiveMap";
@@ -40,6 +40,7 @@ export function HiveHome() {
   const [job, setJob] = useState<WorkJob | null>(null);
   const [trade, setTrade] = useState<HiveTrade | null>(null);
   const [when, setWhen] = useState<"now" | "later">("now");
+  const [presetId, setPresetId] = useState<string | null>(null);
   const [matching, setMatching] = useState<Matching | null>(null);
   const [expanded, setExpanded] = useState(false);
   const asked = useRef<string | null>(null);
@@ -84,6 +85,8 @@ export function HiveHome() {
   const enabledTrades = tiles.map((t) => t.id);
   const pins = useMemo(() => (nearby?.pins ?? []).filter((p) => enabledTrades.includes(p.type)), [nearby, enabledTrades.join()]);
   const headline = nearbyHeadline(nearby?.counts ?? null, enabledTrades);
+  const presets = useMemo(() => (settings ? schedulePresets(settings) : []), [settings]);
+  const preset = when === "later" ? presets.find((p) => p.id === presetId) ?? null : null;
   const selected = trade ? tiles.find((t) => t.id === trade) ?? null : null;
   const open = catalog.kind !== "closed";
 
@@ -93,8 +96,8 @@ export function HiveHome() {
       ? {
           tone: "step",
           label: `Next: choose ${TRADE[selected.id].noun}`,
-          sublabel: [when === "later" ? "Pick a time" : "Now", effectiveMatching ? MATCHING_LABEL[effectiveMatching] : null].filter(Boolean).join(" · "),
-          onClick: () => router.push(bookingHref(TRADE[selected.id].href, { matching: effectiveMatching, when })),
+          sublabel: [when === "later" ? (preset?.label ?? "Pick a time") : "Now", effectiveMatching ? MATCHING_LABEL[effectiveMatching] : null].filter(Boolean).join(" · "),
+          onClick: () => router.push(bookingHref(TRADE[selected.id].href, { matching: effectiveMatching, when, at: preset?.at })),
         }
       : { tone: "step", label: "Next: pick a service", sublabel: "Tap Clean, Laundry or Fix", disabled: true, onClick: () => {} };
   useRegisterNavPrimaryAction(navAction);
@@ -146,14 +149,24 @@ export function HiveHome() {
 
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-lg font-bold">What needs doing?</h2>
-            <div className="flex shrink-0 gap-1 rounded-full bg-[rgb(var(--surface-muted))] p-1" role="group" aria-label="When">
+            <div className="flex shrink-0 gap-2" role="group" aria-label="When">
               {(["now", "later"] as const).map((w) => (
-                <button key={w} type="button" aria-pressed={when === w} onClick={() => setWhen(w)} className={`ride-chip !min-h-[34px] !border-0 !px-3 ${when === w ? "is-on" : "!bg-transparent"}`}>
+                <button key={w} type="button" aria-pressed={when === w} onClick={() => setWhen(w)} className={`ride-chip ${when === w ? "is-on" : ""}`}>
                   {w === "now" ? "Now" : "Schedule"}
                 </button>
               ))}
             </div>
           </div>
+
+          {open && when === "later" && presets.length > 0 && (
+            <div className="flex flex-wrap gap-2" role="group" aria-label="Pick a time">
+              {presets.map((p) => (
+                <button key={p.id} type="button" aria-pressed={presetId === p.id} onClick={() => setPresetId(presetId === p.id ? null : p.id)} className={`ride-chip ${presetId === p.id ? "is-on" : ""}`}>
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          )}
 
           {!open ? (
             <p role="status" className="rounded-2xl bg-[rgb(var(--surface-muted))] p-4 text-sm text-ink-500">
@@ -175,7 +188,7 @@ export function HiveHome() {
                     onClick={() => setTrade(on ? null : t.id)}
                     className={`hive-tile relative flex min-h-[112px] flex-col items-start rounded-2xl border p-3 text-left transition-all active:scale-[0.98] ${on ? "is-on border-gold" : "border-[var(--border-faint)]"}`}
                   >
-                    <span className={`hive-pin-dot hive-pin-dot--${t.id} flex h-10 w-10 items-center justify-center rounded-xl`}>
+                    <span className="hive-pin-dot flex h-10 w-10 items-center justify-center rounded-xl">
                       <Icon className="h-5 w-5" strokeWidth={1.9} aria-hidden />
                     </span>
                     <strong className="mt-2 text-sm">{t.label}</strong>

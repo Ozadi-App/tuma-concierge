@@ -6,6 +6,7 @@ const label = z.string().trim().min(1).max(20);
 const hiveShortcut = z.object({ id: z.enum(HIVE_SHORTCUT_IDS), label, enabled: z.boolean() });
 
 export const homeMenuSchema = z.object({
+  header: z.object({ chatEnabled: z.boolean() }).optional(),
   clusters: z.object({
     ride: z.object({ label }),
     shopping: z.object({ label }),

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { activeHiveJob, bookingHref, nearbyHeadline, tradePrice, tradePriceLabel } from "./hive-home";
+import { activeHiveJob, bookingHref, clockLabel, durationLabel, nearbyHeadline, schedulePresets, tradePrice, tradePriceLabel } from "./hive-home";
 
 const svc = (type: any, pricingMode: any, unitPriceUgx: number, calloutFeeUgx = 0, unitLabel = "job") => ({ type, pricingMode, unitPriceUgx, calloutFeeUgx, unitLabel });
 
@@ -31,4 +31,32 @@ test("nearbyHeadline counts only enabled trades", () => {
   assert.equal(nearbyHeadline({ clean: 2, laundry: 1, fix: 4 }, ["clean", "laundry"]), "3 providers online near you");
   assert.equal(nearbyHeadline({ clean: 0, laundry: 0, fix: 0 }, ["clean"]), null);
   assert.equal(nearbyHeadline(null, ["clean"]), null);
+});
+
+const NOW = new Date(2026, 9, 20, 14, 2, 30);
+
+test("schedulePresets offers 1 hour, 3 hours and tomorrow with its time", () => {
+  const p = schedulePresets({ minLeadMinutes: 30, maxAdvanceDays: 30 }, NOW);
+  assert.deepEqual(p.map((x) => x.label), ["In 1 hour", "In 3 hours", "Tomorrow 9:00 am"]);
+  assert.deepEqual(p.map((x) => x.at), ["2026-10-20T15:05", "2026-10-20T17:05", "2026-10-21T09:00"]);
+});
+
+test("schedulePresets follows the admin's settings and the booking window", () => {
+  const rules = { minLeadMinutes: 120, maxAdvanceDays: 30, scheduleQuickMinutes: [60, 180], scheduleTomorrowTime: "18:30" };
+  assert.deepEqual(schedulePresets(rules, NOW).map((x) => x.label), ["In 3 hours", "Tomorrow 6:30 pm"]);
+  assert.deepEqual(schedulePresets({ minLeadMinutes: 0, maxAdvanceDays: 30, scheduleQuickMinutes: [], scheduleTomorrowEnabled: false }, NOW), []);
+  // Tomorrow is the following calendar day even late at night.
+  const late = new Date(2026, 9, 20, 23, 30);
+  assert.equal(schedulePresets({ minLeadMinutes: 30, maxAdvanceDays: 30, scheduleQuickMinutes: [] }, late)[0]!.at, "2026-10-21T09:00");
+});
+
+test("durationLabel reads naturally", () => {
+  assert.deepEqual([30, 60, 90, 180].map(durationLabel), ["In 30 min", "In 1 hour", "In 1 h 30 min", "In 3 hours"]);
+});
+
+test("clockLabel and bookingHref carry the chosen time", () => {
+  assert.equal(clockLabel("00:15"), "12:15 am");
+  assert.equal(clockLabel("13:00"), "1:00 pm");
+  assert.equal(bookingHref("/services/clean", { when: "later", at: "2026-10-21T09:00" }), "/services/clean?when=later&at=2026-10-21T09%3A00");
+  assert.equal(bookingHref("/services/clean", { when: "now", at: "2026-10-21T09:00" }), "/services/clean");
 });

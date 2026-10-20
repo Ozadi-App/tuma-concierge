@@ -16,7 +16,7 @@ type NumKey =
   | "commissionPercent" | "offerWindowMinutes" | "radiusKm" | "maxNotified" | "minLeadMinutes" | "maxAdvanceDays" | "quoteValidHours"
   | "maxQuoteUgx" | "freeCancelMinutes" | "lateCancelFeePercent" | "autoConfirmHours" | "disputeWindowHours" | "jobsPerHour"
   | "maxRematches" | "maxPhotosPerJob" | "maxPhotoKb" | "onsiteRadiusM" | "onsiteMinMinutes" | "onsiteSuspendAfterFlags" | "onsiteWindowDays" | "locationRetentionDays";
-type BoolKey = "enabled" | "requireApproval" | "rematchOnProviderCancel" | "photosEnabled" | "chatEnabled" | "trackingEnabled" | "onsiteCheckEnabled" | "onsiteFlagNoLocation" | "onsiteRequireLocation";
+type BoolKey = "scheduleTomorrowEnabled" | "enabled" | "requireApproval" | "rematchOnProviderCancel" | "photosEnabled" | "chatEnabled" | "trackingEnabled" | "onsiteCheckEnabled" | "onsiteFlagNoLocation" | "onsiteRequireLocation";
 
 /** Ranges are exactly those in apps/api/src/settings/routes.ts (`work`). */
 const NUM: Record<NumKey, { label: string; min: number; max: number; hint?: string }> = {
@@ -102,6 +102,7 @@ export default function WorkSettingsPage() {
   const { canEditSettings, canManage } = useWorkPermissions();
   const [form, setForm] = useState<Form | null>(null);
   const [nums, setNums] = useState<Record<string, string>>({});
+  const [quick, setQuick] = useState("60, 180");
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -109,6 +110,7 @@ export default function WorkSettingsPage() {
   function apply(w: Partial<WorkAdminSettings> | undefined) {
     const next = withDefaults(w);
     setForm(next);
+    setQuick(next.scheduleQuickMinutes.join(", "));
     setNums(Object.fromEntries((Object.keys(NUM) as NumKey[]).map((k) => [k, String(next[k])])));
   }
 
@@ -125,6 +127,14 @@ export default function WorkSettingsPage() {
   const setBool = (k: BoolKey, v: boolean) => { setSaved(false); setForm({ ...form, [k]: v }); };
   const setList = <K extends "serviceTypes" | "pricingModes" | "matchingModes" | "providerKinds">(k: K, v: Form[K]) => { setSaved(false); setForm({ ...form, [k]: v }); };
 
+  /** "30, 60, 180" -> [30, 60, 180]; null when it is not a list of up to four different whole minutes from 5 to 4320. */
+  function parseQuick(text: string): number[] | null {
+    const parts = text.split(",").map((t) => t.trim()).filter(Boolean);
+    const hours = parts.map(Number);
+    if (parts.length > 4 || hours.some((h) => !Number.isInteger(h) || h < 5 || h > 4320) || new Set(hours).size !== hours.length) return null;
+    return hours.sort((a, b) => a - b);
+  }
+
   function problem(): string | null {
     if (!form) return null;
     for (const k of Object.keys(NUM) as NumKey[]) {
@@ -132,6 +142,8 @@ export default function WorkSettingsPage() {
       const n = Number(nums[k]);
       if (nums[k] === "" || !Number.isInteger(n) || n < spec.min || n > spec.max) return `${spec.label} must be a whole number from ${spec.min.toLocaleString()} to ${spec.max.toLocaleString()}.`;
     }
+    if (parseQuick(quick) === null) return "Quick times must be up to four different whole minutes from 5 to 4320, like 60, 180.";
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(form.scheduleTomorrowTime)) return "Choose a time for the Tomorrow option.";
     if (form.pricingModes.length === 0) return "Turn on at least one pricing mode.";
     if (form.matchingModes.length === 0) return "Turn on at least one matching mode.";
     if (form.providerKinds.length === 0) return "Allow at least one provider kind.";
@@ -148,7 +160,7 @@ export default function WorkSettingsPage() {
     setError(null);
     setSaved(false);
     try {
-      const payload = { ...form, ...Object.fromEntries((Object.keys(NUM) as NumKey[]).map((k) => [k, Number(nums[k])])) } as WorkAdminSettings;
+      const payload = { ...form, scheduleQuickMinutes: parseQuick(quick) ?? [], ...Object.fromEntries((Object.keys(NUM) as NumKey[]).map((k) => [k, Number(nums[k])])) } as WorkAdminSettings;
       const res = await api.workAdminUpdateSettings(payload);
       apply(res.settings.work);
       setSaved(true);
@@ -238,6 +250,18 @@ export default function WorkSettingsPage() {
         </div>
         <Toggle label="Chat" hint="Customer and provider can message about a job." checked={form.chatEnabled} disabled={ro} onChange={(v) => setBool("chatEnabled", v)} />
         <Toggle label="Live tracking" hint="Customer sees the provider's location while the job is on." checked={form.trackingEnabled} disabled={ro} onChange={(v) => setBool("trackingEnabled", v)} />
+      </section>
+
+      <section className="home-card space-y-3">
+        <h2 className="text-sm font-bold text-ink">Quick times when scheduling</h2>
+        <p className="text-xs text-ink-500">Choices a customer can tap when they book for later, on the Hive home and the booking page. Only times inside the minimum lead time and days ahead above are shown.</p>
+        <Field label="Minutes from now" hint="Up to four durations in minutes, from 5 to 4320 (3 days), separated by commas. 60 shows as “In 1 hour”, 180 as “In 3 hours”. Leave empty for none.">
+          <input disabled={ro} value={quick} onChange={(e) => { setSaved(false); setQuick(e.target.value.replace(/[^\d,\s]/g, "")); }} className={inputCls} inputMode="numeric" />
+        </Field>
+        <Toggle label="Offer “Tomorrow”" hint="The following day, at the time below (the customer's local time)." checked={form.scheduleTomorrowEnabled} disabled={ro} onChange={(v) => setBool("scheduleTomorrowEnabled", v)} />
+        <Field label="Tomorrow at" hint="Shown to customers with the time, like “Tomorrow 9:00 am”.">
+          <input type="time" disabled={ro} value={form.scheduleTomorrowTime} onChange={(e) => { setSaved(false); setForm({ ...form, scheduleTomorrowTime: e.target.value }); }} className={inputCls} />
+        </Field>
       </section>
 
       <section className="home-card space-y-3">

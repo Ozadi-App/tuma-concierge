@@ -523,6 +523,10 @@ const DEFAULTS = {
   work_onsite_suspend_after_flags: "0",
   work_onsite_window_days: "30",
   work_location_retention_days: "30",
+  // Quick "when" choices on a Hive booking: minutes ahead (comma list), and "Tomorrow" at a fixed local time.
+  work_schedule_quick_minutes: "60,180",
+  work_schedule_tomorrow_enabled: "1",
+  work_schedule_tomorrow_time: "09:00",
   /** Peebee Hire: a marketplace where customers find workers and workers find gigs, projects and hiring posts (tables talent_*). Off until admin turns it on. */
   talent_enabled: "0",
   talent_gigs_enabled: "1",
