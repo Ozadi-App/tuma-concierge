@@ -228,7 +228,7 @@ function LevelDoors({ stream, counts, onPick }: { stream: EducationStream | "all
   return (
     <section aria-labelledby="levels-h">
       <SectionHead id="levels-h" title="Choose your level" />
-      <div role="radiogroup" aria-label="Level" className="-mx-4 flex snap-x snap-mandatory gap-2.5 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div role="radiogroup" aria-label="Level" className="-mx-4 flex snap-x snap-mandatory scroll-pl-4 gap-2.5 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {DOORS.map((d) => {
           const on = stream === d.id;
           const Icon = d.icon;
@@ -340,7 +340,7 @@ function JoinLiveClass({ showTrials, newLearner }: { showTrials: boolean; newLea
           <p className="text-[11px] text-ink-500">Enter the code on your tutor&apos;s screen</p>
         </div>
       </div>
-      <div className="field-box flex gap-1.5 rounded-2xl p-1.5" role="group" aria-label="Class code">
+      <div className="field-box flex divide-x divide-[var(--border-faint)] overflow-hidden rounded-2xl border border-[var(--border-faint)]" role="group" aria-label="Class code">
         {digits.map((d, i) => (
           <input
             key={i}
@@ -356,7 +356,7 @@ function JoinLiveClass({ showTrials, newLearner }: { showTrials: boolean; newLea
             onKeyDown={(e) => {
               if (e.key === "Backspace" && !digits[i] && i > 0) refs.current[i - 1]?.focus();
             }}
-            className="h-[42px] w-full min-w-0 flex-1 rounded-xl border-0 p-0 text-center font-mono text-lg font-bold text-ink outline-none focus:ring-2 focus:ring-gold"
+            className="h-12 w-full min-w-0 flex-1 rounded-none border-0 p-0 text-center font-mono text-lg font-bold text-ink outline-none focus:ring-2 focus:ring-inset focus:ring-gold"
           />
         ))}
       </div>
@@ -412,18 +412,16 @@ function Tile({ href, icon: Icon, title, hint, badge, tone }: { href: string; ic
 function CourseCard({ course, wide }: { course: CatalogCourse; wide?: boolean }) {
   return (
     <Link href={`/learn/course/${course.id}`} className={`block ${wide ? "w-[200px] shrink-0 snap-start" : ""}`}>
-      <div className="relative mb-1.5">
-        <LearnThumb src={api.learnArtUrl("course", course.id)} ratio={HOME_RATIO} className="w-full rounded-2xl" />
-        <span className="absolute bottom-1.5 left-1.5 rounded-full bg-[rgb(var(--surface-card))] px-2 py-0.5 text-[10px] font-bold text-ink">{ugx(course.priceUgx)}</span>
-        <span className="absolute bottom-1.5 right-1.5 rounded-full bg-black/70 px-2 py-0.5 text-[10px] font-semibold text-white">
+      <LearnThumb src={api.learnArtUrl("course", course.id)} ratio={HOME_RATIO} className="mb-2 w-full rounded-2xl" />
+      <p className="line-clamp-2 text-[13px] font-semibold leading-tight text-ink">{course.title}</p>
+      <p className="mt-0.5 truncate text-[11px] text-ink-500">{course.schoolName}</p>
+      <p className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-ink-500">
+        <span className="rounded-full bg-gold/15 px-2 py-0.5 font-bold text-gold">{ugx(course.priceUgx)}</span>
+        <span>
           {course.lessonCount} lesson{course.lessonCount === 1 ? "" : "s"}
         </span>
-      </div>
-      <p className="line-clamp-2 text-xs font-semibold leading-tight text-ink">
-        {course.title}
-        {course.demo && <span className="ml-1.5 rounded-full bg-[rgb(var(--surface-muted))] px-1.5 py-0.5 align-middle text-[9px] font-bold uppercase tracking-wide text-ink-500">Demo</span>}
+        {course.demo && <span className="rounded-full bg-[rgb(var(--surface-muted))] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide">Demo</span>}
       </p>
-      <p className="truncate text-[10.5px] text-ink-500">{course.schoolName}</p>
     </Link>
   );
 }
@@ -433,7 +431,7 @@ function Rail({ id, title, courses }: { id: string; title: string; courses: Cata
   return (
     <section aria-labelledby={id}>
       <SectionHead id={id} title={title} />
-      <div className="-mx-4 flex snap-x gap-2.5 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div className="-mx-4 flex snap-x scroll-pl-4 gap-2.5 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {courses.map((c) => (
           <CourseCard key={c.id} course={c} wide />
         ))}
@@ -567,12 +565,15 @@ function LearnHome() {
   const dueTotal = dueInvoices.reduce((sum, i) => sum + i.balanceUgx, 0);
   const newLearner = enrollments !== null && enrollments.length === 0;
   const freeCourses = useMemo(() => (courses ?? []).filter((c) => c.priceUgx === 0).slice(0, config.railSize), [courses, config.railSize]);
-  const newest = useMemo(() => (courses ?? []).slice(0, config.railSize), [courses, config.railSize]);
+  const newest = useMemo(() => {
+    const shown = new Set(config.freeRail ? freeCourses.map((c) => c.id) : []);
+    return (courses ?? []).filter((c) => !shown.has(c.id)).slice(0, config.railSize);
+  }, [courses, config.railSize, config.freeRail, freeCourses]);
   const linkedTv = tvs[0];
   const showTools = config.tools && !signedOut;
 
   return (
-    <div className="mx-auto max-w-3xl space-y-5 p-4 pb-28">
+    <div className="mx-auto max-w-3xl space-y-5 p-4 pb-44">
       <header className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-gold">Peebee Learn</p>
@@ -616,7 +617,7 @@ function LearnHome() {
             <PathPicker stream={stream} onPick={pickStream} />
           )}
 
-          {config.progress && badges.length > 0 && !signedOut && <ProgressStrip badges={badges} />}
+          {config.progress && hero && badges.length > 0 && <ProgressStrip badges={badges} />}
         </>
       )}
 
