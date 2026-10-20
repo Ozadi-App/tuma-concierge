@@ -155,9 +155,15 @@ export function BagDeliveryBreakdown({
         <BagDeliveryModeChoice options={bag.options} mode={bag.mode} onChange={onModeChange} directMaxHours={bag.directMaxHours} disabled={disabled} />
       )}
       {showTrip && bag.trip && !bag.failed ? (
-        <div className={indent}>
-          <BagTripBreakdown trip={bag.trip} />
-        </div>
+        <details className={`group ${indent}`}>
+          <summary className="cursor-pointer select-none list-none text-[11px] font-semibold text-gold [&::-webkit-details-marker]:hidden">
+            <span className="group-open:hidden">Details</span>
+            <span className="hidden group-open:inline">Hide details</span>
+          </summary>
+          <div className="mt-2">
+            <BagTripBreakdown trip={bag.trip} />
+          </div>
+        </details>
       ) : (
         <>
           {showRelay && bag.relay && (
@@ -173,10 +179,13 @@ export function BagDeliveryBreakdown({
               className={indent}
             />
           )}
-          <div className={`flex justify-between ${showRelay ? "font-semibold text-ink" : "text-ink-500"}`}>
-            <span>{showRelay ? "Delivery total" : "Delivery"}</span>
-            <span>{status}</span>
-          </div>
+          {/* The chosen way already shows its price above, so a relay needs no second total. */}
+          {(!showRelay || fee == null) && (
+            <div className={`flex justify-between ${showRelay ? "font-semibold text-ink" : "text-ink-500"}`}>
+              <span>{showRelay ? "Delivery total" : "Delivery"}</span>
+              <span>{status}</span>
+            </div>
+          )}
         </>
       )}
     </div>
@@ -216,7 +225,7 @@ export function BagDestinationCard({
         ) : (
           <>
             <span className="block text-xs font-semibold text-ink">{ready ? "Choose delivery location" : "Finding your location…"}</span>
-            <span className="mt-0.5 block text-[11px] text-ink-500">Pick the spot on the map to see the delivery price.</span>
+            
           </>
         )}
       </span>

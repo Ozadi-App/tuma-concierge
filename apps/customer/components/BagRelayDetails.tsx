@@ -65,7 +65,6 @@ export function BagRelayDetails({
   const { station, choice, toDoor, legs } = bagRelayShownLegs(relay, lastMile);
   return (
     <div className={`space-y-1.5 text-[11px] text-ink-500 ${className}`}>
-      <p>Long trip: relayed by boda and matatu.</p>
       {station && choice ? (
         <LastMileChoice
           value={lastMile}
@@ -80,8 +79,14 @@ export function BagRelayDetails({
           disabled={disabled}
         />
       ) : station && !toDoor ? (
-        <p>Collect at {station}, or send a rider when it arrives.</p>
+        <p>Collect at {station}</p>
       ) : null}
+      <details className="group">
+        <summary className="cursor-pointer select-none list-none text-[11px] font-semibold text-gold [&::-webkit-details-marker]:hidden">
+          <span className="group-open:hidden">Details</span>
+          <span className="hidden group-open:inline">Hide details</span>
+        </summary>
+        <div className="mt-1.5 space-y-1.5">
       {legs.map((leg, i) => {
         // The same labels as the pay screen: the first boda names every store, the matatu its direction.
         const label = relayLegLabel(
@@ -98,6 +103,8 @@ export function BagRelayDetails({
           </div>
         );
       })}
+        </div>
+      </details>
     </div>
   );
 }

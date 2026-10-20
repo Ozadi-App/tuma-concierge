@@ -74,7 +74,7 @@ function StepProgress({ step }: { step: BagCheckoutStep }) {
         ))}
       </div>
       <p className="text-[11px] font-semibold text-ink-500">
-        Step {index + 1} of {BAG_CHECKOUT_STEPS.length} · {BAG_CHECKOUT_STEPS.map((s) => BAG_CHECKOUT_STEP_LABEL[s]).join(" · ")}
+        Step {index + 1} of {BAG_CHECKOUT_STEPS.length} · {BAG_CHECKOUT_STEP_LABEL[step]}
       </p>
     </div>
   );
@@ -449,11 +449,10 @@ function CartCheckout() {
                     <span className="font-bold text-sm text-ink">Subtotal ({selectedCount} item{selectedCount === 1 ? "" : "s"})</span>
                     <span className="font-bold text-lg text-ink">{ugx(subtotal)}</span>
                   </div>
-                  <p className="text-xs text-ink-500">Delivery is chosen at the next step.</p>
                 </div>
 
                 {selectedCount === 0 && (
-                  <p className="text-center text-xs text-ink-500">Select at least one item to check out.</p>
+                  <p className="text-center text-xs text-ink-500">Select an item to continue.</p>
                 )}
               </>
             )}
@@ -524,7 +523,6 @@ function CartCheckout() {
                 <p className="text-sm text-ink-500">{bagQuote.needsDestination ? "Choose a delivery location first." : "Loading your total…"}</p>
               )}
             </section>
-            <p className="text-xs text-ink-500">You choose how to pay on the next screen.</p>
           </>
         )}
 

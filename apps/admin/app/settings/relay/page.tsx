@@ -223,7 +223,7 @@ function SettingsTab() {
       <section className="home-card space-y-3">
         <p className="text-sm font-bold text-ink">Relay and Direct at checkout</p>
         <p className="text-xs text-ink-500">
-          Customers choose Relay (same day delivery, boda and matatu legs) or Direct (instant delivery, one rider).
+          Customers choose Relay (same day delivery) or Direct (instant delivery).
         </p>
         <label className="flex items-center gap-2 text-sm font-bold text-ink">
           <input type="checkbox" checked={payFirst} onChange={(e) => setPayFirst(e.target.checked)} className="h-4 w-4 accent-gold" />
@@ -232,7 +232,7 @@ function SettingsTab() {
         <p className="text-xs text-ink-500">
           The payment is held in escrow until delivery, as always. Off means relay orders wait for a rider before payment, like Direct.
         </p>
-        <Field label="Direct delivery promised in under (hours)" hint={"Customers see \u201cInstant delivery \u00b7 one rider, under N hours\u201d. Whole hours, 1 to 24."}>
+        <Field label="Direct delivery promised in under (hours)" hint={"Customers see \u201cInstant delivery \u00b7 under N hours\u201d. Whole hours, 1 to 24."}>
           <input inputMode="numeric" required value={directHours} onChange={(e) => setDirectHours(digits(e.target.value))} className={inputCls} />
         </Field>
       </section>
