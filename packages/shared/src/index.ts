@@ -279,7 +279,7 @@ export * from "./food-orders.js";
 export * from "./colour-scenes.js";
 export * from "./food-feedback.js";
 export type {
-  WorkCustomerAction, WorkJob, WorkJobProvider, WorkJobStatus, WorkMatchingMode, WorkMessage, WorkPhoto, WorkPricingMode, WorkProviderProfile, WorkPublicSettings,
+  WorkCustomerAction, WorkJob, WorkJobProvider, WorkJobStatus, WorkNearby, WorkMatchingMode, WorkMessage, WorkPhoto, WorkPricingMode, WorkProviderProfile, WorkPublicSettings,
   WorkService, WorkServiceType, WorkStaffMember,
 } from "./work-client.js";
 export type {

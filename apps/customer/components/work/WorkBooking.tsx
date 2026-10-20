@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../lib/api";
+import { useRegisterNavBack, useRegisterNavPrimaryAction } from "../../lib/nav-primary-action";
 import { cardClass, Notice, primaryBtn, Spinner, UnavailablePanel, WorkPage } from "./WorkUI";
 import { WorkTopUp } from "./WorkTopUp";
 import {
@@ -29,8 +30,19 @@ const MATCHING_COPY: Record<WorkMatchingMode, { title: string; body: string }> =
 type Catalog = { services: WorkService[]; settings: WorkPublicSettings };
 type LoadState = { kind: "loading" } | { kind: "ready"; data: Catalog } | { kind: "error"; failure: WorkFailure };
 
+/** Choices carried over from the Hive home sheet (?matching=…&when=later). */
+function hivePrefill(): { matching?: WorkMatchingMode; later: boolean } {
+  if (typeof window === "undefined") return { later: false };
+  const q = new URLSearchParams(window.location.search);
+  const m = q.get("matching");
+  return { matching: m === "broadcast" || m === "customer_picks" || m === "admin_assigns" ? m : undefined, later: q.get("when") === "later" };
+}
+
 export function WorkBooking({ type }: { type: WorkServiceType }) {
   const meta = WORK_TYPES[type];
+  const router = useRouter();
+  // Inside a Hive flow the nav's Home button becomes Back to the Hive map.
+  useRegisterNavBack(true, () => router.push("/services"));
   const [state, setState] = useState<LoadState>({ kind: "loading" });
 
   const load = useCallback(() => {
@@ -91,9 +103,10 @@ function BookingForm({ type, services, settings }: { type: WorkServiceType; serv
   const [area, setArea] = useState<string | undefined>(undefined);
   const [locStatus, setLocStatus] = useState<"idle" | "locating" | "denied">("idle");
   const [saved, setSaved] = useState<SavedLocation[]>([]);
-  const [when, setWhen] = useState<"asap" | "later">("asap");
+  const prefill = useMemo(hivePrefill, []);
+  const [when, setWhen] = useState<"asap" | "later">(prefill.later ? "later" : "asap");
   const [whenValue, setWhenValue] = useState("");
-  const [matching, setMatching] = useState<WorkMatchingMode>(settings.defaultMatching);
+  const [matching, setMatching] = useState<WorkMatchingMode>(prefill.matching && settings.matchingModes.includes(prefill.matching) ? prefill.matching : settings.defaultMatching);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<WorkFailure | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
@@ -149,6 +162,14 @@ function BookingForm({ type, services, settings }: { type: WorkServiceType; serv
   const minLead = settings.minLeadMinutes;
   const minWhen = toLocalInput(new Date(Date.now() + (minLead + 1) * 60_000));
   const maxWhen = toLocalInput(new Date(Date.now() + settings.maxAdvanceDays * 86_400_000));
+
+  const payLabel = !service ? "" : isQuote ? `Book and hold ${formatUgx(service.calloutFeeUgx)}` : `Book and pay ${formatUgx(service.unitPriceUgx * effectiveQuantity)}`;
+  // Steps are driven from the nav: a step button until a service is chosen, then solid gold to pay.
+  useRegisterNavPrimaryAction(
+    service
+      ? { tone: "gold", label: busy ? "Booking..." : payLabel, sublabel: "Held by Peebee until you confirm", icon: Wallet, busy, disabled: busy, onClick: () => void attempt() }
+      : { tone: "step", label: "Next: choose a service", sublabel: "Pick one above", disabled: true, onClick: () => {} },
+  );
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -427,9 +448,9 @@ function BookingForm({ type, services, settings }: { type: WorkServiceType; serv
           <Notice failure={failure} inlineTopUp={!!topUp} />
           {topUp ? <WorkTopUp key={topUp.nonce} neededUgx={topUp.needed} onCredited={() => void attempt()} /> : null}
 
-          <button type="submit" disabled={busy} className={primaryBtn}>
-            <Wallet className="h-5 w-5" aria-hidden />
-            {busy ? "Booking..." : isQuote ? `Book and hold ${formatUgx(service.calloutFeeUgx)}` : `Book and pay ${formatUgx(service.unitPriceUgx * effectiveQuantity)}`}
+          {/* Paying happens from the nav's gold button; this keeps Enter-to-submit working. */}
+          <button type="submit" disabled={busy} className="sr-only">
+            {busy ? "Booking..." : payLabel}
           </button>
           <p className="flex items-start gap-2 text-xs text-ink-500">
             <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-gold" aria-hidden />
