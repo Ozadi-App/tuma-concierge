@@ -6,6 +6,7 @@ import { InstallPrompt } from "../components/InstallPrompt";
 import { ServiceWorkerRegister } from "../components/ServiceWorkerRegister";
 import { AuthProvider } from "../lib/auth-context";
 import "./globals.css";
+import { DataRefresh } from "@peebee/shared/data-refresh";
 
 const THEME_INIT_SCRIPT = `
 (function () {
@@ -47,7 +48,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           {THEME_INIT_SCRIPT}
         </Script>
         <ServiceWorkerRegister />
-        <AuthProvider><AppShell>{children}</AppShell></AuthProvider>
+        <AuthProvider><AppShell><DataRefresh>{children}</DataRefresh></AppShell></AuthProvider>
         <InstallPrompt />
       </body>
     </html>
