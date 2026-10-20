@@ -27,12 +27,12 @@ function currency(n: number) {
  * order schema only has a plain name + quantity multiplier — this is the
  * least invasive way to carry "2 kg" through to the rider's shopping list
  * without a backend/schema change. Plain pieces need no suffix. */
-export function ShoppingListModal({ onClose }: { onClose: () => void }) {
+export function ShoppingListModal({ onClose, initialItems }: { onClose: () => void; /** Items already typed on the Buy home, so the list opens filled in. */ initialItems?: Item[] }) {
   const t = useTranslate();
   const router = useRouter();
   const [step, setStep] = useState<"items" | "location">("items");
   const [mode, setMode] = useState<Mode>("list");
-  const [items, setItems] = useState<Item[]>([blankItem()]);
+  const [items, setItems] = useState<Item[]>(() => (initialItems?.length ? [...initialItems, blankItem()] : [blankItem()]));
   const [voiceTotal, setVoiceTotal] = useState("");
 
   const [delivery, setDelivery] = useState<Place | null>(null);
