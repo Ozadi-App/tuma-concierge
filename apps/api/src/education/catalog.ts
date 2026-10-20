@@ -33,6 +33,25 @@ function outcomes(raw: unknown): string[] {
   }
 }
 
+/** What the Learn home shows. Public: the same switches for everyone, all set in Admin. */
+catalogRoutes.get("/home-config", async (c) => {
+  const s = await getLearnSettings();
+  return c.json({
+    ok: true,
+    home: {
+      progress: s.homeProgressEnabled && s.badgesEnabled,
+      tools: s.homeToolsEnabled,
+      freeRail: s.homeFreeRailEnabled,
+      railSize: s.homeRailSize,
+      tv: s.tvLearnEnabled,
+      certificates: s.certificatesEnabled,
+      fees: s.feesEnabled,
+      live: s.liveEnabled,
+      trialClasses: s.trialClassesEnabled,
+    },
+  });
+});
+
 catalogRoutes.get("/courses", async (c) => {
   if (!(await studioReady())) return c.json({ ok: true, courses: [] });
   const stream = c.req.query("stream");

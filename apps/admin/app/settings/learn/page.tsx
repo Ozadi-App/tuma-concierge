@@ -52,6 +52,7 @@ const LIMITS: { key: NumberKey; label: string; hint: string; min: number; max: n
   { key: "maxQaChars", label: "Longest question or answer (characters)", hint: "Also the limit for announcements", min: 100, max: 10000, step: 100 },
   { key: "qaPostsPerHour", label: "Questions and answers per hour", hint: "Per person, to keep discussions calm", min: 1, max: 500 },
   { key: "maxInstructorsPerCourse", label: "Extra teachers per course", hint: "Besides the school owner", min: 1, max: 50 },
+  { key: "homeRailSize", label: "Courses per row on the Learn home", hint: "How many courses each row on the learner home screen shows", min: 3, max: 20 },
   { key: "createsPerHour", label: "Creations per hour", hint: "Schools, classes, courses, modules and lessons made by one educator per hour", min: 1, max: 1000 },
 ];
 
@@ -290,6 +291,9 @@ export default function LearnSettingsPage() {
                 </div>
               ))}
             </div>
+            <SwitchRow title="Learn home: progress strip" hint="A strip on the learner home showing badges earned and the next one to aim for. Needs badges to be on." on={settings.homeProgressEnabled} disabled={!canManage} onChange={(v) => patch("homeProgressEnabled", v)} />
+            <SwitchRow title="Learn home: tools grid" hint="Tiles for TV, certificates, fees and practice class on the learner home" on={settings.homeToolsEnabled} disabled={!canManage} onChange={(v) => patch("homeToolsEnabled", v)} />
+            <SwitchRow title="Learn home: Free to start row" hint="A row of free courses on the learner home" on={settings.homeFreeRailEnabled} disabled={!canManage} onChange={(v) => patch("homeFreeRailEnabled", v)} />
             <SwitchRow title="Show demo courses" hint="Demo schools and courses appear in the catalogue after real ones, marked Demo. Turn off to hide them without removing them." on={settings.demoContentVisible} disabled={!canManage} onChange={(v) => patch("demoContentVisible", v)} />
           </section>
 
