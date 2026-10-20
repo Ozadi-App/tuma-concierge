@@ -632,7 +632,8 @@ export function RideHome() {
                     </button>
                   )}
                 </div>
-                <ul className="edge-carousel flex snap-x gap-2 overflow-x-auto pb-1" aria-label="Ride types">
+                {/* The selected card draws a 2px gold ring and a soft glow outside its box; the scroll box needs room around the cards or it clips them. */}
+                <ul className="edge-carousel -mb-2 -mt-1.5 flex snap-x gap-2 overflow-x-auto pb-3 pt-1.5" aria-label="Ride types">
                   {modes.map((m) => {
                     const Icon = m.icon;
                     const on = !!m.prefer && m.prefer === prefer;
