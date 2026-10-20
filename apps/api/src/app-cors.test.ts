@@ -29,6 +29,7 @@ test("production CORS accepts configured Peebee apps and rejects unrelated origi
       "https://customer.other-project.example",
       "https://other-customer.other-account.workers.dev",
       "https://customer.peebee.online.attacker.example",
+      "https://app.peebee.online.attacker.example",
       "https://unconfigured.peebee.online",
       "http://localhost:3000",
     ]) {

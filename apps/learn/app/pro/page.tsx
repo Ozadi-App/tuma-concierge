@@ -52,7 +52,7 @@ export default function ProPage() {
         <Notice tone="error">
           {error}{" "}
           {needsFunds && (
-            <a href="https://customer.peebee.online/wallet" className="font-semibold underline">
+            <a href="https://app.peebee.online/wallet" className="font-semibold underline">
               Open your wallet
             </a>
           )}

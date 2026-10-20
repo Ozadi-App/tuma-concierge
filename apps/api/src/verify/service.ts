@@ -13,7 +13,7 @@ export function appBaseUrl(role: string | null | undefined): string {
   const isProd = (process.env.ENVIRONMENT ?? "development") !== "development";
   if (role === "rider") return process.env.RIDER_APP_URL ?? (isProd ? "https://rider.peebee.online" : "http://localhost:3001");
   if (role === "admin") return process.env.ADMIN_APP_URL ?? (isProd ? "https://admin.peebee.online" : "http://localhost:3002");
-  return process.env.CUSTOMER_APP_URL ?? (isProd ? "https://customer.peebee.online" : "http://localhost:3000");
+  return process.env.CUSTOMER_APP_URL ?? (isProd ? "https://app.peebee.online" : "http://localhost:3000");
 }
 
 export function maskTarget(channel: "sms" | "email", target: string): string {

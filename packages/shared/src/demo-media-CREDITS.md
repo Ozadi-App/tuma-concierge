@@ -15,7 +15,7 @@ refuses to play the MP4.
 - Practice-mode data (`packages/shared/src/demo-marketplace.ts`) uses root-relative paths
   (`/demo-video/<name>.mp4`).
 - API demo data (`apps/api/src/marketplace/routes.ts`) uses
-  `https://customer.peebee.online/demo-video/<name>.mp4`.
+  `https://app.peebee.online/demo-video/<name>.mp4`.
 
 **Encoding:**
 

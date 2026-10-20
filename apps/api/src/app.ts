@@ -66,7 +66,8 @@ const devOrigins = [
 ];
 
 const defaultOrigins = [
-  "https://customer.peebee.online",
+  "https://app.peebee.online",
+  "https://customer.peebee.online", // the previous address; still redirects here
   "https://rider.peebee.online",
   "https://admin.peebee.online",
   "https://food.peebee.online",

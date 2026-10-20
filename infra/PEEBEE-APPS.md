@@ -6,7 +6,7 @@ All applications belong to Cloudflare account
 | Application | Worker | Root directory | Custom domain |
 |---|---|---|---|
 | Public website | `peebee` | `apps/web` | `peebee.online`, `www.peebee.online` |
-| Customer | `peebee-customer` | `apps/customer` | `customer.peebee.online` |
+| Customer | `peebee-customer` | `apps/customer` | `app.peebee.online` (`customer.peebee.online` redirects here) |
 | Rider | `peebee-rider` | `apps/rider` | `rider.peebee.online` |
 | Admin | `peebee-admin` | `apps/admin` | `admin.peebee.online` |
 | Restaurant | `peebee-restaurant` | `apps/restaurant` | `restaurant.peebee.online` |
