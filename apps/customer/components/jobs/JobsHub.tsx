@@ -11,21 +11,21 @@ export function JobsHub() {
 
   if (failure && !config) {
     return (
-      <JobsPage eyebrow="Peebee Hire" title="Jobs" backHref="/service" backLabel="Back">
+      <JobsPage eyebrow="Peebee Hire" title="Hire" backHref="/services" backLabel="Back">
         <Unavailable failure={failure} />
       </JobsPage>
     );
   }
   if (failure) {
     return (
-      <JobsPage eyebrow="Peebee Hire" title="Jobs" backHref="/service" backLabel="Back">
+      <JobsPage eyebrow="Peebee Hire" title="Hire" backHref="/services" backLabel="Back">
         <Unavailable failure={failure} />
       </JobsPage>
     );
   }
   if (!config || !me) {
     return (
-      <JobsPage eyebrow="Peebee Hire" title="Jobs" backHref="/service" backLabel="Back">
+      <JobsPage eyebrow="Peebee Hire" title="Hire" backHref="/services" backLabel="Back">
         <Spinner label="Loading Hire" />
       </JobsPage>
     );
@@ -42,7 +42,7 @@ export function JobsHub() {
   ].filter((b) => b.show);
 
   return (
-    <JobsPage eyebrow="Peebee Hire" title="Jobs" backHref="/service" backLabel="Back">
+    <JobsPage eyebrow="Peebee Hire" title="Hire" backHref="/services" backLabel="Back">
       <p className="text-sm leading-relaxed text-ink-500">Hire skilled people nearby, or find work that suits you. Quick gigs, projects and longer-term jobs, all in one place.</p>
 
       {config.freeAccess ? (

@@ -3,8 +3,7 @@
 import dynamic from "next/dynamic";
 import { MapPinned } from "lucide-react";
 import { useEffect, useState } from "react";
-import type { MapStop } from "../maps/MultiStopRoute";
-import type { SelectedRouteLocations } from "../maps/SelectedRoadRoute";
+import type { HomeMapProps } from "../home/HomeMap";
 
 const HomeMap = dynamic(() => import("../home/HomeMap"), { ssr: false, loading: () => <MapPlaceholder /> });
 
@@ -30,7 +29,7 @@ function MapPlaceholder({ children }: { children?: React.ReactNode }) {
  * themed backdrop, and the map library only loads once the browser is idle
  * (or on demand when the connection is slow / Save-Data is on).
  */
-export function RideLiveMap({ pickup, destination, stops, bottomInset = 0 }: SelectedRouteLocations & { stops?: MapStop[]; bottomInset?: number }) {
+export function RideLiveMap(props: HomeMapProps) {
   const [state, setState] = useState<"waiting" | "low-data" | "load">("waiting");
 
   useEffect(() => {
@@ -47,7 +46,7 @@ export function RideLiveMap({ pickup, destination, stops, bottomInset = 0 }: Sel
     return () => window.clearTimeout(t);
   }, []);
 
-  if (state === "load") return <HomeMap pickup={pickup} destination={destination} stops={stops} bottomInset={bottomInset} />;
+  if (state === "load") return <HomeMap {...props} />;
   return (
     <MapPlaceholder>
       {state === "low-data" && (

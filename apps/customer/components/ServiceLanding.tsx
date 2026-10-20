@@ -58,11 +58,11 @@ export function ServiceLanding({ group }: { group: LandingGroup }) {
       </section>
 
       <section aria-label={`${content.title} services`} className="grid grid-cols-2 gap-3">
-        {content.items.map((item) => {
+        {content.items.map((item, index) => {
           const Icon = item.icon;
           const card = (
             <>
-              <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gold/12 text-gold">
+              <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gold/10 text-gold">
                 <Icon size={22} strokeWidth={1.8} aria-hidden />
               </span>
               <span className="mt-4 flex items-center justify-between gap-2">
@@ -72,12 +72,14 @@ export function ServiceLanding({ group }: { group: LandingGroup }) {
               <span className="mt-1 block text-xs leading-relaxed text-ink-500">{item.description}</span>
             </>
           );
+          // An odd last card spans both columns so the grid never leaves a hole.
+          const span = content.items.length % 2 === 1 && index === content.items.length - 1 ? " col-span-2" : "";
           const classes = "home-card min-h-[148px] rounded-3xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-4 text-left transition-transform active:scale-[0.98]";
 
           return item.href ? (
-            <Link key={item.title} href={item.href} className={`block ${classes}`}>{card}</Link>
+            <Link key={item.title} href={item.href} className={`block ${classes}${span}`}>{card}</Link>
           ) : (
-            <div key={item.title} aria-disabled="true" className={`${classes} opacity-75`}>{card}</div>
+            <div key={item.title} aria-disabled="true" className={`${classes}${span} opacity-75`}>{card}</div>
           );
         })}
       </section>
@@ -123,7 +125,7 @@ export function HiveLanding() {
             const Icon = card.icon;
             return (
               <Link key={item.id} href={card.href} className="home-card block min-h-[148px] rounded-3xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-4 text-left transition-transform active:scale-[0.98]">
-                <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gold/12 text-gold">
+                <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gold/10 text-gold">
                   <Icon size={22} strokeWidth={1.8} aria-hidden />
                 </span>
                 <span className="mt-4 flex items-center justify-between gap-2">
@@ -149,7 +151,7 @@ export function HiveLanding() {
             const Icon = row.icon;
             return (
               <Link key={item.id} href={row.href} className="flex items-center gap-3 rounded-2xl bg-[rgb(var(--surface-card))] p-3 transition-transform active:scale-[0.98]">
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gold/12 text-gold">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gold/10 text-gold">
                   <Icon size={20} strokeWidth={1.8} aria-hidden />
                 </span>
                 <span className="min-w-0 flex-1">

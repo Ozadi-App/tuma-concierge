@@ -1,4 +1,5 @@
 import { practiceTalentRequest, resetPracticeTalent } from "./practice-talent.js";
+import { practiceWorkRequest, resetPracticeWork } from "./practice-work.js";
 import { PRACTICE_MODE_STORAGE_KEY, type PracticeRole } from "./practice.js";
 import { roundFare } from "./fare.js";
 import { haversineKm } from "./geo.js";
@@ -387,6 +388,7 @@ export function startPracticeMode(role: PracticeRole): string {
   if (canUseStorage()) {
     window.localStorage.setItem(PRACTICE_MODE_STORAGE_KEY, "1");
     resetPracticeTalent();
+    resetPracticeWork();
     saveState(initialState(role));
   }
   return practiceStartPath(role);
@@ -397,6 +399,7 @@ export function exitPracticeMode(role: PracticeRole) {
   window.localStorage.removeItem(PRACTICE_MODE_STORAGE_KEY);
   window.localStorage.removeItem(stateKey(role));
   resetPracticeTalent();
+  resetPracticeWork();
 }
 
 export function practicePaymentCode() {
@@ -692,6 +695,7 @@ function handlePracticeRequest(role: PracticeRole, path: string, method: string,
   };
 
   if (role === "customer" && path.startsWith("/v1/talent/")) return practiceTalentRequest(path, method, body, query);
+  if (role === "customer" && path.startsWith("/v1/work/")) return practiceWorkRequest(path, method, body, query);
 
   if (role === "customer" && method === "GET") {
     if (path === "/v1/car/rentals/listings") return jsonResponse({ days: 1, vehicles: PRACTICE_RENTAL_CARS });

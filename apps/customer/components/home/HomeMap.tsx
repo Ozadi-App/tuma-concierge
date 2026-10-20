@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import { MapContainer, Marker, TileLayer, useMap } from "react-leaflet";
 import { OSM_TILES, loadMapTiles, type Tiles } from "../../lib/map-tiles";
 import { jawgTileUrl, useJawgStyle } from "../../lib/mapStyle";
-import { destinationIcon, meIcon, pickupIcon } from "../maps/map-icons";
+import { destinationIcon, meIcon, pickupIcon, tradePinIcon, type TradePin } from "../maps/map-icons";
 import { MultiStopRoute, type MapStop } from "../maps/MultiStopRoute";
 import { SelectedRoadRoute, type SelectedRouteLocations } from "../maps/SelectedRoadRoute";
 
@@ -18,6 +18,19 @@ function FlyTo({ target, nonce }: { target: [number, number] | null; nonce: numb
     if (target) map.flyTo(target, 16, { duration: 0.8 });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nonce, target?.[0], target?.[1]]);
+  return null;
+}
+
+/** Frame the customer and the nearby pins once, the first time pins arrive, keeping them above the sheet. */
+function FitPins({ pins, position, bottomInset }: { pins?: TradePin[]; position: [number, number] | null; bottomInset: number }) {
+  const map = useMap();
+  const [done, setDone] = useState(false);
+  useEffect(() => {
+    if (done || !pins?.length || !position) return;
+    const pts: [number, number][] = [position, ...pins.map((p) => [p.lat, p.lng] as [number, number])];
+    map.fitBounds(pts, { paddingTopLeft: [28, 72], paddingBottomRight: [28, bottomInset + 28], maxZoom: 16, animate: false });
+    setDone(true);
+  }, [done, pins, position, bottomInset, map]);
   return null;
 }
 
@@ -39,7 +52,16 @@ function StopAnimationsOnUnmount() {
 
 /** Read-only street map behind the home screen: shows where the customer
  * is, follows the admin's maps provider, no pickers or pins. */
-export default function HomeMap({ pickup, destination, stops, bottomInset = 0 }: SelectedRouteLocations & { stops?: MapStop[]; bottomInset?: number }) {
+export type HomeMapProps = SelectedRouteLocations & {
+  stops?: MapStop[];
+  bottomInset?: number;
+  /** Coarse, anonymous markers (Hive providers by trade). Never exact positions. */
+  pins?: TradePin[];
+  /** Told where the customer is once the browser shares it. */
+  onPosition?: (lat: number, lng: number) => void;
+};
+
+export default function HomeMap({ pickup, destination, stops, bottomInset = 0, pins, onPosition }: HomeMapProps) {
   const [tiles, setTiles] = useState<Tiles>(OSM_TILES);
   const [ready, setReady] = useState(false);
   const [position, setPosition] = useState<[number, number] | null>(null);
@@ -67,6 +89,7 @@ export default function HomeMap({ pickup, destination, stops, bottomInset = 0 }:
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         setPosition([pos.coords.latitude, pos.coords.longitude]);
+        onPosition?.(pos.coords.latitude, pos.coords.longitude);
         if (recenter) setNonce((n) => n + 1);
         setLocating(false);
       },
@@ -90,7 +113,8 @@ export default function HomeMap({ pickup, destination, stops, bottomInset = 0 }:
       >
         <TileLayer key={tileUrl} url={tileUrl} attribution={tiles.attribution} />
         <StopAnimationsOnUnmount />
-        <FlyTo target={hasSelection && nonce === 0 ? null : position} nonce={nonce} />
+        <FlyTo target={hasSelection || (pins?.length && nonce === 0) ? null : position} nonce={nonce} />
+        <FitPins pins={pins} position={position} bottomInset={bottomInset} />
         {stops?.length && pickupPoint && destinationPoint ? (
           <MultiStopRoute
             pickup={{ lat: pickupPoint[0], lng: pickupPoint[1] }}
@@ -101,6 +125,7 @@ export default function HomeMap({ pickup, destination, stops, bottomInset = 0 }:
         ) : (
           <SelectedRoadRoute pickup={pickup} destination={destination} bottomInset={bottomInset} />
         )}
+        {pins?.map((p, i) => <Marker key={`${p.type}-${i}-${p.lat}-${p.lng}`} position={[p.lat, p.lng]} icon={tradePinIcon(p.type)} interactive={false} />)}
         {position && <Marker position={position} icon={meIcon} interactive={false} />}
         {pickupPoint && <Marker position={pickupPoint} icon={pickupIcon} interactive={false} />}
         {destinationPoint && <Marker position={destinationPoint} icon={destinationIcon} interactive={false} />}

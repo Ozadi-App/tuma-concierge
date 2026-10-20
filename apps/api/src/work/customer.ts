@@ -8,6 +8,7 @@ import { assignProvider, cancelJob, customerActions, getJob, getProvider, jobVie
 import { notifyUser } from "../lib/webpush.js";
 import { applyMoney, chargeCustomer, commissionFor, dropUnpaidHold, fromDb, inMinutes, logEvent, notifyProviders, publicProvider, toDb, transition, workExtrasReady, type Row } from "./service.js";
 import { getWorkSettings, type WorkMatchingMode } from "./settings.js";
+import { emptyNearby, summariseNearby, type NearbyRow } from "./nearby.js";
 
 export const customerRoutes = new Hono();
 
@@ -37,6 +38,44 @@ customerRoutes.get("/catalog", async (c) => {
       minQuantity: Number(r.min_quantity), maxQuantity: Number(r.max_quantity),
     }));
   return c.json({ services, settings: publicSettings(settings, extras) });
+});
+
+// Nearby providers for the Hive map: counts by trade and coarse, jittered pins (see nearby.ts).
+// Never fails the page: any database problem returns empty counts with degraded: true.
+customerRoutes.get("/nearby", async (c) => {
+  const settings = await getWorkSettings();
+  const lat = Number(c.req.query("lat"));
+  const lng = Number(c.req.query("lng"));
+  const radiusKm = Math.min(settings.radiusKm, 10);
+  if (!settings.enabled || !Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+    return c.json(emptyNearby(radiusKm));
+  }
+  const limited = await consume(`work-nearby:${c.get("user").sub}`, 60, 60).catch(() => null);
+  if (limited && !limited.allowed) return c.json(emptyNearby(radiusKm));
+  try {
+    const environment = await getPlatformEnvironment();
+    // A cheap bounding box first; the exact radius is applied in summariseNearby.
+    const dLat = radiusKm / 111, dLng = radiusKm / (111 * Math.max(0.2, Math.cos((lat * Math.PI) / 180)));
+    const rows = (
+      await db.execute({
+        sql: `SELECT DISTINCT p.id AS provider_id, s.type AS type, p.lat AS lat, p.lng AS lng
+              FROM work_providers p
+              JOIN work_provider_services ps ON ps.provider_id = p.id
+              JOIN work_services s ON s.id = ps.service_id AND s.active = 1
+              WHERE p.online = 1 AND p.environment = ? ${settings.requireApproval ? "AND p.status = 'approved'" : "AND p.status NOT IN ('suspended', 'rejected')"}
+                AND p.lat IS NOT NULL AND p.lng IS NOT NULL
+                AND (p.location_at IS NULL OR p.location_at >= datetime('now', '-3 hours'))
+                AND p.lat BETWEEN ? AND ? AND p.lng BETWEEN ? AND ?
+              LIMIT 2000`,
+        args: [environment, lat - dLat, lat + dLat, lng - dLng, lng + dLng],
+      })
+    ).rows as Row[];
+    const list: NearbyRow[] = rows.map((r) => ({ providerId: String(r.provider_id), type: String(r.type), lat: Number(r.lat), lng: Number(r.lng) }));
+    return c.json(summariseNearby(list, { lat, lng }, { radiusKm, types: settings.serviceTypes, day: new Date().toISOString().slice(0, 10) }));
+  } catch (err) {
+    console.error("[work] nearby failed:", err);
+    return c.json({ ...emptyNearby(radiusKm), degraded: true });
+  }
 });
 
 function publicSettings(s: Awaited<ReturnType<typeof getWorkSettings>>, extras = false) {

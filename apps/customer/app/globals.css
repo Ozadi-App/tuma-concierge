@@ -1587,3 +1587,17 @@ select:focus {
   .ride-skeleton, .ride-live-dot { animation: none; }
   .ride-hold.is-holding .ride-hold__bar { transition: none; transform: scaleX(1); opacity: .45; }
 }
+
+/* ------------------------------------------------------------------ */
+/* Hive home ("Hive Map"): reuses the Ride canvas (.ride-home/.ride-sheet). */
+/* ------------------------------------------------------------------ */
+.hive-tile { background: rgb(var(--surface-card)); }
+.hive-tile.is-on { background: rgb(var(--color-gold) / .1); box-shadow: 0 0 0 1px rgb(var(--color-gold)); }
+.hive-pin-dot--clean { background: #C9A227; color: #0A0A0A; }
+.hive-pin-dot--laundry { background: #FDFBF7; color: #9A7A12; box-shadow: inset 0 0 0 2px #C9A227; }
+.hive-pin-dot--fix { background: #0A0A0A; color: #E8C55A; }
+.hive-live-job { background: rgb(var(--surface-muted)); border: 1px solid rgb(var(--color-gold) / .45); }
+:root[data-theme="dark"] .hive-pin-dot--fix { box-shadow: inset 0 0 0 1px rgb(255 255 255 / .18); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .hive-pin-dot--fix { box-shadow: inset 0 0 0 1px rgb(255 255 255 / .18); }
+}

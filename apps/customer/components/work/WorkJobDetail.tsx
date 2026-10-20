@@ -357,7 +357,7 @@ function JobBody({ detail, settings, onChanged }: { detail: Detail; settings: Wo
         <section className={`${cardClass} space-y-2`} aria-label="Provider">
           <h2 className="text-xs font-bold uppercase tracking-wider">Your provider</h2>
           <div className="flex items-center gap-3">
-            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gold/12 text-gold">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gold/10 text-gold">
               <User className="h-5 w-5" aria-hidden />
             </span>
             <div className="min-w-0">

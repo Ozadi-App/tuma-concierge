@@ -83,7 +83,7 @@ export function MyWorkJobs() {
             return (
               <li key={job.id}>
                 <Link href={`/services/work/${encodeURIComponent(job.id)}`} className={`${cardClass} flex min-h-[72px] items-center gap-3 transition-transform active:scale-[0.99]`}>
-                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gold/12 text-gold">
+                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gold/10 text-gold">
                     <Icon className="h-5 w-5" aria-hidden />
                   </span>
                   <span className="min-w-0 flex-1 space-y-1">

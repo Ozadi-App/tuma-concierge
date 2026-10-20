@@ -95,6 +95,14 @@ export type WorkJob = {
   myOffer?: { price_ugx: number; eta_minutes: number | null; status: string } | null;
 };
 
+export type WorkNearby = {
+  radiusKm: number;
+  total: number;
+  counts: Record<WorkServiceType, number>;
+  pins: { type: WorkServiceType; lat: number; lng: number }[];
+  degraded?: boolean;
+};
+
 export type WorkCustomerAction = "cancel" | "accept_quote" | "decline_quote" | "choose_provider" | "confirm" | "report_problem" | "rate";
 
 export type WorkProviderProfile = {
@@ -127,6 +135,10 @@ export function workMethods(request: Request) {
     // ---- Customer ----
     workCatalog(type?: WorkServiceType) {
       return request<{ services: WorkService[]; settings: WorkPublicSettings }>(`/v1/work/catalog${type ? `?type=${type}` : ""}`);
+    },
+    /** Nearby providers by trade for the Hive map. Pins are coarse and jittered; no ids or exact positions. */
+    workNearby(lat: number, lng: number) {
+      return request<WorkNearby>(`/v1/work/nearby?lat=${lat}&lng=${lng}`);
     },
     workBook(input: {
       serviceId: string;
