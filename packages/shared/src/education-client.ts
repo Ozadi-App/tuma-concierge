@@ -46,6 +46,8 @@ import type {
   CohortInfo,
   CourseReview,
   QaQuestion,
+  ConnectCourse,
+  ConnectTopic,
   Announcement,
   CourseCommunity,
   StudioCohort,
@@ -556,6 +558,9 @@ export function educationMethods(request: RequestFn) {
     },
     async learnSaveReview(courseId: string, rating: number, body: string) {
       return request<{ ok: true }>(`/v1/education/learn/courses/${encodeURIComponent(courseId)}/review`, { method: "POST", body: JSON.stringify({ rating, body }) });
+    },
+    async learnConnect(courseId?: string) {
+      return request<{ ok: true; enabled: boolean; courses: ConnectCourse[]; topics: ConnectTopic[] }>(`/v1/education/learn/connect${courseId ? `?course=${encodeURIComponent(courseId)}` : ""}`);
     },
     async learnQa(courseId: string, lessonId?: string) {
       return request<{ ok: true; questions: QaQuestion[] }>(`/v1/education/learn/courses/${encodeURIComponent(courseId)}/qa${lessonId ? `?lessonId=${encodeURIComponent(lessonId)}` : ""}`);

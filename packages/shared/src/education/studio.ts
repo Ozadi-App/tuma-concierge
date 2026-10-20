@@ -193,11 +193,29 @@ export interface QaQuestion {
   id: string;
   lessonId: string | null;
   askedBy: string;
+  /** The asker teaches this course (school owner or added teacher). */
+  askedByTeacher?: boolean;
   body: string;
   createdAt: string;
   mine: boolean;
   canDelete: boolean;
   answers: QaAnswer[];
+}
+
+/** One post in Connect: a question or topic about a course (and optionally one of its lessons), with its replies. */
+export interface ConnectTopic extends QaQuestion {
+  courseId: string;
+  courseTitle: string;
+  schoolName: string;
+  lessonTitle: string | null;
+}
+
+/** A course the person can talk in: one they have joined or teach. */
+export interface ConnectCourse {
+  id: string;
+  title: string;
+  schoolName: string;
+  teaching: boolean;
 }
 
 export interface Announcement {
