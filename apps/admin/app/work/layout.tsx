@@ -11,6 +11,7 @@ const TABS = [
   { href: "/work/flags", label: "Flags" },
   { href: "/work/catalogue", label: "Catalogue" },
   { href: "/work/settings", label: "Settings" },
+  { href: "/work/demo", label: "Demo" },
 ];
 
 export default function WorkLayout({ children }: { children: React.ReactNode }) {

@@ -245,6 +245,13 @@ export type WorkFlagDetail = {
 
 type Request = <T>(path: string, init?: RequestInit) => Promise<T>;
 
+export type WorkDemoStatus = {
+  installed: boolean;
+  sandbox: boolean;
+  walletUgx: number;
+  accounts: Array<{ name: string; phone: string; email: string; role: string }>;
+};
+
 export function workAdminMethods(request: Request) {
   const post = <T>(path: string, body: unknown = {}) => request<T>(path, { method: "POST", body: JSON.stringify(body) });
   const enc = encodeURIComponent;
@@ -301,6 +308,17 @@ export function workAdminMethods(request: Request) {
     },
     workAdminReviewFlag(flagId: string, outcome: WorkFlagOutcome, note?: string) {
       return post<{ ok: true }>(`/v1/work/admin/flags/${enc(flagId)}/review`, { outcome, note });
+    },
+
+    // ---- Sandbox demo accounts (Entebbe) ----
+    workAdminDemo() {
+      return request<WorkDemoStatus>("/v1/work/admin/demo");
+    },
+    workAdminInstallDemo(password: string) {
+      return post<WorkDemoStatus & { ok: true; count: number }>("/v1/work/admin/demo/install", { password });
+    },
+    workAdminRemoveDemo() {
+      return request<{ ok: true; deleted: number; locked: number }>("/v1/work/admin/demo", { method: "DELETE" });
     },
 
     // ---- Work settings (the `work` group of the general settings endpoints) ----
