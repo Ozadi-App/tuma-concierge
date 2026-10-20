@@ -45,6 +45,7 @@ export async function getLearnSettings(): Promise<LearnSettings> {
     "learn_certificates_enabled", "learn_badges_enabled", "learn_drip_enabled", "learn_prerequisites_enabled", "learn_badge_courses_threshold", "learn_assignments_enabled", "learn_max_submission_chars",
     "learn_coupons_enabled", "learn_max_coupon_percent", "learn_bundles_enabled", "learn_max_bundle_courses", "learn_subscriptions_enabled", "learn_max_plans_per_school", "learn_max_plan_days",
     "learn_reviews_enabled", "learn_review_min_progress", "learn_qa_enabled", "learn_max_qa_chars", "learn_qa_posts_per_hour", "learn_announcements_enabled", "learn_cohorts_enabled", "learn_instructors_enabled", "learn_max_instructors",
+    "learn_home_progress", "learn_home_tools", "learn_home_free_rail", "learn_home_rail_size",
   ] as const;
   const v = Object.fromEntries(await Promise.all(keys.map(async (k) => [k, await getSetting(k)]))) as Record<(typeof keys)[number], string>;
   return {
@@ -120,6 +121,10 @@ export async function getLearnSettings(): Promise<LearnSettings> {
     cohortsEnabled: v.learn_cohorts_enabled !== "0",
     instructorsEnabled: v.learn_instructors_enabled !== "0",
     maxInstructorsPerCourse: int(v.learn_max_instructors, 5, 1, 50),
+    homeProgressEnabled: v.learn_home_progress !== "0",
+    homeToolsEnabled: v.learn_home_tools !== "0",
+    homeFreeRailEnabled: v.learn_home_free_rail !== "0",
+    homeRailSize: int(v.learn_home_rail_size, 8, 3, 20),
   };
 }
 
@@ -196,5 +201,9 @@ export async function setLearnSettings(next: Partial<LearnSettings>): Promise<vo
   if (next.cohortsEnabled != null) put("learn_cohorts_enabled", next.cohortsEnabled ? "1" : "0");
   if (next.instructorsEnabled != null) put("learn_instructors_enabled", next.instructorsEnabled ? "1" : "0");
   if (next.maxInstructorsPerCourse != null) put("learn_max_instructors", String(next.maxInstructorsPerCourse));
+  if (next.homeProgressEnabled != null) put("learn_home_progress", next.homeProgressEnabled ? "1" : "0");
+  if (next.homeToolsEnabled != null) put("learn_home_tools", next.homeToolsEnabled ? "1" : "0");
+  if (next.homeFreeRailEnabled != null) put("learn_home_free_rail", next.homeFreeRailEnabled ? "1" : "0");
+  if (next.homeRailSize != null) put("learn_home_rail_size", String(next.homeRailSize));
   await Promise.all(writes);
 }

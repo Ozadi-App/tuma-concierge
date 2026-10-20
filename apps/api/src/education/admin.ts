@@ -97,6 +97,10 @@ const settingsPatch = z
     cohortsEnabled: z.boolean(),
     instructorsEnabled: z.boolean(),
     maxInstructorsPerCourse: z.number().int().min(1).max(50),
+    homeProgressEnabled: z.boolean(),
+    homeToolsEnabled: z.boolean(),
+    homeFreeRailEnabled: z.boolean(),
+    homeRailSize: z.number().int().min(3).max(20),
   })
   .partial();
 

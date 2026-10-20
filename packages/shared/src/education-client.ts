@@ -327,6 +327,12 @@ export function educationMethods(request: RequestFn) {
         }[];
       }>(`/v1/education/catalog/courses${q}`);
     },
+    async getCatalogHomeConfig() {
+      return request<{
+        ok: true;
+        home: { progress: boolean; tools: boolean; freeRail: boolean; railSize: number; tv: boolean; certificates: boolean; fees: boolean; live: boolean; trialClasses: boolean };
+      }>("/v1/education/catalog/home-config");
+    },
     async getCatalogCourse(id: string) {
       return request<{
         ok: true;

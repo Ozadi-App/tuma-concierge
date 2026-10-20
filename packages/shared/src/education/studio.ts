@@ -467,6 +467,14 @@ export interface LearnSettings {
   instructorsEnabled: boolean;
   /** Most extra teachers on one course. */
   maxInstructorsPerCourse: number;
+  /** Learn home: the progress strip (badges and what to earn next). */
+  homeProgressEnabled: boolean;
+  /** Learn home: the tools grid (TV, certificates, fees, practice class). */
+  homeToolsEnabled: boolean;
+  /** Learn home: the "Free to start" row of courses. */
+  homeFreeRailEnabled: boolean;
+  /** Most courses in each row on the Learn home. */
+  homeRailSize: number;
 }
 
 /** An educator's access to the TV classroom, and what Learn Pro costs. */
@@ -594,6 +602,10 @@ export const DEFAULT_LEARN_SETTINGS: LearnSettings = {
   cohortsEnabled: true,
   instructorsEnabled: true,
   maxInstructorsPerCourse: 5,
+  homeProgressEnabled: true,
+  homeToolsEnabled: true,
+  homeFreeRailEnabled: true,
+  homeRailSize: 8,
 };
 
 // ---------------------------------------------------------------------------
