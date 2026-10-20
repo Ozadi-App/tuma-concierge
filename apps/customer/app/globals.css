@@ -34,9 +34,10 @@
   --color-green: 27 122 78;
   --color-green-400: 47 168 106;
   --color-green-600: 27 122 78;
-  --color-cream: 255 255 255;
+  /* The page colour in light mode: a soft ivory. Cards stay white (--surface-card) so they lift off it. */
+  --color-cream: 250 248 239;
   --color-cream-50: 255 255 255;
-  --color-cream-100: 245 245 245;
+  --color-cream-100: 241 238 228;
   --color-navy: 48 48 48;
   --color-navy-400: 68 68 68;
   --color-navy-700: 32 32 32;
