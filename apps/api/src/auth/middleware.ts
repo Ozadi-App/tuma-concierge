@@ -40,6 +40,21 @@ const ALLOWED_WHILE_PASSWORD_CHANGE_REQUIRED = new Set([
   "/v1/auth/logout",
 ]);
 
+/** A guest-checkout token is tied to one order and can do only what a guest needs on it: see it, pay
+ * for it, talk about it, attach a voice note, and ask for notifications. Everything else is refused. */
+function guestMayCall(method: string, path: string, orderId: string): boolean {
+  const own = `/v1/orders/${orderId}`;
+  if (path === own) return method === "GET";
+  if (path === `${own}/checkout`) return method === "GET";
+  if (path === `${own}/fund`) return method === "POST";
+  if (path === `${own}/chat`) return method === "GET" || method === "POST";
+  if (path === `${own}/chat/read`) return method === "POST";
+  if (path === `${own}/voice-note`) return method === "POST" || method === "GET";
+  if (/^\/v1\/payments\/[\w-]+\/refresh$/.test(path)) return method === "GET";
+  if (path === "/v1/push/subscribe") return method === "POST";
+  return false;
+}
+
 /**
  * Verifying the signature only tells us the token was minted by us at some
  * point — not that the account still exists, is still allowed in, or that the
@@ -65,6 +80,10 @@ export async function requireAuth(c: Context, next: Next) {
     payload = await verifyToken(token);
   } catch {
     return c.json({ error: "unauthorized", message: "Invalid or expired token" }, 401);
+  }
+
+  if (payload.guestOrderId && !guestMayCall(c.req.method, c.req.path, payload.guestOrderId)) {
+    return c.json({ error: "guest_scope", message: "Sign in to do that." }, 403);
   }
 
   const res = await db.execute({

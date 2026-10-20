@@ -68,6 +68,8 @@ import { checkoutBreakdown, deliveryOrders } from "./checkout-breakdown.js";
 import { bundleCheckoutQuote, fundBundle, notifyRiderOfCombinedDelivery, prepaidBundleGroup, unfundedBundleGroup, unpaidBundleGroup } from "./bundle-funding.js";
 import { stepSandboxRelay } from "../relay/sandbox-demo.js";
 import { isSubscriptionCurrent } from "../riders/subscription.js";
+import { guestStageHook } from "../guest/notify.js";
+import { isGuestOrder, guestReturnUrl } from "../guest/service.js";
 import { insertRelayLegs, planRelay, relayChargeFor, resolveLastMile, type RelayLastMile, type RelayMeet, relayAwaitingCollection, relayBlocksFinalSteps, relayPaysBeforeRider, relayView, settleRelayPayouts, type RelayPlan } from "../relay/service.js";
 import {
   activateMerchantAllocationsForFundedOrder,
@@ -100,6 +102,8 @@ async function logEvent(orderId: string, stage: string, note: string, actorId: s
     sql: "INSERT INTO order_events (id, order_id, stage, note, actor_id) VALUES (?, ?, ?, ?, ?)",
     args: [newId("evt"), orderId, stage, note, actorId],
   });
+  // Guests hear about their delivery's progress (no-op for every other order).
+  void guestStageHook(orderId, stage);
 }
 
 async function getOrder(orderId: string): Promise<Row | undefined> {
@@ -1804,6 +1808,10 @@ orderRoutes.post("/orders/:id/fund", async (c) => {
   const parsed = fundSchema.safeParse(order.payment_rail === "float" && !body?.paymentMethod ? { ...body, paymentMethod: "cash" } : body);
   if (!parsed.success) return c.json({ error: "invalid_body", issues: parsed.error.issues }, 400);
   if (!order.rider_id && !payFirst) return c.json({ error: "invalid_stage", message: "Please select a rider before confirming payment." }, 409);
+  // A guest token proves nothing about who owns the account behind it, so it can never spend a wallet.
+  if (user.guestOrderId && (parsed.data.useWallet || parsed.data.paymentMethod === "wallet" || parsed.data.walletOwnerId)) {
+    return c.json({ error: "guest_scope", message: "Pay with mobile money or card, or sign in to use your wallet." }, 403);
+  }
   if (payFirst && parsed.data.paymentMethod === "cash") {
     return c.json({ error: "relay_requires_prepay", message: "Relay deliveries are paid in the app, not in cash." }, 409);
   }
@@ -1947,7 +1955,7 @@ orderRoutes.post("/orders/:id/fund", async (c) => {
       msisdn: parsed.data.msisdn,
       amount,
       name: user.name,
-      returnUrl: paymentReturnUrl(id),
+      returnUrl: (await isGuestOrder(id)) ? guestReturnUrl(id) : paymentReturnUrl(id),
       forceMock: order.environment === "sandbox",
     });
     providerRef = initiated.providerRef;

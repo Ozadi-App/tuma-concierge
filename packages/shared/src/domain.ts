@@ -2910,3 +2910,59 @@ export interface PharmacyStoreProfile {
 
 
 
+
+/** Guest checkout on shared product links (admin switches) and how guests are told about their delivery. */
+export type GuestSettings = {
+  enabled: boolean;
+  cardEnabled: boolean;
+  maxQuantity: number;
+  suggestAccount: boolean;
+  codeStatusEnabled: boolean;
+  notifyPush: boolean;
+  notifyChat: boolean;
+  notifySms: boolean;
+  notifyEmail: boolean;
+  notifyWhatsapp: boolean;
+  whatsappTemplate: string;
+};
+
+export type GuestConfig = { enabled: boolean; cardAvailable: boolean; maxQuantity: number; suggestAccount: boolean; codeStatusEnabled: boolean };
+
+export type GuestCheckoutInput = {
+  productId: string;
+  variantId?: string;
+  quantity: number;
+  name: string;
+  phone: string;
+  email?: string;
+  address: string;
+  area?: string;
+  lat: number;
+  lng: number;
+  createAccount: boolean;
+  password?: string;
+};
+
+export type GuestCheckoutResult = {
+  orderId: string;
+  trackingCode: string;
+  /** Works on this one order only. */
+  token: string;
+  total: number;
+  accountCreated: boolean;
+  existingAccount: boolean;
+  /** A full sign-in, present when the guest chose to create an account. */
+  sessionToken?: string;
+  user?: AuthUser;
+};
+
+export type GuestTrackStatus = "received" | "preparing" | "on_the_way" | "arrived" | "delivered" | "cancelled";
+export type GuestTrack = {
+  trackingCode: string;
+  placedAt: string;
+  canCreateAccount: boolean;
+  hasAccount: boolean;
+  codeStatusEnabled: boolean;
+  item?: string | null;
+  status?: GuestTrackStatus;
+};
