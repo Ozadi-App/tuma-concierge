@@ -244,3 +244,6 @@ select {
   font-weight: 700;
   transition: all 0.18s ease;
 }
+
+/* Sign-in artwork specific to this app (replace public/brand/auth-art.svg to change it). */
+.auth-art > img { content:url("/brand/auth-art.svg"); }
