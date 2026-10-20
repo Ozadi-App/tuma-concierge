@@ -140,3 +140,5 @@ button:focus-visible,a:focus-visible { outline:2px solid rgb(var(--gold)); outli
   background: rgb(var(--color-ink-gold, 10 10 10));
 }
 
+/* Sign-in artwork specific to this app (replace public/brand/auth-art.svg to change it). */
+.auth-art > img { content:url("/brand/auth-art.svg"); }
