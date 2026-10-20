@@ -83,6 +83,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const logout = useCallback(() => {
+    // Cached pages and data belong to the signed-in account; drop them on logout.
+    navigator.serviceWorker?.controller?.postMessage("clear-runtime-cache");
     resetNotificationSnapshots();
     void api.logout().catch(() => undefined);
     localStorage.removeItem(TOKEN_KEY);

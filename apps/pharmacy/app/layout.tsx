@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { AppShell } from "../components/AppShell";
 import { AuthProvider } from "../lib/auth-context";
+import { ServiceWorkerRegister } from "../components/ServiceWorkerRegister";
 
 const THEME_INIT_SCRIPT = `
 (function () {
@@ -55,7 +56,7 @@ export default function RootLayout({
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
       </head>
-      <body>
+      <body><ServiceWorkerRegister />
         <AuthProvider>
           <AppShell>{children}</AppShell>
         </AuthProvider>

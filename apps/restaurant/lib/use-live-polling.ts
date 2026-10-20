@@ -51,12 +51,14 @@ export function useLivePolling(callback: () => void, intervalMs: number, deps: u
 
     document.addEventListener("visibilitychange", runIfActive);
     window.addEventListener("online", runIfActive);
+    window.addEventListener("peebee:data-updated", runIfActive);
 
     return () => {
       stopped = true;
       if (timer) clearTimeout(timer);
       document.removeEventListener("visibilitychange", runIfActive);
       window.removeEventListener("online", runIfActive);
+      window.removeEventListener("peebee:data-updated", runIfActive);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
