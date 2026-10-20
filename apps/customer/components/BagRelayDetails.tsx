@@ -1,5 +1,6 @@
 "use client";
 
+import { ChevronDown } from "lucide-react";
 import type { BagRelay } from "../lib/bag-quote";
 import { relayLegLabel } from "./OrderBreakdown";
 import { LastMileChoice, pickMeetStageId, type LastMileChoiceValue } from "./LastMileChoice";
@@ -65,7 +66,6 @@ export function BagRelayDetails({
   const { station, choice, toDoor, legs } = bagRelayShownLegs(relay, lastMile);
   return (
     <div className={`space-y-1.5 text-[11px] text-ink-500 ${className}`}>
-      <p>Long trip: relayed by boda and matatu.</p>
       {station && choice ? (
         <LastMileChoice
           value={lastMile}
@@ -80,8 +80,14 @@ export function BagRelayDetails({
           disabled={disabled}
         />
       ) : station && !toDoor ? (
-        <p>Collect at {station}, or send a rider when it arrives.</p>
+        <p>Collect at {station}</p>
       ) : null}
+      <details className="group">
+        <summary className="flex min-h-9 cursor-pointer select-none list-none items-center gap-1 text-[11px] font-semibold text-gold [&::-webkit-details-marker]:hidden">
+          Details
+          <ChevronDown className="h-3.5 w-3.5 transition-transform group-open:rotate-180 motion-reduce:transition-none" aria-hidden />
+        </summary>
+        <div className="mt-1.5 space-y-1.5">
       {legs.map((leg, i) => {
         // The same labels as the pay screen: the first boda names every store, the matatu its direction.
         const label = relayLegLabel(
@@ -98,6 +104,12 @@ export function BagRelayDetails({
           </div>
         );
       })}
+          <div className="flex justify-between gap-3 font-semibold text-ink">
+            <span>Total</span>
+            <span>UGX {legs.reduce((sum, leg) => sum + leg.fee, 0).toLocaleString()}</span>
+          </div>
+        </div>
+      </details>
     </div>
   );
 }

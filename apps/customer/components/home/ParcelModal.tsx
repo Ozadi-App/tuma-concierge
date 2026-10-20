@@ -219,7 +219,6 @@ export function ParcelModal({ onClose }: { onClose: () => void }) {
                   <p className="flex-1 text-sm font-bold text-ink">Delivery · {deliveryModeName("relay")}</p>
                   <p className="text-sm font-bold text-ink">Total UGX {(relayFare ?? relay.total).toLocaleString("en-UG")}</p>
                 </div>
-                <p className="text-xs text-ink-500">Long trip: relayed by boda and matatu.</p>
                 {station && stationChoice ? (
                   <LastMileChoice
                     value={lastMile}

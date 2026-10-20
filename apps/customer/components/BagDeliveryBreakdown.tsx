@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronRight, MapPin } from "lucide-react";
+import { ChevronDown, ChevronRight, MapPin } from "lucide-react";
 import type { BagTrip } from "@peebee/shared";
 import { placeSubtitle, type Place } from "../lib/places";
 import type { BagDeliveryMode, useBagQuote } from "../lib/bag-quote";
@@ -95,7 +95,7 @@ export function BagTripBreakdown({ trip }: { trip: BagTrip }) {
           </div>
         )}
         <div className="flex justify-between gap-3 font-semibold text-ink">
-          <span>Delivery total</span>
+          <span>Total</span>
           <span>{ugx(trip.fee)}</span>
         </div>
       </div>
@@ -155,9 +155,15 @@ export function BagDeliveryBreakdown({
         <BagDeliveryModeChoice options={bag.options} mode={bag.mode} onChange={onModeChange} directMaxHours={bag.directMaxHours} disabled={disabled} />
       )}
       {showTrip && bag.trip && !bag.failed ? (
-        <div className={indent}>
-          <BagTripBreakdown trip={bag.trip} />
-        </div>
+        <details className={`group ${indent}`}>
+          <summary className="flex min-h-9 cursor-pointer select-none list-none items-center gap-1 text-[11px] font-semibold text-gold [&::-webkit-details-marker]:hidden">
+            Details
+            <ChevronDown className="h-3.5 w-3.5 transition-transform group-open:rotate-180 motion-reduce:transition-none" aria-hidden />
+          </summary>
+          <div className="mt-2">
+            <BagTripBreakdown trip={bag.trip} />
+          </div>
+        </details>
       ) : (
         <>
           {showRelay && bag.relay && (
@@ -173,10 +179,13 @@ export function BagDeliveryBreakdown({
               className={indent}
             />
           )}
-          <div className={`flex justify-between ${showRelay ? "font-semibold text-ink" : "text-ink-500"}`}>
-            <span>{showRelay ? "Delivery total" : "Delivery"}</span>
-            <span>{status}</span>
-          </div>
+          {/* The chosen way already shows its price above, so a relay needs no second total. */}
+          {(!showRelay || fee == null) && (
+            <div className={`flex justify-between ${showRelay ? "font-semibold text-ink" : "text-ink-500"}`}>
+              <span>{showRelay ? "Delivery total" : "Delivery"}</span>
+              <span>{status}</span>
+            </div>
+          )}
         </>
       )}
     </div>
@@ -216,7 +225,7 @@ export function BagDestinationCard({
         ) : (
           <>
             <span className="block text-xs font-semibold text-ink">{ready ? "Choose delivery location" : "Finding your location…"}</span>
-            <span className="mt-0.5 block text-[11px] text-ink-500">Pick the spot on the map to see the delivery price.</span>
+            
           </>
         )}
       </span>

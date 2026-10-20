@@ -278,7 +278,6 @@ export function CartDrawer({
                 <span>Subtotal ({selectedCount} item{selectedCount === 1 ? "" : "s"})</span>
                 <span className="font-mono text-base text-gold">UGX {subtotal.toLocaleString()}</span>
               </div>
-              <p className="text-[11px] text-ink-500">Delivery is chosen at the next step.</p>
             </div>
 
             <div className={`pt-1 flex items-center gap-2 ${navPresent ? "justify-end" : ""}`}>
