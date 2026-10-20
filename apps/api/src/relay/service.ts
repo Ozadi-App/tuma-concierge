@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+import { isGuestOrder } from "../guest/service.js";
 import { roundFare } from "@peebee/shared";
 import { db, executeBatch } from "../db/client.js";
 import { haversineKm } from "../lib/geo.js";
@@ -374,6 +375,8 @@ export async function relayLegs(orderId: string): Promise<Row[]> {
  */
 export async function relayPaysBeforeRider(order: Row): Promise<boolean> {
   if (order.rider_id || order.payment_rail !== "escrow" || !["Create", "Match"].includes(String(order.stage))) return false;
+  // A guest has no wallet and no rider to front the money: they always pay first.
+  if (await isGuestOrder(String(order.id))) return true;
   if (!(await hasTable("order_relay_legs"))) return false;
   if (!(await getRelaySettings()).payBeforeRider) return false;
   const legs = await db.execute({ sql: "SELECT 1 FROM order_relay_legs WHERE order_id = ? LIMIT 1", args: [String(order.id)] });

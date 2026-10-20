@@ -29,14 +29,17 @@ export type AuthTokenPayload = {
   jti: string;
   /** Seconds since the epoch, compared against users.sessions_valid_from. */
   iat: number;
+  /** Set on a guest-checkout token: it only works on that one order (see GUEST_ALLOWED in middleware). */
+  guestOrderId?: string;
 };
 
 export async function signToken(payload: {
   sub: string;
   role: AuthTokenPayload["role"];
   phone?: string | null;
+  guestOrderId?: string;
 }): Promise<string> {
-  return new SignJWT({ role: payload.role, phone: payload.phone ?? null })
+  return new SignJWT({ role: payload.role, phone: payload.phone ?? null, ...(payload.guestOrderId ? { gst: payload.guestOrderId } : {}) })
     .setProtectedHeader({ alg: "HS256" })
     .setSubject(payload.sub)
     .setJti(crypto.randomUUID())
@@ -58,5 +61,6 @@ export async function verifyToken(token: string): Promise<AuthTokenPayload> {
     phone: (payload.phone as string | null | undefined) ?? null,
     jti: (payload.jti as string | undefined) ?? "",
     iat: (payload.iat as number | undefined) ?? 0,
+    ...(typeof payload.gst === "string" ? { guestOrderId: payload.gst } : {}),
   };
 }

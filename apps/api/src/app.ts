@@ -42,6 +42,7 @@ import { walletsRoutes } from "./wallet/wallets.js";
 
 import { gasRoutes } from "./gas/routes.js";
 import { marketplaceRoutes } from "./marketplace/routes.js";
+import { guestRoutes } from "./guest/routes.js";
 import { workRoutes } from "./work/routes.js";
 import { talentRoutes } from "./talent/routes.js";
 import { pharmacyRoutes } from "./pharmacy/routes.js";
@@ -237,6 +238,7 @@ app.route("/v1/gas", gasRoutes);
 // Public, sign-in-free data for shared links; before the order routes' catch-all sign-in.
 app.route("/v1", publicShareRoutes);
 app.route("/v1", marketplaceRoutes);
+app.route("/v1", guestRoutes);
 app.route("/v1/work", workRoutes);
 app.route("/v1/talent", talentRoutes);
 app.route("/v1/pharmacy", pharmacyRoutes);

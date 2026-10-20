@@ -21,7 +21,7 @@ async function read(key:string, fallback=''):Promise<string> {
   const r=await db.execute({sql:'SELECT value FROM settings WHERE key = ?',args:[`onboarding_${key}`]});
   return String(r.rows[0]?.value ?? fallback);
 }
-async function secret(key:string, env:string):Promise<string> {
+export async function secret(key:string, env:string):Promise<string> {
   const stored=await read(key);
   if(stored) return decryptSecret(stored);
   return process.env[env] ?? '';

@@ -18,7 +18,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const navigationOverlayOpen = useSyncExternalStore(subscribeToNavigationOverlay, isNavigationOverlayOpen, () => false);
   const foodBusinessId=/^\/restaurants\/([^/]+)(?:\/items\/[^/]+)?$/.exec(pathname)?.[1];
   const isFoodDetail=/^\/restaurants\/[^/]+\/items\/[^/]+$/.test(pathname);
-  const isAuthPage = pathname === "/login" || pathname === "/activate" || pathname === "/forgot-password" || pathname.startsWith("/verify") || pathname.startsWith("/trip/");
+  const isAuthPage = pathname === "/login" || pathname === "/activate" || pathname === "/forgot-password" || pathname.startsWith("/verify") || pathname.startsWith("/trip/") || pathname.startsWith("/guest/");
   // "/chat" itself is a normal list screen (conversations) with the usual
   // header + nav; a specific thread ("/chat/<counterpartId>" for order
   // chat, or "/restaurants/<id>/chat" for restaurant chat) takes over the

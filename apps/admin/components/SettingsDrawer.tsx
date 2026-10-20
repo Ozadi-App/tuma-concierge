@@ -2,6 +2,7 @@
 
 import { ADMIN_ROLE_LABELS, hasPermission } from "@peebee/shared";
 import {
+  UserRound,
   ArrowUpRight,
   Banknote,
   Briefcase,
@@ -229,6 +230,13 @@ export function SettingsListContent({ onItemClick }: { onItemClick?: () => void 
       icon: Store,
       label: "Marketplace & Pro stores",
       value: "TikTok live & ads",
+      show: true,
+    },
+    {
+      href: "/settings/guest",
+      icon: UserRound,
+      label: "Guest checkout",
+      value: "Shared links & alerts",
       show: true,
     },
     {

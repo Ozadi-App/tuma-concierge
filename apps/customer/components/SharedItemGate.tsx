@@ -2,6 +2,8 @@
 
 import { ShoppingBag, Store, UtensilsCrossed } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { api } from "../lib/api";
 import { useAuth } from "../lib/auth-context";
 import { rememberReturnTo } from "../lib/return-to";
 import { ShareButton } from "./ShareButton";
@@ -32,6 +34,13 @@ export function SharedItemGate({ preview, children }: { preview: SharedItemPrevi
 
 function PublicItemPreview({ preview }: { preview: SharedItemPreview }) {
   const router = useRouter();
+  const [guestOk, setGuestOk] = useState(false);
+  // Guest checkout is a product-link feature, and the admin can switch it off.
+  useEffect(() => {
+    if (preview.kind !== "product" || !preview.available) return;
+    api.getGuestConfig().then((cfg) => setGuestOk(cfg.enabled)).catch(() => {});
+  }, [preview.kind, preview.available]);
+  const productId = preview.path.split("/").filter(Boolean).pop() ?? "";
   const Icon = preview.kind === "dish" ? UtensilsCrossed : ShoppingBag;
   function signIn() {
     rememberReturnTo(preview.path);
@@ -71,9 +80,15 @@ function PublicItemPreview({ preview }: { preview: SharedItemPreview }) {
           {preview.details.map((detail) => <li key={detail}>{detail}</li>)}
         </ul>
       )}
-      <button type="button" onClick={signIn} className="flex min-h-12 w-full items-center justify-center rounded-full bg-gold px-6 text-sm font-bold text-ink-gold shadow-[var(--shadow-glow-gold)] active:scale-95">
-        Sign in to order on Peebee
+      {guestOk && (
+        <button type="button" onClick={() => router.push(`/guest/checkout?product=${encodeURIComponent(productId)}`)} className="flex min-h-12 w-full items-center justify-center rounded-full bg-gold px-6 text-sm font-bold text-ink-gold shadow-[var(--shadow-glow-gold)] active:scale-95">
+          Buy as a guest
+        </button>
+      )}
+      <button type="button" onClick={signIn} className={guestOk ? "flex min-h-12 w-full items-center justify-center rounded-full border border-gold px-6 text-sm font-bold text-ink active:scale-95" : "flex min-h-12 w-full items-center justify-center rounded-full bg-gold px-6 text-sm font-bold text-ink-gold shadow-[var(--shadow-glow-gold)] active:scale-95"}>
+        {guestOk ? "Sign in to order" : "Sign in to order on Peebee"}
       </button>
+      {guestOk && <p className="text-center text-sm text-ink-500">Already ordered as a guest? <a href="/guest/track" className="font-bold text-gold">Track your order</a></p>}
     </article>
   );
 }

@@ -1,4 +1,5 @@
 import { db, executeBatch, type DbStatement } from "../db/client.js";
+import { notifyGuest } from "../guest/notify.js";
 import { postLedgerTransaction } from "../ledger/service.js";
 import { newId } from "../lib/ids.js";
 import { invalidateSettingsCache, type PlatformEnvironment } from "../lib/settings.js";
@@ -177,6 +178,7 @@ export async function reconcilePayment(paymentId: string, actorId: string): Prom
   if (payment.type === "collection") {
     await activateMerchantAllocationsForFundedOrder(String(payment.order_id));
     await finishBundleChildren(paymentId, "successful", actorId);
+    void notifyGuest(String(payment.order_id), "paid");
   }
   if (op) await finishProviderOperation(String(op.id), "successful");
   return status;

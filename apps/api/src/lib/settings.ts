@@ -385,6 +385,18 @@ const DEFAULTS = {
   pharmacy_enabled: "1",
   pharmacy_max_image_mb: "6",
   pharmacy_submissions_per_hour: "10",
+  /** Guest checkout on shared product links, and how guests are told about their delivery */
+  guest_checkout_enabled: "1",
+  guest_checkout_card_enabled: "1",
+  guest_checkout_max_quantity: "10",
+  guest_checkout_suggest_account: "1",
+  guest_checkout_code_status: "0",
+  guest_notify_push: "1",
+  guest_notify_chat: "1",
+  guest_notify_sms: "0",
+  guest_notify_email: "0",
+  guest_notify_whatsapp: "0",
+  guest_whatsapp_template: "",
   /** Peebee Marketplace: Groceries & Stores, Live Commerce, Pro Paywalls, Social Ads */
   marketplace_enabled: "1",
   marketplace_live_enabled: "1",

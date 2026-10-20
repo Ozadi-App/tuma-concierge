@@ -73,6 +73,11 @@ import type {
   CustomerWalletsResponse,
   DeliverySettings,
   MarketplaceSettings,
+  GuestSettings,
+  GuestConfig,
+  GuestCheckoutInput,
+  GuestCheckoutResult,
+  GuestTrack,
   FailedPayment,
   FeeProposal,
   FuelStationOutlet,
@@ -1836,6 +1841,26 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
         method: "PATCH",
         body: JSON.stringify(marketplace),
       });
+    },
+
+    // Guest checkout (admin switches, and the guest-facing endpoints that need no sign-in)
+    async adminGetGuestSettings() {
+      return request<{ guest: GuestSettings }>("/v1/admin/guest-settings");
+    },
+    async adminUpdateGuestSettings(guest: Partial<GuestSettings>) {
+      return request<{ guest: GuestSettings }>("/v1/admin/guest-settings", { method: "PATCH", body: JSON.stringify(guest) });
+    },
+    async getGuestConfig() {
+      return request<GuestConfig>("/v1/guest/config");
+    },
+    async guestCheckout(input: GuestCheckoutInput) {
+      return request<GuestCheckoutResult>("/v1/guest/checkout", { method: "POST", body: JSON.stringify(input) });
+    },
+    async guestTrack(code: string) {
+      return request<GuestTrack>(`/v1/guest/track/${encodeURIComponent(code)}`);
+    },
+    async guestCreateAccount(code: string, phone: string, password: string) {
+      return request<{ token: string; user: AuthUser }>(`/v1/guest/track/${encodeURIComponent(code)}/account`, { method: "POST", body: JSON.stringify({ phone, password }) });
     },
 
     // Marketplace Customer Endpoints
