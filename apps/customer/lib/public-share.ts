@@ -5,7 +5,7 @@
  * Uses only the API's public endpoints, so it works without a session.
  */
 
-export const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL ?? "https://customer.peebee.online").replace(/\/$/, "");
+export const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL ?? "https://app.peebee.online").replace(/\/$/, "");
 const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:10000").replace(/\/$/, "");
 const FALLBACK_IMAGE = "/icons/icon-512.png";
 

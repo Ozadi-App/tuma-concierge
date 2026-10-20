@@ -5,7 +5,12 @@
   "compatibility_date": "2026-09-12",
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,
-  "routes": [{ "pattern": "customer.peebee.online", "custom_domain": true }],
+  // customer.peebee.online stays attached so old links, bookmarks and installed apps still land here;
+  // next.config.ts redirects it to app.peebee.online.
+  "routes": [
+    { "pattern": "app.peebee.online", "custom_domain": true },
+    { "pattern": "customer.peebee.online", "custom_domain": true }
+  ],
   "assets": {
     "directory": ".open-next/assets",
     "binding": "ASSETS"

@@ -10,6 +10,12 @@ const PAGE_CACHE = "peebee-pages-v10";
 const RUNTIME_CACHE = "peebee-runtime-v10";
 const KEEP_CACHES = [ASSET_CACHE, PAGE_CACHE, RUNTIME_CACHE];
 const OFFLINE_URL = "/offline.html";
+// The app moved from customer.peebee.online to app.peebee.online. A phone that visited the old address still has this
+// worker and cached pages there, so it would keep showing the old copy and never meet the server's redirect. On the
+// old host the worker therefore sends every page navigation to the new address itself and caches nothing.
+const OLD_HOST = "customer.peebee.online";
+const NEW_ORIGIN = "https://app.peebee.online";
+const ON_OLD_HOST = self.location.hostname === OLD_HOST;
 const SHELL_URLS = ["/", "/login"];
 const STATIC_ASSETS = ["/brand/peebee-logo-light.svg?v=logo-6", "/brand/peebee-logo-dark.svg?v=logo-6", "/sounds/notification.mp3", "/manifest.json", "/icons/icon-192.png?v=logo-6", "/icons/icon-512.png?v=logo-6", OFFLINE_URL];
 
@@ -43,6 +49,7 @@ async function storePage(request, response) {
 }
 
 self.addEventListener("install", (event) => {
+  if (ON_OLD_HOST) { self.skipWaiting(); return; }
   event.waitUntil((async () => {
     const assets = await caches.open(ASSET_CACHE);
     await Promise.all(STATIC_ASSETS.map((u) => assets.add(u).catch(() => {})));
@@ -58,7 +65,7 @@ self.addEventListener("install", (event) => {
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys().then((keys) => Promise.all(keys.filter((k) => !KEEP_CACHES.includes(k)).map((k) => caches.delete(k)))),
+    caches.keys().then((keys) => Promise.all(keys.filter((k) => ON_OLD_HOST || !KEEP_CACHES.includes(k)).map((k) => caches.delete(k)))),
   );
   self.clients.claim();
 });
@@ -146,6 +153,12 @@ function isRscRequest(request, url) {
 self.addEventListener("fetch", (event) => {
   const { request } = event;
   const url = new URL(request.url);
+
+  if (ON_OLD_HOST && url.origin === self.location.origin) {
+    // Same path and query on the new address (the browser keeps the #fragment). Everything else goes to the network.
+    if (request.mode === "navigate" && request.method === "GET") event.respondWith(Response.redirect(NEW_ORIGIN + url.pathname + url.search, 307));
+    return;
+  }
 
   // A mutation (POST/PUT/DELETE — funding an order, sending a message,
   // claiming a job) always goes straight to the network, exactly as

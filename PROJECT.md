@@ -33,7 +33,7 @@ The repository is a monorepo. Each app is a separate website, an installable PWA
 
 | App | Folder | Address | Who uses it and what for |
 |---|---|---|---|
-| Customer | `apps/customer` | customer.peebee.online | The main app: ride, buy, eat, learn, hive, wallet, orders, tracking, chat |
+| Customer | `apps/customer` | app.peebee.online (customer.peebee.online redirects here) | The main app: ride, buy, eat, learn, hive, wallet, orders, tracking, chat |
 | Rider | `apps/rider` | rider.peebee.online | Riders: take jobs, shop and deliver, wallet, fuel vouchers, savings circles |
 | Restaurant | `apps/restaurant` | restaurant.peebee.online | Restaurants and kitchens: menu, orders, payments, wallet |
 | Merchant | `apps/merchant` | merchant.peebee.online | Formal merchants: onboarding, outlets, staff, payments, settlements |

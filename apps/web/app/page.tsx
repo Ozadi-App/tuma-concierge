@@ -17,7 +17,7 @@ import Link from "next/link";
 import { SiteFooter } from "../components/SiteFooter";
 import { ThemeModeToggle } from "../components/ThemeModeToggle";
 
-const CUSTOMER_APP_URL = "https://customer.peebee.online";
+const CUSTOMER_APP_URL = "https://app.peebee.online";
 const RIDER_APP_URL = "https://rider.peebee.online";
 const RESTAURANT_APP_URL = "https://food.peebee.online";
 

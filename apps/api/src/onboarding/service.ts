@@ -55,7 +55,7 @@ export class OnboardingError extends Error {constructor(public code:string,publi
 export function appUrl(type:string):string {
   const prod=(process.env.ENVIRONMENT??'development')!=='development';
   const values:Record<string,[string,string,string]>={
-    customer:['CUSTOMER_APP_URL','https://customer.peebee.online','http://localhost:3000'],
+    customer:['CUSTOMER_APP_URL','https://app.peebee.online','http://localhost:3000'],
     rider:['RIDER_APP_URL','https://rider.peebee.online','http://localhost:3001'],
     restaurant:['RESTAURANT_APP_URL','https://food.peebee.online','http://localhost:3003'],
     merchant:['MERCHANT_APP_URL','https://merchant.peebee.online','http://localhost:3005'],

@@ -14,7 +14,7 @@ import { emailProviderConfigured, sendResendEmail } from "./email-keys.js";
  * plain HTTP(S), not from the local bundle, so this has to be a real URL.
  * PNG, not SVG: Gmail and Outlook don't render SVG images in email. */
 function logoUrl(): string {
-  return process.env.CUSTOMER_APP_URL_LOGO ?? "https://customer.peebee.online/brand/peebee-logo-light.png";
+  return process.env.CUSTOMER_APP_URL_LOGO ?? "https://app.peebee.online/brand/peebee-logo-light.png";
 }
 
 export const isResendConfigured = emailProviderConfigured;
