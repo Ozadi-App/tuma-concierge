@@ -1593,11 +1593,11 @@ select:focus {
 /* ------------------------------------------------------------------ */
 .hive-tile { background: rgb(var(--surface-card)); }
 .hive-tile.is-on { background: rgb(var(--color-gold) / .1); box-shadow: 0 0 0 1px rgb(var(--color-gold)); }
-.hive-pin-dot--clean { background: #C9A227; color: #0A0A0A; }
-.hive-pin-dot--laundry { background: #FDFBF7; color: #9A7A12; box-shadow: inset 0 0 0 2px #C9A227; }
-.hive-pin-dot--fix { background: #0A0A0A; color: #E8C55A; }
+/* Trade icons: gold with black glyph, flipping to black with gold glyph when the tile is selected. */
+.hive-pin-dot { background: #C9A227; color: #0A0A0A; transition: background-color .2s ease, color .2s ease; }
+.hive-tile.is-on .hive-pin-dot { background: #0A0A0A; color: #E8C55A; }
 .hive-live-job { background: rgb(var(--surface-muted)); border: 1px solid rgb(var(--color-gold) / .45); }
-:root[data-theme="dark"] .hive-pin-dot--fix { box-shadow: inset 0 0 0 1px rgb(255 255 255 / .18); }
+:root[data-theme="dark"] .hive-tile.is-on .hive-pin-dot { box-shadow: inset 0 0 0 1px rgb(255 255 255 / .18); }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .hive-pin-dot--fix { box-shadow: inset 0 0 0 1px rgb(255 255 255 / .18); }
+  :root:not([data-theme="light"]) .hive-tile.is-on .hive-pin-dot { box-shadow: inset 0 0 0 1px rgb(255 255 255 / .18); }
 }

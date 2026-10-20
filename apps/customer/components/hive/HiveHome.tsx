@@ -146,9 +146,9 @@ export function HiveHome() {
 
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-lg font-bold">What needs doing?</h2>
-            <div className="flex shrink-0 gap-1 rounded-full bg-[rgb(var(--surface-muted))] p-1" role="group" aria-label="When">
+            <div className="flex shrink-0 gap-2" role="group" aria-label="When">
               {(["now", "later"] as const).map((w) => (
-                <button key={w} type="button" aria-pressed={when === w} onClick={() => setWhen(w)} className={`ride-chip !min-h-[34px] !border-0 !px-3 ${when === w ? "is-on" : "!bg-transparent"}`}>
+                <button key={w} type="button" aria-pressed={when === w} onClick={() => setWhen(w)} className={`ride-chip ${when === w ? "is-on" : ""}`}>
                   {w === "now" ? "Now" : "Schedule"}
                 </button>
               ))}
@@ -175,7 +175,7 @@ export function HiveHome() {
                     onClick={() => setTrade(on ? null : t.id)}
                     className={`hive-tile relative flex min-h-[112px] flex-col items-start rounded-2xl border p-3 text-left transition-all active:scale-[0.98] ${on ? "is-on border-gold" : "border-[var(--border-faint)]"}`}
                   >
-                    <span className={`hive-pin-dot hive-pin-dot--${t.id} flex h-10 w-10 items-center justify-center rounded-xl`}>
+                    <span className="hive-pin-dot flex h-10 w-10 items-center justify-center rounded-xl">
                       <Icon className="h-5 w-5" strokeWidth={1.9} aria-hidden />
                     </span>
                     <strong className="mt-2 text-sm">{t.label}</strong>
