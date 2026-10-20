@@ -577,7 +577,7 @@ function LearnHome() {
 
   return (
     // The warm page colour is the Peebee cream; the app's own page colour stays for dark mode.
-    <div className={`${display.variable} ${bodyFont.variable} ${monoFont.variable} min-h-dvh bg-[#F7F3EE] font-[family-name:var(--font-lh-body)] dark:bg-cream`}>
+    <div className={`${display.variable} ${bodyFont.variable} ${monoFont.variable} min-h-dvh bg-[#FAF8EF] font-[family-name:var(--font-lh-body)] dark:bg-cream`}>
     <div className="mx-auto max-w-3xl space-y-[18px] px-3.5 pb-44 pt-4">
       <header className="flex items-start justify-between gap-3">
         <div className="min-w-0">
