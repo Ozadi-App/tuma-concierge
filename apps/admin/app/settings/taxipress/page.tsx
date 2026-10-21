@@ -72,6 +72,7 @@ function SettingsTab() {
       returnDiscountPercent: String(next.returnDiscountPercent), maxSeatsPerBooking: String(next.maxSeatsPerBooking),
       maxParcels14: String(next.maxParcels14), maxParcels18: String(next.maxParcels18),
       waitMinutes: String(next.waitMinutes), stageRadiusM: String(next.stageRadiusM),
+      payWithinMinutes: String(next.payWithinMinutes), maxCashBookings: String(next.maxCashBookings),
     });
   }, []);
 
@@ -110,7 +111,7 @@ function SettingsTab() {
         commissionFlatUgx: n("commissionFlatUgx"), blockWhenOwing: s.blockWhenOwing, maxOwedUgx: n("maxOwedUgx"), cashEnabled: s.cashEnabled,
         seatChoiceFeeUgx: n("seatChoiceFeeUgx"), returnDiscountPercent: n("returnDiscountPercent"), maxSeatsPerBooking: n("maxSeatsPerBooking"),
         parcelAcceptRule: s.parcelAcceptRule, maxParcels14: n("maxParcels14"), maxParcels18: n("maxParcels18"), parcelFitText: s.parcelFitText,
-        waitMinutes: n("waitMinutes"), stageRadiusM: n("stageRadiusM"),
+        waitMinutes: n("waitMinutes"), stageRadiusM: n("stageRadiusM"), payWithinMinutes: n("payWithinMinutes"), maxCashBookings: n("maxCashBookings"),
         parcelNotAllowed: notAllowed.split("\n").map((x) => x.trim()).filter(Boolean),
       });
       load(res.settings);
@@ -157,6 +158,8 @@ function SettingsTab() {
           <Field label="Most seats in one booking">{field("maxSeatsPerBooking", true)}</Field>
           <Field label="Choose-your-seat fee (UGX)">{field("seatChoiceFeeUgx", true)}</Field>
           <Field label="Return trip discount (%)">{field("returnDiscountPercent", false)}</Field>
+          <Field label="Minutes to pay in the app" hint="Unpaid seats are given back after this.">{field("payWithinMinutes", true)}</Field>
+          <Field label="Cash bookings one passenger may hold" hint="Cash can be a no-show, so this is capped.">{field("maxCashBookings", true)}</Field>
         </div>
         <label className="flex items-center gap-2 text-sm font-bold text-ink">
           <Switch checked={s.cashEnabled} onChange={(e) => set("cashEnabled", e.target.checked)} />

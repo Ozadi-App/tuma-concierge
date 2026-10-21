@@ -1,4 +1,4 @@
-import type { TaxipressAdminQueueEntry, TaxipressAdminRoute, TaxipressConfig, TaxipressDriverView, TaxipressLineEntry, TaxipressRelayRoute, TaxipressSettings, TaxipressTaxi } from "./taxipress.js";
+import type { TaxipressAdminQueueEntry, TaxipressAdminRoute, TaxipressBooking, TaxipressConfig, TaxipressDriverView, TaxipressLineEntry, TaxipressQueueView, TaxipressRelayRoute, TaxipressSettings, TaxipressTaxi } from "./taxipress.js";
 import type { BagTrip, RelayAdminOrder, RelayRouteStage, RelayMerchantOrder, RelayOpenLeg, RelayOperator, RelayOperatorParcels, RelayQuote, RelayRoute, RelaySettings, RelayStation, RelayStationParcels, RelayTrack } from "./relay.js";
 import type { AdminRole } from "./permissions.js";
 import { workMethods } from "./work-client.js";
@@ -765,7 +765,17 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
     },
     /** The taxis waiting on a route (the one Boarding Now first) and the ones already on the road. */
     async getTaxipressQueue(routeId: string) {
-      return request<{ line: TaxipressLineEntry[]; onRoad: TaxipressLineEntry[] }>(`/v1/taxipress/routes/${encodeURIComponent(routeId)}/queue`);
+      return request<TaxipressQueueView>(`/v1/taxipress/routes/${encodeURIComponent(routeId)}/queue`);
+    },
+    /** Book seats on a taxi in the line. Pay next on the order's pay screen, or hand cash to the driver. */
+    async bookTaxipressSeats(input: { queueId: string; seats: number; payment: "app" | "cash" }) {
+      return request<{ booking: TaxipressBooking; order: { id: string } }>("/v1/taxipress/bookings", { method: "POST", body: JSON.stringify(input) });
+    },
+    async getMyTaxipressBookings() {
+      return request<{ bookings: TaxipressBooking[] }>("/v1/taxipress/bookings/mine");
+    },
+    async getTaxipressBooking(id: string) {
+      return request<{ booking: TaxipressBooking }>(`/v1/taxipress/bookings/${encodeURIComponent(id)}`);
     },
     async adminListTaxipressTaxis() {
       return request<{ taxis: TaxipressTaxi[] }>("/v1/admin/taxipress/taxis");

@@ -246,6 +246,25 @@ function Board({ view, onChange }: { view: TaxipressDriverView; onChange: () => 
         {!onRoad && <button type="button" disabled={busy} onClick={() => run(() => api.taxipressLeaveLine())} className={secondary}>Leave the line</button>}
       </section>
 
+      {view.bookings.length > 0 && (
+        <section className="home-card space-y-2">
+          <h3 className="font-bold text-ink">Passengers</h3>
+          <ul className="space-y-1.5">
+            {view.bookings.map((b) => (
+              <li key={b.id} className="flex items-center justify-between gap-3 rounded-xl bg-[rgb(var(--surface-muted))] px-3 py-2">
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-bold text-ink">{b.passengerName ?? "Passenger"} · {b.seats} seat{b.seats === 1 ? "" : "s"}</span>
+                  {b.passengerPhone && <a href={`tel:${b.passengerPhone}`} className="block text-[11px] text-ink-500 underline-offset-2 hover:underline">{b.passengerPhone}</a>}
+                </span>
+                <span className={`shrink-0 text-right text-xs font-bold ${b.paymentStatus === "paid" ? "text-green" : b.paymentStatus === "pay_driver" ? "text-gold" : "text-ink-500"}`}>
+                  {b.paymentStatus === "paid" ? "Paid" : b.paymentStatus === "pay_driver" ? `Collect UGX ${b.amount.toLocaleString("en-UG")}` : "Payment due"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       {!onRoad && view.line.length > 0 && (
         <section className="home-card space-y-2">
           <h3 className="flex items-center gap-2 font-bold text-ink"><Bus className="h-4 w-4 text-gold" aria-hidden /> The line</h3>

@@ -620,6 +620,10 @@ const DEFAULTS = {
   taxipress_wait_minutes: "30",
   // How close (metres) a driver must be to the start stage to join the line. 0 turns the check off.
   taxipress_stage_radius_m: "300",
+  // Minutes a passenger has to pay for a seat in the app before it is given back.
+  taxipress_pay_within_minutes: "10",
+  // Most cash bookings one passenger may hold at a time (cash can be a no-show).
+  taxipress_max_cash_bookings: "2",
   taxipress_parcel_not_allowed: '["Charcoal","Fuel","Wet or raw food"]',
 } as const;
 

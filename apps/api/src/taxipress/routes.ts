@@ -5,6 +5,7 @@ import { requirePermission } from "../admin/permissions.js";
 import { requireAuth, requireRole } from "../auth/middleware.js";
 import { db } from "../db/client.js";
 import { newId } from "../lib/ids.js";
+import { bookingFor, bookSeats, manifestFor, myBookings, releaseStaleBookings } from "./bookings.js";
 import { activeQueue, applyTaxi, arrive, driverView, goOnRoad, joinLine, leaveLine, lineOf, listTaxis, onRoadOf, removeFromLine, startBoarding, TaxipressError, updateLocation, updateTaxi, walkUp } from "./queue.js";
 import { getTaxipressSettings, setTaxipressSettings } from "./settings.js";
 import { getTaxipressRoute, listActiveTaxipressRoutes, listTaxipressRoutes, taxipressReady } from "./service.js";
@@ -44,6 +45,7 @@ taxipressRoutes.get("/taxipress/config", async (c) => {
     seatChoiceFeeUgx: settings.seatChoiceFeeUgx,
     returnDiscountPercent: settings.returnDiscountPercent,
     maxSeatsPerBooking: settings.maxSeatsPerBooking,
+    payWithinMinutes: settings.payWithinMinutes,
     parcelFitText: settings.parcelFitText,
     parcelNotAllowed: settings.parcelNotAllowed,
   });
@@ -56,12 +58,19 @@ taxipressRoutes.get("/taxipress/config", async (c) => {
 /** The taxis waiting on a route (the one Boarding Now first) and the ones already on the road. */
 taxipressRoutes.get("/taxipress/routes/:id/queue", async (c) => {
   const id = c.req.param("id") as string;
-  const [line, onRoad] = await Promise.all([lineOf(id), onRoadOf(id)]);
-  return c.json({ line, onRoad });
+  await releaseStaleBookings();
+  const [line, onRoad, route] = await Promise.all([lineOf(id), onRoadOf(id), getTaxipressRoute(id)]);
+  return c.json({
+    line, onRoad,
+    route: route ? { id: route.id, fromName: route.fromName, toName: route.toName, directionLabel: route.directionLabel, farePerSeat: route.farePerSeat } : null,
+  });
 });
 
 /** The driver's taxi, their place in the line and what they can do next. */
-taxipressRoutes.get("/taxipress/taxi/me", async (c) => c.json(await driverView(c.get("user").sub)));
+taxipressRoutes.get("/taxipress/taxi/me", async (c) => {
+  const view = await driverView(c.get("user").sub);
+  return c.json({ ...view, bookings: view.entry ? await manifestFor(view.entry.id) : [] });
+});
 
 const applySchema = z.object({
   relayRouteId: z.string().min(1),
@@ -122,6 +131,29 @@ taxipressRoutes.post("/taxipress/driver/location", async (c) => {
 });
 
 // ---------------------------------------------------------------------------
+// Passenger bookings
+// ---------------------------------------------------------------------------
+
+const bookSchema = z.object({
+  queueId: z.string().min(1),
+  seats: z.number().int().min(1).max(30),
+  payment: z.enum(["app", "cash"]),
+});
+
+taxipressRoutes.post("/taxipress/bookings", async (c) => {
+  const parsed = bookSchema.safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) return c.json({ error: "invalid_body", message: "Choose a taxi, the seats and how you will pay." }, 400);
+  return bookSeats(c, parsed.data);
+});
+
+taxipressRoutes.get("/taxipress/bookings/mine", async (c) => c.json({ bookings: await myBookings(c.get("user").sub) }));
+
+taxipressRoutes.get("/taxipress/bookings/:id", async (c) => {
+  const booking = await bookingFor(c.req.param("id") as string, c.get("user").sub);
+  return booking ? c.json({ booking }) : c.json({ error: "not_found" }, 404);
+});
+
+// ---------------------------------------------------------------------------
 // Admin
 // ---------------------------------------------------------------------------
 
@@ -150,6 +182,8 @@ const settingsSchema = z.object({
   parcelNotAllowed: z.array(z.string().trim().min(1).max(60)).max(50),
   waitMinutes: z.number().int().min(0).max(600),
   stageRadiusM: z.number().int().min(0).max(5000),
+  payWithinMinutes: z.number().int().min(1).max(1440),
+  maxCashBookings: z.number().int().min(0).max(50),
 }).partial();
 
 taxipressRoutes.put("/admin/taxipress/settings", requirePermission("settings.manage"), async (c) => {

@@ -25,6 +25,10 @@ export type TaxipressSettings = {
   waitMinutes: number;
   /** How close (metres) a driver must be to the start stage to join the line. 0 turns the check off. */
   stageRadiusM: number;
+  /** Minutes to pay for a seat in the app before it is given back. */
+  payWithinMinutes: number;
+  /** Most cash bookings one passenger may hold at a time. */
+  maxCashBookings: number;
 };
 
 /** What the customer app needs to decide whether to show Taxipress, and what to say. */
@@ -44,6 +48,8 @@ export type TaxipressConfig = {
   seatChoiceFeeUgx: number;
   returnDiscountPercent: number;
   maxSeatsPerBooking: number;
+  /** Minutes to pay for a seat in the app before it is given back. */
+  payWithinMinutes: number;
   parcelFitText: string;
   parcelNotAllowed: string[];
 };
@@ -124,6 +130,50 @@ export type TaxipressDriverView = {
   waitMinutes: number;
   /** Staff's rule is on and the driver owes too much to join the line. */
   owingBlocked: boolean;
+  /** The passengers booked on the driver's taxi. */
+  bookings: TaxipressManifestPassenger[];
 };
 
 export type TaxipressAdminQueueEntry = TaxipressLineEntry & { taxipressRouteId: string; driverPhone: string | null };
+
+export type TaxipressBookingStatus = "booked" | "boarded" | "no_show" | "cancelled" | "completed";
+/** unpaid: an app payment is still due. paid: collected in the app. pay_driver: cash, to be paid to the driver. */
+export type TaxipressPaymentStatus = "unpaid" | "paid" | "pay_driver" | "cancelled";
+
+export type TaxipressBooking = {
+  id: string;
+  /** The order behind the booking: payment, chat, calls and tracking use it. */
+  orderId: string;
+  status: TaxipressBookingStatus;
+  seats: number;
+  farePerSeat: number;
+  amount: number;
+  paymentMethod: "app" | "cash";
+  paymentStatus: TaxipressPaymentStatus;
+  /** What the driver checks at boarding (also shown as a QR code). */
+  ticketCode: string | null;
+  createdAt: string;
+  /** An app payment still due must be made by this time or the seats are given back. */
+  payBy: string | null;
+  route: { id: string; fromName: string; toName: string; directionLabel: string };
+  taxi: { queueId: string; plate: string; seatLayout: "14" | "18"; driverName: string | null; driverPhone: string | null; status: string; position: number | null; seatsLeft: number };
+};
+
+/** A passenger on a driver's taxi. */
+export type TaxipressManifestPassenger = {
+  id: string;
+  passengerName: string | null;
+  passengerPhone: string | null;
+  seats: number;
+  amount: number;
+  paymentMethod: "app" | "cash";
+  paymentStatus: TaxipressPaymentStatus;
+  status: TaxipressBookingStatus;
+};
+
+/** The taxis waiting on a route, with the route's fare, for the passenger's choice. */
+export type TaxipressQueueView = {
+  line: TaxipressLineEntry[];
+  onRoad: TaxipressLineEntry[];
+  route: { id: string; fromName: string; toName: string; directionLabel: string; farePerSeat: number } | null;
+};
