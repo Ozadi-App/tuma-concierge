@@ -1,5 +1,5 @@
 "use client";
-import {Bell,ChevronDown,ChevronRight,MapPinned,MessageCircle,Moon,Package,Settings,ShoppingBag,Sun,User,Wallet,type LucideIcon} from "lucide-react";
+import {Bell,ChevronDown,ChevronRight,MapPinned,MessagesSquare,Moon,Package,Settings,ShoppingBag,Sun,User,Wallet,type LucideIcon} from "lucide-react";
 import Link from "next/link";
 import {usePathname} from "next/navigation";
 import {useEffect,useRef,useState} from "react";
@@ -125,7 +125,7 @@ export function BrandHeader() {
             {!expanded&&(cartCount>0||openCarts)&&<span aria-hidden className="customer-header-dot absolute right-1.5 top-1.5 h-2.5 w-2.5 rounded-full"/>}
           </button>
           {chatEnabled&&<button type="button" aria-label={chatUnread?"Open chat, unread messages":"Open chat"} aria-expanded={chat.open} aria-controls="chat-drawer" onClick={chat.openChat} className="customer-header-toggle relative flex h-11 w-11 items-center justify-center rounded-full">
-            <MessageCircle size={22} aria-hidden/>
+            <MessagesSquare size={22} aria-hidden/>
             {chatUnread&&<span aria-hidden className="customer-header-dot absolute right-1.5 top-1.5 h-2.5 w-2.5 rounded-full"/>}
           </button>}
         </div>
@@ -153,7 +153,7 @@ export function BrandHeader() {
               <MenuTile href="/cart" label="Cart" Icon={ShoppingBag} badge={cartCount} badgeLabel={cartCount===1?"item":"items"} onNavigate={close}/>
               <MenuTile href="/orders/history" label="Orders" Icon={Package} onNavigate={close}/>
               <MenuTile href="/track" label="Track" Icon={MapPinned} badge={counts.inProgress} badgeLabel="on the way" onNavigate={close}/>
-              <MenuTile href="/chat" label="Chat & Calls" Icon={MessageCircle} badge={counts.unreadChats} badgeLabel="unread" onNavigate={close}/>
+              <MenuTile href="/chat" label="Chat & Calls" Icon={MessagesSquare} badge={counts.unreadChats} badgeLabel="unread" onNavigate={close}/>
               <MenuTile href="/notifications" label="Notifications" Icon={Bell} badge={counts.attention} badgeLabel="new" onNavigate={close}/>
               <MenuTile href="/settings" label="Settings" Icon={Settings} onNavigate={close}/>
             </div>
