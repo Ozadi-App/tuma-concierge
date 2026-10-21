@@ -592,6 +592,31 @@ const DEFAULTS = {
   relay_pay_before_rider: "1",
   /** "Direct" (one rider all the way) is promised in under this many hours. */
   direct_delivery_max_hours: "3",
+  // Taxipress: scheduled shared-taxi seats on fixed routes. Off until staff turn it on.
+  taxipress_enabled: "0",
+  // full_only: a taxi leaves only when every seat is booked. driver_choice / after_wait relax that.
+  taxipress_departure_rule: "full_only",
+  // Whether seats still free on a taxi that is On Road may be sold in the app.
+  taxipress_sell_free_seats_on_road: "0",
+  // How Peebee's cut of a seat is worked out: a percentage (digital and cash can differ) or a flat amount.
+  taxipress_commission_type: "percent",
+  taxipress_commission_digital_percent: "0",
+  taxipress_commission_cash_percent: "0",
+  taxipress_commission_flat_ugx: "0",
+  // Block a driver from joining the line when they owe Peebee more than this (UGX).
+  taxipress_block_when_owing: "0",
+  taxipress_max_owed_ugx: "0",
+  taxipress_cash_enabled: "1",
+  taxipress_seat_choice_fee_ugx: "0",
+  taxipress_return_discount_percent: "0",
+  taxipress_max_seats_per_booking: "4",
+  // Which taxi may take a relay parcel: only the one Boarding Now, or any taxi in the line.
+  taxipress_parcel_accept_rule: "boarding_now",
+  // Most parcels one taxi takes per trip, by seat count. 0 = none until staff set it.
+  taxipress_max_parcels_14: "0",
+  taxipress_max_parcels_18: "0",
+  taxipress_parcel_fit_text: "Must fit in the taxi's luggage space and be carried by one person.",
+  taxipress_parcel_not_allowed: '["Charcoal","Fuel","Wet or raw food"]',
 } as const;
 
 export type SettingKey = keyof typeof DEFAULTS;

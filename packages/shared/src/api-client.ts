@@ -1,3 +1,4 @@
+import type { TaxipressAdminRoute, TaxipressConfig, TaxipressRelayRoute, TaxipressSettings } from "./taxipress.js";
 import type { BagTrip, RelayAdminOrder, RelayRouteStage, RelayMerchantOrder, RelayOpenLeg, RelayOperator, RelayOperatorParcels, RelayQuote, RelayRoute, RelaySettings, RelayStation, RelayStationParcels, RelayTrack } from "./relay.js";
 import type { AdminRole } from "./permissions.js";
 import { workMethods } from "./work-client.js";
@@ -712,6 +713,26 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
     },
     async adminUpdateRelayRoute(id: string, input: Partial<{ name: string; stageAName: string; stageALat: number; stageALng: number; stageBName: string; stageBLat: number; stageBLng: number; parcelFare: number; active: boolean; dropMode: "stage" | "station"; stageACode: string; stageBCode: string }>) {
       return request<{ ok: boolean }>(`/v1/admin/relay/routes/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(input) });
+    },
+    // Taxipress (scheduled shared-taxi seats).
+    /** Always answers; `enabled` is false while Taxipress is off, not set up, or has no running route. */
+    async getTaxipressConfig() {
+      return request<TaxipressConfig>("/v1/taxipress/config");
+    },
+    async adminGetTaxipressSettings() {
+      return request<{ settings: TaxipressSettings; ready: boolean }>("/v1/admin/taxipress/settings");
+    },
+    async adminUpdateTaxipressSettings(input: Partial<TaxipressSettings>) {
+      return request<{ settings: TaxipressSettings }>("/v1/admin/taxipress/settings", { method: "PUT", body: JSON.stringify(input) });
+    },
+    async adminListTaxipressRoutes() {
+      return request<{ routes: TaxipressAdminRoute[]; relayRoutes: TaxipressRelayRoute[]; ready: boolean }>("/v1/admin/taxipress/routes");
+    },
+    async adminCreateTaxipressRoute(input: { relayRouteId: string; direction: "a_to_b" | "b_to_a"; farePerSeat: number; stopPricingEnabled?: boolean; active?: boolean }) {
+      return request<{ id: string }>("/v1/admin/taxipress/routes", { method: "POST", body: JSON.stringify(input) });
+    },
+    async adminUpdateTaxipressRoute(id: string, input: Partial<{ farePerSeat: number; stopPricingEnabled: boolean; active: boolean }>) {
+      return request<{ ok: boolean }>(`/v1/admin/taxipress/routes/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(input) });
     },
     async adminListRelayOperators() {
       return request<{ operators: RelayOperator[] }>("/v1/admin/relay/operators");
