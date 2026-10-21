@@ -1,6 +1,6 @@
 # Fly Express → Peebee "Taxipress" — feature breakdown and recommendations
 
-Status: **Draft v3, all open questions answered. No code written.** Product name: **Taxipress**.
+Status: **Draft v4, all decisions made; ready for step 1. No code written.** Product name: **Taxipress**.
 
 **Terminology.** *Taxi, matatu, minibus, van, Hiace/Commuter and "Taxipress vehicle" all mean the same vehicle:* a 14- or 18-seat minibus (a van with seats). This document says "van" in places because Fly Express does; in the app the word is **taxi**.
 Source studied: `xristo7/flyexpress` at `444a361` (static demo: `index.html`, `script.js` ~7,800 lines, `styles.css`, guide, QA notes, *Modules & Revenue Specification* PDF).
@@ -295,6 +295,8 @@ Routes are data: name, direction, start stage, ordered pick-up points, fare per 
 | `taxipress_driver_state` | driver_id, current_queue_id, lat, lng, updated_at |
 | `taxipress_cash_ledger` | one row per cash commission taken, linked to the wallet movement and ledger entry (for audit) |
 | `relay_holding_points` | **Many offices**, added in Admin: name, address, lat, lng, hours, active, **operator type** (`peebee` staff or `partner` agent), the stages/routes it serves, handling fee, capacity. Launch rows: **Entebbe office (existing)**, then Kampala offices as they open. See §12.6 |
+| `relay_office_fees` | Accrued fee per office per parcel or per period (week / month): office, period, model, amount, status (`accrued`, `paid`), paid at, wallet movement |
+| `relay_claims` | A lost or damaged parcel: order, claimed by, found cause, **responsible party** (taken from the custody log), amount, customer paid at, recovered at, status |
 | `relay_holding_staff` | Which Admin-app staff accounts manage which office: user, holding point, active. A staff account sees **only its own office(s)** |
 | `relay_holds` | One row when a parcel cannot board: order, reason, option taken (`wait`, `office`, `origin`), status, holding point, detour km, detour fee, **who pays (snapshot of the admin policy)**, rider paid at, customer charged at, resumed at |
 | `relay_extra_legs` | Extra legs after a stranding (stage → office, office → stage, stage → shop): from, to, km, fee, rider, status, payer. Kept separate because `order_relay_legs` allows only legs 1 to 3 (a SQLite `CHECK`) |
@@ -476,7 +478,7 @@ All new columns and tables are guarded (`hasColumn()` / `hasTable()`), so the re
 - **Admin assigns one or more staff accounts to each office.** Those accounts use an **Office desk** page inside the Admin app, restricted so a staff member sees **only their own office(s)**. They can receive a parcel by code, release it, and resend it. They cannot open the rest of Admin. A new permission governs this.
 - **Which office to use.** The rider is shown the **nearest open office** to the stage where they are, with distance and hours. Admin can set a preferred office per stage. Closed or full offices are hidden.
 - **Any office receives any bounced order, regardless of which office it is.** An office does not need to be linked to the route or the stage. (The stage link only decides which office is suggested first.)
-- **Handling fee.** A partner office can earn a fee per parcel held. Admin sets whether there is one, the amount (flat or per day), and who bears it.
+- **Partner fee.** A partner office earns a fee, and **admin picks the model per office**: **per parcel held**, a **flat amount per week**, or a **flat amount per month**. See §12.12.
 - **Accountability.** Every receive and release is logged with the person, time and code. Loss and damage rules are open (§12.11).
 
 **Bounced orders and "needs resending"**
@@ -572,7 +574,9 @@ How it works:
 | Automatic cancel and refund at the end | On |
 | Maximum resends per order | 2 |
 | Resend options offered to staff: relay, direct boda, collect at office, other address | All on |
-| Partner office handling fee: amount and who bears it | None |
+| **Partner office fee** per office: model (per parcel / flat per week / flat per month) and amount | None until set |
+| **Lost or damaged parcels**: Peebee pays the customer first (up to a cap), then recovers from whoever caused it | On; cap set by admin |
+| **Partner office deposit** (optional) | Off |
 | **Parcel commission mode** and value | Existing fee split |
 | **Parcels per taxi** (14-seat and 18-seat), "does it fit" line, not-allowed list | Admin enters |
 | Parcel fee per route | The existing relay `parcel_fare` |
@@ -588,11 +592,68 @@ How it works:
 7. **A taxi removed from the line after taking a parcel**: staff move the parcel to another taxi from the Admin queue monitor (new action).
 8. **Unreviewed numbers.** The hold days, resend count and cause table above are my suggestions. Please review them.
 
-### 12.11 Questions still open
+### 12.11 Decisions closed (final round)
 
-1. **Entebbe office details**: name, address, opening hours and map location.
-2. **Who runs the Kampala offices**: Peebee staff, independent partners, or both?
-3. **Partner fee and responsibility**: do partner offices earn a per-parcel fee, and who pays if a parcel is lost or damaged (the office, Peebee, or the customer's refund)? Is a deposit required?
-4. **My advice in §12.6** (cause-based payer, charge only when sent again, 7-day hold with reminders, 2 resends, existing per-km rate). Do you accept it as the default, or want changes after you've looked it over?
-5. **Parcel rules numbers**: maximum parcels for a **14-seater** and an **18-seater**, and the first **not-allowed** list (I assumed charcoal, fuel, wet or raw food).
-6. **Store orders returned to the shop**: now off by default. If you switch it on later, does the shop have to agree?
+| Question | Decision |
+|---|---|
+| Entebbe office | **Plot 15, Mugula Road, Entebbe.** Opening hours and the exact map pin are entered by admin when the office is registered (not yet supplied) |
+| Who runs Kampala offices | **Both** Peebee staff and partners |
+| Partner fee | **Yes**: per parcel, **or** a flat rate per week, **or** per month (admin chooses per office) |
+| Lost or damaged parcel | **The one who caused it pays** (§12.13) |
+| Amazon-based advice | **Accepted as the defaults** (§12.6) |
+| Parcels per taxi | **Admin sets them** (and adds to the not-allowed list) |
+| Not-allowed list | Charcoal, fuel, wet or raw food as the starting list. **Admin can add and remove items** |
+
+### 12.12 Partner office fees
+
+Admin sets the model **per office** (a Peebee-run office has none by default):
+
+| Model | How it works |
+|---|---|
+| **Per parcel held** | A fixed amount is accrued each time the office receives a bounced or stranded parcel, for each day or once (admin picks) |
+| **Flat per week** | A fixed amount accrues each week the office is active and open |
+| **Flat per month** | A fixed amount accrues each month the office is active and open |
+
+- Fees are **accrued** in `relay_office_fees` and **paid to the office's wallet** at the end of each period (the existing daily cron at 03:00 UTC can close periods). The payout posts through the ledger.
+- A per-parcel fee follows the same "who bears it" rule as the detour (Peebee, customer, or split); a flat weekly or monthly fee is a **Peebee operating cost**.
+- A flat fee can be **paused** if the office is closed or suspended for the period.
+- Admin sees a fee report per office: parcels held, fees accrued, fees paid.
+
+### 12.13 Lost or damaged parcels: the one who caused it pays
+
+The principle you gave is **fault-based**, and the relay already makes it provable because **every handoff is a code entered by the person who received it** (rider, taxi driver, office staff, customer). Peebee therefore knows who last held the parcel.
+
+1. **Claim.** A customer, rider, driver or office staff member reports a parcel lost or damaged. Staff open a `relay_claims` record.
+2. **Find the cause.** Staff review the **custody log** (who received it, when, where, and any photos or notes). The responsible party is **the last holder who confirmed receipt** and did not hand it on, unless the evidence shows otherwise (for example the customer gave a wrong address, or the parcel was packed badly).
+3. **Who pays:**
+
+   | Cause | Who pays |
+   |---|---|
+   | Lost or damaged while with a **rider** | The rider |
+   | While with a **taxi driver** | The taxi driver |
+   | While in an **office** | The office (a partner office; Peebee for its own offices) |
+   | **Customer** fault (wrong address, bad packing, a not-allowed item) | The customer, no compensation |
+   | Cannot be proven | Peebee absorbs it (admin sets whether it is split) |
+
+4. **Recommendation.** **Peebee pays the customer first**, quickly, up to an admin-set value cap, and **then recovers the amount from the responsible party** by deducting it from their wallet (the same rule as cash commission: it may go negative and nets against later earnings). That keeps the customer whole while the investigation takes place, and does not leave a rider or office to be chased by a customer.
+5. **Recovery** from a person is recorded in the ledger, with the claim as the reference. A responsible person can **dispute** a claim, and staff decide.
+6. **Deposit.** You answered "the one who caused it" and did not say whether partners must also put down a deposit. I treat it as **optional and off by default**: admin can require a security deposit from a partner office, held against claims. Say so if you want it on from the start.
+7. **Admin settings**: compensation cap, who is first-paid (Peebee by default), the time window for claims, and the deposit amount per office.
+
+### 12.14 Parcels per taxi: defaults
+
+You asked for admin control and agreed with my list. There has to be a safe value before anything is enabled, so launch with these **suggested starting values**, which admin can change at any time:
+
+| Taxi | Maximum parcels per trip (suggestion) |
+|---|---|
+| 14-seater | 5 |
+| 18-seater | 8 |
+
+These two numbers are my guess, not something I verified. Relay with Taxipress taxis stays switched off until admin confirms them.
+
+### 12.15 Remaining open items
+
+1. **Entebbe office hours and map location.** Admin enters them when registering the office. If you give me the hours I can seed them.
+2. **Partner deposit**: off by default, unless you say otherwise (§12.13 item 6).
+
+Nothing here blocks the foundation work.
