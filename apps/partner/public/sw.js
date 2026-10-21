@@ -6,8 +6,8 @@
 //  - RUNTIME_CACHE holds API reads (stale-while-revalidate, tells the app when
 //    the server copy differs). Cleared on logout.
 const ASSET_CACHE = "peebee-partner-assets-v1";
-const PAGE_CACHE = "peebee-partner-pages-v1";
-const RUNTIME_CACHE = "peebee-partner-runtime-v1";
+const PAGE_CACHE = "peebee-partner-pages-v2";
+const RUNTIME_CACHE = "peebee-partner-runtime-v2";
 const KEEP_CACHES = [ASSET_CACHE, PAGE_CACHE, RUNTIME_CACHE];
 const OFFLINE_URL = "/offline.html";
 const SHELL_URLS = ["/", "/login"];

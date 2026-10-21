@@ -47,6 +47,9 @@ export default function BookTaxiPage() {
         // Cash is confirmed on the order straight away; the passenger pays the driver at boarding.
         await api.fundOrder(order.id, { paymentMethod: "cash" });
         router.push(`/ride/taxipress/ticket/${booking.id}`);
+      } else if (booking.paymentStatus === "paid") {
+        // Practice mode pays from the practice wallet as the seat is booked.
+        router.push(`/ride/taxipress/ticket/${booking.id}`);
       } else {
         router.push(`/orders/${order.id}/pay`);
       }
