@@ -182,6 +182,19 @@ export async function settlementReport(days: number) {
           WHERE s.environment = ? AND s.created_at >= datetime('now', ?) ORDER BY s.created_at DESC LIMIT 50`,
     args: [env, since],
   })).rows as Row[];
+  // Seats that ended without boarding: what went back to passengers and what fees were kept.
+  let refunds = { count: 0, refunded: 0, fees: 0, cancelled: 0, noShows: 0, taxiRemoved: 0 };
+  if (await hasTable("taxipress_refunds")) {
+    const r = (await db.execute({
+      sql: `SELECT COUNT(*) AS n, COALESCE(SUM(refunded), 0) AS refunded, COALESCE(SUM(fee), 0) AS fees,
+                   COALESCE(SUM(CASE WHEN kind = 'cancelled' THEN 1 ELSE 0 END), 0) AS cancelled,
+                   COALESCE(SUM(CASE WHEN kind = 'no_show' THEN 1 ELSE 0 END), 0) AS no_shows,
+                   COALESCE(SUM(CASE WHEN kind = 'taxi_removed' THEN 1 ELSE 0 END), 0) AS taxi_removed
+            FROM taxipress_refunds WHERE environment = ? AND created_at >= datetime('now', ?)`,
+      args: [env, since],
+    })).rows[0] as Row;
+    refunds = { count: Number(r.n), refunded: Number(r.refunded), fees: Number(r.fees), cancelled: Number(r.cancelled), noShows: Number(r.no_shows), taxiRemoved: Number(r.taxi_removed) };
+  }
   const column = env === "sandbox" ? "wallet_balance_sandbox" : "wallet_balance";
   const owing = (await db.execute(`SELECT u.id, u.name, u.phone, u.${column} AS balance, x.plate FROM taxipress_taxis x JOIN users u ON u.id = x.user_id
     WHERE u.${column} < 0 ORDER BY u.${column} LIMIT 50`)).rows as Row[];
@@ -193,6 +206,7 @@ export async function settlementReport(days: number) {
       bookings: n(totals.bookings), seats: n(totals.seats), fare: n(totals.fare), commission: n(totals.commission), platformFees: n(totals.platform_fees),
       driverAmount: n(totals.driver_amount), cashFare: n(totals.cash_fare), appFare: n(totals.app_fare), takenFromDrivers: n(totals.taken_from_drivers),
     },
+    refunds,
     recent: recent.map((r) => ({
       id: String(r.id), bookingId: String(r.booking_id), paymentMethod: r.payment_method === "cash" ? "cash" as const : "app" as const, seats: n(r.seats), fare: n(r.fare),
       commission: n(r.commission), platformFees: n(r.platform_fees), driverAmount: n(r.driver_amount), takenFromDriver: n(r.taken_from_driver), createdAt: String(r.created_at),

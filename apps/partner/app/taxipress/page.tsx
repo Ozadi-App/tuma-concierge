@@ -160,6 +160,14 @@ function Board({ view, onChange }: { view: TaxipressDriverView; onChange: () => 
   const entry = view.entry;
   const mounted = useRef(true);
   useEffect(() => () => { mounted.current = false; }, []);
+  const [now, setNow] = useState(0);
+  useEffect(() => {
+    const first = window.setTimeout(() => setNow(Date.now()), 0);
+    const timer = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => { window.clearTimeout(first); window.clearInterval(timer); };
+  }, []);
+  const boardingSince = entry?.status === "boarding" && entry.boardingAt ? Date.parse(`${entry.boardingAt.replace(" ", "T")}Z`) : NaN;
+  const noShowOpen = now > 0 && Number.isFinite(boardingSince) && now - boardingSince >= view.noShowMinutes * 60_000;
 
   async function run(action: () => Promise<unknown>) {
     setBusy(true);
@@ -287,6 +295,9 @@ function Board({ view, onChange }: { view: TaxipressDriverView; onChange: () => 
                 </span>
                 <span className={`shrink-0 text-right text-xs font-bold ${b.paymentStatus === "paid" ? "text-green" : b.paymentStatus === "pay_driver" ? "text-gold" : "text-ink-500"}`}>
                   {b.status === "boarded" || b.status === "completed" ? "On board ✓" : b.paymentStatus === "paid" ? "Paid" : b.paymentStatus === "pay_driver" ? `Collect UGX ${b.amount.toLocaleString("en-UG")}` : "Payment due"}
+                  {b.status === "booked" && noShowOpen && (
+                    <button type="button" disabled={busy} onClick={() => run(() => api.taxipressNoShow(b.id))} className="mt-1 block min-h-9 w-full rounded-lg border border-[var(--border-faint)] px-2 text-[11px] font-bold text-ink disabled:opacity-50">No-show</button>
+                  )}
                 </span>
               </li>
             ))}

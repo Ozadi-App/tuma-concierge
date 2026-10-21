@@ -8,6 +8,7 @@ import { newId } from "../lib/ids.js";
 import { bookingFor, bookSeats, manifestFor, myBookings, releaseStaleBookings } from "./bookings.js";
 import { activeQueue, applyTaxi, arrive, driverView, goOnRoad, joinLine, leaveLine, lineOf, listTaxis, onRoadOf, removeFromLine, startBoarding, TaxipressError, updateLocation, updateTaxi, walkUp } from "./queue.js";
 import { getTaxipressSettings, setTaxipressSettings } from "./settings.js";
+import { cancelBooking, markNoShow } from "./cancellation.js";
 import { confirmBoarding, settlementReport } from "./settlement.js";
 import { getTaxipressRoute, listActiveTaxipressRoutes, listTaxipressRoutes, taxipressReady } from "./service.js";
 
@@ -125,6 +126,13 @@ taxipressRoutes.post("/taxipress/driver/board", async (c) => {
   try { return c.json(await confirmBoarding(c.get("user").sub, parsed.data.code)); } catch (e) { return fail(c, e); }
 });
 
+/** The driver marks a passenger who has not turned up as a no-show, once the taxi has been boarding long enough. */
+taxipressRoutes.post("/taxipress/driver/no-show", async (c) => {
+  const parsed = z.object({ bookingId: z.string().min(1) }).safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) return c.json({ error: "invalid_body" }, 400);
+  try { return c.json({ outcome: await markNoShow(c.get("user").sub, parsed.data.bookingId) }); } catch (e) { return fail(c, e); }
+});
+
 taxipressRoutes.post("/taxipress/driver/walk-up", async (c) => {
   const parsed = z.object({ delta: z.number().int().min(-14).max(14).refine((n) => n !== 0) }).safeParse(await c.req.json().catch(() => ({})));
   if (!parsed.success) return c.json({ error: "invalid_body" }, 400);
@@ -155,6 +163,11 @@ taxipressRoutes.post("/taxipress/bookings", async (c) => {
 });
 
 taxipressRoutes.get("/taxipress/bookings/mine", async (c) => c.json({ bookings: await myBookings(c.get("user").sub) }));
+
+/** A passenger cancels a seat before boarding. What comes back depends on the free-cancel window staff set. */
+taxipressRoutes.post("/taxipress/bookings/:id/cancel", async (c) => {
+  try { return c.json({ outcome: await cancelBooking(c.get("user").sub, c.req.param("id") as string) }); } catch (e) { return fail(c, e); }
+});
 
 taxipressRoutes.get("/taxipress/bookings/:id", async (c) => {
   const booking = await bookingFor(c.req.param("id") as string, c.get("user").sub);
@@ -192,6 +205,12 @@ const settingsSchema = z.object({
   stageRadiusM: z.number().int().min(0).max(5000),
   payWithinMinutes: z.number().int().min(1).max(1440),
   maxCashBookings: z.number().int().min(0).max(50),
+  freeCancelMinutes: z.number().int().min(0).max(1440),
+  cancelRetentionPercent: z.number().min(0).max(100),
+  feeTo: z.enum(["driver", "peebee"]),
+  noShowMinutes: z.number().int().min(0).max(240),
+  noShowFeePercent: z.number().min(0).max(100),
+  rebookOnRemoval: z.boolean(),
 }).partial();
 
 taxipressRoutes.put("/admin/taxipress/settings", requirePermission("settings.manage"), async (c) => {

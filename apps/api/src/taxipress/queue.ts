@@ -122,10 +122,12 @@ export async function updateTaxi(
   // Not working any more: it leaves any line it is in (a taxi already On Road finishes its trip).
   const after = (await db.execute({ sql: `${TAXI_SQL} WHERE x.id = ?`, args: [id] })).rows[0] as Row;
   if (after.status !== "approved" || Number(after.passengers_enabled) !== 1) {
+    const leaving = (await db.execute({ sql: "SELECT id FROM taxipress_queue WHERE taxi_id = ? AND status IN ('in_line', 'boarding')", args: [id] })).rows as Row[];
     await db.execute({
       sql: `UPDATE taxipress_queue SET status = 'cancelled', ended_reason = 'taxi_not_approved', updated_at = datetime('now') WHERE taxi_id = ? AND status IN ('in_line', 'boarding')`,
       args: [id],
     });
+    for (const entry of leaving) await afterTaxiLeft(String(entry.id));
   }
   return toTaxi(after);
 }
@@ -297,6 +299,20 @@ export async function isInLine(driverId: string): Promise<boolean> {
   return (await activeEntry(driverId)) != null;
 }
 
+/** A taxi has left the line before departing: its booked passengers move to the next taxi, or are refunded. */
+async function afterTaxiLeft(queueId: string): Promise<void> {
+  if (!(await hasTable("taxipress_refunds"))) return;
+  const { reassignOrRefund } = await import("./cancellation.js");
+  await reassignOrRefund(queueId);
+}
+
+/** A taxi has gone on the road: booked passengers who did not board are no-shows. */
+async function afterDeparture(queueId: string): Promise<void> {
+  if (!(await hasTable("taxipress_refunds"))) return;
+  const { markRemainingNoShows } = await import("./cancellation.js");
+  await markRemainingNoShows(queueId);
+}
+
 async function mustHave(driverId: string, ...statuses: LineEntry["status"][]) {
   await requireReady();
   const entry = await activeEntry(driverId);
@@ -351,6 +367,7 @@ export async function goOnRoad(driverId: string): Promise<LineEntry> {
     args: [entry.id],
   });
   if (!moved.rowsAffected) throw new TaxipressError(409, "wrong_state", "Your taxi has already moved on.");
+  await afterDeparture(entry.id);
   return (await activeEntry(driverId))!;
 }
 
@@ -369,10 +386,16 @@ export async function arrive(driverId: string): Promise<void> {
 /** Leave the line before departing. Once On Road a trip ends with Arrived instead. */
 export async function leaveLine(driverId: string, reason = "left"): Promise<void> {
   const entry = await mustHave(driverId, "in_line", "boarding");
+  // Passengers who boarded have paid the driver; the taxi cannot leave the line with them on board.
+  if (await hasTable("taxipress_bookings")) {
+    const aboard = (await db.execute({ sql: "SELECT COUNT(*) AS n FROM taxipress_bookings WHERE queue_id = ? AND status = 'boarded'", args: [entry.id] })).rows[0] as Row;
+    if (Number(aboard.n) > 0) throw new TaxipressError(409, "passengers_on_board", "You have passengers on board. Tap On road, or contact support if the taxi can't go.");
+  }
   await db.execute({
     sql: "UPDATE taxipress_queue SET status = 'cancelled', ended_reason = ?, updated_at = datetime('now') WHERE id = ? AND status IN ('in_line', 'boarding')",
     args: [reason, entry.id],
   });
+  await afterTaxiLeft(entry.id);
 }
 
 /** Staff: take a taxi out of the line (a taxi On Road is ended as cancelled too). */
@@ -383,6 +406,7 @@ export async function removeFromLine(queueId: string, reason = "removed_by_staff
     args: [reason, queueId],
   });
   if (!moved.rowsAffected) throw new TaxipressError(404, "not_found", "That taxi isn't in a line.");
+  await afterTaxiLeft(queueId);
 }
 
 /** The driver sells (or gives back) seats at the stage without the app. */
@@ -446,6 +470,7 @@ export async function driverView(driverId: string) {
     onRoadReason: check?.reason ?? null,
     departureRule: settings.departureRule,
     waitMinutes: settings.waitMinutes,
+    noShowMinutes: settings.noShowMinutes,
     owingBlocked: settings.blockWhenOwing ? (await amountOwed(driverId)) > settings.maxOwedUgx : false,
   };
 }

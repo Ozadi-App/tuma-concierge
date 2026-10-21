@@ -1,4 +1,4 @@
-import type { TaxipressAdminQueueEntry, TaxipressAdminRoute, TaxipressBoardingResult, TaxipressBooking, TaxipressConfig, TaxipressDriverView, TaxipressLineEntry, TaxipressQueueView, TaxipressRelayRoute, TaxipressReport, TaxipressSettings, TaxipressTaxi } from "./taxipress.js";
+import type { TaxipressAdminQueueEntry, TaxipressAdminRoute, TaxipressBoardingResult, TaxipressBooking, TaxipressConfig, TaxipressDriverView, TaxipressLineEntry, TaxipressOutcome, TaxipressQueueView, TaxipressRelayRoute, TaxipressReport, TaxipressSettings, TaxipressTaxi } from "./taxipress.js";
 import type { BagTrip, RelayAdminOrder, RelayRouteStage, RelayMerchantOrder, RelayOpenLeg, RelayOperator, RelayOperatorParcels, RelayQuote, RelayRoute, RelaySettings, RelayStation, RelayStationParcels, RelayTrack } from "./relay.js";
 import type { AdminRole } from "./permissions.js";
 import { workMethods } from "./work-client.js";
@@ -780,6 +780,14 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
     },
     async getTaxipressBooking(id: string) {
       return request<{ booking: TaxipressBooking }>(`/v1/taxipress/bookings/${encodeURIComponent(id)}`);
+    },
+    /** Cancel a seat that has not boarded; the refund follows staff's cancellation rules. */
+    async cancelTaxipressBooking(id: string) {
+      return request<{ outcome: TaxipressOutcome }>(`/v1/taxipress/bookings/${encodeURIComponent(id)}/cancel`, { method: "POST", body: "{}" });
+    },
+    /** Driver: mark a passenger who never turned up. */
+    async taxipressNoShow(bookingId: string) {
+      return request<{ outcome: TaxipressOutcome }>("/v1/taxipress/driver/no-show", { method: "POST", body: JSON.stringify({ bookingId }) });
     },
     async adminListTaxipressTaxis() {
       return request<{ taxis: TaxipressTaxi[] }>("/v1/admin/taxipress/taxis");

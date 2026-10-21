@@ -6,6 +6,7 @@ import { getPlatformEnvironment } from "../lib/settings.js";
 import { notifyUser } from "../lib/webpush.js";
 import { createOrderFromInput } from "../orders/routes.js";
 import { directionLabel } from "../relay/direction.js";
+import { cancelTermsFor, collectedFor } from "./cancel-terms.js";
 import { lineOf, queueReady } from "./queue.js";
 import { getTaxipressSettings } from "./settings.js";
 
@@ -36,6 +37,10 @@ export type TaxipressBooking = {
   payBy: string | null;
   route: { id: string; fromName: string; toName: string; directionLabel: string };
   taxi: { queueId: string; plate: string; seatLayout: "14" | "18"; driverName: string | null; driverPhone: string | null; status: string; position: number | null; seatsLeft: number };
+  /** What cancelling now would do: whether it is allowed, what comes back and what is kept. */
+  cancel: { allowed: boolean; reason: string | null; free: boolean; fee: number; refund: number };
+  /** How a booking that did not board ended, once it has. */
+  outcome: { kind: "cancelled" | "no_show" | "taxi_removed"; refunded: number; fee: number } | null;
 };
 
 // rr.* brings the relay route's stage columns (and its stage codes once migration 0107 adds them), so the
@@ -65,6 +70,17 @@ async function toBooking(row: Row, forPassenger: boolean): Promise<TaxipressBook
   const position = queueStatus === "in_line" || queueStatus === "boarding"
     ? ((await lineOf(String(row.taxipress_route_id))).find((e) => e.id === String(row.queue_id))?.position ?? null)
     : null;
+  const method: "app" | "cash" = cash ? "cash" : "app";
+  const collected = method === "app" && row.bk_status === "booked" ? await collectedFor(String(row.bk_order_id)) : 0;
+  const cancel = cancelTermsFor(
+    { status: String(row.bk_status), queueStatus, method, amount: Number(row.amount), createdAt: String(row.bk_created_at), collected },
+    settings,
+  );
+  let outcome: TaxipressBooking["outcome"] = null;
+  if (row.bk_status !== "booked" && row.bk_status !== "boarded" && row.bk_status !== "completed" && (await hasTable("taxipress_refunds"))) {
+    const r = (await db.execute({ sql: "SELECT kind, refunded, fee FROM taxipress_refunds WHERE booking_id = ?", args: [String(row.bk_id)] })).rows[0] as Row | undefined;
+    if (r) outcome = { kind: r.kind as NonNullable<TaxipressBooking["outcome"]>["kind"], refunded: Number(r.refunded), fee: Number(r.fee) };
+  }
   const createdMs = Date.parse(`${String(row.bk_created_at).replace(" ", "T")}Z`);
   return {
     id: String(row.bk_id),
@@ -94,6 +110,8 @@ async function toBooking(row: Row, forPassenger: boolean): Promise<TaxipressBook
       position,
       seatsLeft: Math.max(0, Number(row.seats_total) - Number(row.seats_booked) - Number(row.walk_up_seats)),
     },
+    cancel,
+    outcome,
   };
 }
 

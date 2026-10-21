@@ -29,6 +29,18 @@ export type TaxipressSettings = {
   payWithinMinutes: number;
   /** Most cash bookings one passenger may hold at a time. */
   maxCashBookings: number;
+  /** Minutes after booking a passenger may cancel for a full refund. */
+  freeCancelMinutes: number;
+  /** After that, the share of the fare kept from a paid seat that is cancelled. */
+  cancelRetentionPercent: number;
+  /** Who receives a kept cancellation or no-show fee. */
+  feeTo: "driver" | "peebee";
+  /** Minutes Boarding Now before a driver may mark an absent passenger a no-show. */
+  noShowMinutes: number;
+  /** Share of the fare kept from a paid seat when the passenger does not board. */
+  noShowFeePercent: number;
+  /** Move a removed taxi's passengers to the next taxi with room, instead of refunding them. */
+  rebookOnRemoval: boolean;
 };
 
 /** What the customer app needs to decide whether to show Taxipress, and what to say. */
@@ -132,6 +144,8 @@ export type TaxipressDriverView = {
   owingBlocked: boolean;
   /** The passengers booked on the driver's taxi. */
   bookings: TaxipressManifestPassenger[];
+  /** Minutes Boarding Now before an absent passenger can be marked a no-show. */
+  noShowMinutes: number;
 };
 
 export type TaxipressAdminQueueEntry = TaxipressLineEntry & { taxipressRouteId: string; driverPhone: string | null };
@@ -139,6 +153,15 @@ export type TaxipressAdminQueueEntry = TaxipressLineEntry & { taxipressRouteId: 
 export type TaxipressBookingStatus = "booked" | "boarded" | "no_show" | "cancelled" | "completed";
 /** unpaid: an app payment is still due. paid: collected in the app. pay_driver: cash, to be paid to the driver. */
 export type TaxipressPaymentStatus = "unpaid" | "paid" | "pay_driver" | "cancelled";
+
+/** What a cancelled, no-show or removed-taxi booking ended with. */
+export type TaxipressOutcome = {
+  kind: "cancelled" | "no_show" | "taxi_removed";
+  /** Returned to the passenger's wallet. */
+  refunded: number;
+  /** Kept from a paid seat. */
+  fee: number;
+};
 
 export type TaxipressBooking = {
   id: string;
@@ -155,6 +178,9 @@ export type TaxipressBooking = {
   createdAt: string;
   /** An app payment still due must be made by this time or the seats are given back. */
   payBy: string | null;
+  /** Whether the passenger can cancel now, and what it would cost. */
+  cancel: { allowed: boolean; reason: string | null; free: boolean; fee: number; refund: number };
+  outcome: TaxipressOutcome | null;
   route: { id: string; fromName: string; toName: string; directionLabel: string };
   taxi: { queueId: string; plate: string; seatLayout: "14" | "18"; driverName: string | null; driverPhone: string | null; status: string; position: number | null; seatsLeft: number };
 };
@@ -203,4 +229,5 @@ export type TaxipressReport =
       recent: Array<{ id: string; bookingId: string; paymentMethod: "app" | "cash"; seats: number; fare: number; commission: number; platformFees: number; driverAmount: number; takenFromDriver: number; createdAt: string; plate: string; driverName: string | null }>;
       /** Drivers whose wallet is below zero (cash commission taken from a wallet that could not cover it). */
       owing: Array<{ id: string; name: string | null; phone: string | null; balance: number; plate: string }>;
+      refunds: { count: number; refunded: number; fees: number; cancelled: number; noShows: number; taxiRemoved: number };
     };
