@@ -16,6 +16,8 @@ export const homeMenuSchema = z.object({
   }),
   hive: z.object({
     eyebrow: z.string().trim().min(1).max(60),
+    altLabel: z.string().trim().max(20).optional(),
+    labelSeconds: z.number().int().min(2).max(30).optional(),
     description: z.string().trim().min(1).max(200),
     shortcuts: z.array(hiveShortcut).min(1).max(HIVE_SHORTCUT_IDS.length),
     hireBanner: z.object({ enabled: z.boolean(), title: z.string().trim().min(1).max(60), text: z.string().trim().min(1).max(160) }),

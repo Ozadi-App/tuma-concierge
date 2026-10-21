@@ -63,6 +63,8 @@ export default function HomeMenuSettingsPage() {
       <section className="home-card space-y-3">
         <div><h2 className="font-bold">{menu.clusters.hive.label} page</h2><p className="text-xs text-ink-500">What the {menu.clusters.hive.label} button opens: Peebee-delivered services at a clear price.</p></div>
         <label className="block space-y-1 text-xs font-semibold text-ink-500"><span>Small heading</span><input required maxLength={60} value={menu.hive.eyebrow} onChange={(e) => change({ ...menu, hive: { ...menu.hive, eyebrow: e.target.value } })} className={field} /></label>
+        <label className="block space-y-1 text-xs font-semibold text-ink-500"><span>Second name for the {menu.clusters.hive.label} button (swaps with the first; leave empty for one fixed name)</span><input maxLength={20} value={menu.hive.altLabel} onChange={(e) => change({ ...menu, hive: { ...menu.hive, altLabel: e.target.value } })} className={field} /></label>
+        <label className="block space-y-1 text-xs font-semibold text-ink-500"><span>Swap every (seconds, 2 to 30)</span><input type="number" min={2} max={30} step={1} value={menu.hive.labelSeconds} onChange={(e) => change({ ...menu, hive: { ...menu.hive, labelSeconds: Math.min(30, Math.max(2, Math.round(Number(e.target.value)) || 4)) } })} className={field} /></label>
         <label className="block space-y-1 text-xs font-semibold text-ink-500"><span>Description</span><textarea required maxLength={200} rows={3} value={menu.hive.description} onChange={(e) => change({ ...menu, hive: { ...menu.hive, description: e.target.value } })} className={field} /></label>
       </section>
 

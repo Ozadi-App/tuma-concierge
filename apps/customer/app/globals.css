@@ -1606,6 +1606,8 @@ select:focus {
 /* ------------------------------------------------------------------ */
 /* Chat drawer: the app (.app-stage) slides left leaving a slice at the left edge; chat eases up from under it. */
 /* ------------------------------------------------------------------ */
+/* How much of the app stays showing while chat is open; chat takes the rest. */
+:root { --chat-peek: 30%; }
 .app-stage {
   background-color: rgb(var(--color-cream));
   transition: transform 420ms var(--ease-out-expo), border-radius 420ms var(--ease-out-expo), box-shadow 420ms var(--ease-out-expo);
@@ -1614,26 +1616,30 @@ select:focus {
 .app-stage[data-lock="true"] { position: fixed; inset: 0; overflow: hidden; z-index: 60; }
 .app-stage[data-lock="true"] .app-stage__inner { margin-top: calc(var(--stage-scroll, 0px) * -1); }
 .app-stage[data-shown="true"] {
-  transform: translateX(calc(-100% + 20px));
+  transform: translateX(calc(-100% + var(--chat-peek)));
   border-radius: 0 28px 28px 0;
   box-shadow: 10px 0 36px -8px rgb(0 0 0 / .35);
 }
 .chat-drawer {
-  position: fixed; inset: 0; z-index: 50; display: flex; flex-direction: column;
+  position: fixed; inset: 0 0 0 var(--chat-peek); z-index: 50; display: flex; flex-direction: column; transform-origin: right center;
   background-color: rgb(var(--color-cream)); color: rgb(var(--color-ink));
-  padding-left: 20px; /* the slice of the app covers this strip */
   visibility: hidden; opacity: .5; transform: scale(.92);
   transition: transform 420ms var(--ease-out-expo), opacity 320ms ease-out, visibility 0s linear 420ms;
 }
 .chat-drawer[data-shown="true"] { visibility: visible; opacity: 1; transform: none; transition-delay: 0s; }
-.chat-drawer__head { display: flex; align-items: center; gap: 4px; padding: calc(env(safe-area-inset-top, 0px) + 10px) 12px 6px 8px; }
+.chat-drawer__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: calc(env(safe-area-inset-top, 0px) + 10px) 12px 6px 16px; }
 .chat-drawer__close { background: rgb(var(--surface-muted)); }
 .chat-drawer__close:focus-visible { outline: 2px solid rgb(var(--color-gold)); outline-offset: 2px; }
 .chat-drawer__body { min-height: 0; flex: 1 1 auto; overflow-y: auto; overscroll-behavior: contain; padding-bottom: env(safe-area-inset-bottom, 0px); }
-/* A tap target over the slice of the app. */
-.chat-drawer__slice { position: fixed; inset: 0 auto 0 0; width: 20px; z-index: 70; background: transparent; border: 0; pointer-events: none; }
+/* A tap target over the part of the app that stays showing. */
+.chat-drawer__slice { position: fixed; inset: 0 auto 0 0; width: var(--chat-peek); z-index: 70; background: transparent; border: 0; pointer-events: none; }
 .chat-drawer__slice[data-shown="true"] { pointer-events: auto; }
 @media (prefers-reduced-motion: reduce) {
   .app-stage, .chat-drawer { transition: none; }
   .chat-drawer { transform: none; }
 }
+
+/* The Work / Hire label in the bottom menu: the new name eases in from just below. */
+.customer-nav-label-swap { animation: customer-nav-label-in 320ms var(--ease-out-expo) both; }
+@keyframes customer-nav-label-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .customer-nav-label-swap { animation: none; } }
