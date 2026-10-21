@@ -41,7 +41,7 @@ const landingContent: Record<LandingGroup, { eyebrow: string; title: string; des
 
 /** Luxury and Ambulance appear on the Ride home screen once Peebee has an approved vehicle of that kind. */
 const specialRideItems: { key: "luxury" | "ambulance"; item: LandingItem }[] = [
-  { key: "luxury", item: { title: "Luxury", description: "Chauffeur cars for weddings, parties and red carpet.", icon: Crown, href: "/ride/luxury" } },
+  { key: "luxury", item: { title: "VIP", description: "Chauffeur cars for weddings, parties and red carpet.", icon: Crown, href: "/ride/luxury" } },
   { key: "ambulance", item: { title: "Ambulance", description: "Emergency transport, sent to you at once.", icon: Ambulance, href: "/ride/ambulance" } },
 ];
 

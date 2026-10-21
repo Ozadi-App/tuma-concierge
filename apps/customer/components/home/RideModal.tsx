@@ -427,7 +427,7 @@ export function RideModal({
               {luxuryCats.length > 0 && (
                 <button type="button" aria-pressed={mode === "car" && carSubMode === "luxury"} onClick={() => { setMode("car"); setCarSubMode("luxury"); }}
                   className={`flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-full px-3 text-sm font-bold transition-colors ${mode === "car" && carSubMode === "luxury" ? "bg-gold text-ink-gold" : "bg-gold/15 text-ink"}`}>
-                  <Crown className="h-4 w-4" aria-hidden /> Luxury
+                  <Crown className="h-4 w-4" aria-hidden /> VIP
                 </button>
               )}
               {ambulanceCats.length > 0 && (
@@ -444,7 +444,7 @@ export function RideModal({
 
         {carMenuOpen && mode === "car" && (carSubMode === "luxury" || carSubMode === "ambulance") && configLoaded && (carSubMode === "luxury" ? luxuryCats : ambulanceCats).length === 0 ? (
           <div className="space-y-2 rounded-2xl border border-[var(--border-faint)] p-4" role="status">
-            <p className="text-sm font-bold text-ink">{carSubMode === "luxury" ? "Luxury cars aren't available yet." : "Ambulance requests aren't available yet."}</p>
+            <p className="text-sm font-bold text-ink">{carSubMode === "luxury" ? "VIP cars aren't available yet." : "Ambulance requests aren't available yet."}</p>
             <p className="text-xs text-ink-500">
               {carSubMode === "ambulance" ? `If someone's life is in danger, call ${emergencyNumber} now.` : "Please choose a Car, or check back soon."}
             </p>
