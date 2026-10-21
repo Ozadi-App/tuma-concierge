@@ -73,6 +73,8 @@ function SettingsTab() {
       maxParcels14: String(next.maxParcels14), maxParcels18: String(next.maxParcels18),
       waitMinutes: String(next.waitMinutes), stageRadiusM: String(next.stageRadiusM),
       payWithinMinutes: String(next.payWithinMinutes), maxCashBookings: String(next.maxCashBookings),
+      freeCancelMinutes: String(next.freeCancelMinutes), cancelRetentionPercent: String(next.cancelRetentionPercent),
+      noShowMinutes: String(next.noShowMinutes), noShowFeePercent: String(next.noShowFeePercent),
     });
   }, []);
 
@@ -112,6 +114,8 @@ function SettingsTab() {
         seatChoiceFeeUgx: n("seatChoiceFeeUgx"), returnDiscountPercent: n("returnDiscountPercent"), maxSeatsPerBooking: n("maxSeatsPerBooking"),
         parcelAcceptRule: s.parcelAcceptRule, maxParcels14: n("maxParcels14"), maxParcels18: n("maxParcels18"), parcelFitText: s.parcelFitText,
         waitMinutes: n("waitMinutes"), stageRadiusM: n("stageRadiusM"), payWithinMinutes: n("payWithinMinutes"), maxCashBookings: n("maxCashBookings"),
+        freeCancelMinutes: n("freeCancelMinutes"), cancelRetentionPercent: n("cancelRetentionPercent"), feeTo: s.feeTo,
+        noShowMinutes: n("noShowMinutes"), noShowFeePercent: n("noShowFeePercent"), rebookOnRemoval: s.rebookOnRemoval,
         parcelNotAllowed: notAllowed.split("\n").map((x) => x.trim()).filter(Boolean),
       });
       load(res.settings);
@@ -165,6 +169,26 @@ function SettingsTab() {
           <Switch checked={s.cashEnabled} onChange={(e) => set("cashEnabled", e.target.checked)} />
           Passengers may pay cash to the driver
         </label>
+      </section>
+
+      <section className="home-card space-y-3">
+        <p className="text-sm font-bold text-ink">Cancellations and no-shows</p>
+        <p className="text-xs text-ink-500">Money only moves for seats paid in the app. Cash and unpaid seats are simply given back. Refunds go to the passenger&apos;s wallet.</p>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Free cancellation (minutes)" hint="After booking, a passenger gets everything back inside this time.">{field("freeCancelMinutes", true)}</Field>
+          <Field label="Kept after that (%)" hint="Share of the fare kept from a paid seat. 0 means always a full refund.">{field("cancelRetentionPercent", false)}</Field>
+          <Field label="Mark a no-show after (minutes)" hint="Minutes Boarding Now before a driver may mark an absent passenger.">{field("noShowMinutes", true)}</Field>
+          <Field label="Kept on a no-show (%)" hint="Share of the fare kept from a paid seat. 0 means a full refund.">{field("noShowFeePercent", false)}</Field>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          {choice("driver", s.feeTo, "Fee goes to the driver", "For the seat they held empty.", (v) => set("feeTo", v))}
+          {choice("peebee", s.feeTo, "Fee stays with Peebee", "The driver receives nothing.", (v) => set("feeTo", v))}
+        </div>
+        <label className="flex items-center gap-2 text-sm font-bold text-ink">
+          <Switch checked={s.rebookOnRemoval} onChange={(e) => set("rebookOnRemoval", e.target.checked)} />
+          When a taxi leaves the line, move its passengers to the next taxi with room
+        </label>
+        <p className="text-xs text-ink-500">If there is no room, or this is off, they are refunded in full with no fee.</p>
       </section>
 
       <section className="home-card space-y-3">
@@ -462,6 +486,16 @@ function MoneyTab() {
           {cell("Paid in cash", ugx(t.cashFare))}
           {cell("Released to drivers", ugx(t.driverAmount))}
           {cell("Taken from drivers (cash)", ugx(t.takenFromDrivers))}
+        </div>
+      </section>
+      <section className="home-card space-y-3">
+        <p className="text-sm font-bold text-ink">Cancellations, no-shows and refunds</p>
+        <div className="grid grid-cols-2 gap-2">
+          {cell("Refunded to passengers", ugx(report.refunds.refunded))}
+          {cell("Kept as fees", ugx(report.refunds.fees))}
+          {cell("Cancelled by passengers", String(report.refunds.cancelled))}
+          {cell("No-shows", String(report.refunds.noShows))}
+          {cell("Taxi left the line", String(report.refunds.taxiRemoved))}
         </div>
       </section>
       <section className="home-card space-y-2">

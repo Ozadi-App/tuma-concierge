@@ -37,6 +37,18 @@ export type TaxipressSettings = {
   payWithinMinutes: number;
   /** Most cash bookings one passenger may hold at a time. */
   maxCashBookings: number;
+  /** Minutes after booking a passenger may cancel for a full refund. */
+  freeCancelMinutes: number;
+  /** After that, the share of the fare kept from a paid seat that is cancelled. */
+  cancelRetentionPercent: number;
+  /** Who receives a kept cancellation or no-show fee. */
+  feeTo: "driver" | "peebee";
+  /** Minutes Boarding Now before a driver may mark an absent passenger a no-show. */
+  noShowMinutes: number;
+  /** Share of the fare kept from a paid seat when the passenger does not board. */
+  noShowFeePercent: number;
+  /** Move a removed taxi's passengers to the next taxi with room, instead of refunding them. */
+  rebookOnRemoval: boolean;
 };
 
 const bool = (value: string | null, fallback: boolean) => (value == null ? fallback : value === "1");
@@ -61,7 +73,7 @@ function items(value: string | null): string[] {
 
 export async function getTaxipressSettings(): Promise<TaxipressSettings> {
   const [
-    enabled, rule, sellRoad, type, digital, cash, flat, block, owed, cashOn, seatFee, discount, maxSeats, accept, p14, p18, fit, notAllowed, wait, radius, payWithin, maxCash,
+    enabled, rule, sellRoad, type, digital, cash, flat, block, owed, cashOn, seatFee, discount, maxSeats, accept, p14, p18, fit, notAllowed, wait, radius, payWithin, maxCash, freeCancel, retention, feeTo, noShowMin, noShowFee, rebook,
   ] = await Promise.all([
     getSetting("taxipress_enabled"),
     getSetting("taxipress_departure_rule"),
@@ -85,6 +97,12 @@ export async function getTaxipressSettings(): Promise<TaxipressSettings> {
     getSetting("taxipress_stage_radius_m"),
     getSetting("taxipress_pay_within_minutes"),
     getSetting("taxipress_max_cash_bookings"),
+    getSetting("taxipress_free_cancel_minutes"),
+    getSetting("taxipress_cancel_retention_percent"),
+    getSetting("taxipress_fee_to"),
+    getSetting("taxipress_no_show_minutes"),
+    getSetting("taxipress_no_show_fee_percent"),
+    getSetting("taxipress_rebook_on_removal"),
   ]);
   return {
     enabled: enabled === "1",
@@ -109,6 +127,12 @@ export async function getTaxipressSettings(): Promise<TaxipressSettings> {
     stageRadiusM: whole(radius, 300, 5000),
     payWithinMinutes: Math.max(1, whole(payWithin, 10, 1440)),
     maxCashBookings: whole(maxCash, 2, 50),
+    freeCancelMinutes: whole(freeCancel, 10, 1440),
+    cancelRetentionPercent: percent(retention),
+    feeTo: feeTo === "peebee" ? "peebee" : "driver",
+    noShowMinutes: whole(noShowMin, 10, 240),
+    noShowFeePercent: percent(noShowFee),
+    rebookOnRemoval: bool(rebook, true),
   };
 }
 
@@ -136,4 +160,10 @@ export async function setTaxipressSettings(next: Partial<TaxipressSettings>): Pr
   if (next.stageRadiusM != null) await setSetting("taxipress_stage_radius_m", String(next.stageRadiusM));
   if (next.payWithinMinutes != null) await setSetting("taxipress_pay_within_minutes", String(next.payWithinMinutes));
   if (next.maxCashBookings != null) await setSetting("taxipress_max_cash_bookings", String(next.maxCashBookings));
+  if (next.freeCancelMinutes != null) await setSetting("taxipress_free_cancel_minutes", String(next.freeCancelMinutes));
+  if (next.cancelRetentionPercent != null) await setSetting("taxipress_cancel_retention_percent", String(next.cancelRetentionPercent));
+  if (next.feeTo != null) await setSetting("taxipress_fee_to", next.feeTo);
+  if (next.noShowMinutes != null) await setSetting("taxipress_no_show_minutes", String(next.noShowMinutes));
+  if (next.noShowFeePercent != null) await setSetting("taxipress_no_show_fee_percent", String(next.noShowFeePercent));
+  if (next.rebookOnRemoval != null) await setSetting("taxipress_rebook_on_removal", flag(next.rebookOnRemoval));
 }
