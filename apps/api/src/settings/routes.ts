@@ -166,7 +166,6 @@ async function fullSettings() {
     voiceNoteMaxSeconds,
     platformEnvironment,
     practiceModeEnabled: practiceModeEnabled === "1",
-    practiceAutoInSandbox: (await getSetting("practice_auto_in_sandbox")) !== "0",
     riderMinimumBalanceEnabled: riderReserve.enabled,
     riderMinimumBalanceAmount: riderReserve.amount,
     callsActiveProvider,
@@ -492,7 +491,6 @@ const updateSchema = z.object({
   paymentsActiveProviders: z.array(z.enum(["yo", "flutterwave", "mtn", "airtel"])).min(1).max(4).optional(),
   paymentsDemoMode: z.boolean().optional(),
   practiceModeEnabled: z.boolean().optional(),
-  practiceAutoInSandbox: z.boolean().optional(),
   merchantPaymentsEnabled: z.boolean().optional(),
   walletUnverifiedCap: z.number().int().positive().max(100_000_000).optional(),
   walletVerifiedCap: z.number().int().positive().max(100_000_000).optional(),
@@ -669,9 +667,6 @@ settingsRoutes.put(
     }
     if (parsed.data.practiceModeEnabled != null) {
       await setSetting("user_practice_mode_enabled", parsed.data.practiceModeEnabled ? "1" : "0");
-    }
-    if (parsed.data.practiceAutoInSandbox != null) {
-      await setSetting("practice_auto_in_sandbox", parsed.data.practiceAutoInSandbox ? "1" : "0");
     }
     if (parsed.data.merchantPaymentsEnabled != null) {
       if (parsed.data.merchantPaymentsEnabled && before.platformEnvironment === "live") {

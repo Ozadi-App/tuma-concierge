@@ -402,8 +402,6 @@ export type DeliverySettings = {
   /** Whether signed-in users may launch isolated, browser-local guided
    * practice journeys. This does not change platformEnvironment. */
   practiceModeEnabled: boolean;
-  /** While the platform is in sandbox, the customer app opens in the simulated practice world by itself. */
-  practiceAutoInSandbox: boolean;
   deliveryRatePerKm: number;
   /** Floor on a parcel ride's distance-priced fee (UGX) — never lets a very
    * short ride round down toward a near-free delivery. */
