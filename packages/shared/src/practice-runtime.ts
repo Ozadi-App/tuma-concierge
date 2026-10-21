@@ -1,12 +1,16 @@
 import { practiceTalentRequest, resetPracticeTalent } from "./practice-talent.js";
 import { practiceTaxipressRequest, resetPracticeTaxipress } from "./practice-taxipress.js";
-import { practiceWalletView, practiceWalletBalance, resetPracticeWallet } from "./practice-wallet.js";
+import { practiceWalletView, practiceWalletBalance, practiceWalletSpend, resetPracticeWallet } from "./practice-wallet.js";
 import { practiceWorkRequest, resetPracticeWork } from "./practice-work.js";
 import { PRACTICE_MODE_STORAGE_KEY, type PracticeRole } from "./practice.js";
 import { roundFare } from "./fare.js";
 import { haversineKm } from "./geo.js";
-import { DEMO_FOOD_RESTAURANTS, demoFoodImage, demoFoodMenu, demoFoodRestaurant } from "./demo-food.js";
-import { DEMO_MARKETPLACE_STORES, DEMO_MARKETPLACE_PRODUCTS, DEMO_MARKETPLACE_SPOTLIGHT } from "./demo-marketplace.js";
+import { demoFoodImage, demoFoodMenu } from "./demo-food.js";
+// Practice mode is centred on Entebbe: its shops, food places and riders replace the Kampala-only demo catalogue here.
+import {
+  PRACTICE_ENTEBBE, PRACTICE_FOOD_RESTAURANTS as DEMO_FOOD_RESTAURANTS, PRACTICE_PRODUCTS as DEMO_MARKETPLACE_PRODUCTS,
+  PRACTICE_SPOTLIGHT as DEMO_MARKETPLACE_SPOTLIGHT, PRACTICE_STORES as DEMO_MARKETPLACE_STORES, practiceFoodRestaurant as demoFoodRestaurant, practiceRider,
+} from "./practice-entebbe.js";
 import { CAR_MODEL_CATALOG } from "./car-model-catalog.js";
 import { EDUCATION_STREAMS } from "./education/types.js";
 import { handleStudioSandbox } from "./education/studio-sandbox.js";
@@ -58,6 +62,13 @@ function practiceSpecialCategory(id: unknown): PracticeSpecialCategory | null { 
 function practiceDistanceKm(lat1: number, lng1: number, lat2: number, lng2: number) {
   if (![lat1, lng1, lat2, lng2].every(Number.isFinite)) return 0;
   return 6371 * 2 * Math.asin(Math.sqrt(Math.sin(((lat2 - lat1) * Math.PI) / 360) ** 2 + Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(((lng2 - lng1) * Math.PI) / 360) ** 2));
+}
+/** A boda delivery fee from the shop to the customer; a shop in Kampala means the long way (relay). */
+function practiceDeliveryFee(fromLat: number | null, fromLng: number | null, toLat: number, toLng: number) {
+  if (fromLat == null || fromLng == null) return 5_000;
+  const km = practiceDistanceKm(fromLat, fromLng, toLat, toLng);
+  if (km > 15) return 18_000;
+  return Math.max(3_000, Math.round((3_000 + km * 800) / 500) * 500);
 }
 function practiceSpecialFare(category: PracticeSpecialCategory, distanceKm: number, hireHours: unknown) {
   const hours = category.service_group === "luxury" ? Math.min(24, Math.max(0, Math.floor(Number(hireHours) || 0))) : 0;
@@ -282,6 +293,9 @@ type PracticeState = {
   acceptedRiderName?: string | null;
   /** Rider side: a practice boda ride with a customer offer and two stops. */
   rideJob?: PracticeRideJob;
+  /** Shop or food order: where the rider collects it, and which Entebbe rider took it. */
+  vendor?: { kind: "store" | "restaurant"; id: string; name: string; address: string; lat: number | null; lng: number | null } | null;
+  riderIdx?: number;
   /** Fuel attendant: a sample relay parcel arriving by matatu, then collected. */
   relayParcel?: { status: "incoming" | "held" | "collected"; heldAt: string | null; releasedAt: string | null };
 };
@@ -368,10 +382,12 @@ function advanceCustomerState(state: PracticeState): PracticeState {
   if (state.role !== "customer" || state.autoAdvanceAt == null || ["Handover", "Settle", "Cancelled"].includes(state.stage)) return state;
   const elapsed = Date.now() - state.autoAdvanceAt;
   let stage = state.stage;
+  // A shop or food order: the rider shops or waits for the kitchen, rides over, then arrives and rings.
+  const [toDeliver, toArrived] = state.vendor ? [20_000, 50_000] : [5_000, 12_000];
   if (state.isRide) {
     stage = elapsed >= 15_000 ? "PickedUp" : elapsed >= 8_000 ? "Arrived" : "Deliver";
-  } else if (elapsed >= 12_000 && ["Shop", "Deliver"].includes(stage)) stage = "Arrived";
-  else if (elapsed >= 5_000 && stage === "Shop") stage = "Deliver";
+  } else if (elapsed >= toArrived && ["Shop", "Deliver"].includes(stage)) stage = "Arrived";
+  else if (elapsed >= toDeliver && stage === "Shop") stage = "Deliver";
   if (stage === state.stage) return state;
   const next = { ...state, stage };
   saveState(next);
@@ -448,7 +464,7 @@ function orderFor(state: PracticeState) {
     customer_id: "practice-customer",
     customer_name: state.isRide ? "Grace N." : "Amina",
     rider_id: riderAssigned ? (car ? (state.demoCarRiderId ?? PRACTICE_CAR_RIDERS[0].id) : "practice-rider") : null,
-    rider_name: riderAssigned ? (car ? practiceCar(state.demoCarRiderId).driver : state.acceptedRiderName ?? "Daniel") : null,
+    rider_name: riderAssigned ? (car ? practiceCar(state.demoCarRiderId).driver : state.acceptedRiderName ?? (state.vendor ? practiceRider(state.riderIdx).name : "Daniel")) : null,
     car_category_name: car ? practiceCar(state.demoCarRiderId).name : null,
     car_make: car ? practiceCar(state.demoCarRiderId).make : null,
     car_model: car ? practiceCar(state.demoCarRiderId).model : null,
@@ -464,20 +480,22 @@ function orderFor(state: PracticeState) {
     estimated_total: state.total,
     final_total: state.stage === "Create" ? null : state.total,
     delivery_fee: state.deliveryFee,
-    pickup_area: state.orderType === "parcel" ? "Kampala Central" : null,
-    pickup_address: state.pickupAddress ?? (state.orderType === "parcel" ? "Peebee Practice Pickup" : null),
-    pickup_lat: state.pickupLat ?? (state.orderType === "parcel" ? 0.3136 : null),
-    pickup_lng: state.pickupLng ?? (state.orderType === "parcel" ? 32.5811 : null),
+    pickup_area: state.vendor ? state.vendor.address.split(",").pop()!.trim() : state.orderType === "parcel" ? "Kampala Central" : null,
+    pickup_address: state.vendor?.address ?? state.pickupAddress ?? (state.orderType === "parcel" ? "Peebee Practice Pickup" : null),
+    pickup_lat: state.vendor?.lat ?? state.pickupLat ?? (state.orderType === "parcel" ? 0.3136 : null),
+    pickup_lng: state.vendor?.lng ?? state.pickupLng ?? (state.orderType === "parcel" ? 32.5811 : null),
     destination_area: state.destinationArea,
     destination_address: state.destinationAddress,
-    destination_lat: state.destinationLat ?? 0.0612,
-    destination_lng: state.destinationLng ?? 32.4637,
+    destination_lat: state.destinationLat ?? PRACTICE_ENTEBBE.lat,
+    destination_lng: state.destinationLng ?? PRACTICE_ENTEBBE.lng,
     distance_km: 3.4,
     matched_out_of_range: 0,
     voice_note_key: null,
     pin_code: "2468",
     eta_minutes: state.stage === "Deliver" ? 8 : null,
-    restaurant_id: null,
+    restaurant_id: state.vendor?.kind === "restaurant" ? state.vendor.id : null,
+    restaurant_name: state.vendor?.kind === "restaurant" ? state.vendor.name : undefined,
+    store_name: state.vendor?.kind === "store" ? state.vendor.name : undefined,
     is_ride: state.isRide ? 1 : 0,
     rider_lat: null,
     rider_lng: null,
@@ -1016,21 +1034,30 @@ function handlePracticeRequest(role: PracticeRole, path: string, method: string,
       note: typeof item.variantTitle === "string" ? item.variantTitle : null,
     }));
     const estimated = items.reduce((sum, it) => sum + it.unitPrice * it.quantity, 0);
-    const deliveryFee = 5_000;
-    const storeId = String(rawItems[0]?.storeId ?? "store_demo_fresh_mart");
+    const storeId = String(rawItems[0]?.storeId ?? "pe_lakeside_mart");
     const demoStore = DEMO_MARKETPLACE_STORES.find((s) => s.id === storeId);
+    const vendor = { kind: "store" as const, id: storeId, name: demoStore?.name ?? "Marketplace Store", address: demoStore?.address ?? "Entebbe", lat: demoStore?.lat ?? null, lng: demoStore?.lng ?? null };
+    const destLat = Number(body.destinationLat), destLng = Number(body.destinationLng);
+    const toLat = Number.isFinite(destLat) && body.destinationLat != null ? destLat : PRACTICE_ENTEBBE.lat;
+    const toLng = Number.isFinite(destLng) && body.destinationLng != null ? destLng : PRACTICE_ENTEBBE.lng;
+    const deliveryFee = practiceDeliveryFee(vendor.lat, vendor.lng, toLat, toLng);
+    // The rider is found for you, as in the live app, so the order is ready to pay straight away.
     save({
       items,
       hasOrder: true,
-      riderClaimed: false,
-      stage: body.paymentRail === "float" ? "Match" : "Create",
+      riderClaimed: true,
+      riderIdx: Math.floor(Math.random() * 1000),
+      vendor,
+      stage: "Match",
       orderType: "shopping",
       isRide: false,
       paymentRail: body.paymentRail === "float" ? "float" : "escrow",
       total: estimated + deliveryFee,
       deliveryFee,
-      destinationArea: String(body.destinationArea ?? "Kampala"),
-      destinationAddress: String(body.destinationAddress ?? "Kampala"),
+      destinationArea: String(body.destinationArea ?? "Entebbe"),
+      destinationAddress: String(body.destinationAddress ?? "Kitoro Road, Entebbe"),
+      destinationLat: toLat,
+      destinationLng: toLng,
       merchantPaymentStatus: "none",
       autoAdvanceAt: null,
     });
@@ -1041,6 +1068,34 @@ function handlePracticeRequest(role: PracticeRole, path: string, method: string,
       store_category: demoStore?.category ?? "stores",
     };
     return jsonResponse({ ok: true, orders: [order], order }, 201);
+  }
+  const foodOrder = path.match(/^\/v1\/restaurants\/(demo-food-[^/]+)\/order$/);
+  if (role === "customer" && method === "POST" && foodOrder) {
+    const restaurant = demoFoodRestaurant(foodOrder[1]!);
+    const menu = demoFoodMenu(foodOrder[1]!);
+    if (!restaurant || !menu) return practiceError("Choose one of the practice restaurants to continue.");
+    const menuItems = [...menu.categories.flatMap((category) => category.items), ...menu.uncategorizedItems];
+    const rawItems = Array.isArray(body.items) ? (body.items as Array<Record<string, unknown>>) : [];
+    const items = rawItems.flatMap((line, index) => {
+      const dish = menuItems.find((entry) => entry.id === line.menuItemId);
+      if (!dish) return [];
+      const picked = new Set(Array.isArray(line.choiceIds) ? (line.choiceIds as string[]) : []);
+      const choices = (dish.options ?? []).flatMap((option) => option.choices.filter((choice) => picked.has(choice.id)));
+      const unitPrice = dish.price + choices.reduce((sum, choice) => sum + choice.price_delta, 0);
+      return [{ id: `practice-item-${index + 1}`, name: dish.name, quantity: Math.max(1, Number(line.quantity) || 1), unitPrice, note: choices.length ? choices.map((choice) => choice.name).join(", ") : null }];
+    });
+    if (!items.length) return practiceError("Add something from the menu first.");
+    const vendor = { kind: "restaurant" as const, id: restaurant.id, name: restaurant.name, address: restaurant.address ?? "Entebbe", lat: restaurant.lat ?? null, lng: restaurant.lng ?? null };
+    const toLat = typeof body.destinationLat === "number" ? body.destinationLat : PRACTICE_ENTEBBE.lat;
+    const toLng = typeof body.destinationLng === "number" ? body.destinationLng : PRACTICE_ENTEBBE.lng;
+    const deliveryFee = practiceDeliveryFee(vendor.lat, vendor.lng, toLat, toLng);
+    save({
+      items, hasOrder: true, riderClaimed: true, riderIdx: Math.floor(Math.random() * 1000), vendor, stage: "Match", orderType: "shopping", isRide: false,
+      paymentRail: body.paymentRail === "float" ? "float" : "escrow", total: items.reduce((sum, it) => sum + it.unitPrice * it.quantity, 0) + deliveryFee, deliveryFee,
+      destinationArea: String(body.destinationArea ?? "Entebbe"), destinationAddress: String(body.destinationAddress ?? "Kitoro Road, Entebbe"),
+      destinationLat: toLat, destinationLng: toLng, merchantPaymentStatus: "none", autoAdvanceAt: null,
+    });
+    return jsonResponse({ order: orderFor(state) }, 201);
   }
   if (role === "customer" && method === "POST" && path === "/v1/car/quote") {
     const cargo = PRACTICE_CARGO_RATES[String(body.categoryId)];
@@ -1101,6 +1156,10 @@ function handlePracticeRequest(role: PracticeRole, path: string, method: string,
     return jsonResponse({ order: orderFor(state) });
   }
   if (method === "POST" && path === `/v1/orders/${PRACTICE_ORDER_ID}/fund`) {
+    if (role === "customer" && body.paymentMethod === "wallet" && state.vendor) {
+      // Shop and food orders really spend the practice wallet.
+      if (!practiceWalletSpend(state.total, `${state.vendor.name} order`)) return jsonResponse({ error: "insufficient_funds", message: `Your practice wallet has UGX ${practiceWalletBalance().toLocaleString("en-UG")}. This order needs UGX ${state.total.toLocaleString("en-UG")}.` }, 409);
+    }
     save({ stage: state.isRide ? "Deliver" : "Shop", paymentRail: body.paymentMethod === "cash" ? "float" : "escrow", autoAdvanceAt: Date.now() });
     return jsonResponse({ order: orderFor(state), funded: true, rail: state.paymentRail, payment: { id: "practice-collection", status: "successful", network: "mtn" } });
   }
