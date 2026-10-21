@@ -355,6 +355,8 @@ test("the self-drive model catalogue has real seats, fuel use and a daily price 
     assert.ok(model.variant === undefined || typeof model.variant === "string", `${model.id} variant`);
   }
   assert.equal(CAR_MODEL_CATALOG.find((m) => m.id === "toyota-aqua")?.variant, "Hybrid");
+});
+
 test("Taxipress practice: cancel a seat before boarding and get the fare back; not once on board", async (t) => {
   installStorage();
   const fetcher = createPracticeFetch("customer", (async () => { throw new Error("Must not access live Taxipress"); }) as typeof fetch);
