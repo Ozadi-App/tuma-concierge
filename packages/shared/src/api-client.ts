@@ -1,3 +1,4 @@
+import type { TaxipressAdminQueueEntry, TaxipressAdminRoute, TaxipressBoardingResult, TaxipressBooking, TaxipressConfig, TaxipressDriverView, TaxipressLineEntry, TaxipressQueueView, TaxipressRelayRoute, TaxipressReport, TaxipressSettings, TaxipressTaxi } from "./taxipress.js";
 import type { BagTrip, RelayAdminOrder, RelayRouteStage, RelayMerchantOrder, RelayOpenLeg, RelayOperator, RelayOperatorParcels, RelayQuote, RelayRoute, RelaySettings, RelayStation, RelayStationParcels, RelayTrack } from "./relay.js";
 import type { AdminRole } from "./permissions.js";
 import { workMethods } from "./work-client.js";
@@ -712,6 +713,88 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
     },
     async adminUpdateRelayRoute(id: string, input: Partial<{ name: string; stageAName: string; stageALat: number; stageALng: number; stageBName: string; stageBLat: number; stageBLng: number; parcelFare: number; active: boolean; dropMode: "stage" | "station"; stageACode: string; stageBCode: string }>) {
       return request<{ ok: boolean }>(`/v1/admin/relay/routes/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(input) });
+    },
+    // Taxipress (scheduled shared-taxi seats).
+    /** Always answers; `enabled` is false while Taxipress is off, not set up, or has no running route. */
+    async getTaxipressConfig() {
+      return request<TaxipressConfig>("/v1/taxipress/config");
+    },
+    async adminGetTaxipressSettings() {
+      return request<{ settings: TaxipressSettings; ready: boolean }>("/v1/admin/taxipress/settings");
+    },
+    async adminUpdateTaxipressSettings(input: Partial<TaxipressSettings>) {
+      return request<{ settings: TaxipressSettings }>("/v1/admin/taxipress/settings", { method: "PUT", body: JSON.stringify(input) });
+    },
+    async adminListTaxipressRoutes() {
+      return request<{ routes: TaxipressAdminRoute[]; relayRoutes: TaxipressRelayRoute[]; ready: boolean }>("/v1/admin/taxipress/routes");
+    },
+    async adminCreateTaxipressRoute(input: { relayRouteId: string; direction: "a_to_b" | "b_to_a"; farePerSeat: number; stopPricingEnabled?: boolean; active?: boolean }) {
+      return request<{ id: string }>("/v1/admin/taxipress/routes", { method: "POST", body: JSON.stringify(input) });
+    },
+    async adminUpdateTaxipressRoute(id: string, input: Partial<{ farePerSeat: number; stopPricingEnabled: boolean; active: boolean }>) {
+      return request<{ ok: boolean }>(`/v1/admin/taxipress/routes/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(input) });
+    },
+    // Taxipress: the driver's taxi and the line.
+    async getTaxipressTaxiMe() {
+      return request<TaxipressDriverView>("/v1/taxipress/taxi/me");
+    },
+    async applyTaxipressTaxi(input: { relayRouteId: string; plate: string; seatLayout: "14" | "18" }) {
+      return request<{ ok: boolean }>("/v1/taxipress/taxi/apply", { method: "POST", body: JSON.stringify(input) });
+    },
+    async taxipressJoinLine(input: { routeId: string; lat?: number; lng?: number }) {
+      return request<{ entry: TaxipressLineEntry }>("/v1/taxipress/driver/join", { method: "POST", body: JSON.stringify(input) });
+    },
+    async taxipressStartBoarding() {
+      return request<{ entry: TaxipressLineEntry }>("/v1/taxipress/driver/boarding", { method: "POST", body: "{}" });
+    },
+    async taxipressGoOnRoad() {
+      return request<{ entry: TaxipressLineEntry }>("/v1/taxipress/driver/on-road", { method: "POST", body: "{}" });
+    },
+    async taxipressArrive() {
+      return request<{ ok: boolean }>("/v1/taxipress/driver/arrive", { method: "POST", body: "{}" });
+    },
+    /** Confirm a passenger's ticket code at boarding; the seat is settled. */
+    async taxipressBoard(code: string) {
+      return request<TaxipressBoardingResult>("/v1/taxipress/driver/board", { method: "POST", body: JSON.stringify({ code }) });
+    },
+    async taxipressLeaveLine() {
+      return request<{ ok: boolean }>("/v1/taxipress/driver/leave", { method: "POST", body: "{}" });
+    },
+    /** Seats sold at the stage without the app (negative gives some back). */
+    async taxipressWalkUp(delta: number) {
+      return request<{ entry: TaxipressLineEntry }>("/v1/taxipress/driver/walk-up", { method: "POST", body: JSON.stringify({ delta }) });
+    },
+    async taxipressSendLocation(lat: number, lng: number) {
+      return request<{ ok: boolean }>("/v1/taxipress/driver/location", { method: "POST", body: JSON.stringify({ lat, lng }) });
+    },
+    /** The taxis waiting on a route (the one Boarding Now first) and the ones already on the road. */
+    async getTaxipressQueue(routeId: string) {
+      return request<TaxipressQueueView>(`/v1/taxipress/routes/${encodeURIComponent(routeId)}/queue`);
+    },
+    /** Book seats on a taxi in the line. Pay next on the order's pay screen, or hand cash to the driver. */
+    async bookTaxipressSeats(input: { queueId: string; seats: number; payment: "app" | "cash" }) {
+      return request<{ booking: TaxipressBooking; order: { id: string } }>("/v1/taxipress/bookings", { method: "POST", body: JSON.stringify(input) });
+    },
+    async getMyTaxipressBookings() {
+      return request<{ bookings: TaxipressBooking[] }>("/v1/taxipress/bookings/mine");
+    },
+    async getTaxipressBooking(id: string) {
+      return request<{ booking: TaxipressBooking }>(`/v1/taxipress/bookings/${encodeURIComponent(id)}`);
+    },
+    async adminListTaxipressTaxis() {
+      return request<{ taxis: TaxipressTaxi[] }>("/v1/admin/taxipress/taxis");
+    },
+    async adminUpdateTaxipressTaxi(id: string, input: Partial<{ status: "pending" | "approved" | "suspended"; passengersEnabled: boolean; parcelsEnabled: boolean }>) {
+      return request<{ taxi: TaxipressTaxi }>(`/v1/admin/taxipress/taxis/${encodeURIComponent(id)}`, { method: "POST", body: JSON.stringify(input) });
+    },
+    async adminTaxipressReport(days = 30) {
+      return request<TaxipressReport>(`/v1/admin/taxipress/report?days=${days}`);
+    },
+    async adminTaxipressQueue() {
+      return request<{ queue: TaxipressAdminQueueEntry[] }>("/v1/admin/taxipress/queue");
+    },
+    async adminRemoveTaxipressQueueEntry(id: string) {
+      return request<{ ok: boolean }>(`/v1/admin/taxipress/queue/${encodeURIComponent(id)}/remove`, { method: "POST", body: "{}" });
     },
     async adminListRelayOperators() {
       return request<{ operators: RelayOperator[] }>("/v1/admin/relay/operators");

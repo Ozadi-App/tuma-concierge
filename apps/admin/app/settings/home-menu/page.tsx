@@ -8,7 +8,7 @@ import { api, errorMessage } from "../../../lib/api";
 
 const field = "w-full rounded-xl border border-[var(--border-faint)] px-3 py-2.5 text-sm outline-none focus:border-gold";
 const CLUSTER_NOTE: Record<HomeClusterId, string> = {
-  ride: "Boda, Car, Rideshare, Selfdrive, Move, Luxury, Parcel, Ambulance",
+  ride: "Boda, Car, Rideshare, Selfdrive, Move, Luxury, Parcel, Taxipress, Ambulance",
   shopping: "List, Groceries, Stores, Pharma, Spotlight",
   food: "Restaurants, Kitchens, Streetfood, Juices, Bakeries",
   learn: "Opens the Learn home directly",

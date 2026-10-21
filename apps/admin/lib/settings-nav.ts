@@ -77,6 +77,13 @@ export const SETTINGS_LINKS: SettingsLink[] = [
     show: (role) => hasPermission(role, "settings.manage") || hasPermission(role, "riders.view") || hasPermission(role, "orders.view"),
   },
   {
+    href: "/settings/taxipress",
+    label: "Taxipress",
+    description: "Seats on the next taxi along a fixed route: switch, routes and fares, commission, cash and parcels in a taxi.",
+    icon: Bus,
+    show: (role) => hasPermission(role, "settings.manage"),
+  },
+  {
     href: "/settings/car",
     label: "Peebee Car",
     description: "Switch car rides on, how drivers are found, profit share, car types, owners, drivers and vehicles.",

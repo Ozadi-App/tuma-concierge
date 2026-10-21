@@ -10,7 +10,7 @@ const HOLD_MS = 1200;
  * pocket tap or a slip of the thumb can't place an emergency call. Works with
  * touch, mouse and keyboard (hold Space/Enter). A short tap explains itself.
  */
-export function HoldToCall({ number }: { number: string }) {
+export function HoldToCall({ number, fill = false }: { number: string; /** Stretch to the width of a narrow card; the touch target stays full size. */ fill?: boolean }) {
   const [holding, setHolding] = useState(false);
   const [hint, setHint] = useState(false);
   const timer = useRef<number | null>(null);
@@ -43,7 +43,7 @@ export function HoldToCall({ number }: { number: string }) {
   }
 
   return (
-    <div className="flex flex-col items-end gap-1">
+    <div className={`flex flex-col gap-1 ${fill ? "items-stretch" : "items-end"}`}>
       <button
         type="button"
         aria-describedby={hintId}
@@ -55,7 +55,7 @@ export function HoldToCall({ number }: { number: string }) {
         onKeyDown={(e) => { if ((e.key === " " || e.key === "Enter") && !e.repeat) { e.preventDefault(); start(); } }}
         onKeyUp={(e) => { if (e.key === " " || e.key === "Enter") cancel(); }}
         onBlur={cancel}
-        className={`ride-hold relative flex min-h-11 select-none items-center gap-2 overflow-hidden rounded-2xl px-4 text-sm font-bold text-white touch-none ${holding ? "is-holding" : ""}`}
+        className={`ride-hold relative flex min-h-11 select-none items-center gap-2 overflow-hidden rounded-2xl text-sm font-bold text-white touch-none ${fill ? "justify-center px-3" : "px-4"} ${holding ? "is-holding" : ""}`}
         style={{ ["--hold-ms" as string]: `${HOLD_MS}ms` }}
       >
         <Phone className="h-4 w-4 shrink-0" strokeWidth={2.4} aria-hidden />

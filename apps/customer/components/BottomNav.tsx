@@ -9,6 +9,7 @@ import {
   BookOpen,
   Briefcase,
   BriefcaseBusiness,
+  Bus,
   Car,
   CarFront,
   ChefHat,
@@ -51,6 +52,7 @@ import { useTranslate } from "../lib/i18n";
 import { orderTitle, stageLabel } from "../lib/order-display";
 import { useHireAvailability, useHomeMenu, type HireAvailability } from "../lib/home-menu";
 import { useSpecialCarServices, type SpecialCarServices } from "../lib/special-car";
+import { useTaxipress } from "../lib/taxipress";
 import { useLivePolling } from "../lib/use-live-polling";
 import { BottomDrawer } from "./BottomDrawer";
 import { CartDrawer } from "./CartDrawer";
@@ -96,7 +98,7 @@ const hiveItems = (menu: HomeMenuSettings, hire: HireAvailability): MenuItem[] =
   menu.hive.shortcuts.filter((s) => s.enabled && (s.id === "workers" ? hire.workers : s.id === "hire" ? hire.hire : true)).map((s) => ({ id: s.id, label: s.label, icon: HIVE_ITEM[s.id].icon, href: HIVE_ITEM[s.id].href }));
 
 /** Ride's shortcuts, in the order Peebee shows them. Luxury and Ambulance appear once there is an approved vehicle of that kind. */
-const rideItems = (special: SpecialCarServices): MenuItem[] => [
+const rideItems = (special: SpecialCarServices, taxipress: boolean): MenuItem[] => [
   { id: "boda", label: "Boda", icon: Bike, href: "/ride/boda" },
   { id: "car", label: "Car", icon: Car, href: "/ride/car" },
   { id: "rideshare", label: "Rideshare", icon: UsersRound, href: "/carpool" },
@@ -104,6 +106,7 @@ const rideItems = (special: SpecialCarServices): MenuItem[] => [
   { id: "move", label: "Move", icon: Truck, href: "/ride/move" },
   ...(special.luxury ? [{ id: "luxury", label: "Luxury", icon: Crown, href: "/ride/luxury" }] : []),
   { id: "parcel", label: "Parcel", icon: Package, href: "/deliver/parcel" },
+  ...(taxipress ? [{ id: "taxipress", label: "Taxipress", icon: Bus, href: "/ride/taxipress" }] : []),
   ...(special.ambulance ? [{ id: "ambulance", label: "Ambulance", icon: Ambulance, href: "/ride/ambulance" }] : []),
 ];
 
@@ -170,6 +173,7 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
   const t = useTranslate();
   const homeMenu = useHomeMenu();
   const special = useSpecialCarServices();
+  const taxipress = useTaxipress();
   const hireAvailability = useHireAvailability();
   const { totalQuantity: cartCount, total: cartTotal } = useCart();
   const primaryAction = useNavPrimaryAction();
@@ -207,7 +211,7 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
 
   const menuItems: MenuItem[] =
     menuGroup === "original" ? originalMenu(homeMenu)
-    : menuGroup === "ride" ? rideItems(special)
+    : menuGroup === "ride" ? rideItems(special, taxipress.enabled)
     : menuGroup === "hive" ? hiveItems(homeMenu, hireAvailability)
     : menuGroup === "learn" ? learnItems
     : staticSubmenuItems[menuGroup];
@@ -227,6 +231,7 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
     else if (pathname === "/ride/boda") setSelectedItem("boda");
     else if (pathname === "/ride/luxury") setSelectedItem("luxury");
     else if (pathname === "/ride/ambulance") setSelectedItem("ambulance");
+    else if (pathname.startsWith("/ride/taxipress")) setSelectedItem("taxipress");
     else if (pathname === "/ride/car") setSelectedItem("car");
     else if (pathname === "/carpool") setSelectedItem("rideshare");
     else if (pathname === "/rent") setSelectedItem("selfdrive");

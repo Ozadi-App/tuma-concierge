@@ -4,7 +4,7 @@ import { travelMinutes } from "@peebee/shared";
 import type { CarCategory, CarConfig, FareCounter, FareOffer, OrderRow, RidePassenger, RideQuote, RideStop, SavedPassenger } from "@peebee/shared";
 import type { LucideIcon } from "lucide-react";
 import {
-  Ambulance, ArrowUpDown, Bike, Check, HandCoins, Briefcase, CalendarClock, Car, CarFront, ChevronDown, ChevronRight, Clock, Crown, History,
+  Ambulance, ArrowUpDown, Bike, Bus, Check, HandCoins, Briefcase, CalendarClock, Car, CarFront, ChevronDown, ChevronRight, Clock, Crown, History,
   Home as HomeIcon, MapPin, Package, Route, Search, ShieldCheck, Share2, Truck, User, Users, UsersRound, Wallet,
 } from "lucide-react";
 import Link from "next/link";
@@ -18,6 +18,7 @@ import {
 } from "../../lib/ride-home";
 import { saveSelfDriveRoute } from "../../lib/selfdrive-route";
 import { useSpecialCarServices } from "../../lib/special-car";
+import { useTaxipress } from "../../lib/taxipress";
 import { useLivePolling } from "../../lib/use-live-polling";
 import { useRoadRoute } from "../../lib/useRoadRoute";
 import { FeeProposalCard } from "../home/FeeProposalCard";
@@ -81,6 +82,7 @@ const sameSpot = (a: Place, b: Place) =>
 export function RideHome() {
   const router = useRouter();
   const special = useSpecialCarServices();
+  const taxipress = useTaxipress();
   const [cfg, setCfg] = useState<CarConfig | null>(null);
   const [rates, setRates] = useState<{ ratePerKm: number; minimum: number } | null>(null);
   const [places, setPlaces] = useState<PlacesBootstrap>({ saved: [], recent: [] });
@@ -660,17 +662,31 @@ export function RideHome() {
                 </ul>
               </div>
 
-              <div className="ride-amb flex items-center gap-3 rounded-2xl p-3">
+              {/* Taxipress (when it is on) sits first, Ambulance beside it. Ambulance keeps its full-size hold-to-call control. */}
+              <div className={taxipress.enabled ? "grid grid-cols-2 items-stretch gap-2" : undefined}>
+              {taxipress.enabled && (
+                <Link href="/ride/taxipress" className="ride-link-tile flex min-h-14 flex-col justify-between gap-2 rounded-2xl p-3">
+                  <Bus className="h-6 w-6 shrink-0" aria-hidden />
+                  <span className="min-w-0">
+                    <span className="block text-[15px] font-bold text-ink">Taxipress</span>
+                    <span className="block text-[11px] text-ink-500">Book a seat on the next taxi</span>
+                  </span>
+                </Link>
+              )}
+              <div className={`ride-amb flex rounded-2xl p-3 ${taxipress.enabled ? "flex-col gap-2" : "items-center gap-3"}`}>
+                <span className={taxipress.enabled ? "flex items-center gap-2" : "contents"}>
                 <span className="ride-amb__icon flex h-10 w-10 shrink-0 items-center justify-center rounded-[13px]"><Ambulance className="h-5 w-5" aria-hidden /></span>
                 <span className="min-w-0 flex-1">
                   <span className="block text-[15px] font-bold">Ambulance</span>
                   {special.ambulance || ambulanceCats.length > 0 ? (
-                    <Link href="/ride/ambulance" className="inline-flex min-h-6 items-center gap-0.5 whitespace-nowrap text-xs font-bold text-ink-500 underline-offset-2 hover:underline">Request a crew <ChevronRight className="h-3 w-3" aria-hidden /></Link>
+                    <Link href="/ride/ambulance" className="inline-flex min-h-6 items-center gap-0.5 whitespace-nowrap text-xs font-bold text-ink-500 underline-offset-2 hover:underline">{taxipress.enabled ? "Request" : "Request a crew"} <ChevronRight className="h-3 w-3" aria-hidden /></Link>
                   ) : (
                     <span className="block text-xs text-ink-500">Life in danger? Call now.</span>
                   )}
                 </span>
-                <HoldToCall number={emergencyNumber} />
+                </span>
+                <HoldToCall number={emergencyNumber} fill={taxipress.enabled} />
+              </div>
               </div>
 
               <div>

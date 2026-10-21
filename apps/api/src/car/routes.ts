@@ -8,6 +8,7 @@ import { newId } from "../lib/ids.js";
 import { hasColumn, hasTable } from "../lib/schema.js";
 import { getCarSettings, getMatchingSettings, getPlatformEnvironment, isServiceEnabled } from "../lib/settings.js";
 import { servicePaused } from "../lib/service-gate.js";
+import { isInLine } from "../taxipress/queue.js";
 import { computeBidding, loadBiddingContext, validateBid } from "../orders/bidding.js";
 import { currentVisibilityRadiusKm, orderMatchPoint } from "../orders/matching.js";
 import { createOrderFromInput } from "../orders/routes.js";
@@ -260,6 +261,11 @@ carRoutes.post("/car/driver/online", async (c) => {
   if (!parsed.success) return c.json({ error: "invalid_body", issues: parsed.error.issues }, 400);
   const partner = (await db.execute({ sql: "SELECT driver_status FROM car_partners WHERE user_id = ?", args: [user.sub] })).rows[0] as Row | undefined;
   if (partner?.driver_status !== "approved") return c.json({ error: "not_a_driver", message: "You need to be an approved driver first." }, 403);
+
+  // A driver in a Taxipress line (or on its road) isn't given car rides as well.
+  if (parsed.data.online && (await isInLine(user.sub))) {
+    return c.json({ error: "in_taxipress_line", message: "You're in the Taxipress line. Leave it before taking car rides." }, 409);
+  }
 
   let vehicleId: string | null = null;
   if (parsed.data.online) {

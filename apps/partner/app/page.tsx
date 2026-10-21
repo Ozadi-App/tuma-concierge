@@ -130,6 +130,22 @@ function DriverHome() {
       </Link>
 
       <Link
+        href="/taxipress"
+        className="home-card flex items-center justify-between !py-3 !px-4 hover:border-gold/50"
+      >
+        <div className="flex items-center gap-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gold/15 text-gold">
+            <Bus className="h-5 w-5" />
+          </div>
+          <div className="min-w-0">
+            <span className="text-xs font-black text-ink">Taxipress</span>
+            <p className="truncate text-[11px] text-ink-500">Join the line and take seats on your taxi</p>
+          </div>
+        </div>
+        <ChevronRight className="h-4 w-4 shrink-0 text-ink-500" />
+      </Link>
+
+      <Link
         href="/relay"
         className="home-card flex items-center justify-between !py-3 !px-4 hover:border-gold/50"
       >
