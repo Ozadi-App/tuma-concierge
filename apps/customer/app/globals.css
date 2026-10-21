@@ -1607,7 +1607,7 @@ select:focus {
 /* Chat drawer: the app (.app-stage) slides left leaving a slice at the left edge; chat eases up from under it. */
 /* ------------------------------------------------------------------ */
 /* How much of the app stays showing while chat is open; chat takes the rest. */
-:root { --chat-peek: 30%; }
+:root { --chat-peek: 20%; }
 .app-stage {
   background-color: rgb(var(--color-cream));
   transition: transform 420ms var(--ease-out-expo), border-radius 420ms var(--ease-out-expo), box-shadow 420ms var(--ease-out-expo);
