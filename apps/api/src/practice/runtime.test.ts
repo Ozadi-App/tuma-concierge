@@ -396,3 +396,33 @@ test("Taxipress practice: cancel a seat before boarding and get the fare back; n
   assert.equal((await post(`/v1/taxipress/bookings/${boarding.id}/cancel`)).status, 409);
   t.mock.restoreAll();
 });
+
+test("Taxipress practice: a boarded seat has a receipt that verifies, and a cancelled or waiting one does not", async (t) => {
+  installStorage();
+  const fetcher = createPracticeFetch("customer", (async () => { throw new Error("Must not access the live app"); }) as typeof fetch);
+  startPracticeMode("customer");
+  const get = async (path: string) => fetcher(`https://api.test${path}`);
+  const post = (path: string, body: object = {}) => fetcher(`https://api.test${path}`, { method: "POST", body: JSON.stringify(body) });
+  const routeId = ((await (await get("/v1/taxipress/config")).json()) as { routes: Array<{ id: string }> }).routes[0]!.id;
+  const taxi = ((await (await get(`/v1/taxipress/routes/${routeId}/queue`)).json()) as { line: Array<{ id: string }> }).line[0]!;
+  const { booking } = (await (await post("/v1/taxipress/bookings", { queueId: taxi.id, seats: 2, payment: "app" })).json()) as { booking: { id: string; receiptRef: string | null } };
+  assert.equal(booking.receiptRef, null, "no receipt before boarding");
+  const now = Date.now();
+  t.mock.method(Date, "now", () => now + 45_000);
+  const boarded = ((await (await get(`/v1/taxipress/bookings/${booking.id}`)).json()) as { booking: { receiptRef: string } }).booking;
+  assert.match(boarded.receiptRef, /^practice-tps-/);
+  const verified = await get(`/v1/public/receipts/${encodeURIComponent(boarded.receiptRef)}`);
+  assert.equal(verified.status, 200);
+  const receipt = (await verified.json()) as { valid: boolean; amountUgx: number; demo: boolean; lines: Array<{ label: string; value: string }> };
+  assert.deepEqual([receipt.valid, receipt.amountUgx, receipt.demo], [true, 16_000, true]);
+  assert.ok(receipt.lines.some((l) => l.label === "Trip" && l.value.includes("→")));
+  assert.equal((await get("/v1/public/receipts/practice-tps-nosuchbooking")).status, 404);
+  t.mock.restoreAll();
+
+  const second = ((await (await post("/v1/taxipress/bookings", { queueId: taxi.id, seats: 1, payment: "app" })).json()) as { booking: { id: string } }).booking;
+  assert.equal((await get(`/v1/public/receipts/practice-tps-${second.id}`)).status, 404, "still waiting: no receipt");
+  assert.equal((await post(`/v1/taxipress/bookings/${second.id}/cancel`)).status, 200);
+  t.mock.method(Date, "now", () => now + 60_000);
+  assert.equal((await get(`/v1/public/receipts/practice-tps-${second.id}`)).status, 404, "cancelled: no receipt");
+  t.mock.restoreAll();
+});

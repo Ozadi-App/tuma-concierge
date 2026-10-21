@@ -1,6 +1,7 @@
 "use client";
 
-import type { FuelCode, FuelOutletPrice, FuelReceipt } from "@peebee/shared";
+import { receiptUrl, type FuelCode, type FuelOutletPrice, type FuelReceipt } from "@peebee/shared";
+import { QrCode } from "@peebee/shared/qr-code";
 import {
   AlertCircle,
   ArrowLeft,
@@ -225,6 +226,11 @@ function DispenseContent() {
             <div className="text-2xl font-black text-ink">
               {ugx(completedReceipt.total_ugx)}
             </div>
+          </div>
+
+          <div className="flex flex-col items-center gap-1.5">
+            <QrCode value={receiptUrl(completedReceipt.receipt_ref)} size={132} className="border border-[var(--border-faint)] p-1" label={`QR code to verify receipt ${completedReceipt.receipt_ref}`} />
+            <p className="text-center text-[10px] text-ink-500">Scan to check this receipt is genuine</p>
           </div>
 
           <p className="text-center font-mono text-[10px] text-ink-500">

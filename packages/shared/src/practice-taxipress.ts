@@ -108,6 +108,7 @@ function view(s: State, b: Booking) {
     ticketCode: b.code, createdAt: iso(b.at), payBy: null,
     cancel: cancelTerms(b),
     outcome: b.cancelled ? { kind: "cancelled", refunded: b.cancelled.refunded, fee: b.cancelled.fee } : null,
+    receiptRef: !b.cancelled && (p === "boarded" || p === "on_road" || p === "arrived") ? `practice-tps-${b.id}` : null,
     route: { id: route.id, fromName: route.fromName, toName: route.toName, directionLabel: route.directionLabel },
     taxi: {
       queueId: t.id, plate: t.plate, seatLayout: t.layout, driverName: t.driver, driverPhone: "0700000001",
@@ -161,6 +162,23 @@ export function practiceTaxipressRequest(path: string, method: string, body: Jso
     s.bookings.push(b);
     save(s);
     return ok({ booking: view(s, b), order: { id: `practice-tp-order-${b.id}` } }, 201);
+  }
+
+  // The receipt link a boarded passenger's QR holds, checked here so practice stays inside the browser.
+  const receipt = /^\/v1\/public\/receipts\/practice-tps-([^/]+)$/.exec(path);
+  if (method === "GET" && receipt) {
+    const b = s.bookings.find((x) => x.id === decodeURIComponent(receipt[1]!));
+    if (!b || b.cancelled || phase(b) === "waiting" || phase(b) === "boarding") return err(404, "not_found", "No Peebee receipt has this reference.");
+    const t = taxiById(b.queueId)!;
+    const route = routeOf(t.routeId);
+    return ok({
+      valid: true, kind: "taxipress", title: "Taxipress receipt",
+      lines: [
+        { label: "Reference", value: `practice-tps-${b.id}` }, { label: "Trip", value: `${route.fromName} → ${route.toName}` },
+        { label: "Seats", value: String(b.seats) }, { label: "Paid", value: b.method === "cash" ? "In cash to the driver" : "In the app" },
+      ],
+      amountUgx: b.amount, issuedAt: iso(b.at + BOARDED_AT), demo: true,
+    });
   }
 
   const cancel = /^\/v1\/taxipress\/bookings\/([^/]+)\/cancel$/.exec(path);

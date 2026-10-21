@@ -19,6 +19,7 @@ export * from "./shopping-units.js";
 export * from "./home-menu.js";
 export * from "./ride-tracking.js";
 export * from "./relay.js";
+export * from "./receipt.js";
 export * from "./taxipress.js";
 export * from "./demo-marketplace.js";
 export type { UgandaDistrict } from "./uganda-locations.js";

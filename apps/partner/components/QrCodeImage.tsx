@@ -9,7 +9,7 @@ export function QrCodeImage({ value, size = 168, label }: { value: string; size?
 
   useEffect(() => {
     let cancelled = false;
-    QRCode.toDataURL(value, { margin: 1, width: size * 2, errorCorrectionLevel: "M" })
+    QRCode.toDataURL(value, { margin: 3, width: size * 2, errorCorrectionLevel: "M" })
       .then((url) => {
         if (!cancelled) setSrc(url);
       })

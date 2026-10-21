@@ -1,62 +1,29 @@
 "use client";
 
 import { Camera, X } from "lucide-react";
+import { startQrCamera, type QrCameraHandle } from "@peebee/shared/qr";
 import { useEffect, useRef, useState } from "react";
 
-type BarcodeDetectorLike = { detect: (source: HTMLVideoElement) => Promise<Array<{ rawValue?: string }>> };
-
-/** Full-screen QR scanner (BarcodeDetector where the browser has it) with a
- * typed-code fallback. Copied from apps/gas. */
+/** Full-screen QR scanner (works on every phone and browser) with a typed-code fallback. */
 export function QrScanner({ title, onScan, onClose }: { title: string; onScan: (code: string) => void; onClose: () => void }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [hasCamera, setHasCamera] = useState(true);
   const [manualCode, setManualCode] = useState("");
 
+  // Hold the latest callback so the camera starts once and is not restarted when the parent re-renders.
+  const onScanRef = useRef(onScan);
+  useEffect(() => { onScanRef.current = onScan; });
+
   useEffect(() => {
-    let stream: MediaStream | null = null;
-    let timer: ReturnType<typeof setInterval> | null = null;
-    let done = false;
-
-    async function initCamera() {
-      try {
-        if (!navigator.mediaDevices?.getUserMedia) {
-          setHasCamera(false);
-          return;
-        }
-        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          await videoRef.current.play();
-        }
-        const Detector = (window as unknown as { BarcodeDetector?: new (opts: { formats: string[] }) => BarcodeDetectorLike }).BarcodeDetector;
-        if (!Detector) return;
-        const detector = new Detector({ formats: ["qr_code"] });
-        timer = setInterval(async () => {
-          const video = videoRef.current;
-          if (done || !video || video.readyState !== 4) return;
-          try {
-            const codes = await detector.detect(video);
-            const value = codes[0]?.rawValue?.trim();
-            if (value && !done) {
-              done = true;
-              onScan(value);
-            }
-          } catch {
-            // keep scanning
-          }
-        }, 400);
-      } catch {
-        setHasCamera(false);
-      }
-    }
-
-    void initCamera();
-    return () => {
-      done = true;
-      if (timer) clearInterval(timer);
-      stream?.getTracks().forEach((track) => track.stop());
-    };
-  }, [onScan]);
+    let handle: QrCameraHandle | null = null;
+    let cancelled = false;
+    const video = videoRef.current;
+    if (!video) return;
+    startQrCamera(video, (value) => onScanRef.current(value))
+      .then((started) => { if (cancelled) started.stop(); else handle = started; })
+      .catch(() => { if (!cancelled) setHasCamera(false); });
+    return () => { cancelled = true; handle?.stop(); };
+  }, []);
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-black/90 p-4 text-white">
