@@ -210,6 +210,7 @@ test("taxipress: passengers book seats", async (t) => {
       assert.equal((await setting({ enabled: false })).status, 200);
       assert.equal(await code(await book("a", van2.id, 1, "app")), "taxipress_off");
       assert.equal((await setting({ enabled: true })).status, 200);
+      await client.execute("DROP TABLE taxipress_refunds");
       await client.execute("DROP TABLE taxipress_bookings");
       resetSchemaCache();
       assert.equal(await code(await book("a", van2.id, 1, "app")), "taxipress_unavailable");

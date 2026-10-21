@@ -624,6 +624,18 @@ const DEFAULTS = {
   taxipress_pay_within_minutes: "10",
   // Most cash bookings one passenger may hold at a time (cash can be a no-show).
   taxipress_max_cash_bookings: "2",
+  // A passenger may cancel for a full refund within this many minutes of booking.
+  taxipress_free_cancel_minutes: "10",
+  // After that, this share of the fare is kept when a paid seat is cancelled (0 = always a full refund).
+  taxipress_cancel_retention_percent: "0",
+  // Where a kept cancellation or no-show fee goes: the driver (whose seat was held) or Peebee.
+  taxipress_fee_to: "driver",
+  // Minutes a taxi must have been Boarding Now before its driver may mark an absent passenger a no-show.
+  taxipress_no_show_minutes: "10",
+  // Share of the fare kept from a paid seat when the passenger does not board (0 = full refund).
+  taxipress_no_show_fee_percent: "0",
+  // When a taxi leaves the line, move its passengers to the next taxi with room (off: refund them).
+  taxipress_rebook_on_removal: "1",
   taxipress_parcel_not_allowed: '["Charcoal","Fuel","Wet or raw food"]',
 } as const;
 

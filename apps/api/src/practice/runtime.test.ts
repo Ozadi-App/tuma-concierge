@@ -154,3 +154,133 @@ test("merchant practice confirmation marks that role's journey complete", async 
   await practiceFetch("https://api.test/v1/merchant-payments/mpay_practice/merchant-confirm", { method: "POST", body: JSON.stringify({ amount: 28_000 }) });
   assert.equal(isPracticeJourneyComplete("merchant"), true);
 });
+
+test("Taxipress practice: book with the practice wallet and follow the taxi from the line to arrival", async (t) => {
+  installStorage();
+  const fetcher = createPracticeFetch("customer", (async () => { throw new Error("Must not access live Taxipress"); }) as typeof fetch);
+  startPracticeMode("customer");
+  const get = async (path: string) => (await fetcher(`https://api.test${path}`)).json() as Promise<any>;
+  const post = (path: string, body: object = {}) => fetcher(`https://api.test${path}`, { method: "POST", body: JSON.stringify(body) });
+
+  const config = await get("/v1/taxipress/config");
+  assert.equal(config.enabled, true);
+  assert.equal(config.routes[0].fromName, "Entebbe Stage", "practice starts where the customer is");
+  const line = await get(`/v1/taxipress/routes/${config.routes[0].id}/queue`);
+  assert.equal(line.line.length, 3);
+  const taxi = line.line[0];
+  assert.equal((await get("/v1/wallet")).balance, 2_000_000, "the practice wallet starts loaded");
+
+  const booked = await post("/v1/taxipress/bookings", { queueId: taxi.id, seats: 2, payment: "app" });
+  assert.equal(booked.status, 201);
+  const { booking } = (await booked.json()) as { booking: any };
+  assert.equal(booking.paymentStatus, "paid");
+  assert.equal(booking.amount, 2 * config.routes[0].farePerSeat);
+  assert.equal((await get("/v1/wallet")).balance, 2_000_000 - booking.amount, "the seats were paid for from the practice wallet");
+  assert.equal((await get(`/v1/taxipress/routes/${config.routes[0].id}/queue`)).line[0].seatsLeft, taxi.seatsLeft - 2);
+
+  assert.equal((await post("/v1/taxipress/bookings", { queueId: taxi.id, seats: 99, payment: "app" })).status, 400);
+  assert.equal((await post("/v1/taxipress/bookings", { queueId: taxi.id, seats: 4, payment: "app" })).status, 409, "no room for four more");
+  const cash = await post("/v1/taxipress/bookings", { queueId: line.line[2].id, seats: 1, payment: "cash" });
+  const cashBooking = ((await cash.json()) as { booking: any; order: { id: string } });
+  assert.equal(cashBooking.booking.paymentStatus, "pay_driver");
+  assert.equal((await post(`/v1/orders/${cashBooking.order.id}/fund`, { paymentMethod: "cash" })).status, 200);
+  assert.equal((await get("/v1/wallet")).balance, 2_000_000 - booking.amount, "cash does not touch the wallet");
+
+  const now = Date.now();
+  const at = async (seconds: number) => {
+    t.mock.method(Date, "now", () => now + seconds * 1000);
+    return (await get(`/v1/taxipress/bookings/${booking.id}`)).booking;
+  };
+  assert.deepEqual(((b) => [b.status, b.taxi.status])(await at(5)), ["booked", "in_line"], "waiting in the line");
+  assert.deepEqual(((b) => [b.status, b.taxi.status])(await at(25)), ["booked", "boarding"], "boarding now");
+  assert.deepEqual(((b) => [b.status, b.taxi.status])(await at(45)), ["boarded", "boarding"], "the driver confirmed the ticket");
+  assert.deepEqual(((b) => [b.status, b.taxi.status])(await at(80)), ["boarded", "on_road"]);
+  const road = await get(`/v1/taxipress/routes/${config.routes[0].id}/queue`);
+  assert.equal(road.onRoad.length, 2, "the cash booking on another taxi has set off too");
+  assert.equal(road.line.length, 1);
+  assert.deepEqual(((b) => [b.status, b.taxi.status])(await at(120)), ["completed", "arrived"]);
+  assert.equal((await get(`/v1/taxipress/routes/${config.routes[0].id}/queue`)).line.length, 3, "the taxi is back in the line");
+
+  const broke = await post("/v1/taxipress/bookings", { queueId: line.line[1].id, seats: 1, payment: "app" });
+  assert.equal(broke.status, 201);
+  assert.equal((await get("/v1/taxipress/bookings/mine")).bookings.length, 3);
+  const ledger = (await get("/v1/wallet")).ledger as Array<{ type: string }>;
+  assert.equal(ledger.filter((e) => e.type === "order_payment").length, 2);
+  t.mock.restoreAll();
+});
+
+test("Entebbe practice: shop and food orders paid from the practice wallet, a rider takes them and rings on arrival", async (t) => {
+  installStorage();
+  const fetcher = createPracticeFetch("customer", (async () => { throw new Error("Must not access the live app"); }) as typeof fetch);
+  startPracticeMode("customer");
+  const get = async (path: string) => (await fetcher(`https://api.test${path}`)).json() as Promise<any>;
+  const post = (path: string, body: object = {}) => fetcher(`https://api.test${path}`, { method: "POST", body: JSON.stringify(body) });
+
+  // The world is centred on Entebbe, with a few Kampala shops for the long way round.
+  const stores = (await get("/v1/marketplace/stores?lat=0.0612&lng=32.4637")).stores as Array<{ id: string; name: string; address: string; distance_km: number; category: string }>;
+  assert.equal(stores.filter((s) => s.id.startsWith("pe_")).length, 10);
+  assert.equal(stores.filter((s) => !s.id.startsWith("pe_")).length, 3, "very few shops in Kampala");
+  assert.ok(stores.slice(0, 10).every((s) => s.id.startsWith("pe_")), "the nearest shops are the Entebbe ones");
+  assert.ok(stores[0].distance_km < 3);
+  for (const category of ["groceries", "stores", "pharmacy"]) assert.ok(stores.some((s) => s.id.startsWith("pe_") && s.category === category), `Entebbe ${category}`);
+  const products = (await get("/v1/marketplace/stores/pe_lakeside_mart/products")).products as Array<{ id: string; title: string; price: number }>;
+  assert.ok(products.length >= 5);
+  const restaurants = (await get("/v1/restaurants")).restaurants as Array<{ id: string; address: string; name: string }>;
+  assert.equal(restaurants.length, 12);
+  assert.ok(restaurants.every((r) => /Entebbe|Katabi|Kitoro|Lunyo|Bugonga/.test(r.address)), "every food place is around Entebbe");
+  assert.equal((await get("/v1/pharmacy/pharmacies")).pharmacies.filter((p: { id: string }) => p.id.startsWith("pe_")).length, 2);
+
+  // A shop order: a rider is found for you, you pay from the wallet, and the rider brings it.
+  const milk = products[0]!;
+  const checkout = await post("/v1/marketplace/checkout", { items: [{ storeId: "pe_lakeside_mart", title: milk.title, quantity: 2, price: milk.price }], destinationAddress: "Kitoro Road, Entebbe" });
+  assert.equal(checkout.status, 201);
+  const { order } = (await checkout.json()) as { order: any };
+  assert.equal(order.stage, "Match");
+  assert.ok(order.rider_id && order.rider_name !== "Daniel", "a rider from the Entebbe roster took it");
+  assert.equal(order.pickup_address, "Victoria Mall, Entebbe Road");
+  assert.ok(order.delivery_fee >= 3_000 && order.delivery_fee < 10_000, "a short boda ride inside Entebbe");
+  const total = 2 * milk.price + order.delivery_fee;
+  assert.equal(order.estimated_total, total);
+
+  const before = (await get("/v1/wallet")).balance as number;
+  assert.equal((await post("/v1/orders/practice-order/fund", { paymentMethod: "wallet", useWallet: true })).status, 200);
+  assert.equal((await get("/v1/wallet")).balance, before - total, "the order was paid from the practice wallet");
+  const now = Date.now();
+  const stageAt = async (seconds: number) => {
+    t.mock.method(Date, "now", () => now + seconds * 1000);
+    return ((await get("/v1/orders/practice-order")).order as { stage: string }).stage;
+  };
+  assert.equal(await stageAt(5), "Shop", "the rider is collecting it");
+  assert.equal(await stageAt(30), "Deliver", "on the way");
+  assert.equal(await stageAt(60), "Arrived", "at your door");
+  assert.equal((await post("/v1/orders/practice-order/handover", { pin: "2468" })).status, 200);
+  assert.equal(((await get("/v1/orders/practice-order")).order as { stage: string }).stage, "Settle");
+  t.mock.restoreAll();
+
+  // A shop in Kampala is the long way round, so it costs more to deliver.
+  const kampala = await post("/v1/marketplace/checkout", { items: [{ storeId: "store_demo_fresh_mart", title: "Eggs", quantity: 1, price: 13_500 }] });
+  assert.equal(((await kampala.json()) as { order: { delivery_fee: number } }).order.delivery_fee, 18_000);
+
+  // Food: the dishes and their choices are priced from the menu.
+  const menu = await get("/v1/restaurants/demo-food-lakeview/menu");
+  const dish = menu.categories.flatMap((c: any) => c.items).find((i: any) => i.options?.length) as { id: string; price: number; options: Array<{ choices: Array<{ id: string; price_delta: number }> }> };
+  const large = dish.options[0]!.choices.find((c) => c.price_delta > 0)!;
+  const food = await post("/v1/restaurants/demo-food-lakeview/order", { items: [{ menuItemId: dish.id, quantity: 2, choiceIds: [large.id] }], destinationAddress: "Kitoro Road, Entebbe" });
+  assert.equal(food.status, 201);
+  const foodOrder = ((await food.json()) as { order: any }).order;
+  assert.equal(foodOrder.restaurant_name, "Lakeview Kitchen");
+  assert.equal(foodOrder.estimated_total, 2 * (dish.price + large.price_delta) + foodOrder.delivery_fee);
+  assert.equal(foodOrder.stage, "Match");
+  const detail = await get("/v1/orders/practice-order");
+  assert.equal(detail.items[0].quantity, 2);
+
+  // Not enough in the wallet: nothing is taken and the order is not paid.
+  const huge = await post("/v1/restaurants/demo-food-lakeview/order", { items: [{ menuItemId: dish.id, quantity: 500 }] });
+  assert.equal(huge.status, 201);
+  const wallet = (await get("/v1/wallet")).balance as number;
+  const declined = await post("/v1/orders/practice-order/fund", { paymentMethod: "wallet", useWallet: true });
+  assert.equal(declined.status, 409);
+  assert.equal(((await declined.json()) as { error: string }).error, "insufficient_funds");
+  assert.equal((await get("/v1/wallet")).balance, wallet);
+  assert.equal(((await get("/v1/orders/practice-order")).order as { stage: string }).stage, "Match");
+});

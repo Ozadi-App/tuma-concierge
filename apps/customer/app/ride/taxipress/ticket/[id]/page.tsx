@@ -18,6 +18,8 @@ export default function TaxipressTicketPage() {
   const [error, setError] = useState("");
   const [loaded, setLoaded] = useState(false);
   const [tick, setTick] = useState(0);
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     let live = true;
@@ -29,8 +31,23 @@ export default function TaxipressTicketPage() {
     return () => { live = false; window.clearTimeout(timer); };
   }, [id, tick]);
 
-  const cancelled = booking?.paymentStatus === "cancelled";
+  const cancelled = booking?.paymentStatus === "cancelled" || booking?.status === "cancelled" || booking?.status === "no_show";
   const taxi = booking?.taxi;
+
+  async function cancel() {
+    if (!booking) return;
+    setBusy(true);
+    setError("");
+    try {
+      await api.cancelTaxipressBooking(booking.id);
+      setConfirming(false);
+      setTick((t) => t + 1);
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
     <main className="space-y-5 px-4 pb-8 pt-4">
@@ -45,7 +62,7 @@ export default function TaxipressTicketPage() {
             <p className="text-xs font-bold uppercase tracking-wide text-ink-500">{booking.route.directionLabel}</p>
             <h1 className="text-xl font-bold">{booking.route.fromName} → {booking.route.toName}</h1>
             {cancelled ? (
-              <p className="text-sm font-semibold text-ink-500" role="status">This booking was cancelled and the seats were given back.</p>
+              <p className="text-sm font-semibold text-ink-500" role="status">{outcomeText(booking)}</p>
             ) : booking.status === "boarded" || booking.status === "completed" ? (
               <p className="text-sm font-bold text-green" role="status">{booking.status === "completed" ? "Trip complete. Thank you for travelling with Taxipress." : "You're on board. Have a good trip."}</p>
             ) : (
@@ -78,11 +95,40 @@ export default function TaxipressTicketPage() {
           {!cancelled && booking.status === "booked" && taxi.driverPhone && (
             <a href={`tel:${taxi.driverPhone}`} className="flex min-h-12 w-full items-center justify-center rounded-full border border-[var(--border-faint)] font-bold text-ink">Call the driver</a>
           )}
+          {booking.status === "booked" && booking.cancel.allowed && (
+            confirming ? (
+              <div className="space-y-3 rounded-2xl border border-[var(--border-faint)] p-4 text-center text-sm" role="alert">
+                <p className="font-semibold text-ink">{cancelQuote(booking)}</p>
+                <div className="flex gap-2">
+                  <button type="button" disabled={busy} onClick={() => setConfirming(false)} className="min-h-11 flex-1 rounded-full border border-[var(--border-faint)] font-bold text-ink">Keep my seat</button>
+                  <button type="button" disabled={busy} onClick={cancel} className="min-h-11 flex-1 rounded-full bg-gold font-bold text-ink-gold disabled:opacity-60">{busy ? "Cancelling…" : "Yes, cancel"}</button>
+                </div>
+              </div>
+            ) : (
+              <button type="button" onClick={() => setConfirming(true)} className="flex min-h-12 w-full items-center justify-center rounded-full border border-[var(--border-faint)] font-bold text-ink">Cancel booking</button>
+            )
+          )}
+          {error && booking.status === "booked" && <p className="text-center text-sm text-ink-500" role="alert">{error}</p>}
           <Link href={`/orders/${booking.orderId}`} className="block text-center text-sm font-semibold text-ink-500 underline-offset-2 hover:underline">Order details and chat</Link>
         </>
       )}
     </main>
   );
+}
+
+function outcomeText(b: TaxipressBooking) {
+  const o = b.outcome;
+  const refund = o && o.refunded > 0 ? ` ${ugx(o.refunded)} went back to your wallet.` : "";
+  const kept = o && o.fee > 0 ? ` ${ugx(o.fee)} was kept.` : "";
+  if (o?.kind === "taxi_removed") return `This taxi left the line, so your booking was cancelled.${refund || " You weren't charged."}`;
+  if (o?.kind === "no_show" || b.status === "no_show") return `You weren't at the stage when the taxi left, so the seats were released.${refund}${kept}`;
+  return `This booking was cancelled and the seats were given back.${refund}${kept}`;
+}
+
+function cancelQuote(b: TaxipressBooking) {
+  if (b.cancel.refund <= 0) return "Cancel this booking and give the seats back?";
+  if (b.cancel.fee <= 0) return `Cancel and get ${ugx(b.cancel.refund)} back to your wallet?`;
+  return `Cancelling now keeps ${ugx(b.cancel.fee)}. You'll get ${ugx(b.cancel.refund)} back to your wallet.`;
 }
 
 function Row({ label, value }: { label: string; value: string }) {
