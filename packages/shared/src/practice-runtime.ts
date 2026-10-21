@@ -1,6 +1,6 @@
 import { practiceTalentRequest, resetPracticeTalent } from "./practice-talent.js";
 import { practiceTaxipressRequest, resetPracticeTaxipress } from "./practice-taxipress.js";
-import { practiceWalletView, practiceWalletBalance, practiceWalletSpend, resetPracticeWallet } from "./practice-wallet.js";
+import { practiceWalletView, practiceWalletBalance, practiceWalletSpend, practiceWalletRefund, resetPracticeWallet } from "./practice-wallet.js";
 import { practiceWorkRequest, resetPracticeWork } from "./practice-work.js";
 import { PRACTICE_MODE_STORAGE_KEY, type PracticeRole } from "./practice.js";
 import { roundFare } from "./fare.js";
@@ -75,19 +75,26 @@ function practiceSpecialFare(category: PracticeSpecialCategory, distanceKm: numb
   return roundFare(distanceKm * category.rate_per_km, category.minimum_fare) + hours * category.rate_per_hour;
 }
 const PRACTICE_SPECIAL_RIDERS = [
-  { id: "practice-car-driver-lux-1", name: "James Kiggundu", make: "Mercedes-Benz", model: "S-Class", size: "normal", tier: "comfort", plate: "PRACTICE LUX 1" },
-  { id: "practice-car-driver-lux-2", name: "Brenda Nalwoga", make: "Range Rover", model: "Vogue", size: "large", tier: "comfort", plate: "PRACTICE LUX 2" },
-  { id: "practice-car-driver-amb-1", name: "Dr. Moses Opio", make: "Toyota", model: "HiAce Ambulance", size: "large", tier: "comfort", plate: "PRACTICE AMB 1" },
+  { id: "practice-car-driver-lux-1", name: "James Kiggundu", make: "Mercedes-Benz", model: "S-Class", size: "normal", tier: "comfort", plate: "UBA 001L" },
+  { id: "practice-car-driver-lux-2", name: "Brenda Nalwoga", make: "Range Rover", model: "Vogue", size: "large", tier: "comfort", plate: "UBA 002L" },
+  { id: "practice-car-driver-amb-1", name: "Dr. Moses Opio", make: "Toyota", model: "HiAce Ambulance", size: "large", tier: "comfort", plate: "UBA 999A" },
 ] as const;
 const PRACTICE_CAR_RIDERS = [
-  { id: "practice-car-driver-01", name: "Daniel Kato", make: "Toyota", model: "Corolla", size: "normal", tier: "convenient", plate: "PRACTICE 01" },
-  { id: "practice-car-driver-02", name: "Sarah Namusoke", make: "Honda", model: "Civic", size: "normal", tier: "comfort", plate: "PRACTICE 02" },
-  { id: "practice-car-driver-03", name: "Peter Okello", make: "Toyota", model: "Noah", size: "large", tier: "convenient", plate: "PRACTICE 03" },
-  { id: "practice-car-driver-04", name: "Amina Nankya", make: "Toyota", model: "Voxy", size: "large", tier: "comfort", plate: "PRACTICE 04" },
-  { id: "practice-car-driver-05", name: "Mark Ssemanda", make: "Nissan", model: "Sylphy", size: "normal", tier: "convenient", plate: "PRACTICE 05" },
-  { id: "practice-car-driver-06", name: "Joyce Akello", make: "Mazda", model: "Axela", size: "normal", tier: "comfort", plate: "PRACTICE 06" },
-  { id: "practice-car-driver-07", name: "Isaac Mugisha", make: "Nissan", model: "Serena", size: "large", tier: "convenient", plate: "PRACTICE 07" },
-  { id: "practice-car-driver-08", name: "Ruth Atim", make: "Toyota", model: "Noah", size: "large", tier: "comfort", plate: "PRACTICE 08" },
+  { id: "practice-car-driver-01", name: "Daniel Kato", make: "Toyota", model: "Corolla", size: "normal", tier: "convenient", plate: "UBH 421K" },
+  { id: "practice-car-driver-02", name: "Sarah Namusoke", make: "Honda", model: "Civic", size: "normal", tier: "comfort", plate: "UBJ 305P" },
+  { id: "practice-car-driver-03", name: "Peter Okello", make: "Toyota", model: "Noah", size: "large", tier: "convenient", plate: "UAZ 778M" },
+  { id: "practice-car-driver-04", name: "Amina Nankya", make: "Toyota", model: "Voxy", size: "large", tier: "comfort", plate: "UBF 112T" },
+  { id: "practice-car-driver-05", name: "Mark Ssemanda", make: "Nissan", model: "Sylphy", size: "normal", tier: "convenient", plate: "UBK 690C" },
+  { id: "practice-car-driver-06", name: "Joyce Akello", make: "Mazda", model: "Axela", size: "normal", tier: "comfort", plate: "UBG 254R" },
+  { id: "practice-car-driver-07", name: "Isaac Mugisha", make: "Nissan", model: "Serena", size: "large", tier: "convenient", plate: "UBL 843D" },
+  { id: "practice-car-driver-08", name: "Ruth Atim", make: "Toyota", model: "Noah", size: "large", tier: "comfort", plate: "UBE 377N" },
+] as const;
+/** Entebbe truck and van drivers for Move / Cargo bookings, one per cargo type. */
+const PRACTICE_CARGO_RIDERS = [
+  { id: "practice-car-driver-cargo-van", category: "peebee-cargo-van", label: "Cargo Van", name: "Samuel Lwanga", make: "Toyota", model: "Hiace panel van", size: "large", tier: "convenient", plate: "UBM 212V", owner: "Entebbe Haulage Co." },
+  { id: "practice-car-driver-cargo-pickup", category: "peebee-cargo-pickup", label: "Pickup Truck (1 Ton)", name: "Paul Kyeyune", make: "Isuzu", model: "D-Max pickup", size: "large", tier: "convenient", plate: "UBN 408P", owner: "Kitoro Movers" },
+  { id: "practice-car-driver-cargo-truck-3t", category: "peebee-cargo-truck-3t", label: "Box Truck (3 Ton)", name: "George Mwesigwa", make: "Isuzu", model: "NPR box truck", size: "large", tier: "convenient", plate: "UBP 631T", owner: "Entebbe Haulage Co." },
+  { id: "practice-car-driver-cargo-truck-7t", category: "peebee-cargo-truck-7t", label: "Heavy Truck (7 Ton)", name: "Fred Tumusiime", make: "Hino", model: "500 heavy truck", size: "large", tier: "convenient", plate: "UBQ 097H", owner: "Lake Region Transporters" },
 ] as const;
 /** Cargo categories RideModal falls back to (rate per km, minimum fare). */
 const PRACTICE_CARGO_RATES: Record<string, readonly [number, number]> = {
@@ -237,15 +244,18 @@ function practiceRideshareTrips(query: URLSearchParams) {
     return [{ id: trip.id, driverName: route.driver.name, vehicle: `${route.driver.make} ${route.driver.model}`, originLabel: route.from[0], destLabel: route.to[0], departAt: trip.departure.toISOString(), seatsLeft: 3, seatPrice: route.price }];
   })));
 }
+const PRACTICE_RENTAL_PLATES = ["UBR 118A", "UBS 340B", "UBT 592C", "UBU 706D", "UBV 214E", "UBW 468F", "UBX 931G", "UAY 175H"] as const;
 const PRACTICE_RENTALS_KEY = "peebee_practice_selfdrive_rentals_v1";
 const PRACTICE_RENTAL_CARS = [
   ...CAR_MODEL_CATALOG.map((model, i) => {
     const dailyPrice = model.standardDailyUgx;
-    const ownerName = ["Amina Demo Rentals", "Entebbe Family Cars", "Lakeview Van Hire"][i % 3];
-    return { id: `practice-rent-${model.id}`, name: `${model.make} ${model.model}${model.variant ? ` ${model.variant}` : ""}`, category: model.seats >= 7 ? "Family MPV" : "Saloon", seats: model.seats, dailyPrice, deposit: Math.round(dailyPrice / 2), rent: dailyPrice, hourlyPrice: Math.round(dailyPrice * 1.2 / 24), halfDayPrice: Math.round(dailyPrice * .6), notes: `Demo owner · ${ownerName}`, ownerName, hourlyEnabled: true, halfDayEnabled: true, fullDayEnabled: true, serviceClass: dailyPrice > 100_000 ? "comfort" as const : "convenient" as const, condition: dailyPrice > 100_000 ? "excellent" as const : "good" as const, fuelLitresPerKm: model.fuelLitresPerKm, luggageLitres: model.luggageLitres, luggageNote: model.luggageNote, standardDailyPrice: dailyPrice, features: dailyPrice > 100_000 ? ["Air conditioning", "Bluetooth"] : ["Air conditioning"], photos: [] as string[] };
+    const ownerName = ["Amina Car Rentals", "Entebbe Family Cars", "Lakeview Van Hire"][i % 3];
+    return { id: `practice-rent-${model.id}`, name: `${model.make} ${model.model}${model.variant ? ` ${model.variant}` : ""}`, category: model.seats >= 7 ? "Family MPV" : "Saloon", seats: model.seats, dailyPrice, deposit: Math.round(dailyPrice / 2), rent: dailyPrice, hourlyPrice: Math.round(dailyPrice * 1.2 / 24), halfDayPrice: Math.round(dailyPrice * .6), notes: `Owner · ${ownerName} · Entebbe pickup`, ownerName, hourlyEnabled: true, halfDayEnabled: true, fullDayEnabled: true, serviceClass: dailyPrice > 100_000 ? "comfort" as const : "convenient" as const, condition: dailyPrice > 100_000 ? "excellent" as const : "good" as const, fuelLitresPerKm: model.fuelLitresPerKm, luggageLitres: model.luggageLitres, luggageNote: model.luggageNote, standardDailyPrice: dailyPrice, features: dailyPrice > 100_000 ? ["Air conditioning", "Bluetooth"] : ["Air conditioning"], photos: [] as string[] };
   }),
-  { id: "practice-rent-hiace", name: "White Toyota Hiace 2019", category: "Minibus", seats: 14, dailyPrice: 200_000, deposit: 100_000, rent: 200_000, hourlyPrice: 10_000, halfDayPrice: 120_000, notes: "Demo owner · Lakeview Van Hire", ownerName: "Lakeview Van Hire", hourlyEnabled: false, halfDayEnabled: false, fullDayEnabled: true },
-  { id: "practice-rent-suv", name: "Blue Nissan X-Trail 2022", category: "SUV", seats: 5, dailyPrice: 180_000, deposit: 90_000, rent: 180_000, hourlyPrice: 9_000, halfDayPrice: 108_000, notes: "Demo owner · Entebbe Family Cars", ownerName: "Entebbe Family Cars", hourlyEnabled: true, halfDayEnabled: false, fullDayEnabled: false },
+  { id: "practice-rent-hiace", name: "White Toyota Hiace 2019", category: "Minibus", seats: 14, dailyPrice: 200_000, deposit: 100_000, rent: 200_000, hourlyPrice: 10_000, halfDayPrice: 120_000, notes: "Owner · Lakeview Van Hire · Entebbe pickup", ownerName: "Lakeview Van Hire", hourlyEnabled: false, halfDayEnabled: false, fullDayEnabled: true },
+  { id: "practice-rent-dmax", name: "White Isuzu D-Max Double Cab 2021", category: "Pickup", seats: 5, dailyPrice: 220_000, deposit: 110_000, rent: 220_000, hourlyPrice: 11_000, halfDayPrice: 132_000, notes: "Owner · Kitoro Movers · Entebbe pickup", ownerName: "Kitoro Movers", hourlyEnabled: false, halfDayEnabled: true, fullDayEnabled: true },
+  { id: "practice-rent-van", name: "Toyota Hiace panel van 2018", category: "Van", seats: 2, dailyPrice: 180_000, deposit: 90_000, rent: 180_000, hourlyPrice: 9_000, halfDayPrice: 108_000, notes: "Owner · Entebbe Haulage Co. · Entebbe pickup", ownerName: "Entebbe Haulage Co.", hourlyEnabled: false, halfDayEnabled: true, fullDayEnabled: true },
+  { id: "practice-rent-suv", name: "Blue Nissan X-Trail 2022", category: "SUV", seats: 5, dailyPrice: 180_000, deposit: 90_000, rent: 180_000, hourlyPrice: 9_000, halfDayPrice: 108_000, notes: "Owner · Entebbe Family Cars · Entebbe pickup", ownerName: "Entebbe Family Cars", hourlyEnabled: true, halfDayEnabled: false, fullDayEnabled: false },
 ];
 
 type PracticeItem = { id: string; name: string; quantity: number; unitPrice: number; note: string | null };
@@ -511,8 +521,10 @@ function orderFor(state: PracticeState) {
 }
 
 function practiceCar(riderId: string | null) {
+  const cargo = PRACTICE_CARGO_RIDERS.find((entry) => entry.id === riderId);
+  if (cargo) return { name: cargo.label, make: cargo.make, model: cargo.model, plate: cargo.plate, owner: cargo.owner, driver: cargo.name };
   const rider = [...PRACTICE_CAR_RIDERS, ...PRACTICE_SPECIAL_RIDERS].find((entry) => entry.id === riderId) ?? PRACTICE_CAR_RIDERS[0];
-  return { name: riderId?.startsWith("practice-car-driver-lux-") ? "Luxury" : riderId?.startsWith("practice-car-driver-amb-") ? "Ambulance" : rider.size === "large" ? "Large · 5–7 seats" : "Normal · 3–4 seats", make: rider.make, model: rider.model, plate: rider.plate, owner: "Peebee Practice Fleet", driver: rider.name };
+  return { name: riderId?.startsWith("practice-car-driver-lux-") ? "Luxury" : riderId?.startsWith("practice-car-driver-amb-") ? "Ambulance" : rider.size === "large" ? "Large · 5–7 seats" : "Normal · 3–4 seats", make: rider.make, model: rider.model, plate: rider.plate, owner: "Entebbe Cab Owners", driver: rider.name };
 }
 
 function itemsFor(state: PracticeState) {
@@ -838,10 +850,12 @@ function handlePracticeRequest(role: PracticeRole, path: string, method: string,
     if ((period === "hourly" && !car.hourlyEnabled) || (period === "half_day" && !car.halfDayEnabled) || (period === "full_day" && !car.fullDayEnabled)) return practiceError("That demo owner does not offer this rental period.");
     const hours = Math.max(1, Math.ceil((new Date(end).getTime() - new Date(start).getTime()) / 3_600_000));
     const rent = period === "hourly" ? car.hourlyPrice * hours : period === "half_day" ? car.halfDayPrice : car.dailyPrice;
+    // Rent and the refundable deposit come out of the practice wallet; the deposit comes back when the car is returned.
+    if (!practiceWalletSpend(rent + car.deposit, `${car.name}: rent and deposit`)) return jsonResponse({ error: "insufficient_funds", message: `Your practice wallet has UGX ${practiceWalletBalance().toLocaleString("en-UG")}. This rental needs UGX ${(rent + car.deposit).toLocaleString("en-UG")} (rent and a refundable deposit).` }, 409);
     const id = `practice-rental-${Date.now()}`;
     const handover = new Date();
     const elapsed = new Date(end).getTime() - new Date(start).getTime();
-    const rental = { id, vehicle_id: car.id, vehicle: car.name, plate: "PRACTICE", renter_name: "You", owner_name: car.ownerName, starts_at: handover.toISOString(), ends_at: new Date(handover.getTime() + elapsed).toISOString(), days: 1, rent_amount: rent, deposit_amount: car.deposit, status: "active", damage_claim: 0, licence_number: String(body.licenceNumber ?? "DEMO"), licence_expiry: String(body.licenceExpiry ?? ""), owner_amount: null, refund_amount: null, period_type: period, handed_over_at: handover.toISOString(), overtime_amount: 0, hourly_price: car.hourlyPrice };
+    const rental = { id, vehicle_id: car.id, vehicle: car.name, plate: PRACTICE_RENTAL_PLATES[Math.max(0, PRACTICE_RENTAL_CARS.indexOf(car)) % PRACTICE_RENTAL_PLATES.length], renter_name: "You", owner_name: car.ownerName, starts_at: handover.toISOString(), ends_at: new Date(handover.getTime() + elapsed).toISOString(), days: 1, rent_amount: rent, deposit_amount: car.deposit, status: "active", damage_claim: 0, licence_number: String(body.licenceNumber ?? "DEMO"), licence_expiry: String(body.licenceExpiry ?? ""), owner_amount: null, refund_amount: null, period_type: period, handed_over_at: handover.toISOString(), overtime_amount: 0, hourly_price: car.hourlyPrice };
     const saved = canUseStorage() ? JSON.parse(window.localStorage.getItem(PRACTICE_RENTALS_KEY) ?? "[]") as unknown[] : [];
     if (canUseStorage()) window.localStorage.setItem(PRACTICE_RENTALS_KEY, JSON.stringify([rental, ...saved]));
     return jsonResponse({ id, days: 1, rent, deposit: car.deposit, periodType: period, status: "active" }, 201);
@@ -850,6 +864,8 @@ function handlePracticeRequest(role: PracticeRole, path: string, method: string,
   const demoRentalReturn = path.match(/^\/v1\/car\/rentals\/(practice-rental-\d+)\/demo-return$/);
   if (role === "customer" && method === "POST" && demoRentalReturn) {
     const stored = canUseStorage() ? JSON.parse(window.localStorage.getItem(PRACTICE_RENTALS_KEY) ?? "[]") as Array<Record<string, unknown>> : [];
+    const returning = stored.find((rental) => rental.id === demoRentalReturn[1] && rental.status === "active");
+    if (returning) practiceWalletRefund(Number(returning.deposit_amount), "Rental deposit returned");
     const rentals = stored.map((rental) => rental.id === demoRentalReturn[1] ? { ...rental, status: "completed", returned_at: nowIso(), refund_amount: Number(rental.deposit_amount), owner_amount: Number(rental.rent_amount) } : rental);
     if (canUseStorage()) window.localStorage.setItem(PRACTICE_RENTALS_KEY, JSON.stringify(rentals));
     return jsonResponse({ ok: true, status: "completed" });
@@ -1115,6 +1131,19 @@ function handlePracticeRequest(role: PracticeRole, path: string, method: string,
     save({ hasOrder: true, riderClaimed: true, fareOffer: null, fareQuote: null, counters: [], stops: [], acceptedRiderName: null, stage: "Match", orderType: "parcel", isRide: true, carCategoryId: category.id, carVehicleSize: "normal", carServiceTier: "comfort", demoCarRiderId: category.rider, paymentRail: "escrow", total: fare, deliveryFee: fare, destinationArea: String(body.destinationArea ?? "Entebbe City"), destinationAddress: String(body.destinationAddress ?? "Kitoro Road"), autoAdvanceAt: null });
     return jsonResponse({ order: orderFor(state) }, 201);
   }
+  const cargoTruck = PRACTICE_CARGO_RIDERS.find((entry) => entry.category === body.categoryId);
+  if (role === "customer" && method === "POST" && path === "/v1/car/bookings" && cargoTruck) {
+    const rate = PRACTICE_CARGO_RATES[cargoTruck.category]!;
+    const km = practiceDistanceKm(Number(body.pickupLat), Number(body.pickupLng), Number(body.destinationLat), Number(body.destinationLng));
+    const fare = roundFare(km * rate[0], rate[1]);
+    const load = String(body.cargoDescription ?? "").trim();
+    save({ hasOrder: true, riderClaimed: true, fareOffer: null, fareQuote: null, counters: [], stops: [], acceptedRiderName: null, stage: "Match", orderType: "parcel", isRide: true, carCategoryId: cargoTruck.category, carVehicleSize: "large", carServiceTier: "convenient", demoCarRiderId: cargoTruck.id, paymentRail: "escrow", total: fare, deliveryFee: fare,
+      items: [{ id: "practice-item-1", name: load || "Moving load", quantity: 1, unitPrice: 0, note: null }],
+      pickupAddress: typeof body.pickupAddress === "string" ? body.pickupAddress : null, pickupLat: Number.isFinite(Number(body.pickupLat)) ? Number(body.pickupLat) : null, pickupLng: Number.isFinite(Number(body.pickupLng)) ? Number(body.pickupLng) : null,
+      destinationArea: String(body.destinationArea ?? "Entebbe"), destinationAddress: String(body.destinationAddress ?? "Kitoro Road, Entebbe"),
+      destinationLat: Number.isFinite(Number(body.destinationLat)) ? Number(body.destinationLat) : null, destinationLng: Number.isFinite(Number(body.destinationLng)) ? Number(body.destinationLng) : null, autoAdvanceAt: null });
+    return jsonResponse({ order: orderFor(state) }, 201);
+  }
   if (role === "customer" && method === "POST" && path === "/v1/car/bookings") {
     const vehicleSize = body.vehicleSize === "large" ? "large" : "normal";
     const serviceTier = body.serviceTier === "comfort" ? "comfort" : "convenient";
@@ -1156,9 +1185,10 @@ function handlePracticeRequest(role: PracticeRole, path: string, method: string,
     return jsonResponse({ order: orderFor(state) });
   }
   if (method === "POST" && path === `/v1/orders/${PRACTICE_ORDER_ID}/fund`) {
-    if (role === "customer" && body.paymentMethod === "wallet" && state.vendor) {
-      // Shop and food orders really spend the practice wallet.
-      if (!practiceWalletSpend(state.total, `${state.vendor.name} order`)) return jsonResponse({ error: "insufficient_funds", message: `Your practice wallet has UGX ${practiceWalletBalance().toLocaleString("en-UG")}. This order needs UGX ${state.total.toLocaleString("en-UG")}.` }, 409);
+    if (role === "customer" && body.paymentMethod === "wallet") {
+      // Anything paid from the wallet really spends the practice wallet: shop and food orders, rides, cars and trucks.
+      const label = state.vendor ? `${state.vendor.name} order` : state.isRide ? (state.carCategoryId?.startsWith("peebee-cargo-") ? "Peebee move" : "Peebee ride") : "Peebee order";
+      if (!practiceWalletSpend(state.total, label)) return jsonResponse({ error: "insufficient_funds", message: `Your practice wallet has UGX ${practiceWalletBalance().toLocaleString("en-UG")}. This order needs UGX ${state.total.toLocaleString("en-UG")}.` }, 409);
     }
     save({ stage: state.isRide ? "Deliver" : "Shop", paymentRail: body.paymentMethod === "cash" ? "float" : "escrow", autoAdvanceAt: Date.now() });
     return jsonResponse({ order: orderFor(state), funded: true, rail: state.paymentRail, payment: { id: "practice-collection", status: "successful", network: "mtn" } });
