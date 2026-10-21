@@ -1,6 +1,8 @@
 # Fly Express → Peebee "Taxipress" — feature breakdown and recommendations
 
 Status: **Draft v3, all open questions answered. No code written.** Product name: **Taxipress**.
+
+**Terminology.** *Taxi, matatu, minibus, van, Hiace/Commuter and "Taxipress vehicle" all mean the same vehicle:* a 14- or 18-seat minibus (a van with seats). This document says "van" in places because Fly Express does; in the app the word is **taxi**.
 Source studied: `xristo7/flyexpress` at `444a361` (static demo: `index.html`, `script.js` ~7,800 lines, `styles.css`, guide, QA notes, *Modules & Revenue Specification* PDF).
 Target studied: Peebee `apps/customer` Ride home (`RideHome.tsx`), `BottomNav.tsx`, `ServiceLanding.tsx`, admin `settings/home-menu`, `apps/partner`, and the API order, wallet and car code.
 
@@ -24,7 +26,7 @@ Legend: **[V]** verified in the code · **[A]** my assumption · **[?]** needs y
 | 10 | **14-seaters and 18-seaters** at launch. |
 | 11 | **Commission**: admin chooses a percentage (separate rates for cash and digital) **or** a flat amount. |
 | 12 | A driver with a large negative balance is **blocked from joining the line** when Admin switches that rule on. |
-| 13 | **Taxipress vans are the matatus of the relay delivery's middle leg** (boda → **Taxipress van** → boda). The two systems must be one connected system, see §12. |
+| 13 | **Taxipress taxis are the matatus of the relay delivery's middle leg** (boda → **taxi** → boda). They are the **same vehicles**, approved **once**, with **two switches**: **Passengers** and **Parcels**. See §12. |
 
 ---
 
@@ -280,7 +282,7 @@ Routes are data: name, direction, start stage, ordered pick-up points, fare per 
 | `taxipress_routes` | id, **relay_route_id** (the existing `relay_routes` row), direction (`a_to_b` / `b_to_a`), fare_per_seat, stop_pricing_enabled, active, sort. *Stage names and stops are not duplicated; see §12* |
 | ~~`taxipress_stages`~~ | **Dropped.** Stages come from `relay_routes` (stage A / stage B) and `relay_route_stages`. The "at the stage" radius becomes one admin setting |
 | `taxipress_stop_fares` | route_id, relay_route_stage_id, fare (used only when stop pricing is on) |
-| `taxipress_vans` | vehicle_id, seat_layout (`14` / `18`), seats, approved, approved_by |
+| `taxipress_taxis` | vehicle_id, driver_id, relay_route_id, seat_layout (`14` / `18`), seats, **passengers_enabled**, **parcels_enabled**, status (`pending`, `approved`, `suspended`), approved_by. One row per approved taxi (see §12.3) |
 | `taxipress_queue` | id, route_id, van_id, driver_id, status (`in_line`, `boarding`, `on_road`, `arrived`, `cancelled`), joined_at, boarding_at, departed_at, arrived_at |
 | `taxipress_bookings` | id, order_id (linked `orders` row), queue_id, passenger_id, seats, seat_labels, pickup_stop_id, amount, payment_method (`wallet`/`mobile_money`/`cash`), status (`booked`, `boarded`, `no_show`, `cancelled`, `completed`), ticket_code, commission, commission_settled_at |
 | `taxipress_seats` | queue_id, seat_label, booking_id, **UNIQUE (queue_id, seat_label)** so a seat can never be sold twice |
@@ -354,82 +356,100 @@ Nothing blocks the plan. Before step 3 I'll need: **real fares** for the two rou
 
 ---
 
-## 12. Relay delivery connection — Taxipress vans are the matatu leg
+---
+
+## 12. Relay delivery connection: one taxi, one approval, two switches
 
 ### 12.1 How the relay works today `[V]`
 
 Read from `apps/api/src/relay/` and migrations `0102`, `0106`, `0107`.
 
-- A long parcel is split into **3 legs**: **leg 1** boda → boarding stage, **leg 2 matatu** → drop stage or petrol station, **leg 3** boda → customer. Stored in `order_relay_legs`.
-- **Routes** are `relay_routes` (stage A ⇄ stage B, a `parcel_fare`, short codes such as `KLA ⇄ EBB`). **Stops** between are `relay_route_stages` (ordered, may be Peebee Gas stations). Both are managed in Admin → Settings → Relay.
-- **Matatu operators** are `relay_operators` (user, **one route**, plate, `pending → approved → suspended`). They apply through the Partner app's relay page and staff approve them.
-- **Handoffs use codes.** Leg 1's rider gives a code to the operator (`receiveAtMatatu`), the operator hands the parcel to the customer or the last rider with another. A parcel may only be received by an approved operator **on that route**.
-- The operator **shares the matatu's position** per parcel, and the customer gets "arriving in about N minutes", "the matatu is at your stage", and "missed it → goes to the petrol station" notices.
-- **Pay**: the matatu leg's share of the fee pool is credited to the operator's wallet (`creditWallet`, `users.wallet_balance`). A negative balance nets against it automatically.
-- Controls are settings: `relay_enabled`, minimum distance, access radius, per-leg release, stage pickup, fallback, matatu speed, arrival notice.
+- A long parcel is split into **3 legs**: **leg 1** boda → boarding stage, **leg 2 matatu** → drop stage or petrol station, **leg 3** boda → customer (`order_relay_legs`).
+- **Routes** are `relay_routes` (stage A ⇄ stage B, a `parcel_fare`, short codes like `KLA ⇄ EBB`). **Stops** between are `relay_route_stages` (ordered, may be Peebee Gas stations). Both are managed in Admin → Settings → Relay.
+- **Matatu operators** are `relay_operators` (user, **one route**, plate, `pending → approved → suspended`). They apply in the Partner app's relay page and staff approve them. **Today they only carry parcels.**
+- **Handoffs use codes.** Leg 1's rider gives a code to the operator (`receiveAtMatatu`); the operator hands the parcel to the customer or last rider with another code. A parcel may only be received by an approved operator **on that route**.
+- The operator shares the matatu's position, and customers get "arriving in N minutes", "the matatu is at your stage" and "missed it → petrol station" notices.
+- **Pay**: the matatu leg's share goes to the operator's wallet (`creditWallet`, `users.wallet_balance`); a negative balance nets against it automatically.
 
-### 12.2 What goes wrong if Taxipress is built beside it
+### 12.2 The matatu and the Taxipress taxi are the same vehicle
 
-- Two lists of routes and stages that drift apart; "Entebbe Stage" renamed in one place only.
-- Two driver approvals (Taxipress van, relay operator) for the same person and the same van.
-- A parcel handed to an "operator" who is not actually in the line or going that way.
-- The relay's arrival estimate is a **guess** (distance ÷ `matatuSpeedKmh`). Taxipress already knows where the van is and when it left.
-- The driver juggles two screens for one trip.
+A Ugandan matatu, a taxi, a minibus and a Taxipress vehicle are one thing. So **there is no "relay matatu" fleet beside a "Taxipress" fleet.** There is one list of approved taxis, and each taxi can do two jobs:
 
-### 12.3 The connection
+| Switch | What it allows |
+|---|---|
+| **Passengers** | The taxi can join the Taxipress line and take seat bookings |
+| **Parcels** | The taxi can be the middle leg of a relay delivery |
 
-1. **One route and stage registry.** A Taxipress route **is** a relay route plus a direction (`taxipress_routes.relay_route_id`). **Kampala Stage** and **Entebbe Stage** are stage A and stage B of one `relay_routes` row ("KLA ⇄ EBB"). Pick-up points for passengers are the existing `relay_route_stages`. Renaming a stage in Admin changes it for tickets, queue and parcels at once. The relay's route and stop admin pages stay the single place to edit them.
-2. **One van approval.** Approving a Taxipress van (driver, plate, route, 14 or 18 seats) also makes the driver an **approved relay operator** on that route, through a `carries_parcels` flag (default on) set at approval. No second application. A Taxipress driver **cannot** receive parcels while their van is not in the line or On Road on that route.
-3. **The parcel is attached to the van that takes it.** At the leg 1 handoff the driver enters the rider's code. That is allowed only for a van that is **In line or Boarding Now at that boarding stage, heading the direction the parcel travels** (the relay already works out the direction as `KLA - EBB` or `EBB - KLA`). Leg 2 then records `taxipress_queue_id`, so every parcel knows its van, plate and driver, and the booking manifest knows its parcels.
-4. **Parcels are cargo, not seats.** They never count toward "fully booked". A van has an admin-set **maximum parcels per trip**; at the limit it stops accepting more.
-5. **One driver screen.** The Taxipress manifest in the Partner app lists **passengers (seat, pick-up stop, paid or cash due)** and **parcels (receive by code, drop stop, hand to customer by code, customer missed it)**, ordered by stop: "Next stop: Kajjansi: 1 passenger off, 2 parcels off, 1 pick-up." The existing relay page becomes a tab of the same screen.
+| Passengers | Parcels | What the taxi is |
+|---|---|---|
+| On | On | Normal Taxipress taxi that also carries relay parcels (the expected case) |
+| On | Off | Passengers only |
+| Off | On | Parcels only, for example on a route where Taxipress is not live yet, or an existing relay operator |
+| Off | Off | Not working (suspended) |
+
+How the switches are set:
+
+1. **One approval per taxi** in Admin: driver, plate, route, 14 or 18 seats. Peebee sets which of the two switches the taxi is **allowed** (defaults in §12.5).
+2. **The driver chooses day to day.** Being in the passenger line is the driver tapping **Join the line** (Passengers), and a driver can pause **Accept parcels**. A driver can turn a switch *off* but never *on* beyond what Peebee approved.
+3. **Existing relay operators** are carried over as **Parcels on, Passengers off**. Nobody applies twice and nothing stops working. To also take passengers, they add their seat layout and Peebee switches Passengers on.
+4. A Taxipress driver can no longer apply separately as a relay operator. The existing relay application page is replaced by the single taxi approval.
+
+### 12.3 How the two systems connect
+
+1. **One route and stage registry.** A Taxipress route **is** a relay route plus a direction (`taxipress_routes.relay_route_id`). **Kampala Stage** and **Entebbe Stage** are stage A and stage B of one `relay_routes` row ("KLA ⇄ EBB"). Passenger pick-up points are the existing `relay_route_stages`. A rename in Admin changes tickets, queue and parcels at once.
+2. **One approval, mirrored into the relay.** Approving a taxi with Parcels on creates or updates the driver's `relay_operators` row (source `taxipress`, status approved, same route and plate). Switching Parcels off suspends that row.
+3. **A parcel attaches to the taxi that takes it.**
+   - A taxi with **Passengers on** may receive a parcel only when it is **In line or Boarding Now at that boarding stage, heading the direction the parcel travels** (the relay already computes `KLA - EBB` or `EBB - KLA`). Leg 2 then records `taxipress_queue_id`.
+   - A **Parcels-only** taxi works as today: it receives parcels by code on its route.
+4. **Parcels are cargo, not seats.** They never count toward "fully booked". Admin sets a **maximum parcels per trip**; at the limit the taxi stops accepting more.
+5. **One driver screen.** The Taxipress manifest in the Partner app lists **passengers** (seat, pick-up stop, paid or cash due) and **parcels** (receive by code, drop stop, hand to customer by code, customer missed it), ordered by stop. The existing relay page becomes a tab of the same screen, and Parcels-only drivers still see it on its own.
 6. **Automatic sync.**
-   - The van's Taxipress location pings feed `shareMatatuPosition` for **every parcel on board**, so no separate "share position" action. The customer's live map and "arriving in N minutes" come from real positions.
+   - The taxi's location pings feed `shareMatatuPosition` for **every parcel on board**, so there is no separate "share position" action and the customer gets true "arriving in N minutes".
    - **Reached stop** marks the parcels dropping there as arrived and sends the existing notices.
-   - **On Road** starts leg 2 for every parcel received so far, **Arrived** closes the trip and flags any parcel still on board.
-7. **Mid-route drops.** A parcel's drop point can be any stop on the route (or a petrol station that is a stop). The van's **stop list** therefore comes from the same `relay_route_stages` that drive passenger pick-ups.
-8. **Money.** The parcel leg pays through the existing relay payout into the driver's wallet, so **negative cash-commission balances net against it automatically**. Relay parcels are already **prepaid in the app**, so the parcel never needs a cash rule. Seat commission settings (§9) do not apply to the parcel leg; the relay's own fee and per-leg release settings still do. Reports show **seat income** and **parcel income** separately.
-9. **Customer experience.** The relay quote and order screens show the **real next van** ("Boarding now: UBM 245K", "2nd in line, about 20 min") taken from the queue, and the relay's guessed matatu time is replaced by queue and van position. The first rider sees which van to hand the parcel to.
-10. **Sandbox.** The relay already has sandbox demo roles (demo riders, demo matatu, demo station). A **demo Taxipress van** is added so testers see the whole parcel-in-van journey.
+   - **On Road** starts leg 2 for the parcels received; **Arrived** closes the trip and flags any parcel still on board.
+7. **Mid-route drops.** A parcel's drop point can be any stop (or a petrol station that is a stop). The taxi's stop list comes from the same `relay_route_stages` as passenger pick-ups.
+8. **Money.** The parcel leg pays through the existing relay payout into the driver's wallet, so **negative cash-commission balances net against it automatically**. Relay parcels are already **prepaid in the app**, so no cash rule is needed. Seat commission settings (§9) do not apply to the parcel leg; the relay's own fee and per-leg release settings do. Reports show **seat income** and **parcel income** separately.
+9. **Customer experience.** The relay quote and order screens show the **real next taxi** ("Boarding now: UBM 245K", "2nd in line, about 20 min") taken from the queue. The first rider is told which taxi to hand the parcel to.
+10. **Sandbox.** The relay's sandbox demo roles gain a **demo Taxipress taxi** so testers see the whole parcel-in-taxi journey.
 
-### 12.4 What changes in existing relay code `[V]` paths
+### 12.4 What changes in existing relay code `[V]`
 
 | Existing | Change |
 |---|---|
-| `approvedOperator()` (`relay/service.ts`) | Also accepts a Taxipress driver whose van is approved with `carries_parcels` |
-| `receiveAtMatatu()` | Matches by **route and the van's queue entry and direction**, records `taxipress_queue_id` on leg 2 |
-| `relay/operator/parcels`, `/arrived`, `/location`, `/handover`, `/missed` | Unchanged endpoints; the Taxipress screen calls them, and **Reached stop** / location pings call the same functions automatically |
-| `relayEtaMinutes()` | Uses queue and van position when a van is attached; falls back to the speed estimate |
-| `relay_operators` | Gains a source (`relay` or `taxipress`) and a van link |
-| `planRelay()` | Unchanged routing. Optionally gated by "offer relay only when a van operated on this route recently" (setting, off by default) |
-| Admin relay operators page | Lists Taxipress vans with their source |
+| `approvedOperator()` (`relay/service.ts`) | Also true for a taxi approved with Parcels on |
+| `receiveAtMatatu()` | For a Passengers-on taxi, matches by route **and queue entry and direction**, records `taxipress_queue_id` on leg 2; Parcels-only taxis unchanged |
+| `relay/operator/parcels`, `/arrived`, `/location`, `/handover`, `/missed` | Endpoints unchanged. The Taxipress screen calls them, and **Reached stop** and location pings call the same functions |
+| `relayEtaMinutes()` | Uses queue and taxi position when a taxi is attached; falls back to the speed estimate |
+| `relay_operators` | Gains `source` (`relay` / `taxipress`) and a link to `taxipress_taxis` |
+| `POST /relay/operator/apply` and the Partner relay application | Replaced by the single taxi approval; existing operators migrated |
+| Admin relay operators page | Shows each taxi with its Passengers and Parcels switches |
+| `planRelay()` | Routing unchanged. Optional gate "offer relay only when a taxi ran on this route recently" (off by default) |
 
-All new columns are `hasColumn()`-guarded, so the relay keeps running as it does today until `0123` is applied.
+All new columns and tables are guarded (`hasColumn()` / `hasTable()`), so the relay keeps running exactly as today until `0123` is applied.
 
 ### 12.5 New admin settings
 
 | Setting | Default |
 |---|---|
-| **Matatu source for relay**: any approved operator, or **Taxipress vans only** | Any operator (so nothing breaks the day it ships); switch to Taxipress only when vans are live |
-| Maximum parcels per van trip | Admin enters |
-| Van carries parcels (per van, at approval) | On |
-| Accept parcels only when the van is **Boarding Now**, or any van in line | Any van in line |
-| Hold a van up to N minutes for an incoming parcel | 0 |
-| Offer relay only when a van is in the line or ran recently on that route | Off |
+| New taxi defaults: **Passengers allowed**, **Parcels allowed** | Both on |
+| Maximum parcels per taxi trip | Admin enters |
+| Accept parcels only when the taxi is **Boarding Now**, or any taxi in line | Any taxi in line |
+| Hold a taxi up to N minutes for an incoming parcel | 0 |
+| Offer relay only when a taxi is in line or ran recently on that route | Off |
 | Parcel fee per route | The existing relay `parcel_fare` |
 
 ### 12.6 Risks
 
-1. **A parcel handed over when no van is in line.** The rider waits with it. Needs a rule: wait N minutes, then the next van, then fallback to direct delivery.
-2. **A van leaves (On Road) with a parcel for a stop it will pass but a passenger wants to meet it.** The relay's "meet the matatu at a stage" feature relies on timing; the real stop list and live position improve it.
-3. **A van is removed from the line after taking a parcel.** The parcel stays with that van. If the van cannot continue, staff move it to another van from the Admin queue monitor (new action).
-4. **Direction mismatch.** A van In line at Entebbe Stage must not receive a parcel for Kampala to Entebbe. The direction check above prevents it.
-5. **Two approvals drifting**, avoided by §12.3 item 2.
+1. **A parcel arrives when no taxi is in line.** The rider waits with it. Needs a rule: wait N minutes, then the next taxi, then fall back to direct delivery.
+2. **"Meet the matatu at a stage"** relies on timing; real stop lists and live position improve it.
+3. **A taxi is removed from the line after taking a parcel.** The parcel stays with that taxi; if it cannot continue, staff move it to another taxi from the Admin queue monitor (new action).
+4. **Direction mismatch.** A taxi in line at Entebbe Stage must not receive a parcel travelling Kampala to Entebbe; the direction check prevents it.
+5. **Two approvals drifting** is avoided by mirroring one approval into the relay (item 2).
+6. **Migrating existing relay operators** needs a one-off script and a check that each has a plate; those without a layout stay Parcels-only.
 
 ### 12.7 Questions for you
 
-1. **Taxipress only, from day one?** Or keep other approved matatu operators working until Taxipress has enough vans (my default).
-2. **Can a parcel go in any van in the line**, or only the one **Boarding Now**?
-3. **No van in line** when the first rider reaches the stage: should the parcel wait for the next van, fall back to a direct boda delivery, or both after a wait you set?
-4. **Peebee's cut on the matatu leg.** Today it comes from the order fee pool. Do you want an extra Taxipress commission on parcel income, or leave it as is?
-5. **Parcel limits:** a maximum count per van, or also a size or weight limit?
+1. Can a parcel go in **any taxi in the line**, or only the one **Boarding Now**? (Default: any taxi in line.)
+2. **No taxi in line** when the first rider reaches the stage: should the parcel wait for the next taxi, fall back to direct boda delivery, or both after a wait you set?
+3. **Peebee's cut on the matatu leg.** Today it comes from the order fee pool. Do you want an extra Taxipress commission on parcel income, or leave it as is?
+4. **Parcel limits:** a maximum count per taxi, or also a size or weight limit?
