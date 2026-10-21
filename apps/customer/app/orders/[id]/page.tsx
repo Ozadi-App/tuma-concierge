@@ -2,6 +2,7 @@
 
 import { RideStopsList } from "../../../components/ride/RideStopsList";
 import { useRegisterNavPrimaryAction } from "../../../lib/nav-primary-action";
+import { useChatDrawer } from "../../../lib/chat-drawer";
 import { ApiError, type CheckoutBreakdown, type OrderDetail, type OrderRating, type OrderRelay } from "@peebee/shared";
 import { MapPin, MessageCircle, Phone, TriangleAlert, User } from "lucide-react";
 import Link from "next/link";
@@ -43,7 +44,7 @@ function RiderSummaryCard({
   settledAt: string;
 }) {
   const t = useTranslate();
-  const router = useRouter();
+  const { openThread } = useChatDrawer();
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
 
   useEffect(() => {
@@ -85,7 +86,7 @@ function RiderSummaryCard({
       </span>
       <button
         type="button"
-        onClick={() => router.push(`/chat/${riderId}`)}
+        onClick={() => openThread({ type: "rider", id: riderId })}
         className="flex shrink-0 items-center gap-1.5 rounded-full bg-[rgb(var(--surface-muted))] px-3 py-2 text-xs font-bold text-ink"
       >
         <MessageCircle className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />

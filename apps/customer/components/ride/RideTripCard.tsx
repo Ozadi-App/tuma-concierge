@@ -2,7 +2,7 @@
 
 import type { OrderRow, RideStop } from "@peebee/shared";
 import { CalendarClock, MessageCircle, Phone, Share2, ShieldCheck } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { useChatDrawer } from "../../lib/chat-drawer";
 import { useEffect, useState } from "react";
 import { api } from "../../lib/api";
 import { useCalls } from "../../lib/calls-context";
@@ -47,7 +47,7 @@ export function useRideTripDetails(order: OrderRow | null) {
 
 /** Concept 3's live-trip card: who's coming, in what, and one-tap chat / call / share. */
 export function RideTripCard({ order, car, rider, stops = [] }: { order: OrderRow; car: CarInfo | null; rider: RiderFacts | null; stops?: RideStop[] }) {
-  const router = useRouter();
+  const { openThread } = useChatDrawer();
   const { startCall } = useCalls();
   const [shared, setShared] = useState<string | null>(null);
   const extra = order as OrderRow & CarFields;
@@ -121,7 +121,7 @@ export function RideTripCard({ order, car, rider, stops = [] }: { order: OrderRo
       <div className="relative mt-3 flex gap-2">
         {order.rider_id && (
           <>
-            <button type="button" onClick={() => router.push(`/chat/${order.rider_id}`)} aria-label={`Chat with ${firstName ?? "your rider"}`} className={btn}><MessageCircle className="h-4 w-4" aria-hidden />Chat</button>
+            <button type="button" onClick={() => openThread({ type: "rider", id: order.rider_id! })} aria-label={`Chat with ${firstName ?? "your rider"}`} className={btn}><MessageCircle className="h-4 w-4" aria-hidden />Chat</button>
             <button type="button" onClick={() => startCall({ calleeId: order.rider_id!, orderId: order.id })} aria-label={`Call ${firstName ?? "your rider"} in the app`} className={btn}><Phone className="h-4 w-4" aria-hidden />Call</button>
           </>
         )}

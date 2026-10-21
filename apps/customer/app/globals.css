@@ -1607,7 +1607,7 @@ select:focus {
 /* Chat drawer: the app (.app-stage) slides left leaving a slice at the left edge; chat eases up from under it. */
 /* ------------------------------------------------------------------ */
 /* How much of the app stays showing while chat is open; chat takes the rest. */
-:root { --chat-peek: 30%; }
+:root { --chat-peek: 20%; }
 .app-stage {
   background-color: rgb(var(--color-cream));
   transition: transform 420ms var(--ease-out-expo), border-radius 420ms var(--ease-out-expo), box-shadow 420ms var(--ease-out-expo);
@@ -1631,6 +1631,9 @@ select:focus {
 .chat-drawer__close { background: rgb(var(--surface-muted)); }
 .chat-drawer__close:focus-visible { outline: 2px solid rgb(var(--color-gold)); outline-offset: 2px; }
 .chat-drawer__body { min-height: 0; flex: 1 1 auto; overflow-y: auto; overscroll-behavior: contain; padding-bottom: env(safe-area-inset-bottom, 0px); }
+/* A conversation opens full width, over the list, with the same slide and zoom. */
+.app-stage[data-wide="true"] { transform: translateX(-100%); border-radius: 0; box-shadow: none; }
+.chat-drawer--full { inset: 0; z-index: 65; background-color: rgb(var(--color-cream)); }
 /* A tap target over the part of the app that stays showing. */
 .chat-drawer__slice { position: fixed; inset: 0 auto 0 0; width: var(--chat-peek); z-index: 70; background: transparent; border: 0; pointer-events: none; }
 .chat-drawer__slice[data-shown="true"] { pointer-events: auto; }
