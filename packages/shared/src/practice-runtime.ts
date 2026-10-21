@@ -1606,13 +1606,45 @@ function practiceEducationRequest(path: string, method: string, body: Record<str
 /** A fail-closed fetch adapter. While practice is active, only settings and
  * identity reads reach the real API. Operational requests are answered from
  * browser-local sample state or rejected before leaving the device. */
+const PLATFORM_ENVIRONMENT_KEY = "peebee_platform_environment";
+
+/**
+ * True while staff have the whole platform in sandbox (Admin). That is the developer's switch: every app then works on the
+ * same demo data practice mode uses, but without the practice bar, because nobody chose practice. It is not practice mode;
+ * a person switches that on for themselves and it adds the bar.
+ */
+export function isSandboxDemo(): boolean {
+  return canUseStorage() && window.localStorage.getItem(PLATFORM_ENVIRONMENT_KEY) === "sandbox";
+}
+
+/** Remembers which environment the platform is in (read from the settings the app fetches anyway). */
+function rememberPlatformEnvironment(environment: unknown) {
+  if (!canUseStorage() || (environment !== "sandbox" && environment !== "live")) return;
+  const before = window.localStorage.getItem(PLATFORM_ENVIRONMENT_KEY);
+  if (before === environment) return;
+  window.localStorage.setItem(PLATFORM_ENVIRONMENT_KEY, environment);
+  // What is on screen was loaded the other way round: reload once so it shows the data for the new environment.
+  if ((before === "sandbox") !== (environment === "sandbox") && typeof window.location?.reload === "function") window.location.reload();
+}
+
 export function createPracticeFetch(role: PracticeRole, realFetch: typeof fetch = fetch): typeof fetch {
   return (async (input: RequestInfo | URL, init?: RequestInit) => {
-    if (!isPracticeMode()) return realFetch(input, init);
     const request = input instanceof Request ? input : null;
     const url = new URL(request?.url ?? String(input), typeof window !== "undefined" ? window.location.origin : "http://localhost");
     const method = (init?.method ?? request?.method ?? "GET").toUpperCase();
-    if (url.pathname === "/v1/settings" || url.pathname.startsWith("/v1/practice/") || (url.pathname === "/v1/auth/me" && method === "GET")) return realFetch(input, init);
+    const practice = isPracticeMode();
+    const sandbox = !practice && isSandboxDemo();
+
+    // The settings are always the real ones; they also tell this app whether staff have put the platform in sandbox.
+    if (url.pathname === "/v1/settings") {
+      const response = await realFetch(input, init);
+      if (method === "GET") void response.clone().json().then((body: { settings?: { platformEnvironment?: unknown } }) => rememberPlatformEnvironment(body?.settings?.platformEnvironment)).catch(() => undefined);
+      return response;
+    }
+    if (!practice && !sandbox) return realFetch(input, init);
+    if (url.pathname.startsWith("/v1/practice/") || (url.pathname === "/v1/auth/me" && method === "GET")) return realFetch(input, init);
+    // Signing in and out stays real in sandbox: the developer still uses their own account.
+    if (sandbox && url.pathname.startsWith("/v1/auth/")) return realFetch(input, init);
     if (url.pathname === "/v1/auth/logout" && method === "POST") return jsonResponse({ ok: true });
     if (!url.pathname.startsWith("/v1/")) return realFetch(input, init);
     return handlePracticeRequest(role, url.pathname, method, parseBody(init), url.searchParams);

@@ -5,6 +5,8 @@ import {
   type FoodSellerOrders,
   createPracticeFetch,
   isPracticeJourneyComplete,
+  isPracticeMode,
+  isSandboxDemo,
   startPracticeMode,
 } from "@peebee/shared";
 
@@ -425,4 +427,65 @@ test("Taxipress practice: a boarded seat has a receipt that verifies, and a canc
   t.mock.method(Date, "now", () => now + 60_000);
   assert.equal((await get(`/v1/public/receipts/practice-tps-${second.id}`)).status, 404, "cancelled: no receipt");
   t.mock.restoreAll();
+});
+
+test("sandbox and practice are two switches over the same demo data: sandbox has no practice bar, practice does", async () => {
+  installStorage();
+  const win = (globalThis as unknown as { window: { localStorage: Storage; location: { origin: string; reload: () => void } } }).window;
+  let reloads = 0;
+  win.location.reload = () => { reloads++; };
+  const realCalls: string[] = [];
+  let platformEnvironment: "live" | "sandbox" = "live";
+  const real = (async (input: RequestInfo | URL) => {
+    const path = new URL(String(input), "https://customer.test").pathname;
+    realCalls.push(path);
+    if (path === "/v1/settings") return new Response(JSON.stringify({ settings: { platformEnvironment } }), { headers: { "Content-Type": "application/json" } });
+    return new Response(JSON.stringify({ real: true, path }), { headers: { "Content-Type": "application/json" } });
+  }) as typeof fetch;
+  const fetcher = createPracticeFetch("customer", real);
+  const get = async (path: string) => (await fetcher(`https://customer.test${path}`)).json() as Promise<any>;
+  const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  // Live and not practising: everything is the real server's.
+  assert.equal((await get("/v1/taxipress/config")).real, true);
+  assert.deepEqual([isSandboxDemo(), isPracticeMode()], [false, false]);
+
+  // Staff put the platform in sandbox. The app learns it from the settings it fetches anyway and reloads once.
+  platformEnvironment = "sandbox";
+  await get("/v1/settings"); await flush();
+  assert.deepEqual([isSandboxDemo(), isPracticeMode(), reloads], [true, false, 1], "sandbox, not practice, and the screen reloaded once");
+  await get("/v1/settings"); await flush();
+  assert.equal(reloads, 1, "no reload loop");
+
+  // Now the app works on the practice data (Entebbe Taxipress, the shops...) with no one having switched practice on.
+  realCalls.length = 0;
+  const config = await get("/v1/taxipress/config");
+  assert.equal(config.enabled, true);
+  assert.equal(config.routes[0].fromName, "Entebbe Stage");
+  assert.equal((await get("/v1/wallet")).balance, 2_000_000, "the practice wallet is there");
+  assert.ok((await get("/v1/marketplace/stores?lat=0.0612&lng=32.4637")).stores.some((s: { id: string }) => s.id.startsWith("pe_")), "the Entebbe shops");
+  assert.deepEqual(realCalls, [], "none of that touched the server");
+  assert.equal(isPracticeMode(), false, "this is sandbox, so no practice bar: the bar follows isPracticeMode only");
+
+  // Signing in, the settings and the practice status stay real, so a developer still uses their own account.
+  const post = (path: string) => fetcher(`https://customer.test${path}`, { method: "POST", body: "{}" });
+  assert.equal(((await (await post("/v1/auth/login")).json()) as { real: boolean }).real, true);
+  assert.equal(((await (await post("/v1/auth/logout")).json()) as { real: boolean }).real, true, "logging out is real in sandbox");
+  assert.equal((await get("/v1/auth/me")).real, true);
+  assert.equal((await get("/v1/practice/customer/status")).real, true);
+  assert.equal((await get("/v1/settings")).settings.platformEnvironment, "sandbox");
+
+  // A person switching practice on for themselves is a separate thing: it adds the bar (isPracticeMode) and uses the same data.
+  startPracticeMode("customer");
+  assert.deepEqual([isPracticeMode(), isSandboxDemo()], [true, true]);
+  assert.equal((await get("/v1/taxipress/config")).enabled, true);
+  assert.equal(((await (await post("/v1/auth/logout")).json()) as { ok: boolean }).ok, true, "practice keeps its own stubbed logout");
+
+  // Staff take the platform back to live: everything is real again, and practice (the person's own choice) still works.
+  platformEnvironment = "live";
+  await get("/v1/settings"); await flush();
+  assert.deepEqual([isSandboxDemo(), reloads], [false, 2]);
+  assert.equal((await get("/v1/taxipress/config")).enabled, true, "still practising: their own switch");
+  win.localStorage.removeItem("peebee_practice_mode");
+  assert.equal((await get("/v1/taxipress/config")).real, true, "no sandbox, no practice: the server");
 });
