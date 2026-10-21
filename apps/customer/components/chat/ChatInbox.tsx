@@ -161,7 +161,7 @@ export function ChatInbox({ embedded = false }: { embedded?: boolean }) {
               type="button"
               onClick={() => setFilter(f)}
               className={`rounded-full px-3 py-1.5 text-xs font-semibold ${
-                filter === f ? "bg-ink text-white" : "bg-[rgb(var(--surface-muted))] text-ink-500"
+                filter === f ? "bg-gold text-[#0A0A0A]" : "bg-[rgb(var(--surface-muted))] text-ink-500"
               }`}
             >
               {f === "all" ? tr("chat_filter_all") : f === "rider" ? tr("chat_filter_riders") : tr("chat_filter_restaurants")}
