@@ -20,19 +20,24 @@
     "./data-refresh": "./src/DataRefresh.tsx",
     "./colour-scenes.css": "./colour-scenes.css",
     "./business-theme": "./src/BusinessTheme.tsx",
-    "./practice-ui": "./src/PracticeUI.tsx"
+    "./practice-ui": "./src/PracticeUI.tsx",
+    "./qr": "./src/qr.ts",
+    "./qr-code": "./src/QrCode.tsx"
   },
   "scripts": {
     "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
+    "@types/qrcode": "^1.5.6",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "typescript": "^5.7.3"
   },
   "dependencies": {
-    "@radix-ui/react-select": "^2.3.7"
+    "@radix-ui/react-select": "^2.3.7",
+    "jsqr": "^1.4.0",
+    "qrcode": "^1.5.4"
   },
   "peerDependencies": {
     "react": "^19.0.0",

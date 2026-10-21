@@ -1,11 +1,10 @@
 "use client";
 
 import { Camera, X } from "lucide-react";
+import { startQrCamera, type QrCameraHandle } from "@peebee/shared/qr";
 import { useEffect, useRef, useState } from "react";
 
-type BarcodeDetectorLike = { detect: (source: HTMLVideoElement) => Promise<Array<{ rawValue?: string }>> };
-
-/** Camera QR scanner (BarcodeDetector) with a typed-code fallback. Copied from apps/gas. */
+/** Camera QR scanner (works on every phone and browser) with a typed-code fallback. */
 export function QrScanner({
   onScan,
   onClose,
@@ -23,52 +22,14 @@ export function QrScanner({
   const [manualCode, setManualCode] = useState("");
 
   useEffect(() => {
-    let stream: MediaStream | null = null;
-    let detectorTimer: ReturnType<typeof setInterval> | null = null;
-    let done = false;
-
-    async function initCamera() {
-      try {
-        if (!navigator.mediaDevices?.getUserMedia) {
-          setHasCamera(false);
-          return;
-        }
-        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          await videoRef.current.play();
-        }
-        if ("BarcodeDetector" in window) {
-          const Detector = (window as unknown as { BarcodeDetector: new (opts: { formats: string[] }) => BarcodeDetectorLike }).BarcodeDetector;
-          const detector = new Detector({ formats: ["qr_code"] });
-          detectorTimer = setInterval(async () => {
-            if (done || !videoRef.current || videoRef.current.readyState !== 4) return;
-            try {
-              const codes = await detector.detect(videoRef.current);
-              const value = codes[0]?.rawValue;
-              if (value && !done) {
-                done = true;
-                onScan(value);
-              }
-            } catch {
-              // keep scanning
-            }
-          }, 400);
-        } else {
-          setError("This phone can't read QR codes here. Type the code instead.");
-        }
-      } catch {
-        setHasCamera(false);
-        setError("Camera not available.");
-      }
-    }
-
-    void initCamera();
-    return () => {
-      done = true;
-      if (detectorTimer) clearInterval(detectorTimer);
-      stream?.getTracks().forEach((track) => track.stop());
-    };
+    let handle: QrCameraHandle | null = null;
+    let cancelled = false;
+    const video = videoRef.current;
+    if (!video) return;
+    startQrCamera(video, onScan)
+      .then((started) => { if (cancelled) started.stop(); else handle = started; })
+      .catch(() => { if (!cancelled) { setHasCamera(false); setError("Camera not available."); } });
+    return () => { cancelled = true; handle?.stop(); };
   }, [onScan]);
 
   function handleManualSubmit(e: React.FormEvent) {

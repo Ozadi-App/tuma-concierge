@@ -9,7 +9,7 @@ export function CodeQr({ value, size = 200 }: { value: string; size?: number }) 
 
   useEffect(() => {
     let cancelled = false;
-    QRCode.toDataURL(value, { width: size, margin: 1, errorCorrectionLevel: "M" })
+    QRCode.toDataURL(value, { width: size, margin: 3, errorCorrectionLevel: "M" })
       .then((url) => { if (!cancelled) setSrc(url); })
       .catch(() => { if (!cancelled) setSrc(null); });
     return () => { cancelled = true; };

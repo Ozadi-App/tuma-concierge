@@ -1,6 +1,7 @@
 "use client";
 
 import { Camera, RefreshCw, X } from "lucide-react";
+import { startQrCamera, type QrCameraHandle } from "@peebee/shared/qr";
 import { useEffect, useRef, useState } from "react";
 
 type QrScannerProps = {
@@ -19,53 +20,14 @@ export function QrScanner({ onScan, onClose, title = "Scan Rider Fuel QR", hideS
   const [manualCode, setManualCode] = useState("");
 
   useEffect(() => {
-    let stream: MediaStream | null = null;
-    let detectorTimer: NodeJS.Timeout | null = null;
-
-    async function initCamera() {
-      try {
-        if (!navigator.mediaDevices?.getUserMedia) {
-          setHasCamera(false);
-          return;
-        }
-
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "environment" },
-        });
-
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          await videoRef.current.play();
-        }
-
-        // Check if BarcodeDetector is supported
-        if ("BarcodeDetector" in window) {
-          const barcodeDetector = new (window as any).BarcodeDetector({ formats: ["qr_code"] });
-          detectorTimer = setInterval(async () => {
-            if (videoRef.current && videoRef.current.readyState === 4) {
-              try {
-                const barcodes = await barcodeDetector.detect(videoRef.current);
-                if (barcodes.length > 0 && barcodes[0].rawValue) {
-                  onScan(barcodes[0].rawValue);
-                }
-              } catch {}
-            }
-          }, 400);
-        }
-      } catch (err: any) {
-        setHasCamera(false);
-        setError("Camera permission denied or camera not found.");
-      }
-    }
-
-    void initCamera();
-
-    return () => {
-      if (detectorTimer) clearInterval(detectorTimer);
-      if (stream) {
-        stream.getTracks().forEach((track) => track.stop());
-      }
-    };
+    let handle: QrCameraHandle | null = null;
+    let cancelled = false;
+    const video = videoRef.current;
+    if (!video) return;
+    startQrCamera(video, onScan)
+      .then((started) => { if (cancelled) started.stop(); else handle = started; })
+      .catch(() => { if (!cancelled) { setHasCamera(false); setError("Camera permission denied or camera not found."); } });
+    return () => { cancelled = true; handle?.stop(); };
   }, [onScan]);
 
   function handleManualSubmit(e: React.FormEvent) {
