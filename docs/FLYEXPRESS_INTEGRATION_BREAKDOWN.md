@@ -292,7 +292,8 @@ Routes are data: name, direction, start stage, ordered pick-up points, fare per 
 | `taxipress_seats` | queue_id, seat_label, booking_id, **UNIQUE (queue_id, seat_label)** so a seat can never be sold twice |
 | `taxipress_driver_state` | driver_id, current_queue_id, lat, lng, updated_at |
 | `taxipress_cash_ledger` | one row per cash commission taken, linked to the wallet movement and ledger entry (for audit) |
-| `relay_holding_points` | Peebee offices (and later other holding places): name, address, lat, lng, active. See §12.6 |
+| `relay_holding_points` | **Many offices**, added in Admin: name, address, lat, lng, hours, active, **operator type** (`peebee` staff or `partner` agent), the stages/routes it serves, handling fee, capacity. Launch rows: **Entebbe office (existing)**, then Kampala offices as they open. See §12.6 |
+| `relay_holding_staff` | Who may receive and release parcels at each office: user, holding point, role, active |
 | `relay_holds` | One row when a parcel cannot board: order, reason, option taken (`wait`, `office`, `origin`), status, holding point, detour km, detour fee, **who pays (snapshot of the admin policy)**, rider paid at, customer charged at, resumed at |
 | `relay_extra_legs` | Extra legs after a stranding (stage → office, office → stage, stage → shop): from, to, km, fee, rider, status, payer. Kept separate because `order_relay_legs` allows only legs 1 to 3 (a SQLite `CHECK`) |
 | `parcel_size_classes` | Admin-defined classes: name, max weight, capacity units. See §12.8 |
@@ -468,7 +469,15 @@ All new columns and tables are guarded (`hasColumn()` / `hasTable()`), so the re
    - The **cost bearer** is an admin choice: **Peebee** (free distance for the customer), the **customer** (an extra charge), or a **split** by percentage.
    - **When the customer is charged**: when the parcel is stranded, or when it is sent again. Admin picks. If the customer does not pay, the parcel stays at the office until they do, or cancels with a refund minus the detour, per admin policy.
 
-6. **At the office.** Staff scan or enter the parcel's code and it becomes **Held at the office**. The customer is notified and can **Send again** or **Cancel**. Staff work from an **Office desk** page in the Admin app behind a new permission (Peebee has no office concept today `[V]`; the petrol-station hold is the pattern copied).
+6. **At the office.** Staff scan or enter the parcel's code and it becomes **Held at the office**. The customer is notified and can **Send again** or **Cancel**. Peebee has no office concept today `[V]`; the petrol-station hold is the pattern copied.
+
+   **Offices are a network, not one place.** Peebee already has an office in **Entebbe**, and people will open offices in **Kampala**. So:
+   - Offices are **records in Admin** (`relay_holding_points`), added one at a time with address, map location, opening hours and on/off switch. The **Entebbe office is the first row**. A new Kampala office goes live the moment Admin adds it, with no release.
+   - Each office is linked to the **stages it serves** (for example Kampala Stage, Entebbe Stage). The rider is shown the **nearest open office to the stage where they are stranded**, with distance and hours. Admin can also set a **preferred office per stage**.
+   - **Who runs it.** An office is either run by **Peebee staff** or by a **partner/agent** who opens one. Each has **its own people** with their own login (the same idea as the petrol-station attendants), able to receive and release parcels **only at their office**. They use an **Office desk** screen, not the full Admin app. Partner offices are approved by Peebee before they can hold parcels.
+   - **Closed or full offices** are hidden from riders (hours and capacity are checked).
+   - **Handling fee.** A partner office can earn a fee for each parcel it holds. Admin sets whether there is a fee, the amount (flat, or per day held), and who bears it (Peebee, customer, or split), the same way as the detour cost.
+   - **Accountability.** Every receive and release is logged with the person, time and code. A partner office is responsible for a parcel from receipt until release; the loss and damage rule needs your decision (§12.11).
 7. **Sending again (the second relay attempt).** When the customer taps Send again, or staff do, or it starts automatically once a taxi is Boarding Now (admin picks), a new first leg **office → boarding stage** is created for a new rider, paid per the policy above. The rider takes the parcel to the stage, enters the taxi's code, and the normal leg 2 and leg 3 follow.
 8. **Return to shop.** For store orders the item goes back to the shop. The order is paused: the customer can **send again** (paying the detour per admin policy) or **cancel** (refund minus the detour per admin policy). This needs a decision on merchant consent (§12.11).
 9. **Limits.** Admin sets the maximum times one parcel can be stranded and the maximum days it can stay at the office before staff contact the customer.
@@ -524,7 +533,7 @@ All new columns and tables are guarded (`hasColumn()` / `hasTable()`), so the re
 
 ### 12.10 Risks
 
-1. **The office is a physical operation.** Staff, opening hours, parcel storage, and responsibility for loss. Peebee needs a process behind the screen.
+1. **Offices are physical operations, some run by other people.** Staff, opening hours, storage, and responsibility for loss. Partner agents need vetting, a clear agreement, and possibly a deposit.
 2. **Customer charged after the fact.** A customer who does not respond leaves a parcel (maybe food) sitting at the office. Needs the admin days limit and a disposal or refund rule.
 3. **Perishable and store orders** may not survive a delay. Admin can exclude them from relay or set a short wait.
 4. **Rider payment timing.** The rider is paid by Peebee immediately and Peebee recovers from the customer later, so Peebee carries short-term risk.
@@ -534,7 +543,10 @@ All new columns and tables are guarded (`hasColumn()` / `hasTable()`), so the re
 
 ### 12.11 Questions still open
 
-1. **The Peebee office.** One or several? Address and opening hours? Are staff comfortable using an **Office desk page in the Admin app** (enter or scan a code to receive and release parcels)?
+1. **Offices.** The Entebbe office is the first one. I need its **name, address, opening hours and map location**.
+   - Who will run the **Kampala offices**: Peebee staff, independent partners/agents, or both?
+   - Do partner offices **earn a fee per parcel** they hold? (Admin-set amount; default none.)
+   - If a partner office **loses or damages** a parcel, who pays: the office, Peebee, or the customer's refund? Is a **deposit** required from partners?
 2. **Return to shop for store orders.** Does the shop have to agree? Can the order be sent again afterwards, and who pays the detour?
 3. **Detour rider pay.** Reuse the existing delivery per-km rate, or a separate stranded-parcel rate?
 4. **Charging the customer.** At the moment the parcel is stranded, or only when it is sent again? And how many days before an uncollected parcel is cancelled or refunded?
