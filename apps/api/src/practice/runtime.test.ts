@@ -284,3 +284,43 @@ test("Entebbe practice: shop and food orders paid from the practice wallet, a ri
   assert.equal((await get("/v1/wallet")).balance, wallet);
   assert.equal(((await get("/v1/orders/practice-order")).order as { stage: string }).stage, "Match");
 });
+
+test("Taxipress practice: cancel a seat before boarding and get the fare back; not once on board", async (t) => {
+  installStorage();
+  const fetcher = createPracticeFetch("customer", (async () => { throw new Error("Must not access live Taxipress"); }) as typeof fetch);
+  startPracticeMode("customer");
+  const get = async (path: string) => (await fetcher(`https://api.test${path}`)).json() as Promise<any>;
+  const post = (path: string, body: object = {}) => fetcher(`https://api.test${path}`, { method: "POST", body: JSON.stringify(body) });
+  const config = await get("/v1/taxipress/config");
+  const routeId = config.routes[0].id as string;
+  const taxi = (await get(`/v1/taxipress/routes/${routeId}/queue`)).line[1] as { id: string; seatsLeft: number };
+
+  const paid = ((await (await post("/v1/taxipress/bookings", { queueId: taxi.id, seats: 2, payment: "app" })).json()) as { booking: any }).booking;
+  assert.deepEqual([paid.cancel.allowed, paid.cancel.free, paid.cancel.fee, paid.cancel.refund], [true, true, 0, 16_000], "the ticket shows what a cancel would refund");
+  assert.equal(paid.outcome, null);
+  const wallet = (await get("/v1/wallet")).balance as number;
+  const done = await post(`/v1/taxipress/bookings/${paid.id}/cancel`);
+  assert.equal(done.status, 200);
+  assert.deepEqual(((await done.json()) as { outcome: object }).outcome, { kind: "cancelled", refunded: 16_000, fee: 0 });
+  assert.equal((await get("/v1/wallet")).balance, wallet + 16_000, "the fare went back to the practice wallet");
+  const after = (await get(`/v1/taxipress/bookings/${paid.id}`)).booking;
+  assert.deepEqual([after.status, after.paymentStatus, after.cancel.allowed, after.outcome.refunded], ["cancelled", "cancelled", false, 16_000]);
+  assert.equal((await get(`/v1/taxipress/routes/${routeId}/queue`)).line.find((x: { id: string }) => x.id === taxi.id).seatsLeft, taxi.seatsLeft, "the seats are free again");
+  assert.equal((await post(`/v1/taxipress/bookings/${paid.id}/cancel`)).status, 409, "no second refund");
+  assert.equal((await get("/v1/wallet")).balance, wallet + 16_000);
+
+  const cash = ((await (await post("/v1/taxipress/bookings", { queueId: taxi.id, seats: 1, payment: "cash" })).json()) as { booking: any }).booking;
+  const cashDone = await post(`/v1/taxipress/bookings/${cash.id}/cancel`);
+  assert.deepEqual(((await cashDone.json()) as { outcome: object }).outcome, { kind: "cancelled", refunded: 0, fee: 0 });
+
+  const boarding = ((await (await post("/v1/taxipress/bookings", { queueId: taxi.id, seats: 1, payment: "app" })).json()) as { booking: any }).booking;
+  const now = Date.now();
+  t.mock.method(Date, "now", () => now + 25_000);
+  assert.equal((await get(`/v1/taxipress/bookings/${boarding.id}`)).booking.cancel.allowed, true, "still allowed while the taxi is boarding");
+  t.mock.method(Date, "now", () => now + 45_000);
+  const onBoard = (await get(`/v1/taxipress/bookings/${boarding.id}`)).booking;
+  assert.equal(onBoard.status, "boarded");
+  assert.equal(onBoard.cancel.allowed, false);
+  assert.equal((await post(`/v1/taxipress/bookings/${boarding.id}/cancel`)).status, 409);
+  t.mock.restoreAll();
+});

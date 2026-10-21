@@ -4,7 +4,7 @@
  * A booking pays from the practice wallet, and the taxi then boards, leaves and arrives by itself so a
  * whole trip can be followed. Nothing here books a real taxi, holds real money or contacts anyone.
  */
-import { practiceWalletBalance, practiceWalletSpend } from "./practice-wallet.js";
+import { practiceWalletBalance, practiceWalletRefund, practiceWalletSpend } from "./practice-wallet.js";
 
 type Json = Record<string, any>;
 const KEY = "peebee_practice_taxipress_v1";
@@ -32,7 +32,7 @@ const TAXIS: PracticeTaxi[] = [
   { id: "practice-tp-q-ke3", routeId: ROUTES[1]!.id, plate: "UBD 958H", layout: "14", driver: "Isaac Lubega", others: 1 },
 ];
 
-type Booking = { id: string; queueId: string; seats: number; amount: number; method: "app" | "cash"; paid: boolean; code: string; at: number };
+type Booking = { id: string; queueId: string; seats: number; amount: number; method: "app" | "cash"; paid: boolean; code: string; at: number; cancelled?: { refunded: number; fee: number } };
 type State = { bookings: Booking[] };
 
 function load(): State {
@@ -55,7 +55,7 @@ const ACTIVE: Phase[] = ["waiting", "boarding", "boarded", "on_road"];
 
 const taxiById = (id: string) => TAXIS.find((t) => t.id === id);
 const routeOf = (id: string) => ROUTES.find((r) => r.id === id)!;
-const mine = (s: State, taxiId: string) => s.bookings.filter((b) => b.queueId === taxiId && ACTIVE.includes(phase(b)));
+const mine = (s: State, taxiId: string) => s.bookings.filter((b) => b.queueId === taxiId && !b.cancelled && ACTIVE.includes(phase(b)));
 const taken = (s: State, t: PracticeTaxi) => t.others + mine(s, t.id).reduce((n, b) => n + b.seats, 0);
 
 /** The taxi the passenger is on decides whether it is still in the line, boarding, or on the road. */
@@ -86,6 +86,13 @@ function lineFor(s: State, routeId: string) {
   };
 }
 
+/** Same rules as live with its defaults: a seat can be cancelled until it boards; inside the free window (10 minutes) the whole fare comes back. */
+function cancelTerms(b: Booking) {
+  const p = phase(b);
+  if (b.cancelled || p === "boarded" || p === "on_road" || p === "arrived") return { allowed: false, reason: b.cancelled ? "This booking was already cancelled." : "This seat can't be cancelled now.", free: false, fee: 0, refund: 0 };
+  return { allowed: true, reason: null, free: true, fee: 0, refund: b.paid ? b.amount : 0 };
+}
+
 function view(s: State, b: Booking) {
   const t = taxiById(b.queueId)!;
   const route = routeOf(t.routeId);
@@ -95,10 +102,12 @@ function view(s: State, b: Booking) {
   const position = line.find((x) => x.id === t.id)?.position ?? null;
   return {
     id: b.id, orderId: `practice-tp-order-${b.id}`,
-    status: p === "arrived" ? "completed" : p === "boarded" || p === "on_road" ? "boarded" : "booked",
+    status: b.cancelled ? "cancelled" : p === "arrived" ? "completed" : p === "boarded" || p === "on_road" ? "boarded" : "booked",
     seats: b.seats, farePerSeat: FARE, amount: b.amount, paymentMethod: b.method,
-    paymentStatus: b.paid ? "paid" : b.method === "cash" ? "pay_driver" : "unpaid",
+    paymentStatus: b.cancelled ? "cancelled" : b.paid ? "paid" : b.method === "cash" ? "pay_driver" : "unpaid",
     ticketCode: b.code, createdAt: iso(b.at), payBy: null,
+    cancel: cancelTerms(b),
+    outcome: b.cancelled ? { kind: "cancelled", refunded: b.cancelled.refunded, fee: b.cancelled.fee } : null,
     route: { id: route.id, fromName: route.fromName, toName: route.toName, directionLabel: route.directionLabel },
     taxi: {
       queueId: t.id, plate: t.plate, seatLayout: t.layout, driverName: t.driver, driverPhone: "0700000001",
@@ -148,10 +157,22 @@ export function practiceTaxipressRequest(path: string, method: string, body: Jso
     if (method_ === "app" && !practiceWalletSpend(amount, `Taxipress ${routeOf(taxi.routeId).directionLabel} · ${taxi.plate} · ${seats} seat${seats === 1 ? "" : "s"}`)) {
       return err(409, "insufficient_funds", `Your practice wallet has UGX ${practiceWalletBalance().toLocaleString("en-UG")}. This booking needs UGX ${amount.toLocaleString("en-UG")}.`);
     }
-    const b: Booking = { id: `practice-tp-${Date.now().toString(36)}`, queueId: taxi.id, seats, amount, method: method_, paid: method_ === "app", code: newCode(), at: Date.now() };
+    const b: Booking = { id: `practice-tp-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, queueId: taxi.id, seats, amount, method: method_, paid: method_ === "app", code: newCode(), at: Date.now() };
     s.bookings.push(b);
     save(s);
     return ok({ booking: view(s, b), order: { id: `practice-tp-order-${b.id}` } }, 201);
+  }
+
+  const cancel = /^\/v1\/taxipress\/bookings\/([^/]+)\/cancel$/.exec(path);
+  if (method === "POST" && cancel) {
+    const b = s.bookings.find((x) => x.id === decodeURIComponent(cancel[1]!));
+    if (!b) return err(404, "not_found", "That booking wasn't found.");
+    const terms = cancelTerms(b);
+    if (!terms.allowed) return err(409, "not_cancellable", terms.reason ?? "This seat can't be cancelled now.");
+    b.cancelled = { refunded: terms.refund, fee: terms.fee };
+    if (terms.refund > 0) practiceWalletRefund(terms.refund, "Taxipress seat cancelled");
+    save(s);
+    return ok({ outcome: { kind: "cancelled", refunded: terms.refund, fee: terms.fee } });
   }
 
   // Cash is confirmed on the order straight away; the passenger pays the driver at boarding.
