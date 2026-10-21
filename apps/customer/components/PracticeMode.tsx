@@ -17,17 +17,42 @@ const ROLE_LABELS: Record<PracticeRole, string> = {
   customer: "customer", rider: "rider", restaurant: "restaurant", merchant: "merchant", gas: "fuel attendant", learner: "learner",
 };
 
+/** Set when someone leaves practice while the platform is in sandbox, so the app doesn't pull them straight back in. */
+const SANDBOX_OPT_OUT_KEY = "peebee_sandbox_practice_off";
+const setSandboxOptOut = (off: boolean) => { try { if (off) window.localStorage.setItem(SANDBOX_OPT_OUT_KEY, "1"); else window.localStorage.removeItem(SANDBOX_OPT_OUT_KEY); } catch { /* storage blocked: practice simply isn't remembered */ } };
+
+/**
+ * While the platform is in sandbox (the "*demo" label) the customer app opens in the simulated Entebbe practice world
+ * by itself, if staff have left that on. Leaving practice is remembered, so it only happens once per device until the
+ * person starts practice again from Account.
+ */
+export function SandboxPracticeAuto({ role }: { role: PracticeRole }) {
+  useEffect(() => {
+    if (role !== "customer" || isPracticeMode()) return;
+    let optedOut = false;
+    try { optedOut = window.localStorage.getItem(SANDBOX_OPT_OUT_KEY) === "1"; } catch { /* treat as not opted out */ }
+    if (optedOut) return;
+    let live = true;
+    api.getSettings().then(({ settings }) => {
+      if (!live || isPracticeMode()) return;
+      if (settings.platformEnvironment === "sandbox" && settings.practiceModeEnabled && settings.practiceAutoInSandbox) window.location.replace(startPracticeMode(role));
+    }).catch(() => undefined);
+    return () => { live = false; };
+  }, [role]);
+  return null;
+}
+
 export function PracticeModeCard({ role }: { role: PracticeRole }) {
   const [available, setAvailable] = useState<boolean | null>(null);
   const [active, setActive] = useState(false);
   useEffect(() => { api.getSettings().then(({ settings }) => setAvailable(settings.practiceModeEnabled)).catch(() => setAvailable(false)); }, []);
   useEffect(() => setActive(isPracticeMode()), []);
   if (active) {
-    async function exit() { const completed = isPracticeJourneyComplete(role); exitPracticeMode(role); if (completed) await api.completePractice(role).catch(() => undefined); window.location.replace("/account"); }
+    async function exit() { const completed = isPracticeJourneyComplete(role); exitPracticeMode(role); setSandboxOptOut(true); if (completed) await api.completePractice(role).catch(() => undefined); window.location.replace("/account"); }
     return <button type="button" onClick={exit} className="min-h-11 w-full rounded-full border border-[var(--border-faint)] px-4 text-sm font-bold text-ink">Exit practice</button>;
   }
   if (available == null) return null;
-  function start() { window.location.assign(startPracticeMode(role)); }
+  function start() { setSandboxOptOut(false); window.location.assign(startPracticeMode(role)); }
   return (
     <section data-practice-role={role} className="home-card space-y-3 border-2 border-sky-300 bg-sky-50/70 dark:border-sky-800 dark:bg-sky-950/30">
       <div className="flex items-start gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-sky-100 text-sky-700 dark:bg-sky-950/70 dark:text-sky-200"><FlaskConical className="h-5 w-5" strokeWidth={1.8} aria-hidden /></span><div><h2 className="text-sm font-bold text-ink">Practice Mode</h2><p className="mt-1 text-xs text-ink-500">Practise inside the real {ROLE_LABELS[role]} app with safe sample data.</p></div></div>
@@ -48,7 +73,7 @@ export function PracticeModeGuard({ role, pathname }: { role: PracticeRole; path
 
 /** Blue screen border + "Practice mode" tab (shared); its X leaves practice. */
 export function PracticeModeBanner({ role }: { role: PracticeRole }) {
-  async function exit() { const completed = isPracticeJourneyComplete(role); exitPracticeMode(role); if (completed) await api.completePractice(role).catch(() => undefined); window.location.replace("/account"); }
+  async function exit() { const completed = isPracticeJourneyComplete(role); exitPracticeMode(role); setSandboxOptOut(true); if (completed) await api.completePractice(role).catch(() => undefined); window.location.replace("/account"); }
   return <PracticeModeFrame onExit={exit} />;
 }
 
