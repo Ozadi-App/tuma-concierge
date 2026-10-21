@@ -8,6 +8,7 @@ import { setR2Binding, type R2Bucket } from "./storage/r2.js";
 import { sweepExpiredOrders } from "./orders/expiry.js";
 import { sweepScheduledRides } from "./car/scheduled.js";
 import { releaseStaleSeats } from "./car/carpool.js";
+import { releaseStaleBookings } from "./taxipress/bookings.js";
 import { sweepRentalRequests } from "./car/selfdrive.js";
 import { sweepWork } from "./work/scheduled.js";
 import { sweepTalent } from "./talent/scheduled.js";
@@ -78,6 +79,11 @@ export default {
       releaseStaleSeats()
         .then((seats) => console.log("Carpool seat release sweep:", seats))
         .catch((err) => console.error("Carpool seat release sweep failed:", err)),
+    );
+    ctx.waitUntil(
+      releaseStaleBookings()
+        .then((seats) => console.log("Taxipress seat release sweep:", seats))
+        .catch((err) => console.error("Taxipress seat release sweep failed:", err)),
     );
     ctx.waitUntil(
       sweepWork()

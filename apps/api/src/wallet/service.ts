@@ -135,6 +135,25 @@ export async function debitWallet(
   return balance;
 }
 
+/**
+ * Takes money the platform is owed from a wallet even when the balance does not cover it: the balance
+ * goes below zero, and the next payment into that wallet nets against it. For a cash commission, where the
+ * driver already holds the cash and Peebee is collecting its cut. Returns the balance afterward.
+ * Never use this for money a person is spending.
+ */
+export async function debitWalletAllowNegative(
+  userId: string,
+  amount: number,
+  info: { type: LedgerType; environment: PlatformEnvironment; orderId?: string; note?: string; actorId?: string },
+): Promise<number> {
+  const column = balanceColumn(info.environment);
+  await db.execute({ sql: `UPDATE users SET ${column} = ${column} - ?, updated_at = datetime('now') WHERE id = ?`, args: [amount, userId] });
+  const res = await db.execute({ sql: `SELECT ${column} as balance FROM users WHERE id = ?`, args: [userId] });
+  const balance = Number((res.rows[0] as Row)?.balance ?? 0);
+  await recordLedgerEntry({ userId, amount: -amount, balanceAfter: balance, ...info });
+  return balance;
+}
+
 /** The atomic balance check-and-subtract shared by every debit; returns the balance afterward, or null if it did not cover `amount`. */
 async function applyDebit(userId: string, amount: number, environment: PlatformEnvironment, walletId?: string): Promise<number | null> {
   const column = balanceColumn(environment);

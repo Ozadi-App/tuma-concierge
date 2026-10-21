@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { api } from "./api";
 
 const NONE: TaxipressConfig = {
-  enabled: false, routes: [], cashEnabled: false, seatChoiceFeeUgx: 0, returnDiscountPercent: 0, maxSeatsPerBooking: 1, parcelFitText: "", parcelNotAllowed: [],
+  enabled: false, routes: [], cashEnabled: false, seatChoiceFeeUgx: 0, returnDiscountPercent: 0, maxSeatsPerBooking: 1, payWithinMinutes: 10, parcelFitText: "", parcelNotAllowed: [],
 };
 let cached: { at: number; value: TaxipressConfig } | null = null;
 let inflight: Promise<TaxipressConfig> | null = null;
