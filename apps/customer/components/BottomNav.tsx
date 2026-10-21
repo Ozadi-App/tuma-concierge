@@ -8,6 +8,7 @@ import {
   Bike,
   BookOpen,
   Briefcase,
+  BriefcaseBusiness,
   Car,
   CarFront,
   ChefHat,
@@ -56,8 +57,20 @@ import { CartDrawer } from "./CartDrawer";
 import { useCart } from "../lib/cart";
 import { goBackOr, useNavBack, useNavPrimaryAction } from "../lib/nav-primary-action";
 
+/** Two names that take turns in the same spot. Screen readers get both names from the button's own label, so this is hidden from them. */
+function SwappingLabel({ first, second, seconds }: { first: string; second: string; seconds: number }) {
+  const [showSecond, setShowSecond] = useState(false);
+  useEffect(() => {
+    const swap = () => { if (document.visibilityState === "visible") setShowSecond((s) => !s); };
+    const id = window.setInterval(swap, seconds * 1000);
+    return () => window.clearInterval(id);
+  }, [seconds]);
+  const text = showSecond ? second : first;
+  return <span key={text} aria-hidden className="customer-nav-label-swap block truncate">{text}</span>;
+}
+
 type MenuGroup = "original" | "ride" | "shopping" | "food" | "hive" | "learn";
-type MenuItem = { id: string; label: string; icon: LucideIcon; href?: string; group?: Exclude<MenuGroup, "original">; disabled?: boolean };
+type MenuItem = { id: string; label: string; /** A second name that swaps with `label`. */ alt?: { label: string; seconds: number }; icon: LucideIcon; href?: string; group?: Exclude<MenuGroup, "original">; disabled?: boolean };
 
 // Five main buttons: Ride, Buy, Eat, Learn and Hive. Learn goes straight to its own home; the others open a row of shortcuts.
 // The names come from the admin's home menu setting; these are the buttons' icons and where they lead.
@@ -66,7 +79,7 @@ const originalMenu = (menu: HomeMenuSettings): MenuItem[] => [
   { id: "shopping", label: menu.clusters.shopping.label, icon: ShoppingBag, group: "shopping" },
   { id: "food", label: menu.clusters.food.label, icon: UtensilsCrossed, group: "food" },
   { id: "learn", label: menu.clusters.learn.label, icon: BookOpen, href: "/learn" },
-  { id: "hive", label: menu.clusters.hive.label, icon: Sparkles, group: "hive" },
+  { id: "hive", label: menu.clusters.hive.label, alt: menu.hive.altLabel ? { label: menu.hive.altLabel, seconds: menu.hive.labelSeconds } : undefined, icon: BriefcaseBusiness, group: "hive" },
 ];
 
 const HIVE_ITEM: Record<HiveShortcutId, { icon: LucideIcon; href: string }> = {
@@ -467,7 +480,7 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
                     <>
                       <Icon className="h-5 w-5 shrink-0" strokeWidth={active ? 2.4 : 1.8} aria-hidden />
                       <span className={`leading-none truncate max-w-full font-bold ${menuGroup === "learn" ? "text-[9.5px] tracking-tight sm:text-[10.5px]" : "text-[10px] sm:text-[11px]"}`}>
-                        {item.label}
+                        {item.alt ? <SwappingLabel first={item.label} second={item.alt.label} seconds={item.alt.seconds} /> : item.label}
                       </span>
                       {active && (
                         <span
@@ -487,7 +500,7 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
                       {item.group ? (
                         <button
                           type="button"
-                          aria-label={`${item.label} home and submenu`}
+                          aria-label={`${item.alt ? `${item.label} or ${item.alt.label}` : item.label} home and submenu`}
                           aria-expanded={menuGroup === item.group}
                           onClick={() => {
                             setMenuGroup(item.group!);

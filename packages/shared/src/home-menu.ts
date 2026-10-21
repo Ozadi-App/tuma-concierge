@@ -17,6 +17,10 @@ export type HomeMenuSettings = {
   hive: {
     eyebrow: string;
     description: string;
+    /** A second name for the main button that swaps with the first one; empty keeps a single name. */
+    altLabel: string;
+    /** How long each name shows before the swap, in seconds. */
+    labelSeconds: number;
     /** Order here is the order customers see. */
     shortcuts: { id: HiveShortcutId; label: string; enabled: boolean }[];
     /** The "Need a person instead?" section under the Hive services, which holds the Workers and Hire shortcuts. */
@@ -31,10 +35,12 @@ export const DEFAULT_HOME_MENU: HomeMenuSettings = {
     shopping: { label: "Buy" },
     food: { label: "Eat" },
     learn: { label: "Learn" },
-    hive: { label: "Hive" },
+    hive: { label: "Work" },
   },
   hive: {
     eyebrow: "Peebee gets it done",
+    altLabel: "Hire",
+    labelSeconds: 4,
     description: "Laundry, cleaning and repairs at a clear price. Tell us what you need and Peebee takes care of it.",
     shortcuts: [
       { id: "clean", label: "Clean", enabled: true },
@@ -76,6 +82,9 @@ export function resolveHomeMenu(stored: Partial<HomeMenuSettings> | null | undef
     hive: {
       eyebrow: stored?.hive?.eyebrow?.trim() || base.hive.eyebrow,
       description: stored?.hive?.description?.trim() || base.hive.description,
+      // An empty alternate name is a choice (one fixed name), so only a missing value falls back.
+      altLabel: typeof stored?.hive?.altLabel === "string" ? stored.hive.altLabel.trim().slice(0, 20) : base.hive.altLabel,
+      labelSeconds: Number.isFinite(stored?.hive?.labelSeconds) ? Math.min(30, Math.max(2, Math.round(stored!.hive!.labelSeconds as number))) : base.hive.labelSeconds,
       shortcuts,
       hireBanner: {
         enabled: banner?.enabled ?? base.hive.hireBanner.enabled,

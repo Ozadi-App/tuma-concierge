@@ -17,7 +17,20 @@ const clone = (): HomeMenuSettings => structuredClone(DEFAULT_HOME_MENU);
 
 test("the built-in home menu is valid and has the five clusters", () => {
   assert.equal(homeMenuSchema.safeParse(DEFAULT_HOME_MENU).success, true);
-  assert.deepEqual(Object.values(DEFAULT_HOME_MENU.clusters).map((c) => c.label), ["Ride", "Buy", "Eat", "Learn", "Hive"]);
+  assert.deepEqual(Object.values(DEFAULT_HOME_MENU.clusters).map((c) => c.label), ["Ride", "Buy", "Eat", "Learn", "Work"]);
+});
+
+test("the main button swaps Work and Hire every 4 seconds unless admin changes it", () => {
+  assert.equal(DEFAULT_HOME_MENU.hive.altLabel, "Hire");
+  assert.equal(DEFAULT_HOME_MENU.hive.labelSeconds, 4);
+  const none = clone();
+  none.hive.altLabel = "";
+  assert.equal(homeMenuSchema.safeParse(none).success, true, "an empty second name means one fixed name");
+  assert.equal(resolveHomeMenu(none).hive.altLabel, "");
+  assert.equal(resolveHomeMenu({ hive: { labelSeconds: 99 } } as never).hive.labelSeconds, 30);
+  const fast = clone();
+  fast.hive.labelSeconds = 1;
+  assert.equal(homeMenuSchema.safeParse(fast).success, false, "too quick a swap is refused");
 });
 
 test("a name can be changed and the Hive shortcuts can be reordered or switched off", () => {

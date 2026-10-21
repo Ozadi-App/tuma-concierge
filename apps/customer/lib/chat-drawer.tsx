@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronRight } from "lucide-react";
+import { X } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ChatInbox } from "../components/chat/ChatInbox";
@@ -18,7 +18,7 @@ const prefersReducedMotion = () => typeof window !== "undefined" && window.match
 
 /**
  * Wraps the whole app screen (banners, header, page, bottom menu) as one "stage".
- * Opening chat slides the stage left, leaving a slice of it at the left edge, and the chat screen
+ * Opening chat slides the stage left, leaving a part of it showing at the left edge, and the chat screen
  * underneath eases up from slightly zoomed out. While the stage is moved it is pinned to the viewport
  * at the same scroll offset, so fixed and sticky parts of the app stay where they were.
  */
@@ -115,10 +115,10 @@ export function ChatDrawerShell({ children }: { children: ReactNode }) {
         }}
       >
         <header className="chat-drawer__head">
-          <button ref={closeRef} type="button" aria-label="Close chat" onClick={closeChat} className="chat-drawer__close flex h-11 w-11 items-center justify-center rounded-full">
-            <ChevronRight size={24} aria-hidden />
-          </button>
           <h2 className="text-lg font-bold">{tr("chat_title")}</h2>
+          <button ref={closeRef} type="button" aria-label="Close chat" onClick={closeChat} className="chat-drawer__close flex h-11 w-11 items-center justify-center rounded-full">
+            <X size={22} aria-hidden />
+          </button>
         </header>
         <div className="chat-drawer__body">{mounted && <ChatInbox key={session} embedded />}</div>
       </section>
