@@ -27,6 +27,10 @@ Legend: **[V]** verified in the code · **[A]** my assumption · **[?]** needs y
 | 11 | **Commission**: admin chooses a percentage (separate rates for cash and digital) **or** a flat amount. |
 | 12 | A driver with a large negative balance is **blocked from joining the line** when Admin switches that rule on. |
 | 13 | **Taxipress taxis are the matatus of the relay delivery's middle leg** (boda → **taxi** → boda). They are the **same vehicles**, approved **once**, with **two switches**: **Passengers** and **Parcels**. See §12. |
+| 14 | **A parcel may go only in the taxi that is Boarding Now** by default. Admin can switch to "any taxi in the line". |
+| 15 | **If no taxi is available, the parcel waits, but the first rider is never stuck.** Admin defines the fallback: wait, take it back to the shop, or take it to a **Peebee office**. Extra distance is paid to the rider by Peebee, and admin decides who bears the cost (Peebee, the customer, or a split). The parcel is sent again later from the office. See §12.6. |
+| 16 | **Parcel income commission: two modes**, the existing fee split or an extra Taxipress commission. Admin picks which is active. |
+| 17 | **Parcel limits** (count, size, weight) are **admin-defined**. |
 
 ---
 
@@ -288,6 +292,10 @@ Routes are data: name, direction, start stage, ordered pick-up points, fare per 
 | `taxipress_seats` | queue_id, seat_label, booking_id, **UNIQUE (queue_id, seat_label)** so a seat can never be sold twice |
 | `taxipress_driver_state` | driver_id, current_queue_id, lat, lng, updated_at |
 | `taxipress_cash_ledger` | one row per cash commission taken, linked to the wallet movement and ledger entry (for audit) |
+| `relay_holding_points` | Peebee offices (and later other holding places): name, address, lat, lng, active. See §12.6 |
+| `relay_holds` | One row when a parcel cannot board: order, reason, option taken (`wait`, `office`, `origin`), status, holding point, detour km, detour fee, **who pays (snapshot of the admin policy)**, rider paid at, customer charged at, resumed at |
+| `relay_extra_legs` | Extra legs after a stranding (stage → office, office → stage, stage → shop): from, to, km, fee, rider, status, payer. Kept separate because `order_relay_legs` allows only legs 1 to 3 (a SQLite `CHECK`) |
+| `parcel_size_classes` | Admin-defined classes: name, max weight, capacity units. See §12.8 |
 
 Money posts through the existing ledger (`ledger/service.ts`) with the sandbox / live `environment` on every row.
 
@@ -399,7 +407,7 @@ How the switches are set:
 1. **One route and stage registry.** A Taxipress route **is** a relay route plus a direction (`taxipress_routes.relay_route_id`). **Kampala Stage** and **Entebbe Stage** are stage A and stage B of one `relay_routes` row ("KLA ⇄ EBB"). Passenger pick-up points are the existing `relay_route_stages`. A rename in Admin changes tickets, queue and parcels at once.
 2. **One approval, mirrored into the relay.** Approving a taxi with Parcels on creates or updates the driver's `relay_operators` row (source `taxipress`, status approved, same route and plate). Switching Parcels off suspends that row.
 3. **A parcel attaches to the taxi that takes it.**
-   - A taxi with **Passengers on** may receive a parcel only when it is **In line or Boarding Now at that boarding stage, heading the direction the parcel travels** (the relay already computes `KLA - EBB` or `EBB - KLA`). Leg 2 then records `taxipress_queue_id`.
+   - A taxi with **Passengers on** may receive a parcel only when it is **Boarding Now** (admin can allow **any taxi in line**) **at that boarding stage, heading the direction the parcel travels** (the relay already computes `KLA - EBB` or `EBB - KLA`). Leg 2 then records `taxipress_queue_id`.
    - A **Parcels-only** taxi works as today: it receives parcels by code on its route.
 4. **Parcels are cargo, not seats.** They never count toward "fully booked". Admin sets a **maximum parcels per trip**; at the limit the taxi stops accepting more.
 5. **One driver screen.** The Taxipress manifest in the Partner app lists **passengers** (seat, pick-up stop, paid or cash due) and **parcels** (receive by code, drop stop, hand to customer by code, customer missed it), ordered by stop. The existing relay page becomes a tab of the same screen, and Parcels-only drivers still see it on its own.
@@ -427,29 +435,107 @@ How the switches are set:
 
 All new columns and tables are guarded (`hasColumn()` / `hasTable()`), so the relay keeps running exactly as today until `0123` is applied.
 
-### 12.5 New admin settings
+### 12.5 Decisions closed in this round
+
+| Question | Decision | Effect |
+|---|---|---|
+| Which taxi can take a parcel? | **Only the one Boarding Now.** Admin can allow any taxi in the line. | Setting `parcel_accept_rule`: `boarding_now` (default) · `any_in_line` |
+| No taxi available? | **The parcel waits**, and the first rider must not be trapped. Admin defines the fallback. | §12.6 |
+| Extra commission on parcel income? | **Both options exist; admin picks the active one.** | §12.7 |
+| Parcel limits? | **Admin-defined** | §12.8 |
+
+### 12.6 When no taxi can take the parcel: the first rider is never stuck
+
+**Why it happens.** With "Boarding Now only", the rider can arrive when the taxis in line are not yet boarding, when none is in line, or when the boarding taxi is at its parcel limit. The parcel cannot go on, and the rider must not sit there for an hour.
+
+**The flow**
+
+1. The rider taps **Arrived at the stage** (location check). Peebee looks for an eligible taxi (rule above). If one exists, the normal code handoff happens.
+2. If none: the parcel is marked **Awaiting a taxi**. The rider sees a countdown and the options Peebee has switched on. The customer is told ("Your parcel is waiting for the next taxi").
+3. The rider waits for up to **N minutes** (admin). Waiting time can be paid through the existing waiting-fee mechanism (`orders/time-fees.ts`) if admin turns that on. If a taxi becomes eligible in that time, the handoff happens.
+4. After N minutes, or sooner if the rider taps it, the rider chooses from the options **admin has enabled**:
+
+   | Option | What happens |
+   |---|---|
+   | **Keep waiting** | The rider stays. Admin can cap the total wait. |
+   | **Take it to a Peebee office** | The rider delivers the parcel to a Peebee office. Staff confirm it with a code, as the petrol-station hold already does. The rider is free. |
+   | **Take it back to the shop / sender** | The parcel goes back to where it came from. |
+
+   Admin sets which options are offered, which is the default, and whether the rider can choose or Peebee decides for them.
+
+5. **Who pays for the extra distance (all admin-controlled, per option):**
+   - The **rider is always paid by Peebee** for the extra distance, at a rate Peebee defines (per km or a flat amount; default is the existing delivery rate). The rider never waits for the customer to pay.
+   - The **cost bearer** is an admin choice: **Peebee** (free distance for the customer), the **customer** (an extra charge), or a **split** by percentage.
+   - **When the customer is charged**: when the parcel is stranded, or when it is sent again. Admin picks. If the customer does not pay, the parcel stays at the office until they do, or cancels with a refund minus the detour, per admin policy.
+
+6. **At the office.** Staff scan or enter the parcel's code and it becomes **Held at the office**. The customer is notified and can **Send again** or **Cancel**. Staff work from an **Office desk** page in the Admin app behind a new permission (Peebee has no office concept today `[V]`; the petrol-station hold is the pattern copied).
+7. **Sending again (the second relay attempt).** When the customer taps Send again, or staff do, or it starts automatically once a taxi is Boarding Now (admin picks), a new first leg **office → boarding stage** is created for a new rider, paid per the policy above. The rider takes the parcel to the stage, enters the taxi's code, and the normal leg 2 and leg 3 follow.
+8. **Return to shop.** For store orders the item goes back to the shop. The order is paused: the customer can **send again** (paying the detour per admin policy) or **cancel** (refund minus the detour per admin policy). This needs a decision on merchant consent (§12.11).
+9. **Limits.** Admin sets the maximum times one parcel can be stranded and the maximum days it can stay at the office before staff contact the customer.
+
+**Data and code impact**
+- New tables `relay_holding_points`, `relay_holds`, `relay_extra_legs` (§10.2). Extra legs are kept outside `order_relay_legs` because that table only allows legs 1 to 3 and a `kind` of `boda` or `matatu` (a `CHECK` constraint). Changing it would mean rebuilding a live table. I will not do that.
+- The rider's job list already shows open relay legs; extra legs are added to it.
+- The re-dispatch rider must be set as the order's rider for the stage handoff to work (`receiveAtMatatu` checks `orders.rider_id`). The exact mechanism is to be verified in the build `[A]`.
+- Everything stays behind `hasTable()` / `hasColumn()`, so existing relay keeps working until `0123` is applied.
+
+### 12.7 Parcel commission: two modes, one active at a time
+
+| Mode | How the taxi driver's parcel income is worked out |
+|---|---|
+| **Existing fee split** (default) | The matatu leg gets its share of the order's fee pool, exactly as today |
+| **Taxipress parcel commission** | Peebee takes an extra commission from the matatu leg's income: a **percentage** or a **flat amount** (admin chooses) |
+
+- Setting `taxipress_parcel_commission_mode`: `relay_split` or `taxipress_extra`, plus percent or flat value.
+- Changes are written to the activity log with who changed them and when, so you can see which mode was active at any time. If you want a mode to switch on a given date automatically (an "effective from" date), say so and I'll add it.
+- The commission is stored on each parcel leg at payout, so past parcels never change when the setting changes.
+
+### 12.8 Parcel limits: admin-defined
+
+**Gap found `[V]`:** the parcel order form records no size or weight today (no such field in the customer parcel page or any migration). Limits therefore need a size class captured when the parcel is ordered.
+
+- **Size classes** (admin creates and edits them): name, optional maximum weight (kg), and **capacity units**. Starting suggestion from Fly Express's parcel types: *Documents, Small package, Medium package, Large package, Fragile item, Business cargo*, all editable.
+- **Per taxi limits**, all optional (blank = no limit): **maximum parcels**, **maximum capacity units**, **maximum total weight**. Separate values for **14-seat** and **18-seat** taxis.
+- A class can be marked **not allowed on taxis** (for example Business cargo), which turns relay off for that parcel and sends it by direct delivery.
+- The relay quote refuses a parcel that no taxi could carry and says why.
+- The driver's manifest shows **load used / load allowed** and stops accepting parcels at the limit.
+
+### 12.9 Admin settings added by this section
 
 | Setting | Default |
 |---|---|
-| New taxi defaults: **Passengers allowed**, **Parcels allowed** | Both on |
-| Maximum parcels per taxi trip | Admin enters |
-| Accept parcels only when the taxi is **Boarding Now**, or any taxi in line | Any taxi in line |
+| New taxi defaults: Passengers allowed, Parcels allowed | Both on |
+| **Parcel accept rule**: Boarding Now only, or any taxi in line | **Boarding Now only** |
 | Hold a taxi up to N minutes for an incoming parcel | 0 |
 | Offer relay only when a taxi is in line or ran recently on that route | Off |
+| **Parcel waits N minutes before options appear** | Admin enters |
+| Pay the rider waiting time while the parcel waits | Off |
+| **Stranded-parcel options offered** (wait, office, shop) and the default | Admin enters |
+| Rider chooses, or Peebee decides | Rider chooses |
+| **Detour rider pay**: per km or flat, rate | Existing delivery rate |
+| **Detour cost bearer**: Peebee, customer, or split % | Admin enters |
+| **When the customer is charged**: at stranding or at sending again | At sending again |
+| If the customer does not pay: hold at office / cancel with refund minus detour | Hold |
+| Send again: customer taps, staff, or automatic when a taxi is Boarding Now | Customer taps |
+| Max strandings per parcel; max days at the office | Admin enters |
+| **Parcel commission mode** and value | Existing fee split |
+| **Parcel limits** per taxi size, and size classes | Admin enters |
 | Parcel fee per route | The existing relay `parcel_fare` |
 
-### 12.6 Risks
+### 12.10 Risks
 
-1. **A parcel arrives when no taxi is in line.** The rider waits with it. Needs a rule: wait N minutes, then the next taxi, then fall back to direct delivery.
-2. **"Meet the matatu at a stage"** relies on timing; real stop lists and live position improve it.
-3. **A taxi is removed from the line after taking a parcel.** The parcel stays with that taxi; if it cannot continue, staff move it to another taxi from the Admin queue monitor (new action).
-4. **Direction mismatch.** A taxi in line at Entebbe Stage must not receive a parcel travelling Kampala to Entebbe; the direction check prevents it.
-5. **Two approvals drifting** is avoided by mirroring one approval into the relay (item 2).
-6. **Migrating existing relay operators** needs a one-off script and a check that each has a plate; those without a layout stay Parcels-only.
+1. **The office is a physical operation.** Staff, opening hours, parcel storage, and responsibility for loss. Peebee needs a process behind the screen.
+2. **Customer charged after the fact.** A customer who does not respond leaves a parcel (maybe food) sitting at the office. Needs the admin days limit and a disposal or refund rule.
+3. **Perishable and store orders** may not survive a delay. Admin can exclude them from relay or set a short wait.
+4. **Rider payment timing.** The rider is paid by Peebee immediately and Peebee recovers from the customer later, so Peebee carries short-term risk.
+5. **Direction and van checks** still apply: a taxi cannot receive a parcel going the other way.
+6. **Migrating existing relay operators** needs a one-off script; operators without a plate stay Parcels-only.
+7. **A taxi removed from the line after taking a parcel**: staff move the parcel to another taxi from the Admin queue monitor (new action).
 
-### 12.7 Questions for you
+### 12.11 Questions still open
 
-1. Can a parcel go in **any taxi in the line**, or only the one **Boarding Now**? (Default: any taxi in line.)
-2. **No taxi in line** when the first rider reaches the stage: should the parcel wait for the next taxi, fall back to direct boda delivery, or both after a wait you set?
-3. **Peebee's cut on the matatu leg.** Today it comes from the order fee pool. Do you want an extra Taxipress commission on parcel income, or leave it as is?
-4. **Parcel limits:** a maximum count per taxi, or also a size or weight limit?
+1. **The Peebee office.** One or several? Address and opening hours? Are staff comfortable using an **Office desk page in the Admin app** (enter or scan a code to receive and release parcels)?
+2. **Return to shop for store orders.** Does the shop have to agree? Can the order be sent again afterwards, and who pays the detour?
+3. **Detour rider pay.** Reuse the existing delivery per-km rate, or a separate stranded-parcel rate?
+4. **Charging the customer.** At the moment the parcel is stranded, or only when it is sent again? And how many days before an uncollected parcel is cancelled or refunded?
+5. **Size classes.** Are the six suggested classes (Documents, Small, Medium, Large, Fragile, Business cargo) a good starting list, and is "Business cargo not allowed on taxis" correct?
