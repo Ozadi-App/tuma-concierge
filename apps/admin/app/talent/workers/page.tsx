@@ -1,5 +1,6 @@
 "use client";
 
+import { Select } from "../../../components/ui/Select";
 import type { TalentAdminWorker, TalentWorkerAction } from "@peebee/shared";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
@@ -36,10 +37,10 @@ function Workers() {
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-2 gap-2">
-        <select aria-label="Status" value={status} onChange={(e) => setStatus(e.target.value)} className={inputCls}>
+        <Select aria-label="Status" value={status} onValueChange={(next) => setStatus(next)} className={inputCls}>
           <option value="">All statuses</option>
           {["pending", "approved", "suspended", "rejected"].map((s) => <option key={s} value={s}>{label(s)}</option>)}
-        </select>
+        </Select>
         <input aria-label="Search" placeholder="Name, phone or headline" value={q} onChange={(e) => setQ(e.target.value)} className={inputCls} />
       </div>
       <ErrorNote message={error} />

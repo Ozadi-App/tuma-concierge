@@ -1,7 +1,8 @@
 "use client";
+import { Switch } from "../../../components/ui/Switch";
 import { useEffect, useState } from "react";
 import { DEFAULT_SHOPPING_UNIT_SETTINGS, SHOPPING_UNITS, SHOPPING_UNIT_IDS, type ShoppingStandardUnit, type ShoppingUnitRule, type ShoppingUnitSettings } from "@peebee/shared";
-import { Select } from "@peebee/shared/select";
+import { Select } from "../../../components/ui/Select";
 import { SettingsPageShell, SettingsSaveBar } from "../../../components/SettingsPageShell";
 import { api, errorMessage } from "../../../lib/api";
 
@@ -29,7 +30,7 @@ export default function ShoppingUnitsSettingsPage() {
         {([
           ["enabled", "Suggest units from the item name"], ["autoSelect", "Automatically select the best match"],
           ["allowBudget", "Allow Buy by amount"], ["allowCustom", "Allow Other… with a custom measure"],
-        ] as const).map(([key, label]) => <label key={key} className="flex items-center gap-3 text-sm"><input type="checkbox" checked={config[key]} onChange={(e) => change({ [key]: e.target.checked })}/>{label}</label>)}
+        ] as const).map(([key, label]) => <label key={key} className="flex items-center gap-3 text-sm"><Switch checked={config[key]} onChange={(e) => change({ [key]: e.target.checked })}/>{label}</label>)}
         <div className="grid grid-cols-2 gap-3">
           <label className="space-y-1 text-xs font-semibold text-ink-500"><span>Suggested alternatives</span><input type="number" min={1} max={6} required value={config.suggestedCount} onChange={(e) => change({ suggestedCount: Number(e.target.value) })} className={field}/></label>
           <label className="space-y-1 text-xs font-semibold text-ink-500"><span>Letters before partial matching</span><input type="number" min={2} max={10} required value={config.minimumPrefixLength} onChange={(e) => change({ minimumPrefixLength: Number(e.target.value) })} className={field}/></label>
@@ -43,7 +44,7 @@ export default function ShoppingUnitsSettingsPage() {
           <div className="mt-3 space-y-3">
             <label className="block space-y-1 text-xs font-semibold text-ink-500"><span>Item names or phrases</span><textarea required value={rule.keywords.join(",")} onChange={(e) => updateRule(index, { keywords: e.target.value.split(",") })} placeholder="e.g. rice, beans, flour" className={field}/></label>
             <label className="block space-y-1 text-xs font-semibold text-ink-500"><span>Best unit</span><Select aria-label={`Best unit for rule ${index + 1}`} value={rule.units[0]} onValueChange={(value) => updateRule(index, { units: [value as ShoppingStandardUnit, ...rule.units.filter((id) => id !== value)] })} className={field}>{SHOPPING_UNIT_IDS.map((id) => <option key={id} value={id}>{SHOPPING_UNITS[id].label}</option>)}</Select></label>
-            <details><summary className="cursor-pointer text-xs font-semibold">Alternative units ({rule.units.length - 1})</summary><div className="mt-2 grid grid-cols-2 gap-2">{SHOPPING_UNIT_IDS.filter((id) => id !== rule.units[0]).map((id) => <label key={id} className="flex items-center gap-2 text-xs"><input type="checkbox" checked={rule.units.includes(id)} onChange={(e) => updateRule(index, { units: e.target.checked ? [...rule.units, id] : rule.units.filter((unit) => unit !== id) })}/>{SHOPPING_UNITS[id].label}</label>)}</div></details>
+            <details><summary className="cursor-pointer text-xs font-semibold">Alternative units ({rule.units.length - 1})</summary><div className="mt-2 grid grid-cols-2 gap-2">{SHOPPING_UNIT_IDS.filter((id) => id !== rule.units[0]).map((id) => <label key={id} className="flex items-center gap-2 text-xs"><input type="checkbox" className="pb-check" checked={rule.units.includes(id)} onChange={(e) => updateRule(index, { units: e.target.checked ? [...rule.units, id] : rule.units.filter((unit) => unit !== id) })}/>{SHOPPING_UNITS[id].label}</label>)}</div></details>
             <label className="block space-y-1 text-xs font-semibold text-ink-500"><span>Matching priority</span><input type="number" min={0} max={100} required value={rule.priority} onChange={(e) => updateRule(index, { priority: Number(e.target.value) })} className={field}/></label>
             <button type="button" onClick={() => change({ rules: config.rules.filter((_, i) => i !== index) })} className="min-h-10 text-sm font-semibold text-ink-500">Remove rule</button>
           </div>

@@ -1,5 +1,7 @@
 "use client";
 
+import { Select } from "../../../components/ui/Select";
+import { Switch } from "../../../components/ui/Switch";
 import type { WorkAdminService, WorkAdminServiceInput, WorkPricingMode, WorkServiceType } from "@peebee/shared";
 import { useCallback, useEffect, useState } from "react";
 import { Badge, ConfirmDialog, ErrorNote, Field, inputCls, label, ugx, useWorkPermissions } from "../../../components/work/ui";
@@ -108,12 +110,12 @@ export default function WorkCataloguePage() {
   return (
     <div className="space-y-3">
       <div className="flex gap-2">
-        <select aria-label="Service type" value={type} onChange={(e) => setType(e.target.value)} className={inputCls}>
+        <Select aria-label="Service type" value={type} onValueChange={(next) => setType(next)} className={inputCls}>
           <option value="">All types</option>
           {TYPES.map((t) => (
             <option key={t} value={t}>{label(t)}</option>
           ))}
-        </select>
+        </Select>
         {canManage && (
           <button
             type="button"
@@ -166,14 +168,14 @@ export default function WorkCataloguePage() {
         >
           <div className="grid grid-cols-2 gap-3">
             <Field label="Type">
-              <select value={f.type} onChange={(e) => set("type", e.target.value as WorkServiceType)} className={inputCls}>
+              <Select value={f.type} onValueChange={(next) => set("type", next as WorkServiceType)} className={inputCls}>
                 {TYPES.map((t) => <option key={t} value={t}>{label(t)}</option>)}
-              </select>
+              </Select>
             </Field>
             <Field label="Pricing mode">
-              <select value={f.pricingMode} onChange={(e) => set("pricingMode", e.target.value as WorkPricingMode)} className={inputCls}>
+              <Select value={f.pricingMode} onValueChange={(next) => set("pricingMode", next as WorkPricingMode)} className={inputCls}>
                 {MODES.map((m) => <option key={m} value={m}>{label(m)}</option>)}
-              </select>
+              </Select>
             </Field>
             <div className="col-span-2">
               <Field label="Name"><input value={f.name} maxLength={100} onChange={(e) => set("name", e.target.value)} className={inputCls} /></Field>
@@ -195,7 +197,7 @@ export default function WorkCataloguePage() {
             <Field label="Sort order"><input inputMode="numeric" value={f.sortOrder} onChange={(e) => set("sortOrder", digits(e.target.value))} className={inputCls} /></Field>
           </div>
           <label className="flex items-center gap-2 text-sm font-semibold text-ink">
-            <input type="checkbox" checked={f.active} onChange={(e) => set("active", e.target.checked)} className="h-4 w-4" />
+            <Switch checked={f.active} onChange={(e) => set("active", e.target.checked)} />
             Active (customers can book it)
           </label>
           <p className="text-xs text-ink-500">Changes only affect new bookings; jobs already booked keep their price.</p>

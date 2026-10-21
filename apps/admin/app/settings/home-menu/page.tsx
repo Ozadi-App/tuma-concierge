@@ -1,4 +1,5 @@
 "use client";
+import { Switch } from "../../../components/ui/Switch";
 import { useEffect, useState } from "react";
 import { ArrowDown, ArrowUp } from "lucide-react";
 import { DEFAULT_HOME_MENU, HOME_CLUSTER_IDS, resolveHomeMenu, type HomeClusterId, type HomeMenuSettings } from "@peebee/shared";
@@ -56,7 +57,7 @@ export default function HomeMenuSettingsPage() {
 
       <section className="home-card space-y-3">
         <div><h2 className="font-bold">Top bar</h2><p className="text-xs text-ink-500">The bar at the top of the customer app.</p></div>
-        <label className="flex items-center gap-3 text-sm"><input type="checkbox" checked={menu.header.chatEnabled} onChange={(e) => change({ ...menu, header: { ...menu.header, chatEnabled: e.target.checked } })} />Show the chat icon (opens conversations in a side drawer)</label>
+        <label className="flex items-center gap-3 text-sm"><Switch checked={menu.header.chatEnabled} onChange={(e) => change({ ...menu, header: { ...menu.header, chatEnabled: e.target.checked } })} />Show the chat icon (opens conversations in a side drawer)</label>
       </section>
 
       <section className="home-card space-y-3">
@@ -70,7 +71,7 @@ export default function HomeMenuSettingsPage() {
         {menu.hive.shortcuts.map((item, index) => (
           <div key={item.id} className="space-y-2 rounded-xl border border-[var(--border-faint)] p-3">
             <div className="flex items-center justify-between gap-2">
-              <label className="flex items-center gap-2 text-sm font-semibold"><input type="checkbox" checked={item.enabled} onChange={(e) => change({ ...menu, hive: { ...menu.hive, shortcuts: menu.hive.shortcuts.map((s) => s.id === item.id ? { ...s, enabled: e.target.checked } : s) } })} />On</label>
+              <label className="flex items-center gap-2 text-sm font-semibold"><Switch checked={item.enabled} onChange={(e) => change({ ...menu, hive: { ...menu.hive, shortcuts: menu.hive.shortcuts.map((s) => s.id === item.id ? { ...s, enabled: e.target.checked } : s) } })} />On</label>
               <div className="flex gap-1">
                 <button type="button" aria-label={`Move ${item.label} up`} disabled={index === 0} onClick={() => move(index, -1)} className="flex h-9 w-9 items-center justify-center rounded-full border border-[var(--border-faint)] disabled:opacity-40"><ArrowUp className="h-4 w-4" aria-hidden /></button>
                 <button type="button" aria-label={`Move ${item.label} down`} disabled={index === menu.hive.shortcuts.length - 1} onClick={() => move(index, 1)} className="flex h-9 w-9 items-center justify-center rounded-full border border-[var(--border-faint)] disabled:opacity-40"><ArrowDown className="h-4 w-4" aria-hidden /></button>
@@ -83,7 +84,7 @@ export default function HomeMenuSettingsPage() {
 
       <section className="home-card space-y-3">
         <div><h2 className="font-bold">Need-a-person section</h2><p className="text-xs text-ink-500">The section under the {menu.clusters.hive.label} cards that holds the Workers and Hire shortcuts, kept apart because finding a person is different from a service Peebee delivers. It shows only while Peebee Hire is switched on.</p></div>
-        <label className="flex items-center gap-3 text-sm"><input type="checkbox" checked={menu.hive.hireBanner.enabled} onChange={(e) => change({ ...menu, hive: { ...menu.hive, hireBanner: { ...menu.hive.hireBanner, enabled: e.target.checked } } })} />Show this section</label>
+        <label className="flex items-center gap-3 text-sm"><Switch checked={menu.hive.hireBanner.enabled} onChange={(e) => change({ ...menu, hive: { ...menu.hive, hireBanner: { ...menu.hive.hireBanner, enabled: e.target.checked } } })} />Show this section</label>
         <label className="block space-y-1 text-xs font-semibold text-ink-500"><span>Title</span><input required maxLength={60} value={menu.hive.hireBanner.title} onChange={(e) => change({ ...menu, hive: { ...menu.hive, hireBanner: { ...menu.hive.hireBanner, title: e.target.value } } })} className={field} /></label>
         <label className="block space-y-1 text-xs font-semibold text-ink-500"><span>Text</span><input required maxLength={160} value={menu.hive.hireBanner.text} onChange={(e) => change({ ...menu, hive: { ...menu.hive, hireBanner: { ...menu.hive.hireBanner, text: e.target.value } } })} className={field} /></label>
       </section>

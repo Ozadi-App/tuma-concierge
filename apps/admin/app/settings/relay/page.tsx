@@ -1,7 +1,8 @@
 "use client";
 
+import { Switch } from "../../../components/ui/Switch";
 import { ApiError, hasPermission, type RelayAdminOrder, type RelayDropMode, type RelayOperator, type RelayRoute, type RelayRouteStage, type RelaySettings, type RelayStation } from "@peebee/shared";
-import { Select } from "@peebee/shared/select";
+import { Select } from "../../../components/ui/Select";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { SettingsPageShell, SettingsSaveBar } from "../../../components/SettingsPageShell";
@@ -202,7 +203,7 @@ function SettingsTab() {
       {ready && !stagesReady && <StagesNotice />}
       <section className="home-card space-y-3">
         <label className="flex items-center gap-2 text-sm font-bold text-ink">
-          <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} className="h-4 w-4 accent-gold" />
+          <Switch checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
           Relay delivery is on
         </label>
         <p className="text-xs text-ink-500">Off means every parcel goes the whole way by boda, however long.</p>
@@ -226,7 +227,7 @@ function SettingsTab() {
           Customers choose Relay (same day delivery) or Direct (instant delivery).
         </p>
         <label className="flex items-center gap-2 text-sm font-bold text-ink">
-          <input type="checkbox" checked={payFirst} onChange={(e) => setPayFirst(e.target.checked)} className="h-4 w-4 accent-gold" />
+          <Switch checked={payFirst} onChange={(e) => setPayFirst(e.target.checked)} />
           Relay orders are paid straight away, before a rider accepts
         </label>
         <p className="text-xs text-ink-500">
@@ -283,11 +284,11 @@ function SettingsTab() {
       <section className="home-card space-y-3">
         <p className="text-sm font-bold text-ink">Meeting the matatu</p>
         <label className="flex items-center gap-2 text-sm font-bold text-ink">
-          <input type="checkbox" checked={stagePickup} onChange={(e) => setStagePickup(e.target.checked)} className="h-4 w-4 accent-gold" />
+          <Switch checked={stagePickup} onChange={(e) => setStagePickup(e.target.checked)} />
           Customers can meet the matatu at a stage
         </label>
         <label className="flex items-center gap-2 text-sm font-bold text-ink">
-          <input type="checkbox" checked={stageFallback} onChange={(e) => setStageFallback(e.target.checked)} className="h-4 w-4 accent-gold" />
+          <Switch checked={stageFallback} onChange={(e) => setStageFallback(e.target.checked)} />
           If the customer isn&apos;t there, leave it at the petrol station
         </label>
         <p className="text-xs text-ink-500">Off means the operator calls the customer instead.</p>
@@ -303,7 +304,7 @@ function SettingsTab() {
       <section className="home-card space-y-3">
         <p className="text-sm font-bold text-ink">Sandbox demo</p>
         <label className="flex items-center gap-2 text-sm font-bold text-ink">
-          <input type="checkbox" checked={sandboxDemo} onChange={(e) => setSandboxDemo(e.target.checked)} className="h-4 w-4 accent-gold" />
+          <Switch checked={sandboxDemo} onChange={(e) => setSandboxDemo(e.target.checked)} />
           Demo riders, matatu and petrol stations run sandbox parcels
         </label>
         <p className="text-xs text-ink-500">
@@ -517,7 +518,7 @@ function RoutesTab() {
             ))}
           </div>
           <label className="flex items-center gap-2 text-sm font-semibold text-ink">
-            <input type="checkbox" checked={form.active} onChange={(e) => set("active", e.target.checked)} className="h-4 w-4 accent-gold" />
+            <Switch checked={form.active} onChange={(e) => set("active", e.target.checked)} />
             Route is active
           </label>
           <ErrorNote message={error} />

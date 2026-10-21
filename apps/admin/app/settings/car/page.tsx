@@ -1,6 +1,7 @@
 "use client";
 
-import { Select } from "@peebee/shared/select";
+import { Switch } from "../../../components/ui/Switch";
+import { Select } from "../../../components/ui/Select";
 
 import type { CarSettings } from "@peebee/shared";
 import Link from "next/link";
@@ -193,14 +194,14 @@ export default function CarSettingsPage() {
       <form onSubmit={onSubmit} className="space-y-5">
         <section className="home-card space-y-3">
           <label className="flex items-center gap-2 text-sm font-bold text-ink">
-            <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} className="h-4 w-4 accent-gold" />
+            <Switch checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
             Peebee Car is on
           </label>
           <p className="text-xs text-ink-500">
             The master switch. Off hides everything car-related. It needs the car database tables (migration 0065) to be applied first.
           </p>
           <label className="flex items-center gap-2 text-sm font-bold text-ink">
-            <input type="checkbox" checked={onDemand} disabled={!enabled} onChange={(e) => setOnDemand(e.target.checked)} className="h-4 w-4 accent-gold" />
+            <Switch checked={onDemand} disabled={!enabled} onChange={(e) => setOnDemand(e.target.checked)} />
             Customers can book a car now
           </label>
           <div className="space-y-1 border-t border-[var(--border-faint)] pt-3">
@@ -251,7 +252,7 @@ export default function CarSettingsPage() {
 
         <section className="home-card space-y-3">
           <label className="flex items-center gap-2 text-sm font-bold text-ink">
-            <input type="checkbox" checked={schedEnabled} disabled={!enabled} onChange={(e) => setSchedEnabled(e.target.checked)} className="h-4 w-4 accent-gold" />
+            <Switch checked={schedEnabled} disabled={!enabled} onChange={(e) => setSchedEnabled(e.target.checked)} />
             Customers can schedule a car for later
           </label>
           <div className="grid grid-cols-2 gap-3">
@@ -276,7 +277,7 @@ export default function CarSettingsPage() {
 
         <section className="home-card space-y-3">
           <label className="flex items-center gap-2 text-sm font-bold text-ink">
-            <input type="checkbox" checked={cpEnabled} disabled={!enabled} onChange={(e) => setCpEnabled(e.target.checked)} className="h-4 w-4 accent-gold" />
+            <Switch checked={cpEnabled} disabled={!enabled} onChange={(e) => setCpEnabled(e.target.checked)} />
             Carpool: drivers publish trips, passengers book seats
           </label>
           <div className="grid grid-cols-2 gap-3">
@@ -300,7 +301,7 @@ export default function CarSettingsPage() {
 
         <section className="home-card space-y-3">
           <label className="flex items-center gap-2 text-sm font-bold text-ink">
-            <input type="checkbox" checked={sdEnabled} disabled={!enabled} onChange={(e) => setSdEnabled(e.target.checked)} className="h-4 w-4 accent-gold" />
+            <Switch checked={sdEnabled} disabled={!enabled} onChange={(e) => setSdEnabled(e.target.checked)} />
             Self-drive hire: owners rent vehicles out by the day
           </label>
           <div className="grid grid-cols-2 gap-3">
@@ -324,16 +325,16 @@ export default function CarSettingsPage() {
 
         <section className="home-card space-y-3">
           <label className="flex items-center gap-2 text-sm font-bold text-ink">
-            <input type="checkbox" checked={dealsOn} disabled={!enabled} onChange={(e) => setDealsOn(e.target.checked)} className="h-4 w-4 accent-gold" />
+            <Switch checked={dealsOn} disabled={!enabled} onChange={(e) => setDealsOn(e.target.checked)} />
             Drivers can apply to owners&apos; cars
           </label>
           <div className="space-y-2">
             <label className="flex items-center gap-2 text-sm text-ink">
-              <input type="checkbox" checked={dealShare} disabled={!dealsOn} onChange={(e) => setDealShare(e.target.checked)} className="h-4 w-4 accent-gold" />
+              <Switch checked={dealShare} disabled={!dealsOn} onChange={(e) => setDealShare(e.target.checked)} />
               Owners can offer a share of each ride
             </label>
             <label className="flex items-center gap-2 text-sm text-ink">
-              <input type="checkbox" checked={dealRent} disabled={!dealsOn} onChange={(e) => setDealRent(e.target.checked)} className="h-4 w-4 accent-gold" />
+              <Switch checked={dealRent} disabled={!dealsOn} onChange={(e) => setDealRent(e.target.checked)} />
               Owners can offer a fixed rent (per day or week)
             </label>
           </div>
@@ -362,7 +363,7 @@ export default function CarSettingsPage() {
             ["Drivers: driving licence", kycLicence, setKycLicence],
           ].map(([label, value, set]) => (
             <label key={label as string} className="flex items-center gap-2 text-sm text-ink">
-              <input type="checkbox" checked={value as boolean} onChange={(e) => (set as (v: boolean) => void)(e.target.checked)} className="h-4 w-4 accent-gold" />
+              <Switch checked={value as boolean} onChange={(e) => (set as (v: boolean) => void)(e.target.checked)} />
               {label as string}
             </label>
           ))}
@@ -387,7 +388,7 @@ export default function CarSettingsPage() {
 
         <section className="home-card space-y-3">
           <label className="flex items-center gap-2 text-sm font-bold text-ink">
-            <input type="checkbox" checked={withdrawals} onChange={(e) => setWithdrawals(e.target.checked)} className="h-4 w-4 accent-gold" />
+            <Switch checked={withdrawals} onChange={(e) => setWithdrawals(e.target.checked)} />
             Owners and drivers can cash out to mobile money
           </label>
           <div className="space-y-1">

@@ -1,5 +1,7 @@
 "use client";
 
+import { Select } from "../../../components/ui/Select";
+import { Switch } from "../../../components/ui/Switch";
 import {
   WORK_SETTINGS_EXTRA_DEFAULTS,
   type WorkAdminSettings,
@@ -67,7 +69,7 @@ const withDefaults = (w: Partial<WorkAdminSettings> | undefined): Form => ({ ...
 function Toggle({ label: text, hint, checked, disabled, onChange }: { label: string; hint?: string; checked: boolean; disabled: boolean; onChange: (v: boolean) => void }) {
   return (
     <label className="flex items-start gap-3">
-      <input type="checkbox" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} className="mt-0.5 h-4 w-4 shrink-0" />
+      <Switch checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />
       <span>
         <span className="block text-sm font-semibold text-ink">{text}</span>
         {hint && <span className="block text-xs text-ink-500">{hint}</span>}
@@ -211,9 +213,9 @@ export default function WorkSettingsPage() {
           <p className="text-xs text-ink-500">If more than one is on, the customer chooses; otherwise the default is used.</p>
         </div>
         <Field label="Default matching">
-          <select disabled={ro} value={form.defaultMatching} onChange={(e) => { setSaved(false); setForm({ ...form, defaultMatching: e.target.value as WorkMatchingMode }); }} className={inputCls}>
+          <Select disabled={ro} value={form.defaultMatching} onValueChange={(next) => { setSaved(false); setForm({ ...form, defaultMatching: next as WorkMatchingMode }); }} className={inputCls}>
             {MATCHING.map((m) => <option key={m} value={m}>{label(m)}</option>)}
-          </select>
+          </Select>
         </Field>
       </section>
 
@@ -276,10 +278,10 @@ export default function WorkSettingsPage() {
           {numField("onsiteMinMinutes")}
         </div>
         <Field label="When a cancellation is flagged" hint="“Flag only” leaves the provider working until staff review it.">
-          <select disabled={ro} value={form.onsiteAction} onChange={(e) => { setSaved(false); setForm({ ...form, onsiteAction: e.target.value as "flag" | "suspend" }); }} className={inputCls}>
+          <Select disabled={ro} value={form.onsiteAction} onValueChange={(next) => { setSaved(false); setForm({ ...form, onsiteAction: next as "flag" | "suspend" }); }} className={inputCls}>
             <option value="flag">Flag only (staff review)</option>
             <option value="suspend">Flag and suspend the provider until reviewed</option>
-          </select>
+          </Select>
         </Field>
         <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2">
           {numField("onsiteSuspendAfterFlags")}
