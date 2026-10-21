@@ -7,6 +7,7 @@ import { db } from "../db/client.js";
 import { newId } from "../lib/ids.js";
 import { bookingFor, bookSeats, manifestFor, myBookings, releaseStaleBookings } from "./bookings.js";
 import { activeQueue, applyTaxi, arrive, driverView, goOnRoad, joinLine, leaveLine, lineOf, listTaxis, onRoadOf, removeFromLine, startBoarding, TaxipressError, updateLocation, updateTaxi, walkUp } from "./queue.js";
+import { DEMO_WALLET_UGX, installTaxipressDemo, refillDemoLine, removeTaxipressDemo, resetDemoLine, TaxipressDemoError, taxipressDemoStatus } from "./demo.js";
 import { getTaxipressSettings, setTaxipressSettings } from "./settings.js";
 import { confirmBoarding, settlementReport } from "./settlement.js";
 import { getTaxipressRoute, listActiveTaxipressRoutes, listTaxipressRoutes, taxipressReady } from "./service.js";
@@ -60,6 +61,7 @@ taxipressRoutes.get("/taxipress/config", async (c) => {
 taxipressRoutes.get("/taxipress/routes/:id/queue", async (c) => {
   const id = c.req.param("id") as string;
   await releaseStaleBookings();
+  await refillDemoLine();
   const [line, onRoad, route] = await Promise.all([lineOf(id), onRoadOf(id), getTaxipressRoute(id)]);
   return c.json({
     line, onRoad,
@@ -314,4 +316,38 @@ taxipressRoutes.post("/admin/taxipress/queue/:id/remove", requirePermission("set
 taxipressRoutes.get("/admin/taxipress/report", requirePermission("settings.manage"), async (c) => {
   const days = Math.round(Number(c.req.query("days") ?? 30));
   return c.json(await settlementReport(Number.isFinite(days) && days > 0 ? days : 30));
+});
+
+// ---- Practice taxis (sandbox only) -------------------------------------------
+
+taxipressRoutes.get("/admin/taxipress/demo", requirePermission("settings.manage"), async (c) => c.json({ ...(await taxipressDemoStatus()), walletUgx: DEMO_WALLET_UGX }));
+
+taxipressRoutes.post("/admin/taxipress/demo/install", requirePermission("settings.manage"), async (c) => {
+  const parsed = z.object({ password: z.string().min(8).max(100) }).safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) return c.json({ error: "invalid_body", message: "Choose a password of at least 8 characters for the practice accounts." }, 400);
+  try {
+    const result = await installTaxipressDemo(parsed.data.password);
+    await logActivity({ actor: c.get("user"), action: "taxipress.demo.install", summary: "Installed the Taxipress sandbox practice taxis", entityType: "taxipress_demo", ip: ip(c) });
+    return c.json({ ok: true, ...result, ...(await taxipressDemoStatus()), walletUgx: DEMO_WALLET_UGX });
+  } catch (err) {
+    if (err instanceof TaxipressDemoError) return c.json({ error: err.code, message: err.message }, err.status);
+    throw err;
+  }
+});
+
+taxipressRoutes.post("/admin/taxipress/demo/reset", requirePermission("settings.manage"), async (c) => {
+  try {
+    const ended = await resetDemoLine();
+    await logActivity({ actor: c.get("user"), action: "taxipress.demo.reset", summary: "Reset the Taxipress practice line", entityType: "taxipress_demo", ip: ip(c) });
+    return c.json({ ok: true, ended, ...(await taxipressDemoStatus()), walletUgx: DEMO_WALLET_UGX });
+  } catch (err) {
+    if (err instanceof TaxipressDemoError) return c.json({ error: err.code, message: err.message }, err.status);
+    throw err;
+  }
+});
+
+taxipressRoutes.delete("/admin/taxipress/demo", requirePermission("settings.manage"), async (c) => {
+  const result = await removeTaxipressDemo();
+  await logActivity({ actor: c.get("user"), action: "taxipress.demo.remove", summary: "Removed the Taxipress sandbox practice taxis", entityType: "taxipress_demo", ip: ip(c) });
+  return c.json({ ok: true, ...result });
 });

@@ -1,16 +1,16 @@
 "use client";
 
-import { hasPermission, type TaxipressAdminQueueEntry, type TaxipressAdminRoute, type TaxipressRelayRoute, type TaxipressReport, type TaxipressSettings, type TaxipressTaxi } from "@peebee/shared";
+import { hasPermission, type TaxipressAdminQueueEntry, type TaxipressAdminRoute, type TaxipressDemoStatus, type TaxipressRelayRoute, type TaxipressReport, type TaxipressSettings, type TaxipressTaxi } from "@peebee/shared";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { SettingsPageShell, SettingsSaveBar } from "../../../components/SettingsPageShell";
 import { Switch } from "../../../components/ui/Switch";
 import { Select } from "../../../components/ui/Select";
-import { Badge, ErrorNote, Field, inputCls, ugx } from "../../../components/work/ui";
+import { Badge, ConfirmDialog, ErrorNote, Field, inputCls, ugx } from "../../../components/work/ui";
 import { api, errorMessage } from "../../../lib/api";
 import { useAuth } from "../../../lib/auth-context";
 
-type Tab = "settings" | "routes" | "taxis" | "line" | "money";
+type Tab = "settings" | "routes" | "taxis" | "line" | "money" | "practice";
 const digits = (v: string) => v.replace(/[^\d]/g, "");
 const decimal = (v: string) => v.replace(/[^\d.]/g, "").replace(/(\..*)\./g, "$1");
 const smallBtn = "min-h-9 rounded-full px-3 text-xs font-bold";
@@ -42,11 +42,11 @@ export default function TaxipressPage() {
             (stage names, locations and stops), then run here in each direction with a fare per seat. Taxipress and its routes start switched off.
           </p>
           <div className="flex gap-2 overflow-x-auto pb-1">
-            {([["settings", "Settings"], ["routes", "Routes"], ["taxis", "Taxis"], ["line", "The line"], ["money", "Money"]] as [Tab, string][]).map(([id, text]) => (
+            {([["settings", "Settings"], ["routes", "Routes"], ["taxis", "Taxis"], ["line", "The line"], ["money", "Money"], ["practice", "Practice"]] as [Tab, string][]).map(([id, text]) => (
               <button key={id} type="button" onClick={() => setTab(id)} className={`${smallBtn} shrink-0 ${tab === id ? "bg-gold text-ink-gold" : "bg-gold/15 text-ink"}`}>{text}</button>
             ))}
           </div>
-          {tab === "settings" ? <SettingsTab /> : tab === "routes" ? <RoutesTab /> : tab === "taxis" ? <TaxisTab /> : tab === "line" ? <LineTab /> : <MoneyTab />}
+          {tab === "settings" ? <SettingsTab /> : tab === "routes" ? <RoutesTab /> : tab === "taxis" ? <TaxisTab /> : tab === "line" ? <LineTab /> : tab === "money" ? <MoneyTab /> : <PracticeTab />}
         </>
       )}
     </SettingsPageShell>
@@ -485,6 +485,109 @@ function MoneyTab() {
           </div>
         ))}
       </section>
+    </div>
+  );
+}
+
+function PracticeTab() {
+  const [status, setStatus] = useState<TaxipressDemoStatus | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [confirmRemove, setConfirmRemove] = useState(false);
+
+  const load = useCallback(() => {
+    api.adminTaxipressDemo().then(setStatus).catch((err) => setError(errorMessage(err)));
+  }, []);
+  useEffect(load, [load]);
+
+  async function run(action: () => Promise<TaxipressDemoStatus>, done: string) {
+    setBusy(true); setError(null); setMessage(null);
+    try {
+      setStatus(await action());
+      setMessage(done);
+    } catch (err) { setError(errorMessage(err)); }
+    finally { setBusy(false); }
+  }
+
+  async function remove() {
+    setBusy(true); setError(null); setMessage(null);
+    try {
+      const res = await api.adminRemoveTaxipressDemo();
+      setMessage(res.locked ? "The practice taxis are out of the line and the accounts are locked (they have booking history)." : "Practice taxis removed.");
+      setConfirmRemove(false);
+      load();
+    } catch (err) { setError(errorMessage(err)); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <div className="space-y-4">
+      <section className="home-card space-y-2">
+        <p className="text-sm font-bold text-ink">Practice taxis (sandbox)</p>
+        <p className="text-xs text-ink-500">
+          Four approved taxis (two 14-seaters, two 18-seaters) on Kampala ⇄ Entebbe, and a passenger with {status ? ugx(status.walletUgx) : "sandbox"} of sandbox wallet money.
+          Installing switches Taxipress on and runs the route both ways at UGX 10,000 a seat (an existing fare is kept). The taxis put themselves back in the line whenever a
+          passenger looks at it, so there is always one to book: book as the passenger, then sign in as a driver in the Partner app to start boarding, confirm the ticket, go on the road and arrive.
+        </p>
+        {status && !status.sandbox && <p role="alert" className="rounded-xl bg-gold/10 p-3 text-sm text-ink">The platform is live. Switch it to sandbox (Settings → Platform) before installing; practice taxis are sandbox only.</p>}
+        <ErrorNote message={error} />
+        {message && <p role="status" className="text-sm font-semibold text-green">{message}</p>}
+        <form
+          onSubmit={(e) => { e.preventDefault(); void run(() => api.adminInstallTaxipressDemo(password), "Practice taxis are ready. Sign in with the phone number and the password you just chose."); }}
+          className="space-y-3 pt-2"
+        >
+          <Field label="Password for every practice account" hint="At least 8 characters. Installing again resets the accounts and this password.">
+            <input type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} className={inputCls} />
+          </Field>
+          <div className="flex flex-wrap gap-2">
+            <button type="submit" disabled={busy || password.length < 8 || !status?.sandbox} className="min-h-11 rounded-full bg-gold px-5 text-sm font-bold text-ink-gold disabled:opacity-50">
+              {busy ? "Working…" : status?.installed ? "Reset practice taxis" : "Install practice taxis"}
+            </button>
+            {status?.installed && (
+              <>
+                <button type="button" disabled={busy || !status.sandbox} onClick={() => void run(() => api.adminResetTaxipressDemo(), "Every practice trip was ended and the taxis are lined up again.")} className="min-h-11 rounded-full border border-[var(--border-faint)] px-5 text-sm font-bold text-ink disabled:opacity-50">Reset the line</button>
+                <button type="button" disabled={busy} onClick={() => setConfirmRemove(true)} className="min-h-11 rounded-full border border-[var(--border-faint)] px-5 text-sm font-bold text-ink">Remove</button>
+              </>
+            )}
+          </div>
+        </form>
+      </section>
+
+      {status?.installed && (
+        <section className="home-card space-y-2">
+          <p className="text-sm font-bold text-ink">Practice taxis now</p>
+          {status.line.length === 0 && <p className="text-sm text-ink-500">None in a line yet. They join when a passenger opens Taxipress.</p>}
+          {status.line.map((l) => (
+            <div key={`${l.plate}-${l.status}`} className="flex items-center justify-between gap-3 rounded-xl bg-[rgb(var(--surface-muted))] px-3 py-2 text-sm">
+              <span className="min-w-0 truncate font-bold text-ink">{l.plate} <span className="font-normal text-ink-500">· {l.direction}</span></span>
+              <span className="shrink-0 text-xs text-ink-500">{l.status === "boarding" ? "Boarding now" : l.status === "on_road" ? "On the road" : "In the line"} · {l.seatsBooked}/{l.seatsTotal} seats</span>
+            </div>
+          ))}
+        </section>
+      )}
+
+      {status?.installed && (
+        <section className="home-card space-y-2">
+          <p className="text-sm font-bold text-ink">Sign-in details</p>
+          <p className="text-xs text-ink-500">Sign in with the phone number (or email) and the password you set. The passenger uses the customer app; the drivers use the Partner app (Taxipress).</p>
+          <ul className="divide-y divide-[var(--border-faint)]">
+            {status.accounts.map((a) => (
+              <li key={a.phone} className="py-2 text-sm">
+                <p className="font-bold text-ink">{a.name} <span className="font-normal text-ink-500">· {a.role}</span></p>
+                <p className="text-ink-500">{a.phone} · {a.email}</p>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {confirmRemove && (
+        <ConfirmDialog title="Remove the practice taxis?" confirmLabel="Remove" danger busy={busy} onConfirm={() => void remove()} onClose={() => setConfirmRemove(false)}>
+          The taxis leave the line. Accounts with booking history are locked instead of deleted.
+        </ConfirmDialog>
+      )}
     </div>
   );
 }

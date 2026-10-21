@@ -1,4 +1,4 @@
-import type { TaxipressAdminQueueEntry, TaxipressAdminRoute, TaxipressBoardingResult, TaxipressBooking, TaxipressConfig, TaxipressDriverView, TaxipressLineEntry, TaxipressQueueView, TaxipressRelayRoute, TaxipressReport, TaxipressSettings, TaxipressTaxi } from "./taxipress.js";
+import type { TaxipressAdminQueueEntry, TaxipressAdminRoute, TaxipressBoardingResult, TaxipressBooking, TaxipressConfig, TaxipressDemoStatus, TaxipressDriverView, TaxipressLineEntry, TaxipressQueueView, TaxipressRelayRoute, TaxipressReport, TaxipressSettings, TaxipressTaxi } from "./taxipress.js";
 import type { BagTrip, RelayAdminOrder, RelayRouteStage, RelayMerchantOrder, RelayOpenLeg, RelayOperator, RelayOperatorParcels, RelayQuote, RelayRoute, RelaySettings, RelayStation, RelayStationParcels, RelayTrack } from "./relay.js";
 import type { AdminRole } from "./permissions.js";
 import { workMethods } from "./work-client.js";
@@ -786,6 +786,19 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
     },
     async adminUpdateTaxipressTaxi(id: string, input: Partial<{ status: "pending" | "approved" | "suspended"; passengersEnabled: boolean; parcelsEnabled: boolean }>) {
       return request<{ taxi: TaxipressTaxi }>(`/v1/admin/taxipress/taxis/${encodeURIComponent(id)}`, { method: "POST", body: JSON.stringify(input) });
+    },
+    async adminTaxipressDemo() {
+      return request<TaxipressDemoStatus>("/v1/admin/taxipress/demo");
+    },
+    /** Sandbox only: practice taxis, a passenger with sandbox money, and the Kampala ⇄ Entebbe route running both ways. */
+    async adminInstallTaxipressDemo(password: string) {
+      return request<TaxipressDemoStatus>("/v1/admin/taxipress/demo/install", { method: "POST", body: JSON.stringify({ password }) });
+    },
+    async adminResetTaxipressDemo() {
+      return request<TaxipressDemoStatus>("/v1/admin/taxipress/demo/reset", { method: "POST", body: "{}" });
+    },
+    async adminRemoveTaxipressDemo() {
+      return request<{ ok: true; deleted: number; locked: number }>("/v1/admin/taxipress/demo", { method: "DELETE" });
     },
     async adminTaxipressReport(days = 30) {
       return request<TaxipressReport>(`/v1/admin/taxipress/report?days=${days}`);

@@ -204,3 +204,12 @@ export type TaxipressReport =
       /** Drivers whose wallet is below zero (cash commission taken from a wallet that could not cover it). */
       owing: Array<{ id: string; name: string | null; phone: string | null; balance: number; plate: string }>;
     };
+
+/** The sandbox practice taxis: who to sign in as, and where the practice taxis are now. */
+export type TaxipressDemoStatus = {
+  installed: boolean;
+  sandbox: boolean;
+  walletUgx: number;
+  accounts: Array<{ name: string; phone: string; email: string; role: string }>;
+  line: Array<{ plate: string; status: string; seatsBooked: number; seatsTotal: number; direction: string }>;
+};
