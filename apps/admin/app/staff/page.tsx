@@ -1,6 +1,6 @@
 "use client";
 
-import { Select } from "@peebee/shared/select";
+import { Select } from "../../components/ui/Select";
 
 import { ADMIN_ROLE_DESCRIPTIONS, ADMIN_ROLE_LABELS, ADMIN_ROLES, type AdminRole, type StaffMember } from "@peebee/shared";
 import { KeyRound, Mail, Plus, ShieldOff, UserCheck, X } from "lucide-react";

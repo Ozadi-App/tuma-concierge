@@ -1,5 +1,6 @@
 "use client";
 
+import { Select } from "../../components/ui/Select";
 import type { WorkAdminJob, WorkJobStatus, WorkServiceType } from "@peebee/shared";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
@@ -29,18 +30,18 @@ export default function WorkJobsPage() {
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-2 gap-2">
-        <select aria-label="Status" value={status} onChange={(e) => setStatus(e.target.value)} className={inputCls}>
+        <Select aria-label="Status" value={status} onValueChange={(next) => setStatus(next)} className={inputCls}>
           <option value="">All statuses</option>
           {STATUSES.map((s) => (
             <option key={s} value={s}>{label(s)}</option>
           ))}
-        </select>
-        <select aria-label="Service type" value={type} onChange={(e) => setType(e.target.value)} className={inputCls}>
+        </Select>
+        <Select aria-label="Service type" value={type} onValueChange={(next) => setType(next)} className={inputCls}>
           <option value="">All service types</option>
           {TYPES.map((t) => (
             <option key={t} value={t}>{label(t)}</option>
           ))}
-        </select>
+        </Select>
       </div>
       <ErrorNote message={error} />
       {jobs === null && !error && <p className="text-sm text-ink-500">Loading…</p>}

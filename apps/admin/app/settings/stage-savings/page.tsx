@@ -1,6 +1,7 @@
 "use client";
 
-import { Select } from "@peebee/shared/select";
+import { Switch } from "../../../components/ui/Switch";
+import { Select } from "../../../components/ui/Select";
 
 import {
   hasPermission,
@@ -119,11 +120,9 @@ export default function StageSavingsSettingsPage() {
 
         <section className="home-card space-y-3">
           <label className="flex items-start gap-2.5">
-            <input
-              type="checkbox"
+            <Switch
               checked={loanInterestEnabled}
               onChange={(e) => setLoanInterestEnabled(e.target.checked)}
-              className="mt-0.5 h-4 w-4 shrink-0 accent-gold"
             />
             <span>
               <span className="block text-sm font-semibold text-ink">Loans carry interest</span>
@@ -220,11 +219,9 @@ export default function StageSavingsSettingsPage() {
           </Select>
 
           <label className="flex items-start gap-2.5 pt-2">
-            <input
-              type="checkbox"
+            <Switch
               checked={cashDoubleCheckRequired}
               onChange={(e) => setCashDoubleCheckRequired(e.target.checked)}
-              className="mt-0.5 h-4 w-4 shrink-0 accent-gold"
             />
             <span>
               <span className="block text-sm font-semibold text-ink">Require a second officer to confirm</span>
@@ -281,11 +278,9 @@ export default function StageSavingsSettingsPage() {
 
         <section className="home-card space-y-3">
           <label className="flex items-start gap-2.5">
-            <input
-              type="checkbox"
+            <Switch
               checked={requiresPro}
               onChange={(e) => setRequiresPro(e.target.checked)}
-              className="mt-0.5 h-4 w-4 shrink-0 accent-gold"
             />
             <span>
               <span className="block text-sm font-semibold text-ink">Require a Pro subscription</span>
@@ -300,11 +295,9 @@ export default function StageSavingsSettingsPage() {
         <section className="home-card space-y-3">
           <h2 className="text-sm font-semibold text-ink">Fund handling</h2>
           <label className="flex items-start gap-2.5">
-            <input
-              type="checkbox"
+            <Switch
               checked={custodialMode}
               onChange={(e) => setCustodialMode(e.target.checked)}
-              className="mt-0.5 h-4 w-4 shrink-0 accent-gold"
             />
             <span>
               <span className="block text-sm font-semibold text-ink">Custodial mode (not yet functional)</span>

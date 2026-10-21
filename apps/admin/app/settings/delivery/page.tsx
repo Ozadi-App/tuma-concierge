@@ -1,6 +1,7 @@
 "use client";
 
-import { Select } from "@peebee/shared/select";
+import { Switch } from "../../../components/ui/Switch";
+import { Select } from "../../../components/ui/Select";
 
 import { useEffect, useState } from "react";
 import type { TimeFeeSettings } from "@peebee/shared";
@@ -163,8 +164,7 @@ export default function DeliveryPricingPage() {
                 return (
                   <div key={kind} className="space-y-2 rounded-xl border border-[var(--border-faint)] p-3">
                     <label className="flex items-center gap-2 text-sm font-semibold text-ink">
-                      <input
-                        type="checkbox"
+                      <Switch
                         checked={timeFees[enabledKey]}
                         onChange={(e) => setTimeFees({ ...timeFees, [enabledKey]: e.target.checked })}
                       />
@@ -281,11 +281,9 @@ export default function DeliveryPricingPage() {
         </section>
         <section className="home-card space-y-3">
           <label className="flex items-center gap-2 text-sm font-bold text-ink">
-            <input
-              type="checkbox"
+            <Switch
               checked={rideForOtherEnabled}
               onChange={(e) => setRideForOtherEnabled(e.target.checked)}
-              className="h-4 w-4 accent-gold"
             />
             Let customers book a ride for someone else
           </label>

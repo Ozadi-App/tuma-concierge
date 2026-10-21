@@ -1,5 +1,6 @@
 "use client";
 
+import { Switch } from "../../../components/ui/Switch";
 import {
   hasPermission,
   type PlatformEnvironment,
@@ -112,11 +113,9 @@ export default function PaymentsSettingsPage() {
               paymentsDemoMode ? "border-gold/40 bg-gold/5" : "border-[var(--border-faint)]"
             }`}
           >
-            <input
-              type="checkbox"
+            <Switch
               checked={paymentsDemoMode}
               onChange={(e) => setPaymentsDemoMode(e.target.checked)}
-              className="mt-0.5 h-4 w-4 shrink-0 accent-gold"
             />
             <span>
               <span className="flex flex-wrap items-center gap-1.5">
@@ -153,7 +152,7 @@ export default function PaymentsSettingsPage() {
                       type="checkbox"
                       checked={isActive}
                       onChange={() => toggleProvider(provider)}
-                      className="mt-0.5 h-4 w-4 shrink-0 accent-gold"
+                      className="pb-check"
                     />
                     <span className="min-w-0 flex-1">
                       <span className="flex flex-wrap items-center gap-1.5">

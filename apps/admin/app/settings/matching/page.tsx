@@ -1,6 +1,7 @@
 "use client";
 
-import { Select } from "@peebee/shared/select";
+import { Switch } from "../../../components/ui/Switch";
+import { Select } from "../../../components/ui/Select";
 
 import { MATCHING_MODE_DESCRIPTIONS, MATCHING_MODE_LABELS, type JobExpiryUnit, type MatchingMode } from "@peebee/shared";
 import { useEffect, useState } from "react";
@@ -136,7 +137,7 @@ export default function RiderMatchingPage() {
                   type="checkbox"
                   checked={enabledModes.includes(mode)}
                   onChange={() => toggleMode(mode)}
-                  className="mt-0.5 h-4 w-4 shrink-0 accent-gold"
+                  className="pb-check"
                 />
                 <span>
                   <span className="block text-sm font-semibold text-ink">{MATCHING_MODE_LABELS[mode]}</span>
@@ -186,11 +187,9 @@ export default function RiderMatchingPage() {
         </section>
         <section className="home-card space-y-3">
           <label className="flex items-center gap-2 text-sm font-bold text-ink">
-            <input
-              type="checkbox"
+            <Switch
               checked={biddingEnabled}
               onChange={(e) => setBiddingEnabled(e.target.checked)}
-              className="h-4 w-4 accent-gold"
             />
             Let riders and drivers bid on rides and parcels
           </label>
@@ -238,11 +237,9 @@ export default function RiderMatchingPage() {
         </section>
         <section className="home-card space-y-3">
           <label className="flex items-center gap-2 text-sm font-bold text-ink">
-            <input
-              type="checkbox"
+            <Switch
               checked={expiryEnabled}
               onChange={(e) => setExpiryEnabled(e.target.checked)}
-              className="h-4 w-4 accent-gold"
             />
             Expire jobs nobody serves
           </label>

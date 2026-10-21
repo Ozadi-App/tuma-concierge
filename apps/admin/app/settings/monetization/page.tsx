@@ -1,6 +1,7 @@
 "use client";
 
-import { Select } from "@peebee/shared/select";
+import { Switch } from "../../../components/ui/Switch";
+import { Select } from "../../../components/ui/Select";
 
 import {
   hasPermission,
@@ -156,11 +157,9 @@ export default function MonetizationSettingsPage() {
           {/* Delivery commission */}
           <div className="rounded-xl border border-[var(--border-faint)] p-3 space-y-2.5">
             <label className="flex items-start gap-2.5">
-              <input
-                type="checkbox"
+              <Switch
                 checked={deliveryCommissionEnabled}
                 onChange={(e) => setDeliveryCommissionEnabled(e.target.checked)}
-                className="mt-0.5 h-4 w-4 shrink-0 accent-gold"
               />
               <span>
                 <span className="block text-sm font-semibold text-ink">Delivery commission</span>
@@ -203,11 +202,9 @@ export default function MonetizationSettingsPage() {
           {/* Customer service fee */}
           <div className="rounded-xl border border-[var(--border-faint)] p-3 space-y-2.5">
             <label className="flex items-start gap-2.5">
-              <input
-                type="checkbox"
+              <Switch
                 checked={serviceFeeEnabled}
                 onChange={(e) => setServiceFeeEnabled(e.target.checked)}
-                className="mt-0.5 h-4 w-4 shrink-0 accent-gold"
               />
               <span>
                 <span className="block text-sm font-semibold text-ink">Customer service fee</span>
@@ -275,11 +272,9 @@ export default function MonetizationSettingsPage() {
           {/* Processing / transaction fee */}
           <div className="rounded-xl border border-[var(--border-faint)] p-3 space-y-2.5">
             <label className="flex items-start gap-2.5">
-              <input
-                type="checkbox"
+              <Switch
                 checked={processingFeeEnabled}
                 onChange={(e) => setProcessingFeeEnabled(e.target.checked)}
-                className="mt-0.5 h-4 w-4 shrink-0 accent-gold"
               />
               <span>
                 <span className="block text-sm font-semibold text-ink">Transaction / processing fee</span>
@@ -366,11 +361,9 @@ export default function MonetizationSettingsPage() {
           {/* Rider subscription */}
           <div className="rounded-xl border border-[var(--border-faint)] p-3 space-y-2.5">
             <label className="flex items-start gap-2.5">
-              <input
-                type="checkbox"
+              <Switch
                 checked={subscriptionEnabled}
                 onChange={(e) => setSubscriptionEnabled(e.target.checked)}
-                className="mt-0.5 h-4 w-4 shrink-0 accent-gold"
               />
               <span>
                 <span className="text-sm font-semibold text-ink">Rider subscription</span>
@@ -443,11 +436,9 @@ export default function MonetizationSettingsPage() {
               switch on their own settings page. */}
           <div className="rounded-xl border border-[var(--border-faint)] p-3 space-y-2.5">
             <label className="flex items-start gap-2.5">
-              <input
-                type="checkbox"
+              <Switch
                 checked={proEnabled}
                 onChange={(e) => setProEnabled(e.target.checked)}
-                className="mt-0.5 h-4 w-4 shrink-0 accent-gold"
               />
               <span>
                 <span className="text-sm font-semibold text-ink">Rider Pro</span>
@@ -461,11 +452,9 @@ export default function MonetizationSettingsPage() {
               <div className="space-y-3 pl-6.5">
                 <div className="rounded-xl border border-[var(--border-faint)] p-2.5 space-y-2">
                   <label className="flex items-start gap-2.5">
-                    <input
-                      type="checkbox"
+                    <Switch
                       checked={proRecurringEnabled}
                       onChange={(e) => setProRecurringEnabled(e.target.checked)}
-                      className="mt-0.5 h-4 w-4 shrink-0 accent-gold"
                     />
                     <span>
                       <span className="text-sm font-semibold text-ink">Recurring plan</span>
@@ -507,11 +496,9 @@ export default function MonetizationSettingsPage() {
 
                 <div className="rounded-xl border border-[var(--border-faint)] p-2.5 space-y-2">
                   <label className="flex items-start gap-2.5">
-                    <input
-                      type="checkbox"
+                    <Switch
                       checked={proOnetimeEnabled}
                       onChange={(e) => setProOnetimeEnabled(e.target.checked)}
-                      className="mt-0.5 h-4 w-4 shrink-0 accent-gold"
                     />
                     <span>
                       <span className="text-sm font-semibold text-ink">One-time plan</span>

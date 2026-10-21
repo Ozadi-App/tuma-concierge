@@ -222,3 +222,177 @@ select {
 
 /* Sign-in artwork specific to this app (replace public/brand/auth-art.svg to change it). */
 .auth-art > img { content:url("/brand/auth-art.svg"); }
+
+/* ================================================================== */
+/* Admin redesign: shell, navigation, controls.                        */
+/* Light stays bright; deeper effects only under the dark theme.       */
+/* ================================================================== */
+:root {
+  --admin-sidebar-bg: 255 255 255;
+  --admin-hover: rgba(10, 10, 10, 0.045);
+  --admin-active-bg: rgb(201 162 39 / 0.12);
+  --admin-active-fg: 10 10 10;
+  --shadow-pop: 0 24px 60px -12px rgba(10, 10, 10, 0.28), 0 2px 8px rgba(10, 10, 10, 0.06);
+}
+:root[data-theme="dark"] {
+  --admin-sidebar-bg: 8 8 8;
+  --admin-hover: rgba(255, 255, 255, 0.05);
+  --admin-active-bg: rgb(201 162 39 / 0.14);
+  --admin-active-fg: 232 197 90;
+  --shadow-pop: 0 30px 80px -10px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --admin-sidebar-bg: 8 8 8;
+    --admin-hover: rgba(255, 255, 255, 0.05);
+    --admin-active-bg: rgb(201 162 39 / 0.14);
+    --admin-active-fg: 232 197 90;
+    --shadow-pop: 0 30px 80px -10px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.06);
+  }
+}
+
+/* Cards: a little tighter on phones, same token everywhere. */
+.home-card, .card { padding: 20px; }
+@media (min-width: 1024px) { .home-card, .card { padding: 24px; } }
+.card:hover { transform: none; }
+.admin-card {
+  border-radius: var(--radius-card);
+  border: 1px solid var(--border-faint);
+  background: rgb(var(--surface-card));
+  box-shadow: var(--shadow-card);
+}
+
+/* Shell */
+@media (min-width: 1024px) {
+  .admin-main.customer-nav-content-clearance { padding-bottom: 48px; }
+}
+.admin-sidebar {
+  background: rgb(var(--admin-sidebar-bg));
+  border-right: 1px solid var(--border-faint);
+}
+.admin-nav-group {
+  font-size: 10.5px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase;
+  color: rgb(var(--color-ink-500));
+}
+.admin-nav-link {
+  position: relative; display: flex; align-items: center; gap: 10px; height: 38px; padding: 0 12px;
+  border-radius: 10px; font-size: 13.5px; font-weight: 600; color: rgb(var(--color-ink) / 0.78);
+  transition: background-color 140ms ease, color 140ms ease;
+}
+.admin-nav-link:hover { background: var(--admin-hover); color: rgb(var(--color-ink)); }
+.admin-nav-link.is-active { background: var(--admin-active-bg); color: rgb(var(--admin-active-fg)); font-weight: 700; }
+.admin-nav-link.is-active::before {
+  content: ""; position: absolute; left: -12px; top: 9px; bottom: 9px; width: 3px; border-radius: 0 3px 3px 0;
+  background: rgb(var(--color-gold));
+}
+.admin-nav-link.is-active svg { color: rgb(var(--color-gold)); }
+.admin-search-btn {
+  background: rgb(var(--surface-muted)); border: 1px solid var(--border-faint);
+  transition: border-color 140ms ease;
+}
+.admin-search-btn:hover { border-color: rgb(var(--color-gold) / 0.5); }
+.admin-kbd {
+  font: 600 10.5px/1 ui-monospace, SFMono-Regular, Menlo, monospace; padding: 4px 6px; border-radius: 6px;
+  border: 1px solid var(--border-faint); background: rgb(var(--surface-card)); color: rgb(var(--color-ink-500));
+}
+.admin-crumbs a { transition: color 140ms ease; }
+
+/* Page headings */
+.admin-title { font-size: 1.375rem; line-height: 1.2; font-weight: 800; letter-spacing: -0.015em; color: rgb(var(--color-ink)); }
+@media (min-width: 1024px) { .admin-title { font-size: 1.75rem; } }
+.admin-eyebrow { font-size: 11px; font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase; color: rgb(var(--color-gold)); margin-bottom: 2px; }
+
+/* Command palette */
+.admin-palette { background: rgb(var(--surface-card)); border: 1px solid var(--border-faint); box-shadow: var(--shadow-pop); animation: admin-pop 140ms ease-out; }
+.admin-palette-input.admin-palette-input { background: transparent; padding: 0; border: 0 !important; box-shadow: none !important; }
+.admin-palette-active { background: rgb(var(--surface-muted)); box-shadow: inset 3px 0 0 rgb(var(--color-gold)); }
+@keyframes admin-pop { from { opacity: 0; transform: translateY(-6px) scale(0.985); } }
+
+/* Toasts */
+.admin-toast { background: #0a0a0a; color: #fff; box-shadow: 0 12px 30px rgba(0, 0, 0, 0.3); animation: admin-pop 160ms ease-out; }
+:root[data-theme="dark"] .admin-toast { background: #f5f5f5; color: #0a0a0a; }
+.admin-toast.is-error { background: #b42318; color: #fff; }
+
+/* Sticky save bar */
+.admin-savebar {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 10px; border-radius: 20px; border: 1px solid var(--border-faint);
+  background: rgb(var(--surface-card) / 0.86); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 10px 30px -12px rgba(10, 10, 10, 0.22);
+}
+.admin-savebar > span { padding-left: 8px; }
+.admin-btn-gold {
+  border-radius: 14px; background: rgb(var(--color-gold)); color: rgb(var(--color-ink-gold));
+  box-shadow: 0 1px 0 rgb(255 255 255 / 0.35) inset, 0 6px 16px -6px rgb(201 162 39 / 0.65);
+  transition: filter 140ms ease, transform 140ms ease;
+}
+.admin-btn-gold:hover { filter: brightness(1.04); }
+.admin-btn-gold:active { transform: scale(0.99); }
+.admin-btn-gold:disabled { opacity: 0.6; }
+
+.admin-skeleton { background: linear-gradient(90deg, rgb(var(--surface-muted)), rgb(var(--surface-card)), rgb(var(--surface-muted))); background-size: 200% 100%; animation: admin-shimmer 1.2s linear infinite; }
+@keyframes admin-shimmer { to { background-position: -200% 0; } }
+
+/* Inputs: one consistent field look (low specificity so page classes still win). */
+:where(input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"], [type="hidden"]), textarea):where(:not(.field-box *, .admin-palette *, .pb-combo-search *)) {
+  border: 1px solid var(--border-faint);
+  border-radius: 0.75rem;
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+:where(input, textarea):focus-visible { outline: none; border-color: rgb(var(--color-gold)); box-shadow: 0 0 0 3px rgb(var(--color-gold) / 0.18); }
+.peebee-select-trigger.peebee-select-trigger { border: 1px solid var(--border-faint); border-radius: 0.75rem; }
+.peebee-select-trigger:hover { border-color: rgb(var(--color-gold) / 0.55); }
+
+/* ---- Switch (role="switch" on a native checkbox) ---- */
+.pb-switch {
+  appearance: none; -webkit-appearance: none; position: relative; flex: 0 0 auto;
+  width: 44px; height: 26px; margin: 0; border-radius: 999px; cursor: pointer;
+  background: rgb(var(--color-ink) / 0.16);
+  box-shadow: inset 0 0 0 1px rgb(var(--color-ink) / 0.06);
+  transition: background-color 200ms ease, box-shadow 200ms ease;
+}
+.pb-switch::after {
+  content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 999px;
+  background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3), 0 1px 1px rgba(0, 0, 0, 0.08);
+  transition: transform 220ms cubic-bezier(0.3, 1.4, 0.5, 1);
+}
+.pb-switch:checked { background: rgb(var(--color-gold)); box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.04); }
+.pb-switch:checked::after { transform: translateX(18px); background: #0a0a0a; }
+:root[data-theme="dark"] .pb-switch:not(:checked) { background: rgb(255 255 255 / 0.16); }
+.pb-switch:focus-visible { outline: 2px solid rgb(var(--color-gold)); outline-offset: 2px; }
+.pb-switch:disabled { opacity: 0.4; cursor: not-allowed; }
+.pb-switch:active:not(:disabled)::after { width: 24px; }
+.pb-switch:checked:active:not(:disabled)::after { transform: translateX(14px); }
+@media (prefers-reduced-motion: reduce) { .pb-switch, .pb-switch::after { transition: none; } }
+
+/* A label holding a switch reads as a settings row: text left, switch right. */
+label:has(> .pb-switch) {
+  display: flex; flex-direction: row-reverse; justify-content: space-between; align-items: center; gap: 16px; cursor: pointer;
+}
+label:has(> .pb-switch) > :not(.pb-switch) { flex: 1 1 auto; min-width: 0; }
+label:has(> .pb-switch:disabled) { cursor: not-allowed; }
+
+/* ---- Checkbox (kept for multi-select lists) ---- */
+.pb-check {
+  appearance: none; -webkit-appearance: none; flex: 0 0 auto; width: 20px; height: 20px; margin: 1px 0 0;
+  border-radius: 6px; border: 1.5px solid rgb(var(--color-ink) / 0.3); background: rgb(var(--surface-input));
+  display: grid; place-content: center; cursor: pointer; transition: background-color 140ms ease, border-color 140ms ease;
+}
+.pb-check::after {
+  content: ""; width: 10px; height: 6px; border: 2px solid #0a0a0a; border-top: 0; border-right: 0;
+  transform: rotate(-45deg) scale(0); transform-origin: center; margin-top: -2px; transition: transform 140ms ease;
+}
+.pb-check:checked { background: rgb(var(--color-gold)); border-color: rgb(var(--color-gold)); }
+.pb-check:checked::after { transform: rotate(-45deg) scale(1); }
+.pb-check:focus-visible { outline: 2px solid rgb(var(--color-gold)); outline-offset: 2px; }
+.pb-check:disabled { opacity: 0.4; }
+
+/* ---- Searchable select (long lists) ---- */
+.pb-combo { position: relative; display: block; width: 100%; }
+.pb-combo-menu { position: absolute; left: 0; right: 0; top: calc(100% + 6px); display: block; min-width: 100%; width: auto; max-height: none; }
+.pb-combo-search { display: flex; align-items: center; gap: 8px; padding: 6px 10px 10px; border-bottom: 1px solid var(--border-faint); }
+.pb-combo-search input { flex: 1; background: transparent !important; border: 0 !important; padding: 4px 0 !important; box-shadow: none !important; outline: none; font-size: 0.875rem; }
+.pb-combo-list { max-height: 18rem; overflow-y: auto; padding: 4px 2px 2px; }
+.pb-combo-option { padding-right: 14px; }
+.pb-combo-option[data-active] { background-color: rgb(var(--surface-muted)); }
+.pb-combo-option[aria-selected="true"] { font-weight: 700; }

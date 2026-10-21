@@ -1,6 +1,7 @@
 "use client";
 
-import { Select } from "@peebee/shared/select";
+import { Switch } from "../../../../components/ui/Switch";
+import { Select } from "../../../../components/ui/Select";
 
 import type { AdminCarBooking, AdminCarCategory, AdminCarPartner, AdminCarVehicle, AdminRental, AdminSelfDriveRenterKyc } from "@peebee/shared";
 import { useCallback, useEffect, useState } from "react";
@@ -360,7 +361,7 @@ function Categories({ categories, act }: { categories: AdminCarCategory[]; act: 
           <input inputMode="numeric" value={form.p} onChange={(e) => set({ p: digits(e.target.value) })} placeholder="Peebee %" className={field} />
         </div>
         <label className="flex items-center gap-2 text-sm text-ink">
-          <input type="checkbox" checked={form.active} onChange={(e) => set({ active: e.target.checked })} className="h-4 w-4 accent-gold" />
+          <Switch checked={form.active} onChange={(e) => set({ active: e.target.checked })} />
           Customers can book this type
         </label>
         <div className="flex gap-2">

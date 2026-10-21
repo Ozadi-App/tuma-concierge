@@ -1,5 +1,6 @@
 "use client";
 
+import { Switch } from "../../../components/ui/Switch";
 import type { ServiceKey, ServiceSwitches } from "@peebee/shared";
 import { useEffect, useState } from "react";
 import { SettingsPageShell, SettingsSaveBar } from "../../../components/SettingsPageShell";
@@ -73,11 +74,9 @@ export default function ServicesPage() {
             {SERVICES.map((s) => (
               <div key={s.key} className="home-card space-y-1.5">
                 <label className="flex items-center gap-2 text-sm font-bold text-ink">
-                  <input
-                    type="checkbox"
+                  <Switch
                     checked={services[s.key]}
                     onChange={(e) => setServices({ ...services, [s.key]: e.target.checked })}
-                    className="h-4 w-4 accent-gold"
                   />
                   {s.label} <span className="font-normal text-ink-500">— {services[s.key] ? "on" : "paused"}</span>
                 </label>

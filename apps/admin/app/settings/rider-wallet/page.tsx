@@ -1,5 +1,6 @@
 "use client";
 
+import { Switch } from "../../../components/ui/Switch";
 import { hasPermission } from "@peebee/shared";
 import { useEffect, useState } from "react";
 import { SettingsPageShell, SettingsSaveBar } from "../../../components/SettingsPageShell";
@@ -60,11 +61,9 @@ export default function RiderWalletSettingsPage() {
       <form onSubmit={onSubmit} className="space-y-5">
         <section className="home-card space-y-3">
           <label className="flex items-start gap-2.5">
-            <input
-              type="checkbox"
+            <Switch
               checked={riderMinimumBalanceEnabled}
               onChange={(e) => setRiderMinimumBalanceEnabled(e.target.checked)}
-              className="mt-0.5 h-4 w-4 shrink-0 accent-gold"
             />
             <span>
               <span className="block text-sm font-semibold text-ink">Keep a minimum balance in every rider wallet</span>

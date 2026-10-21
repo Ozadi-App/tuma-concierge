@@ -83,7 +83,7 @@ function OrdersByModule() {
             type="button"
             onClick={() => setRange(r)}
             className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold ${
-              range === r ? "bg-ink text-white" : "bg-[rgb(var(--surface-muted))] text-ink-500"
+              range === r ? "bg-gold text-ink-gold" : "bg-[rgb(var(--surface-muted))] text-ink-500"
             }`}
           >
             {RANGE_LABEL[r]}
