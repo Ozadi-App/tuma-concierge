@@ -1,4 +1,6 @@
 import { practiceTalentRequest, resetPracticeTalent } from "./practice-talent.js";
+import { practiceTaxipressRequest, resetPracticeTaxipress } from "./practice-taxipress.js";
+import { practiceWalletView, practiceWalletBalance, resetPracticeWallet } from "./practice-wallet.js";
 import { practiceWorkRequest, resetPracticeWork } from "./practice-work.js";
 import { PRACTICE_MODE_STORAGE_KEY, type PracticeRole } from "./practice.js";
 import { roundFare } from "./fare.js";
@@ -389,6 +391,8 @@ export function startPracticeMode(role: PracticeRole): string {
     window.localStorage.setItem(PRACTICE_MODE_STORAGE_KEY, "1");
     resetPracticeTalent();
     resetPracticeWork();
+    resetPracticeTaxipress();
+    resetPracticeWallet();
     saveState(initialState(role));
   }
   return practiceStartPath(role);
@@ -400,6 +404,8 @@ export function exitPracticeMode(role: PracticeRole) {
   window.localStorage.removeItem(stateKey(role));
   resetPracticeTalent();
   resetPracticeWork();
+  resetPracticeTaxipress();
+  resetPracticeWallet();
 }
 
 export function practicePaymentCode() {
@@ -696,6 +702,7 @@ function handlePracticeRequest(role: PracticeRole, path: string, method: string,
 
   if (role === "customer" && path.startsWith("/v1/talent/")) return practiceTalentRequest(path, method, body, query);
   if (role === "customer" && path.startsWith("/v1/work/")) return practiceWorkRequest(path, method, body, query);
+  if (role === "customer" && (path.startsWith("/v1/taxipress/") || path.startsWith("/v1/orders/practice-tp-order-"))) return practiceTaxipressRequest(path, method, body);
 
   if (role === "customer" && method === "GET") {
     if (path === "/v1/car/rentals/listings") return jsonResponse({ days: 1, vehicles: PRACTICE_RENTAL_CARS });
@@ -1142,9 +1149,9 @@ function handlePracticeRequest(role: PracticeRole, path: string, method: string,
   if (method === "GET" && path === "/v1/riders/me/subscription") return jsonResponse({ subscription: { required: false, mode: "recurring", amount: 0, cadence: "weekly", status: "active", current: true, paidThrough: null } });
   if (method === "GET" && path === "/v1/riders/me/wallet") return jsonResponse({ balance: state.stage === "Settle" ? 45_000 : 40_000, withdrawals: [], depositRequired: false, requiredDeposit: 0, depositShortfall: 0 });
 
-  if (method === "GET" && path === "/v1/wallet") return jsonResponse({ balance: 12_000, cap: 2_000_000, verified: true, ledger: [] });
+  if (method === "GET" && path === "/v1/wallet") return jsonResponse(role === "customer" ? practiceWalletView() : { balance: 12_000, cap: 2_000_000, verified: true, ledger: [] });
   if (method === "GET" && path === "/v1/wallet/shares") return jsonResponse({ granted: [], received: [] });
-  if (method === "GET" && path === "/v1/wallets") return jsonResponse({ wallets: [{ id: "primary", name: "Primary", balance: 12_000, isPrimary: true }], suggestedNames: ["Family Expenses", "Office Supplies", "Personal Savings", "Travel Fund"], maxWallets: 5 });
+  if (method === "GET" && path === "/v1/wallets") return jsonResponse({ wallets: [{ id: "primary", name: "Primary", balance: role === "customer" ? practiceWalletBalance() : 12_000, isPrimary: true }], suggestedNames: ["Family Expenses", "Office Supplies", "Personal Savings", "Travel Fund"], maxWallets: 5 });
   if (method === "GET" && /^\/v1\/wallets\/[^/]+\/ledger$/.test(path)) return jsonResponse({ ledger: [] });
   if (method === "GET" && /^\/v1\/wallets\/[^/]+\/report$/.test(path)) return jsonResponse({ period: "month", totalIn: 12_000, totalOut: 0, net: 12_000, byType: [] });
   if (method === "GET" && path.startsWith("/v1/mobile-numbers")) return jsonResponse({ numbers: [{ id: "practice-number", owner_id: "practice-user", purpose: path.includes("withdrawal") ? "withdrawal" : "payment", phone: "0700000000", label: "Practice number", is_primary: 1, created_at: nowIso(-86_400_000), updated_at: nowIso() }] });
