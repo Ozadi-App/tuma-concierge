@@ -1,5 +1,6 @@
 "use client";
 
+import { Select } from "../../../components/ui/Select";
 import type { TalentAdminCharge, TalentAdminFeature, TalentAdminFeeRule, TalentAdminFeeRuleInput, TalentAdminPlan, TalentAdminPlanInput, TalentFeeKind, TalentJobType } from "@peebee/shared";
 import { useCallback, useEffect, useState } from "react";
 import { Badge, Chip, ErrorNote, Field, inputCls, label, Toggle, ugx, useTalentPermissions, when } from "../../../components/talent/ui";
@@ -149,8 +150,8 @@ function RuleForm({ initial, onSave, onCancel }: { initial: Partial<TalentAdminF
   const commission = kind.endsWith("_commission");
   return (
     <form className="home-card space-y-3 !p-3.5" onSubmit={(e) => { e.preventDefault(); onSave({ kind, jobType: help.jobTypes ? jobType : "", model, flatUgx: Number(flat) || 0, percent: Number(percent) || 0, minUgx: Number(min) || 0, maxUgx: Number(max) || 0, freeFirstN: commission ? 0 : Number(firstN) || 0, active, note }); }}>
-      <Field label="What is charged" hint={help.help}><select value={kind} onChange={(e) => { setKind(e.target.value as TalentFeeKind); setJobType(""); }} className={inputCls}>{KINDS.map((k) => <option key={k} value={k}>{KIND_HELP[k].title}</option>)}</select></Field>
-      {help.jobTypes && <Field label="For which kind of job" hint={commission ? "Commission applies to gigs and projects, which are paid through Peebee." : undefined}><select value={jobType} onChange={(e) => setJobType(e.target.value as "" | TalentJobType)} className={inputCls}><option value="">Every kind</option>{JOB_TYPES.filter((t) => !(commission && t === "hiring")).map((t) => <option key={t} value={t}>{label(t)}</option>)}</select></Field>}
+      <Field label="What is charged" hint={help.help}><Select value={kind} onValueChange={(next) => { setKind(next as TalentFeeKind); setJobType(""); }} className={inputCls}>{KINDS.map((k) => <option key={k} value={k}>{KIND_HELP[k].title}</option>)}</Select></Field>
+      {help.jobTypes && <Field label="For which kind of job" hint={commission ? "Commission applies to gigs and projects, which are paid through Peebee." : undefined}><Select value={jobType} onValueChange={(next) => setJobType(next as "" | TalentJobType)} className={inputCls}><option value="">Every kind</option>{JOB_TYPES.filter((t) => !(commission && t === "hiring")).map((t) => <option key={t} value={t}>{label(t)}</option>)}</Select></Field>}
       <div className="flex gap-2">{(["free", "flat", "percent"] as const).map((m) => <Chip key={m} on={model === m} onClick={() => setModel(m)}>{m === "free" ? "Free" : m === "flat" ? "Flat amount" : "Percentage"}</Chip>)}</div>
       {model === "flat" && <Field label="Amount (UGX)"><input inputMode="numeric" value={flat} onChange={(e) => setFlat(e.target.value.replace(/\D/g, ""))} className={inputCls} /></Field>}
       {model === "percent" && (
@@ -185,7 +186,7 @@ function PlanForm({ initial, features, onSave, onCancel }: { initial: Partial<Ta
   const toggle = <T extends string>(list: T[], v: T, set: (x: T[]) => void) => set(list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
   return (
     <form className="home-card space-y-3 !p-3.5" onSubmit={(e) => { e.preventDefault(); const body = { name, description, priceUgx: Number(price) || 0, periodDays: Number(period) || 30, trialDays: Number(trial) || 0, features: feat, waivedKinds: waived, workerCommissionPercent: wc === "" ? null : Number(wc), employerCommissionPercent: ec === "" ? null : Number(ec), active }; onSave(editing ? body : { ...body, code, audience }, initial.id); }}>
-      {!editing && <div className="grid grid-cols-2 gap-2"><Field label="Code" hint="Lowercase, e.g. worker_plus"><input value={code} onChange={(e) => setCode(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))} className={inputCls} /></Field><Field label="For"><select value={audience} onChange={(e) => setAudience(e.target.value as "worker" | "employer")} className={inputCls}><option value="worker">Workers</option><option value="employer">Employers</option></select></Field></div>}
+      {!editing && <div className="grid grid-cols-2 gap-2"><Field label="Code" hint="Lowercase, e.g. worker_plus"><input value={code} onChange={(e) => setCode(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))} className={inputCls} /></Field><Field label="For"><Select value={audience} onValueChange={(next) => setAudience(next as "worker" | "employer")} className={inputCls}><option value="worker">Workers</option><option value="employer">Employers</option></Select></Field></div>}
       <Field label="Name"><input value={name} onChange={(e) => setName(e.target.value)} maxLength={60} className={inputCls} /></Field>
       <Field label="Description"><input value={description} onChange={(e) => setDescription(e.target.value)} maxLength={300} className={inputCls} /></Field>
       <div className="grid grid-cols-3 gap-2">

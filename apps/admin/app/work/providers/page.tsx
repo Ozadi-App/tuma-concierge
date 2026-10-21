@@ -1,5 +1,6 @@
 "use client";
 
+import { Select } from "../../../components/ui/Select";
 import type { WorkAdminProvider, WorkProviderAction, WorkProviderStatus } from "@peebee/shared";
 import { useCallback, useEffect, useState } from "react";
 import { Badge, ConfirmDialog, ErrorNote, Field, inputCls, label, useWorkPermissions, when } from "../../../components/work/ui";
@@ -56,12 +57,12 @@ export default function WorkProvidersPage() {
 
   return (
     <div className="space-y-3">
-      <select aria-label="Status" value={status} onChange={(e) => setStatus(e.target.value)} className={inputCls}>
+      <Select aria-label="Status" value={status} onValueChange={(next) => setStatus(next)} className={inputCls}>
         <option value="">All statuses</option>
         {STATUSES.map((s) => (
           <option key={s} value={s}>{label(s)}</option>
         ))}
-      </select>
+      </Select>
       <ErrorNote message={error} />
       {providers === null && !error && <p className="text-sm text-ink-500">Loading…</p>}
       {providers && providers.length === 0 && <p className="text-sm text-ink-500">No providers.</p>}

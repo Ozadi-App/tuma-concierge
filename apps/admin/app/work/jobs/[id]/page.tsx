@@ -1,5 +1,6 @@
 "use client";
 
+import { Select } from "../../../../components/ui/Select";
 import type { WorkAdminJobDetail, WorkAdminPhoto, WorkAdminProvider, WorkResolveOutcome } from "@peebee/shared";
 import { ChevronLeft } from "lucide-react";
 import Link from "next/link";
@@ -295,14 +296,14 @@ export default function WorkJobDetailPage() {
         >
           <p className="text-ink-500">Only approved providers who offer &quot;{job.service.name}&quot; can take this job.</p>
           <Field label="Provider">
-            <select value={providerId} onChange={(e) => setProviderId(e.target.value)} className={inputCls}>
+            <Select value={providerId} onValueChange={(next) => setProviderId(next)} className={inputCls}>
               <option value="">{providers ? "Choose a provider" : "Loading…"}</option>
               {(providers ?? []).map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.display_name} — {p.services || "no services"}
                 </option>
               ))}
-            </select>
+            </Select>
           </Field>
           <p className="text-xs text-ink-500">Price {ugx(job.priceUgx)} · held {ugx(held)}.</p>
         </ConfirmDialog>

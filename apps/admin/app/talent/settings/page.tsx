@@ -1,5 +1,6 @@
 "use client";
 
+import { Select } from "../../../components/ui/Select";
 import type { TalentAdminCategory, TalentAdminSettings, TalentJobType } from "@peebee/shared";
 import { useCallback, useEffect, useState } from "react";
 import { Chip, ErrorNote, Field, inputCls, label, Toggle, useTalentPermissions } from "../../../components/talent/ui";
@@ -115,12 +116,12 @@ export default function TalentSettingsPage() {
           {(["escrow", "direct"] as const).map((m) => <Chip key={m} on={form.paymentModes.includes(m)} disabled={ro} onClick={() => set("paymentModes", form.paymentModes.includes(m) ? form.paymentModes.filter((x) => x !== m) : (["escrow", "direct"] as const).filter((x) => x === m || form.paymentModes.includes(x)))}>{m === "escrow" ? "Protected (escrow)" : "Direct to worker"}</Chip>)}
         </div>
         <p className="text-xs text-ink-500">Escrow holds the employer&apos;s money and releases it when the work is approved. Direct lets the two sides settle between themselves; Peebee collects its fee from each wallet. If both are on, the employer chooses.</p>
-        <Field label="Default when only one choice is shown"><select disabled={ro} value={form.defaultPaymentMode} onChange={(e) => set("defaultPaymentMode", e.target.value as "escrow" | "direct")} className={inputCls}><option value="escrow">Protected (escrow)</option><option value="direct">Direct to worker</option></select></Field>
+        <Field label="Default when only one choice is shown"><Select disabled={ro} value={form.defaultPaymentMode} onValueChange={(next) => set("defaultPaymentMode", next as "escrow" | "direct")} className={inputCls}><option value="escrow">Protected (escrow)</option><option value="direct">Direct to worker</option></Select></Field>
       </section>
 
       <section className="home-card space-y-3 !p-3.5">
         <h2 className="text-sm font-bold text-ink">Approval and safety</h2>
-        <Field label="New worker profiles"><select disabled={ro} value={form.workerApproval} onChange={(e) => set("workerApproval", e.target.value as "review" | "auto")} className={inputCls}><option value="review">Staff approve each one</option><option value="auto">Go live automatically</option></select></Field>
+        <Field label="New worker profiles"><Select disabled={ro} value={form.workerApproval} onValueChange={(next) => set("workerApproval", next as "review" | "auto")} className={inputCls}><option value="review">Staff approve each one</option><option value="auto">Go live automatically</option></Select></Field>
         <Toggle label="Review every job before it goes live" hint="Off: jobs go live at once unless the safety screening flags them." checked={form.jobReview} disabled={ro} onChange={(v) => set("jobReview", v)} />
       </section>
 
@@ -177,7 +178,7 @@ export default function TalentSettingsPage() {
         {!ro && (
           <div className="grid grid-cols-[1fr_auto] gap-2">
             <input aria-label="New kind of work" value={newCat} onChange={(e) => setNewCat(e.target.value)} placeholder="New kind of work" className={inputCls} />
-            <select aria-label="Segment" value={newSeg} onChange={(e) => setNewSeg(e.target.value as typeof newSeg)} className={inputCls}><option value="both">Both</option><option value="informal">Trades</option><option value="professional">Professional</option></select>
+            <Select aria-label="Segment" value={newSeg} onValueChange={(next) => setNewSeg(next as typeof newSeg)} className={inputCls}><option value="both">Both</option><option value="informal">Trades</option><option value="professional">Professional</option></Select>
             <button type="button" disabled={newCat.trim().length < 2} onClick={async () => { try { await api.talentAdminCreateCategory({ name: newCat.trim(), segment: newSeg }); setNewCat(""); loadCats(); } catch (err) { setError(errorMessage(err)); } }} className="col-span-2 min-h-11 rounded-full border border-[var(--border-faint)] px-4 text-sm font-bold text-ink disabled:opacity-50">Add kind of work</button>
           </div>
         )}

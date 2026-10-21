@@ -1,6 +1,7 @@
 "use client";
 
-import { Select } from "@peebee/shared/select";
+import { Switch } from "../../../components/ui/Switch";
+import { Select } from "../../../components/ui/Select";
 
 import { GEMINI_TTS_VOICES, type LugandaVoice } from "@peebee/shared";
 import { Trash2 } from "lucide-react";
@@ -78,14 +79,14 @@ export default function LugandaAudioSettingsPage() {
       <form onSubmit={onSubmit} className="space-y-5">
         <section className="home-card space-y-3">
           <label className="flex items-center gap-2 text-sm font-semibold text-ink">
-            <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
+            <Switch checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
             Let riders listen to their shopping lists in Luganda
           </label>
           <p className="text-xs text-ink-500">
             Uses Google AI Studio. Needs at least one key — add them (and choose test or paid mode) under Settings → Google AI keys. The GEMINI_API_KEY secret still works until you add keys there.
           </p>
           <label className="flex items-center gap-2 text-sm font-semibold text-ink">
-            <input type="checkbox" checked={requiresPro} onChange={(e) => setRequiresPro(e.target.checked)} />
+            <Switch checked={requiresPro} onChange={(e) => setRequiresPro(e.target.checked)} />
             Require a Pro subscription
           </label>
           <p className="text-xs text-ink-500">

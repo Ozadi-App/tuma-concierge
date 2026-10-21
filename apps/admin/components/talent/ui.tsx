@@ -1,5 +1,6 @@
 "use client";
 
+import { Switch } from "../ui/Switch";
 import { hasPermission } from "@peebee/shared";
 import { useAuth } from "../../lib/auth-context";
 
@@ -14,7 +15,7 @@ export function useTalentPermissions() {
 export function Toggle({ label: text, hint, checked, disabled, onChange }: { label: string; hint?: string; checked: boolean; disabled?: boolean; onChange: (v: boolean) => void }) {
   return (
     <label className="flex items-start gap-3">
-      <input type="checkbox" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} className="mt-0.5 h-4 w-4 shrink-0" />
+      <Switch checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />
       <span>
         <span className="block text-sm font-semibold text-ink">{text}</span>
         {hint && <span className="block text-xs text-ink-500">{hint}</span>}

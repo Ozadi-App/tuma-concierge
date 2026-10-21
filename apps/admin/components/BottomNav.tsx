@@ -29,7 +29,7 @@ export function BottomNav({ onSettingsClick }: { onSettingsClick?: () => void })
   return (
     <nav
       aria-label="Bottom Navigation"
-      className="customer-nav fixed inset-x-0 bottom-3 z-40 px-3 pointer-events-none pb-[env(safe-area-inset-bottom)]"
+      className="customer-nav fixed inset-x-0 bottom-3 z-40 lg:hidden px-3 pointer-events-none pb-[env(safe-area-inset-bottom)]"
     >
       <div className="mx-auto flex max-w-lg items-center justify-center">
         <ul className="customer-nav-capsule pointer-events-auto flex w-full items-stretch justify-around rounded-[24px] p-1.5 gap-1">

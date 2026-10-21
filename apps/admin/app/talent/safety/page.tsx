@@ -1,5 +1,6 @@
 "use client";
 
+import { Select } from "../../../components/ui/Select";
 import type { TalentAdminReport, TalentAdminTerm } from "@peebee/shared";
 import { useCallback, useEffect, useState } from "react";
 import { Badge, ErrorNote, inputCls, label, useTalentPermissions, when } from "../../../components/talent/ui";
@@ -57,7 +58,7 @@ export default function TalentSafetyPage() {
             <input aria-label="New term" value={term} onChange={(e) => setTerm(e.target.value)} placeholder="Word or phrase" className={inputCls} />
             <button type="submit" disabled={term.trim().length < 3} className="min-h-11 rounded-full bg-gold px-4 text-sm font-bold text-ink-gold disabled:opacity-50">Add</button>
             <input aria-label="Category" value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Category" className={inputCls} />
-            <select aria-label="Action" value={action} onChange={(e) => setAction(e.target.value as "block" | "review")} className={inputCls}><option value="block">Block</option><option value="review">Review</option></select>
+            <Select aria-label="Action" value={action} onValueChange={(next) => setAction(next as "block" | "review")} className={inputCls}><option value="block">Block</option><option value="review">Review</option></Select>
           </form>
         )}
         {show && (
