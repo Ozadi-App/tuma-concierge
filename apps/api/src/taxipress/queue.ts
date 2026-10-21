@@ -360,6 +360,10 @@ export async function arrive(driverId: string): Promise<void> {
     sql: "UPDATE taxipress_queue SET status = 'arrived', arrived_at = datetime('now'), updated_at = datetime('now') WHERE id = ? AND status = 'on_road'",
     args: [entry.id],
   });
+  // Passengers who boarded have now completed their trip.
+  if (await hasTable("taxipress_bookings")) {
+    await db.execute({ sql: "UPDATE taxipress_bookings SET status = 'completed', updated_at = datetime('now') WHERE queue_id = ? AND status = 'boarded'", args: [entry.id] });
+  }
 }
 
 /** Leave the line before departing. Once On Road a trip ends with Arrived instead. */

@@ -1,4 +1,4 @@
-import type { TaxipressAdminQueueEntry, TaxipressAdminRoute, TaxipressBooking, TaxipressConfig, TaxipressDriverView, TaxipressLineEntry, TaxipressQueueView, TaxipressRelayRoute, TaxipressSettings, TaxipressTaxi } from "./taxipress.js";
+import type { TaxipressAdminQueueEntry, TaxipressAdminRoute, TaxipressBoardingResult, TaxipressBooking, TaxipressConfig, TaxipressDriverView, TaxipressLineEntry, TaxipressQueueView, TaxipressRelayRoute, TaxipressReport, TaxipressSettings, TaxipressTaxi } from "./taxipress.js";
 import type { BagTrip, RelayAdminOrder, RelayRouteStage, RelayMerchantOrder, RelayOpenLeg, RelayOperator, RelayOperatorParcels, RelayQuote, RelayRoute, RelaySettings, RelayStation, RelayStationParcels, RelayTrack } from "./relay.js";
 import type { AdminRole } from "./permissions.js";
 import { workMethods } from "./work-client.js";
@@ -753,6 +753,10 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
     async taxipressArrive() {
       return request<{ ok: boolean }>("/v1/taxipress/driver/arrive", { method: "POST", body: "{}" });
     },
+    /** Confirm a passenger's ticket code at boarding; the seat is settled. */
+    async taxipressBoard(code: string) {
+      return request<TaxipressBoardingResult>("/v1/taxipress/driver/board", { method: "POST", body: JSON.stringify({ code }) });
+    },
     async taxipressLeaveLine() {
       return request<{ ok: boolean }>("/v1/taxipress/driver/leave", { method: "POST", body: "{}" });
     },
@@ -782,6 +786,9 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
     },
     async adminUpdateTaxipressTaxi(id: string, input: Partial<{ status: "pending" | "approved" | "suspended"; passengersEnabled: boolean; parcelsEnabled: boolean }>) {
       return request<{ taxi: TaxipressTaxi }>(`/v1/admin/taxipress/taxis/${encodeURIComponent(id)}`, { method: "POST", body: JSON.stringify(input) });
+    },
+    async adminTaxipressReport(days = 30) {
+      return request<TaxipressReport>(`/v1/admin/taxipress/report?days=${days}`);
     },
     async adminTaxipressQueue() {
       return request<{ queue: TaxipressAdminQueueEntry[] }>("/v1/admin/taxipress/queue");

@@ -177,3 +177,30 @@ export type TaxipressQueueView = {
   onRoad: TaxipressLineEntry[];
   route: { id: string; fromName: string; toName: string; directionLabel: string; farePerSeat: number } | null;
 };
+
+/** What happened when a driver confirmed a passenger's ticket at boarding. */
+export type TaxipressBoardingResult = {
+  bookingId: string;
+  passengerName: string | null;
+  seats: number;
+  fare: number;
+  paymentMethod: "app" | "cash";
+  /** Peebee's Taxipress commission on the fare. */
+  commission: number;
+  /** App payment: added to the driver's wallet. Cash: what the driver keeps of the cash they collected. */
+  driverAmount: number;
+  /** Cash only: Peebee's cut, taken from the driver's wallet (which may go below zero). */
+  takenFromDriver: number;
+  driverBalance: number | null;
+};
+
+export type TaxipressReport =
+  | { ready: false }
+  | {
+      ready: true;
+      days: number;
+      totals: { bookings: number; seats: number; fare: number; commission: number; platformFees: number; driverAmount: number; cashFare: number; appFare: number; takenFromDrivers: number };
+      recent: Array<{ id: string; bookingId: string; paymentMethod: "app" | "cash"; seats: number; fare: number; commission: number; platformFees: number; driverAmount: number; takenFromDriver: number; createdAt: string; plate: string; driverName: string | null }>;
+      /** Drivers whose wallet is below zero (cash commission taken from a wallet that could not cover it). */
+      owing: Array<{ id: string; name: string | null; phone: string | null; balance: number; plate: string }>;
+    };

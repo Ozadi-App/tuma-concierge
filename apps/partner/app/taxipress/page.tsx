@@ -1,10 +1,11 @@
 "use client";
 
 import { Select } from "@peebee/shared/select";
-import { ApiError, type TaxipressDriverView, type TaxipressLineEntry } from "@peebee/shared";
-import { ArrowLeft, Bus, Minus, Plus } from "lucide-react";
+import { ApiError, type TaxipressBoardingResult, type TaxipressDriverView, type TaxipressLineEntry } from "@peebee/shared";
+import { ArrowLeft, Bus, Minus, Plus, QrCode } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { QrScanner } from "../../components/QrScanner";
 import { api, errorMessage } from "../../lib/api";
 
 const REFRESH_MS = 10_000;
@@ -153,6 +154,9 @@ function Board({ view, onChange }: { view: TaxipressDriverView; onChange: () => 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [routeId, setRouteId] = useState(view.routes[0]?.id ?? "");
+  const [ticket, setTicket] = useState("");
+  const [scanning, setScanning] = useState(false);
+  const [boarded, setBoarded] = useState<TaxipressBoardingResult | null>(null);
   const entry = view.entry;
   const mounted = useRef(true);
   useEffect(() => () => { mounted.current = false; }, []);
@@ -237,6 +241,31 @@ function Board({ view, onChange }: { view: TaxipressDriverView; onChange: () => 
           </>
         )}
         {entry.status === "boarding" && (
+          <div className="space-y-2 rounded-2xl bg-[rgb(var(--surface-muted))] p-3">
+            <p className="text-sm font-bold text-ink">Confirm a passenger</p>
+            <p className="text-[11px] text-ink-500">Ask for their ticket code, or scan their QR. Paid seats are released to your wallet; for cash seats you keep the cash.</p>
+            <form
+              className="flex gap-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void run(async () => { setBoarded(await api.taxipressBoard(ticket)); setTicket(""); });
+              }}
+            >
+              <input value={ticket} onChange={(e) => setTicket(e.target.value.toUpperCase())} placeholder="TXP-ABC123" autoCapitalize="characters" aria-label="Ticket code" className="min-h-12 min-w-0 flex-1 rounded-xl border border-[var(--border-faint)] font-mono font-bold text-ink outline-none focus:ring-2 focus:ring-gold" />
+              <button type="submit" disabled={busy || ticket.trim().length < 6} className="min-h-12 rounded-xl bg-gold px-4 font-bold text-ink-gold disabled:opacity-50">Confirm</button>
+              <button type="button" aria-label="Scan a ticket" disabled={busy} onClick={() => setScanning(true)} className="flex min-h-12 w-12 items-center justify-center rounded-xl border border-[var(--border-faint)] text-ink disabled:opacity-50"><QrCode className="h-5 w-5" aria-hidden /></button>
+            </form>
+            {boarded && (
+              <p role="status" className="rounded-xl bg-gold/15 p-3 text-sm font-bold text-ink">
+                {boarded.passengerName ?? "Passenger"} is on board ({boarded.seats} seat{boarded.seats === 1 ? "" : "s"}).{" "}
+                {boarded.paymentMethod === "cash"
+                  ? `Cash: you keep UGX ${boarded.driverAmount.toLocaleString("en-UG")}; UGX ${boarded.takenFromDriver.toLocaleString("en-UG")} commission came out of your wallet${boarded.driverBalance != null && boarded.driverBalance < 0 ? ` (you owe UGX ${(-boarded.driverBalance).toLocaleString("en-UG")})` : ""}.`
+                  : `UGX ${boarded.driverAmount.toLocaleString("en-UG")} was added to your wallet.`}
+              </p>
+            )}
+          </div>
+        )}
+        {entry.status === "boarding" && (
           <>
             <button type="button" disabled={busy || !view.canGoOnRoad} onClick={() => run(() => api.taxipressGoOnRoad())} className={primary}>On road</button>
             {!view.canGoOnRoad && view.onRoadReason && <p className="text-xs text-ink-500">{view.onRoadReason}</p>}
@@ -257,7 +286,7 @@ function Board({ view, onChange }: { view: TaxipressDriverView; onChange: () => 
                   {b.passengerPhone && <a href={`tel:${b.passengerPhone}`} className="block text-[11px] text-ink-500 underline-offset-2 hover:underline">{b.passengerPhone}</a>}
                 </span>
                 <span className={`shrink-0 text-right text-xs font-bold ${b.paymentStatus === "paid" ? "text-green" : b.paymentStatus === "pay_driver" ? "text-gold" : "text-ink-500"}`}>
-                  {b.paymentStatus === "paid" ? "Paid" : b.paymentStatus === "pay_driver" ? `Collect UGX ${b.amount.toLocaleString("en-UG")}` : "Payment due"}
+                  {b.status === "boarded" || b.status === "completed" ? "On board ✓" : b.paymentStatus === "paid" ? "Paid" : b.paymentStatus === "pay_driver" ? `Collect UGX ${b.amount.toLocaleString("en-UG")}` : "Payment due"}
                 </span>
               </li>
             ))}
@@ -272,6 +301,14 @@ function Board({ view, onChange }: { view: TaxipressDriverView; onChange: () => 
             {view.line.map((e) => <LineRow key={e.id} entry={e} mine={e.id === entry.id} />)}
           </ol>
         </section>
+      )}
+      {scanning && (
+        <QrScanner
+          title="Scan passenger's ticket"
+          placeholder="Ticket code"
+          onScan={(value) => { setScanning(false); void run(async () => { setBoarded(await api.taxipressBoard(value)); }); }}
+          onClose={() => setScanning(false)}
+        />
       )}
     </div>
   );

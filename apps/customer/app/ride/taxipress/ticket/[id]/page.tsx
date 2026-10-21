@@ -46,6 +46,8 @@ export default function TaxipressTicketPage() {
             <h1 className="text-xl font-bold">{booking.route.fromName} → {booking.route.toName}</h1>
             {cancelled ? (
               <p className="text-sm font-semibold text-ink-500" role="status">This booking was cancelled and the seats were given back.</p>
+            ) : booking.status === "boarded" || booking.status === "completed" ? (
+              <p className="text-sm font-bold text-green" role="status">{booking.status === "completed" ? "Trip complete. Thank you for travelling with Taxipress." : "You're on board. Have a good trip."}</p>
             ) : (
               <>
                 {booking.ticketCode && (
@@ -64,16 +66,16 @@ export default function TaxipressTicketPage() {
             <Row label="Driver" value={taxi.driverName ?? "—"} />
             <Row label="Seats" value={String(booking.seats)} />
             <Row label="Total" value={ugx(booking.amount)} />
-            <Row label="Payment" value={PAYMENT[booking.paymentStatus]} />
-            {!cancelled && (
+            <Row label="Payment" value={booking.status === "boarded" || booking.status === "completed" ? "Settled" : PAYMENT[booking.paymentStatus]} />
+            {!cancelled && booking.status === "booked" && (
               <Row label="Place in the line" value={taxi.status === "boarding" ? "Boarding now" : taxi.status === "on_road" ? "On the road" : taxi.position ? `${taxi.position}${taxi.position === 1 ? "st" : taxi.position === 2 ? "nd" : taxi.position === 3 ? "rd" : "th"}` : "—"} />
             )}
           </section>
 
-          {booking.paymentStatus === "unpaid" && !cancelled && booking.paymentMethod === "app" && (
+          {booking.paymentStatus === "unpaid" && !cancelled && booking.status === "booked" && booking.paymentMethod === "app" && (
             <Link href={`/orders/${booking.orderId}/pay`} className="flex min-h-12 w-full items-center justify-center rounded-full bg-gold font-bold text-ink-gold">Pay now</Link>
           )}
-          {!cancelled && taxi.driverPhone && (
+          {!cancelled && booking.status === "booked" && taxi.driverPhone && (
             <a href={`tel:${taxi.driverPhone}`} className="flex min-h-12 w-full items-center justify-center rounded-full border border-[var(--border-faint)] font-bold text-ink">Call the driver</a>
           )}
           <Link href={`/orders/${booking.orderId}`} className="block text-center text-sm font-semibold text-ink-500 underline-offset-2 hover:underline">Order details and chat</Link>

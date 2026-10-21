@@ -1,6 +1,6 @@
 "use client";
 
-import { hasPermission, type TaxipressAdminQueueEntry, type TaxipressAdminRoute, type TaxipressRelayRoute, type TaxipressSettings, type TaxipressTaxi } from "@peebee/shared";
+import { hasPermission, type TaxipressAdminQueueEntry, type TaxipressAdminRoute, type TaxipressRelayRoute, type TaxipressReport, type TaxipressSettings, type TaxipressTaxi } from "@peebee/shared";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { SettingsPageShell, SettingsSaveBar } from "../../../components/SettingsPageShell";
@@ -10,7 +10,7 @@ import { Badge, ErrorNote, Field, inputCls, ugx } from "../../../components/work
 import { api, errorMessage } from "../../../lib/api";
 import { useAuth } from "../../../lib/auth-context";
 
-type Tab = "settings" | "routes" | "taxis" | "line";
+type Tab = "settings" | "routes" | "taxis" | "line" | "money";
 const digits = (v: string) => v.replace(/[^\d]/g, "");
 const decimal = (v: string) => v.replace(/[^\d.]/g, "").replace(/(\..*)\./g, "$1");
 const smallBtn = "min-h-9 rounded-full px-3 text-xs font-bold";
@@ -42,11 +42,11 @@ export default function TaxipressPage() {
             (stage names, locations and stops), then run here in each direction with a fare per seat. Taxipress and its routes start switched off.
           </p>
           <div className="flex gap-2 overflow-x-auto pb-1">
-            {([["settings", "Settings"], ["routes", "Routes"], ["taxis", "Taxis"], ["line", "The line"]] as [Tab, string][]).map(([id, text]) => (
+            {([["settings", "Settings"], ["routes", "Routes"], ["taxis", "Taxis"], ["line", "The line"], ["money", "Money"]] as [Tab, string][]).map(([id, text]) => (
               <button key={id} type="button" onClick={() => setTab(id)} className={`${smallBtn} shrink-0 ${tab === id ? "bg-gold text-ink-gold" : "bg-gold/15 text-ink"}`}>{text}</button>
             ))}
           </div>
-          {tab === "settings" ? <SettingsTab /> : tab === "routes" ? <RoutesTab /> : tab === "taxis" ? <TaxisTab /> : <LineTab />}
+          {tab === "settings" ? <SettingsTab /> : tab === "routes" ? <RoutesTab /> : tab === "taxis" ? <TaxisTab /> : tab === "line" ? <LineTab /> : <MoneyTab />}
         </>
       )}
     </SettingsPageShell>
@@ -419,6 +419,72 @@ function LineTab() {
           <button type="button" disabled={busy === q.id} onClick={() => remove(q.id)} className={`${smallBtn} shrink-0 bg-gold/15 text-ink disabled:opacity-50`}>Remove</button>
         </section>
       ))}
+    </div>
+  );
+}
+
+function MoneyTab() {
+  const [days, setDays] = useState(30);
+  const [report, setReport] = useState<TaxipressReport | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    api.adminTaxipressReport(days)
+      .then((res) => { if (live) { setReport(res); setError(null); } })
+      .catch((err) => { if (live) setError(errorMessage(err)); });
+    return () => { live = false; };
+  }, [days]);
+
+  if (!report) return error ? <ErrorNote message={error} /> : <p className="text-sm text-ink-500">Loading…</p>;
+  if (!report.ready) return <p className="rounded-2xl bg-gold/15 p-3 text-xs text-ink">Boarding settlement needs database migration <b>0126_taxipress_settlements.sql</b>. Apply it, then come back.</p>;
+  const t = report.totals;
+  const cell = (title: string, value: string) => (
+    <div className="rounded-2xl bg-[rgb(var(--surface-muted))] p-3"><p className="text-[11px] text-ink-500">{title}</p><p className="text-sm font-bold text-ink">{value}</p></div>
+  );
+
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-2">
+        {[7, 30, 90].map((d) => (
+          <button key={d} type="button" onClick={() => setDays(d)} aria-pressed={days === d} className={`${smallBtn} ${days === d ? "bg-gold text-ink-gold" : "bg-gold/15 text-ink"}`}>{d} days</button>
+        ))}
+      </div>
+      <ErrorNote message={error} />
+      <section className="home-card space-y-3">
+        <p className="text-sm font-bold text-ink">Seats settled at boarding</p>
+        <div className="grid grid-cols-2 gap-2">
+          {cell("Passengers boarded", `${t.bookings} bookings · ${t.seats} seats`)}
+          {cell("Fares", ugx(t.fare))}
+          {cell("Peebee commission", ugx(t.commission))}
+          {cell("Other platform fees", ugx(t.platformFees))}
+          {cell("Paid in the app", ugx(t.appFare))}
+          {cell("Paid in cash", ugx(t.cashFare))}
+          {cell("Released to drivers", ugx(t.driverAmount))}
+          {cell("Taken from drivers (cash)", ugx(t.takenFromDrivers))}
+        </div>
+      </section>
+      <section className="home-card space-y-2">
+        <p className="text-sm font-bold text-ink">Drivers who owe Peebee</p>
+        <p className="text-xs text-ink-500">Cash commission is taken from the driver&apos;s wallet and can take it below zero. The next payment into the wallet nets against it.</p>
+        {report.owing.length === 0 && <p className="text-sm text-ink-500">No taxi driver owes anything.</p>}
+        {report.owing.map((o) => (
+          <div key={o.id} className="flex items-center justify-between gap-3 rounded-xl bg-[rgb(var(--surface-muted))] px-3 py-2">
+            <span className="min-w-0"><span className="block truncate text-sm font-bold text-ink">{o.plate} · {o.name ?? "Driver"}</span>{o.phone && <span className="block text-[11px] text-ink-500">{o.phone}</span>}</span>
+            <span className="shrink-0 text-sm font-bold text-ink">{ugx(-o.balance)}</span>
+          </div>
+        ))}
+      </section>
+      <section className="home-card space-y-2">
+        <p className="text-sm font-bold text-ink">Latest settled seats</p>
+        {report.recent.length === 0 && <p className="text-sm text-ink-500">Nothing yet.</p>}
+        {report.recent.map((r) => (
+          <div key={r.id} className="flex items-center justify-between gap-3 text-xs">
+            <span className="min-w-0 truncate text-ink">{r.plate} · {r.seats} seat{r.seats === 1 ? "" : "s"} · {r.paymentMethod === "cash" ? "cash" : "app"}</span>
+            <span className="shrink-0 text-ink-500">{ugx(r.fare)} · commission {ugx(r.commission)}</span>
+          </div>
+        ))}
+      </section>
     </div>
   );
 }

@@ -8,6 +8,7 @@ import { newId } from "../lib/ids.js";
 import { bookingFor, bookSeats, manifestFor, myBookings, releaseStaleBookings } from "./bookings.js";
 import { activeQueue, applyTaxi, arrive, driverView, goOnRoad, joinLine, leaveLine, lineOf, listTaxis, onRoadOf, removeFromLine, startBoarding, TaxipressError, updateLocation, updateTaxi, walkUp } from "./queue.js";
 import { getTaxipressSettings, setTaxipressSettings } from "./settings.js";
+import { confirmBoarding, settlementReport } from "./settlement.js";
 import { getTaxipressRoute, listActiveTaxipressRoutes, listTaxipressRoutes, taxipressReady } from "./service.js";
 
 type Row = Record<string, unknown>;
@@ -115,6 +116,13 @@ taxipressRoutes.post("/taxipress/driver/arrive", async (c) => {
 
 taxipressRoutes.post("/taxipress/driver/leave", async (c) => {
   try { await leaveLine(c.get("user").sub); return c.json({ ok: true }); } catch (e) { return fail(c, e); }
+});
+
+/** The driver confirms a passenger's ticket code at boarding. The seat is settled (fare released, or commission taken for cash). */
+taxipressRoutes.post("/taxipress/driver/board", async (c) => {
+  const parsed = z.object({ code: z.string().trim().min(6).max(20) }).safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) return c.json({ error: "invalid_body", message: "Enter the passenger's ticket code." }, 400);
+  try { return c.json(await confirmBoarding(c.get("user").sub, parsed.data.code)); } catch (e) { return fail(c, e); }
 });
 
 taxipressRoutes.post("/taxipress/driver/walk-up", async (c) => {
@@ -300,4 +308,10 @@ taxipressRoutes.post("/admin/taxipress/queue/:id/remove", requirePermission("set
   } catch (e) {
     return fail(c, e);
   }
+});
+
+/** Settled seats, Peebee's commission and which drivers owe it, for staff. */
+taxipressRoutes.get("/admin/taxipress/report", requirePermission("settings.manage"), async (c) => {
+  const days = Math.round(Number(c.req.query("days") ?? 30));
+  return c.json(await settlementReport(Number.isFinite(days) && days > 0 ? days : 30));
 });
