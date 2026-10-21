@@ -154,3 +154,57 @@ test("merchant practice confirmation marks that role's journey complete", async 
   await practiceFetch("https://api.test/v1/merchant-payments/mpay_practice/merchant-confirm", { method: "POST", body: JSON.stringify({ amount: 28_000 }) });
   assert.equal(isPracticeJourneyComplete("merchant"), true);
 });
+
+test("Taxipress practice: book with the practice wallet and follow the taxi from the line to arrival", async (t) => {
+  installStorage();
+  const fetcher = createPracticeFetch("customer", (async () => { throw new Error("Must not access live Taxipress"); }) as typeof fetch);
+  startPracticeMode("customer");
+  const get = async (path: string) => (await fetcher(`https://api.test${path}`)).json() as Promise<any>;
+  const post = (path: string, body: object = {}) => fetcher(`https://api.test${path}`, { method: "POST", body: JSON.stringify(body) });
+
+  const config = await get("/v1/taxipress/config");
+  assert.equal(config.enabled, true);
+  assert.equal(config.routes[0].fromName, "Entebbe Stage", "practice starts where the customer is");
+  const line = await get(`/v1/taxipress/routes/${config.routes[0].id}/queue`);
+  assert.equal(line.line.length, 3);
+  const taxi = line.line[0];
+  assert.equal((await get("/v1/wallet")).balance, 2_000_000, "the practice wallet starts loaded");
+
+  const booked = await post("/v1/taxipress/bookings", { queueId: taxi.id, seats: 2, payment: "app" });
+  assert.equal(booked.status, 201);
+  const { booking } = (await booked.json()) as { booking: any };
+  assert.equal(booking.paymentStatus, "paid");
+  assert.equal(booking.amount, 2 * config.routes[0].farePerSeat);
+  assert.equal((await get("/v1/wallet")).balance, 2_000_000 - booking.amount, "the seats were paid for from the practice wallet");
+  assert.equal((await get(`/v1/taxipress/routes/${config.routes[0].id}/queue`)).line[0].seatsLeft, taxi.seatsLeft - 2);
+
+  assert.equal((await post("/v1/taxipress/bookings", { queueId: taxi.id, seats: 99, payment: "app" })).status, 400);
+  assert.equal((await post("/v1/taxipress/bookings", { queueId: taxi.id, seats: 4, payment: "app" })).status, 409, "no room for four more");
+  const cash = await post("/v1/taxipress/bookings", { queueId: line.line[2].id, seats: 1, payment: "cash" });
+  const cashBooking = ((await cash.json()) as { booking: any; order: { id: string } });
+  assert.equal(cashBooking.booking.paymentStatus, "pay_driver");
+  assert.equal((await post(`/v1/orders/${cashBooking.order.id}/fund`, { paymentMethod: "cash" })).status, 200);
+  assert.equal((await get("/v1/wallet")).balance, 2_000_000 - booking.amount, "cash does not touch the wallet");
+
+  const now = Date.now();
+  const at = async (seconds: number) => {
+    t.mock.method(Date, "now", () => now + seconds * 1000);
+    return (await get(`/v1/taxipress/bookings/${booking.id}`)).booking;
+  };
+  assert.deepEqual(((b) => [b.status, b.taxi.status])(await at(5)), ["booked", "in_line"], "waiting in the line");
+  assert.deepEqual(((b) => [b.status, b.taxi.status])(await at(25)), ["booked", "boarding"], "boarding now");
+  assert.deepEqual(((b) => [b.status, b.taxi.status])(await at(45)), ["boarded", "boarding"], "the driver confirmed the ticket");
+  assert.deepEqual(((b) => [b.status, b.taxi.status])(await at(80)), ["boarded", "on_road"]);
+  const road = await get(`/v1/taxipress/routes/${config.routes[0].id}/queue`);
+  assert.equal(road.onRoad.length, 2, "the cash booking on another taxi has set off too");
+  assert.equal(road.line.length, 1);
+  assert.deepEqual(((b) => [b.status, b.taxi.status])(await at(120)), ["completed", "arrived"]);
+  assert.equal((await get(`/v1/taxipress/routes/${config.routes[0].id}/queue`)).line.length, 3, "the taxi is back in the line");
+
+  const broke = await post("/v1/taxipress/bookings", { queueId: line.line[1].id, seats: 1, payment: "app" });
+  assert.equal(broke.status, 201);
+  assert.equal((await get("/v1/taxipress/bookings/mine")).bookings.length, 3);
+  const ledger = (await get("/v1/wallet")).ledger as Array<{ type: string }>;
+  assert.equal(ledger.filter((e) => e.type === "order_payment").length, 2);
+  t.mock.restoreAll();
+});
