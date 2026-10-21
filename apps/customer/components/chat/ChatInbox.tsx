@@ -2,10 +2,10 @@
 
 import type { ChatThread, CustomerRestaurantChatThread } from "@peebee/shared";
 import { Store, User } from "lucide-react";
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { ShoppingListModal } from "../../components/home/ShoppingListModal";
 import { api } from "../../lib/api";
+import { useChatDrawer } from "../../lib/chat-drawer";
 import { useTranslate } from "../../lib/i18n";
 
 type Kind = "rider" | "restaurant";
@@ -71,6 +71,7 @@ function RestaurantAvatar() {
 /** The conversations list. `embedded` is for the chat drawer, which supplies its own title. */
 export function ChatInbox({ embedded = false }: { embedded?: boolean }) {
   const tr = useTranslate();
+  const { openThread } = useChatDrawer();
   const [riderThreads, setRiderThreads] = useState<ChatThread[] | null>(null);
   const [restaurantThreads, setRestaurantThreads] = useState<CustomerRestaurantChatThread[] | null>(null);
   const [filter, setFilter] = useState<FilterKind>("all");
@@ -172,7 +173,7 @@ export function ChatInbox({ embedded = false }: { embedded?: boolean }) {
       <ul className="space-y-2">
         {filtered.map((t) => (
           <li key={`${t.kind}-${t.id}`}>
-            <Link href={t.href} className="home-card flex items-center gap-3 !rounded-2xl !px-3 !py-3">
+            <button type="button" onClick={() => openThread(t.kind === "rider" ? { type: "rider", id: t.id } : { type: "restaurant", id: t.id })} className="home-card flex w-full items-center gap-3 !rounded-2xl !px-3 !py-3 text-left">
               {t.kind === "rider" ? <RiderAvatar counterpartId={t.id} hasPhoto={t.hasPhoto} /> : <RestaurantAvatar />}
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-[15px] font-bold text-ink">{t.name}</span>
@@ -187,7 +188,7 @@ export function ChatInbox({ embedded = false }: { embedded?: boolean }) {
                 <span className="text-[11px] text-ink-500">{formatTime(t.lastAt)}</span>
                 {t.unread && <span className="h-2 w-2 rounded-full bg-gold" aria-hidden />}
               </span>
-            </Link>
+            </button>
           </li>
         ))}
       </ul>

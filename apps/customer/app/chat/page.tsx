@@ -1,7 +1,8 @@
 "use client";
 
-import { ChatInbox } from "../../components/chat/ChatInbox";
+import { ChatLauncher } from "../../components/chat/ChatLauncher";
 
+/** A direct link to the chat list opens it in the chat drawer. */
 export default function ChatListPage() {
-  return <ChatInbox />;
+  return <ChatLauncher layer={{ type: "list" }} underlay="/" />;
 }
