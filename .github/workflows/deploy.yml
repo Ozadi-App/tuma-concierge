@@ -148,7 +148,7 @@ jobs:
         run: |
           echo "🔍 Deploying ${{ matrix.app }} to Cloudflare PREVIEW (alias: $ALIAS)..."
           if [ "${{ matrix.app }}" != "api" ] && [ "${{ matrix.app }}" != "preview-hub" ]; then
-            npx opennextjs-cloudflare build --dangerouslyUseUnsupportedNextVersion
+            npx opennextjs-cloudflare build
           fi
 
           OUTPUT=$(npx wrangler versions upload --preview-alias "$ALIAS" --tag "$ALIAS" --message "Preview for $ALIAS ($GITHUB_SHA)" 2>&1 || \
