@@ -10,16 +10,20 @@ export function QrScanner({ title, onScan, onClose }: { title: string; onScan: (
   const [hasCamera, setHasCamera] = useState(true);
   const [manualCode, setManualCode] = useState("");
 
+  // Hold the latest callback so the camera starts once and is not restarted when the parent re-renders.
+  const onScanRef = useRef(onScan);
+  useEffect(() => { onScanRef.current = onScan; });
+
   useEffect(() => {
     let handle: QrCameraHandle | null = null;
     let cancelled = false;
     const video = videoRef.current;
     if (!video) return;
-    startQrCamera(video, onScan)
+    startQrCamera(video, (value) => onScanRef.current(value))
       .then((started) => { if (cancelled) started.stop(); else handle = started; })
       .catch(() => { if (!cancelled) setHasCamera(false); });
     return () => { cancelled = true; handle?.stop(); };
-  }, [onScan]);
+  }, []);
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-black/90 p-4 text-white">

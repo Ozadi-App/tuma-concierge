@@ -1,15 +1,18 @@
 "use client";
 
 import { isPracticeMode, isProSubscriptionCurrent, type MerchantPayment, type OrderDetail } from "@peebee/shared";
-import { Crown, MapPin, MessageCircle, Pencil, X } from "lucide-react";
+import { codeFromScan } from "@peebee/shared/qr";
+import { Crown, MapPin, MessageCircle, Pencil, QrCode as QrIcon, X } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { CodeQr } from "../../../components/CodeQr";
 import { CustomerAvatar } from "../../../components/CustomerAvatar";
 import { DeliveryNavigation } from "../../../components/DeliveryNavigation";
 import { FeeProposalVoicePlayer } from "../../../components/FeeProposalVoicePlayer";
 import { LugandaListPlayer } from "../../../components/LugandaListPlayer";
 import { RelayCollectFromMatatu, RelayHandToMatatu } from "../../../components/RelayHandoff";
+import { QrScanner } from "../../../components/QrScanner";
 import { RideStopsPanel } from "../../../components/RideStopsPanel";
 import { VoiceNotePlayer } from "../../../components/VoiceNotePlayer";
 import { VoiceReasonRecorder } from "../../../components/VoiceReasonRecorder";
@@ -43,6 +46,7 @@ export default function JobDetailPage() {
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
   const [showMerchantPayment, setShowMerchantPayment] = useState(false);
   const [outletCode, setOutletCode] = useState("");
+  const [scanningOutlet, setScanningOutlet] = useState(false);
   const [merchantAmount, setMerchantAmount] = useState("");
   const [receiptReference, setReceiptReference] = useState("");
   const [merchantPayment, setMerchantPayment] = useState<MerchantPayment | null>(null);
@@ -289,6 +293,7 @@ export default function JobDetailPage() {
 
   return (
     <div className="space-y-6 px-4 pb-24 pt-4">
+      {scanningOutlet && <QrScanner title="Scan the merchant's QR" onScan={(raw) => { setScanningOutlet(false); setOutletCode(codeFromScan(raw)); }} onClose={() => setScanningOutlet(false)} />}
       <header className="space-y-1">
         <div className="flex items-center gap-3">
           {order.customer_id && <CustomerAvatar customerId={order.customer_id} />}
@@ -643,7 +648,10 @@ export default function JobDetailPage() {
                     <p className="mt-1 font-mono text-sm font-bold text-gold">{order.restaurant_outlet_code ?? "Outlet code unavailable"}</p>
                   </div>
                 ) : (
-                  <input value={outletCode} onChange={(e) => setOutletCode(e.target.value)} placeholder="Merchant outlet code" autoCapitalize="characters" className="min-h-11 w-full rounded-xl border border-[var(--border-faint)] bg-transparent px-3 text-sm" />
+                  <div className="flex gap-2">
+                    <input value={outletCode} onChange={(e) => setOutletCode(e.target.value)} placeholder="Merchant outlet code" autoCapitalize="characters" className="min-h-11 min-w-0 flex-1 rounded-xl border border-[var(--border-faint)] bg-transparent px-3 text-sm" />
+                    <button type="button" onClick={() => setScanningOutlet(true)} aria-label="Scan the merchant's QR" className="flex min-h-11 w-11 items-center justify-center rounded-xl border border-gold text-gold"><QrIcon className="h-5 w-5" aria-hidden /></button>
+                  </div>
                 )}
                 <input value={merchantAmount} onChange={(e) => setMerchantAmount(e.target.value.replace(/[^\d]/g, ""))} placeholder="Exact receipt amount (UGX)" inputMode="numeric" className="min-h-11 w-full rounded-xl border border-[var(--border-faint)] bg-transparent px-3 text-sm" />
                 <input value={receiptReference} onChange={(e) => setReceiptReference(e.target.value)} placeholder="Receipt number (recommended)" className="min-h-11 w-full rounded-xl border border-[var(--border-faint)] bg-transparent px-3 text-sm" />
@@ -656,6 +664,7 @@ export default function JobDetailPage() {
             {merchantPayment && (
               <div className="rounded-xl border border-gold/40 bg-gold/5 p-3">
                 <p className="text-xs text-ink-500">Show this payment code to the merchant</p>
+                {merchantPayment.status === "awaiting_confirmation" && <div className="mt-2 flex justify-center"><CodeQr value={merchantPayment.id} size={160} /></div>}
                 <p className="mt-1 break-all font-mono text-sm font-bold text-ink">{merchantPayment.id}</p>
                 <p className="mt-1 text-sm font-semibold text-ink">{formatUgx(merchantPayment.amount)}</p>
                 <p className="mt-1 text-xs text-ink-500">Status: {merchantPayment.status.replaceAll("_", " ")}</p>

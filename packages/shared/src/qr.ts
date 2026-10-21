@@ -3,8 +3,12 @@
  * phone reads) and read one from a camera frame with jsQR (so scanning works on iPhones, Firefox and desktops, where the
  * browser's own BarcodeDetector does not exist). Import from "@peebee/shared/qr".
  */
-import jsQR from "jsqr";
+import * as jsqrModule from "jsqr";
 import QRCode from "qrcode";
+
+type JsQr = (data: Uint8ClampedArray, width: number, height: number, options?: { inversionAttempts?: "dontInvert" | "onlyInvert" | "attemptBoth" | "invertFirst" }) => { data: string } | null;
+// jsQR is a CommonJS module; depending on the bundler or TypeScript setting the function is the namespace itself or its default.
+const jsQR: JsQr = (jsqrModule as unknown as { default?: JsQr }).default ?? (jsqrModule as unknown as JsQr);
 
 /** The dark/light modules of a QR for `text` (true = dark), error correction M. */
 export function qrModules(text: string): boolean[][] {

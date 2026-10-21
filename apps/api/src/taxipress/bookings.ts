@@ -41,6 +41,8 @@ export type TaxipressBooking = {
   cancel: { allowed: boolean; reason: string | null; free: boolean; fee: number; refund: number };
   /** How a booking that did not board ended, once it has. */
   outcome: { kind: "cancelled" | "no_show" | "taxi_removed"; refunded: number; fee: number } | null;
+  /** The receipt for a seat that boarded and was settled; its QR opens the verification page. */
+  receiptRef: string | null;
 };
 
 // rr.* brings the relay route's stage columns (and its stage codes once migration 0107 adds them), so the
@@ -76,6 +78,11 @@ async function toBooking(row: Row, forPassenger: boolean): Promise<TaxipressBook
     { status: String(row.bk_status), queueStatus, method, amount: Number(row.amount), createdAt: String(row.bk_created_at), collected },
     settings,
   );
+  let receiptRef: string | null = null;
+  if ((row.bk_status === "boarded" || row.bk_status === "completed") && (await hasTable("taxipress_settlements"))) {
+    const settled = (await db.execute({ sql: "SELECT id FROM taxipress_settlements WHERE booking_id = ?", args: [String(row.bk_id)] })).rows[0] as Row | undefined;
+    if (settled) receiptRef = String(settled.id);
+  }
   let outcome: TaxipressBooking["outcome"] = null;
   if (row.bk_status !== "booked" && row.bk_status !== "boarded" && row.bk_status !== "completed" && (await hasTable("taxipress_refunds"))) {
     const r = (await db.execute({ sql: "SELECT kind, refunded, fee FROM taxipress_refunds WHERE booking_id = ?", args: [String(row.bk_id)] })).rows[0] as Row | undefined;
@@ -112,6 +119,7 @@ async function toBooking(row: Row, forPassenger: boolean): Promise<TaxipressBook
     },
     cancel,
     outcome,
+    receiptRef,
   };
 }
 

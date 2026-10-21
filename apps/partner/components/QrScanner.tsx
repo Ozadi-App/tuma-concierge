@@ -21,16 +21,20 @@ export function QrScanner({
   const [error, setError] = useState<string | null>(null);
   const [manualCode, setManualCode] = useState("");
 
+  // Hold the latest callback so the camera starts once and is not restarted when the parent re-renders.
+  const onScanRef = useRef(onScan);
+  useEffect(() => { onScanRef.current = onScan; });
+
   useEffect(() => {
     let handle: QrCameraHandle | null = null;
     let cancelled = false;
     const video = videoRef.current;
     if (!video) return;
-    startQrCamera(video, onScan)
+    startQrCamera(video, (value) => onScanRef.current(value))
       .then((started) => { if (cancelled) started.stop(); else handle = started; })
       .catch(() => { if (!cancelled) { setHasCamera(false); setError("Camera not available."); } });
     return () => { cancelled = true; handle?.stop(); };
-  }, [onScan]);
+  }, []);
 
   function handleManualSubmit(e: React.FormEvent) {
     e.preventDefault();

@@ -1,3 +1,4 @@
+import type { PublicReceipt } from "./receipt.js";
 import type { TaxipressAdminQueueEntry, TaxipressAdminRoute, TaxipressBoardingResult, TaxipressBooking, TaxipressConfig, TaxipressDriverView, TaxipressLineEntry, TaxipressOutcome, TaxipressQueueView, TaxipressRelayRoute, TaxipressReport, TaxipressSettings, TaxipressTaxi } from "./taxipress.js";
 import type { BagTrip, RelayAdminOrder, RelayRouteStage, RelayMerchantOrder, RelayOpenLeg, RelayOperator, RelayOperatorParcels, RelayQuote, RelayRoute, RelaySettings, RelayStation, RelayStationParcels, RelayTrack } from "./relay.js";
 import type { AdminRole } from "./permissions.js";
@@ -777,6 +778,10 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
     },
     async getMyTaxipressBookings() {
       return request<{ bookings: TaxipressBooking[] }>("/v1/taxipress/bookings/mine");
+    },
+    /** Checks a receipt by its reference (the QR on a receipt holds a link ending in it). Public: no sign-in needed. */
+    async verifyReceipt(ref: string) {
+      return request<PublicReceipt>(`/v1/public/receipts/${encodeURIComponent(ref)}`);
     },
     async getTaxipressBooking(id: string) {
       return request<{ booking: TaxipressBooking }>(`/v1/taxipress/bookings/${encodeURIComponent(id)}`);

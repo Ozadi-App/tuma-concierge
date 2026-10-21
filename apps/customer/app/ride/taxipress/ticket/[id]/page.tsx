@@ -1,6 +1,6 @@
 "use client";
 
-import type { TaxipressBooking } from "@peebee/shared";
+import { receiptUrl, type TaxipressBooking } from "@peebee/shared";
 import { ChevronLeft } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -88,6 +88,15 @@ export default function TaxipressTicketPage() {
               <Row label="Place in the line" value={taxi.status === "boarding" ? "Boarding now" : taxi.status === "on_road" ? "On the road" : taxi.position ? `${taxi.position}${taxi.position === 1 ? "st" : taxi.position === 2 ? "nd" : taxi.position === 3 ? "rd" : "th"}` : "—"} />
             )}
           </section>
+
+          {booking.receiptRef && (
+            <section className="home-card space-y-2 border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-5 text-center">
+              <p className="text-sm font-bold text-ink">Your receipt</p>
+              <div className="flex justify-center"><CodeQr value={receiptUrl(booking.receiptRef)} size={150} /></div>
+              <p className="text-xs text-ink-500">Scan it with any phone camera to check it is a genuine Peebee receipt.</p>
+              <Link href={`/receipt/${encodeURIComponent(booking.receiptRef)}`} className="text-sm font-semibold text-gold underline-offset-2 hover:underline">Open the receipt</Link>
+            </section>
+          )}
 
           {booking.paymentStatus === "unpaid" && !cancelled && booking.status === "booked" && booking.paymentMethod === "app" && (
             <Link href={`/orders/${booking.orderId}/pay`} className="flex min-h-12 w-full items-center justify-center rounded-full bg-gold font-bold text-ink-gold">Pay now</Link>

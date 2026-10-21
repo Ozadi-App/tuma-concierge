@@ -181,6 +181,8 @@ export type TaxipressBooking = {
   /** Whether the passenger can cancel now, and what it would cost. */
   cancel: { allowed: boolean; reason: string | null; free: boolean; fee: number; refund: number };
   outcome: TaxipressOutcome | null;
+  /** The receipt for a seat that boarded and was settled; its QR opens the verification page. */
+  receiptRef: string | null;
   route: { id: string; fromName: string; toName: string; directionLabel: string };
   taxi: { queueId: string; plate: string; seatLayout: "14" | "18"; driverName: string | null; driverPhone: string | null; status: string; position: number | null; seatsLeft: number };
 };
