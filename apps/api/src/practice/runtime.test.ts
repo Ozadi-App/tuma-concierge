@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  CAR_MODEL_CATALOG,
   type FoodSellerOrders,
   createPracticeFetch,
   isPracticeJourneyComplete,
@@ -283,4 +284,75 @@ test("Entebbe practice: shop and food orders paid from the practice wallet, a ri
   assert.equal(((await declined.json()) as { error: string }).error, "insufficient_funds");
   assert.equal((await get("/v1/wallet")).balance, wallet);
   assert.equal(((await get("/v1/orders/practice-order")).order as { stage: string }).stage, "Match");
+});
+
+test("Cars and trucks practice: Entebbe drivers, a truck for a move, wallet payment and self-drive hire", async () => {
+  installStorage();
+  const fetcher = createPracticeFetch("customer", (async () => { throw new Error("Must not access the live app"); }) as typeof fetch);
+  startPracticeMode("customer");
+  const get = async (path: string) => (await fetcher(`https://api.test${path}`)).json() as Promise<any>;
+  const post = (path: string, body: object = {}) => fetcher(`https://api.test${path}`, { method: "POST", body: JSON.stringify(body) });
+  const entebbe = { pickupLat: 0.0612, pickupLng: 32.4637, pickupAddress: "Kitoro Road, Entebbe" };
+  const kampala = { destinationLat: 0.3136, destinationLng: 32.5811, destinationArea: "Kampala", destinationAddress: "Nakasero, Kampala" };
+
+  // A move: the right truck and its driver come, not a passenger car.
+  const quote = (await (await post("/v1/car/quote", { categoryId: "peebee-cargo-truck-3t", ...entebbe, ...kampala })).json()) as { fare: number };
+  assert.ok(quote.fare >= 45_000);
+  const booked = await post("/v1/car/bookings", { categoryId: "peebee-cargo-truck-3t", ...entebbe, ...kampala, cargoDescription: "Sofa, bed and ten boxes" });
+  assert.equal(booked.status, 201);
+  const { order } = (await booked.json()) as { order: any };
+  assert.equal(order.rider_id, "practice-car-driver-cargo-truck-3t");
+  assert.equal(order.stage, "Match");
+  assert.equal(order.estimated_total, quote.fare, "the booking costs what the quote said");
+  assert.equal(order.pickup_address, "Kitoro Road, Entebbe");
+  const info = await get("/v1/car/bookings/practice-order/info");
+  assert.deepEqual([info.categoryName, info.vehicleName, info.plate, info.driverName], ["Box Truck (3 Ton)", "Isuzu NPR box truck", "UBP 631T", "George Mwesigwa"]);
+  assert.equal((await get("/v1/orders/practice-order")).items[0].name, "Sofa, bed and ten boxes");
+  const wallet = (await get("/v1/wallet")).balance as number;
+  assert.equal((await post("/v1/orders/practice-order/fund", { paymentMethod: "wallet", useWallet: true })).status, 200);
+  assert.equal((await get("/v1/wallet")).balance, wallet - quote.fare, "the move was paid from the practice wallet");
+
+  // A car ride in Entebbe: a real-looking plate, paid from the wallet.
+  const ride = await post("/v1/car/bookings", { vehicleSize: "normal", serviceTier: "convenient", ...entebbe, destinationLat: 0.0424, destinationLng: 32.4435, destinationArea: "Entebbe Airport", destinationAddress: "Entebbe International Airport" });
+  const rideOrder = ((await ride.json()) as { order: any }).order;
+  assert.match((await get("/v1/car/bookings/practice-order/info")).plate, /^U[A-Z]{2} \d{3}[A-Z]$/);
+  const beforeRide = (await get("/v1/wallet")).balance as number;
+  assert.equal((await post("/v1/orders/practice-order/fund", { paymentMethod: "wallet", useWallet: true })).status, 200);
+  assert.equal((await get("/v1/wallet")).balance, beforeRide - rideOrder.estimated_total);
+
+  // Self-drive hire: rent and deposit leave the wallet, the deposit comes back on return.
+  const listings = (await get("/v1/car/rentals/listings")).vehicles as Array<{ id: string; category: string; notes: string; hourlyEnabled: boolean; deposit: number }>;
+  assert.ok(listings.some((v) => v.category === "Pickup") && listings.some((v) => v.category === "Van"), "a pickup and a van for hire");
+  assert.ok(listings.every((v) => !/demo/i.test(v.notes)));
+  const car = listings.find((v) => v.id === "practice-rent-dmax")!;
+  const cash = (await get("/v1/wallet")).balance as number;
+  const start = new Date().toISOString();
+  const rented = await post("/v1/car/rentals", { vehicleId: car.id, periodType: "full_day", startsAt: start, endsAt: new Date(Date.now() + 86_400_000).toISOString(), licenceNumber: "CM12345", licenceExpiry: "2030-01-01" });
+  assert.equal(rented.status, 201);
+  const rental = (await rented.json()) as { id: string; rent: number; deposit: number };
+  assert.equal((await get("/v1/wallet")).balance, cash - rental.rent - rental.deposit);
+  assert.match(((await get("/v1/car/rentals/mine")).rentals[0] as { plate: string }).plate, /^U[A-Z]{2} \d{3}[A-Z]$/);
+  assert.equal((await post(`/v1/car/rentals/${rental.id}/demo-return`)).status, 200);
+  assert.equal((await get("/v1/wallet")).balance, cash - rental.rent, "the deposit came back");
+  assert.equal((await post(`/v1/car/rentals/${rental.id}/demo-return`)).status, 200);
+  assert.equal((await get("/v1/wallet")).balance, cash - rental.rent, "returning twice does not refund twice");
+
+  // Not enough in the wallet: nothing is taken.
+  const hourly = listings.find((v) => v.hourlyEnabled)!;
+  const before = (await get("/v1/wallet")).balance as number;
+  const tooMuch = await post("/v1/car/rentals", { vehicleId: hourly.id, periodType: "hourly", startsAt: start, endsAt: new Date(Date.now() + 100_000 * 3_600_000).toISOString() });
+  assert.equal(tooMuch.status, 409);
+  assert.equal(((await tooMuch.json()) as { error: string }).error, "insufficient_funds");
+  assert.equal((await get("/v1/wallet")).balance, before);
+});
+
+test("the self-drive model catalogue has real seats, fuel use and a daily price for every model", () => {
+  assert.ok(CAR_MODEL_CATALOG.length >= 40);
+  for (const model of CAR_MODEL_CATALOG) {
+    assert.ok(Number.isInteger(model.seats) && model.seats >= 2 && model.seats <= 9, `${model.id} seats`);
+    assert.ok(model.fuelLitresPerKm > 0 && model.fuelLitresPerKm < 1, `${model.id} fuel`);
+    assert.ok(Number.isFinite(model.standardDailyUgx) && model.standardDailyUgx >= 50_000, `${model.id} price`);
+    assert.ok(model.variant === undefined || typeof model.variant === "string", `${model.id} variant`);
+  }
+  assert.equal(CAR_MODEL_CATALOG.find((m) => m.id === "toyota-aqua")?.variant, "Hybrid");
 });
