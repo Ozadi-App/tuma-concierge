@@ -21,6 +21,7 @@ import { VoiceNotePlayer } from "../../../components/VoiceNotePlayer";
 import { api, errorMessage } from "../../../lib/api";
 import { CarRideNotice } from "../../../components/CarRideNotice";
 import { PassengerCard } from "../../../components/PassengerCard";
+import { PracticeRiderCall } from "../../../components/PracticeRiderCall";
 import { markFeeProposalSeen } from "../../../lib/fee-proposal-seen";
 import { useTranslate } from "../../../lib/i18n";
 import { formatDateTime, formatDuration, formatTime, formatUgx, orderTitle, stageLabel } from "../../../lib/order-display";
@@ -539,6 +540,7 @@ export default function OrderDetailPage() {
 
   return (
     <div className="space-y-6 px-4 pt-4">
+      <PracticeRiderCall orderId={orderId} stage={order.stage} riderName={order.rider_name ?? null} isRide={!!order.is_ride} />
       <header className="space-y-1">
         <div className="flex items-start justify-between gap-3">
           <h1 className="text-xl font-bold text-ink">{orderTitle(order)}</h1>
