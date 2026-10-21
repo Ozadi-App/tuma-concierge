@@ -10,8 +10,8 @@
     "lint": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20250224.0",
+    "@cloudflare/workers-types": "^5.20261019.1",
     "typescript": "^5.7.3",
-    "wrangler": "^4.131.1"
+    "wrangler": "^4.151.3"
   }
 }
