@@ -6,8 +6,8 @@
 //  - RUNTIME_CACHE holds API reads (stale-while-revalidate, tells the app when
 //    the server copy differs). Cleared on logout.
 const ASSET_CACHE = "peebee-assets-v1";
-const PAGE_CACHE = "peebee-pages-v10";
-const RUNTIME_CACHE = "peebee-runtime-v10";
+const PAGE_CACHE = "peebee-pages-v11";
+const RUNTIME_CACHE = "peebee-runtime-v11";
 const KEEP_CACHES = [ASSET_CACHE, PAGE_CACHE, RUNTIME_CACHE];
 const OFFLINE_URL = "/offline.html";
 // The app moved from customer.peebee.online to app.peebee.online. A phone that visited the old address still has this
