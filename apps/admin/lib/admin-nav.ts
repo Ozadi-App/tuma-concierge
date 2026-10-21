@@ -61,6 +61,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/stages", label: "Stages", icon: Waypoints, hint: "Boda stages and approvals", children: [{ href: "/stages/pending", label: "Pending" }] },
       { href: "/settings/matching", label: "Rider matching", icon: Route, hint: "Dispatch and bidding rules" },
       { href: "/settings/relay", label: "Relay delivery", icon: Bus, hint: "Boda → matatu → boda", visible: (r) => hasPermission(r, "settings.manage") || hasPermission(r, "riders.view") || hasPermission(r, "orders.view") },
+      { href: "/settings/taxipress", label: "Taxipress", icon: Bus, hint: "Shared-taxi seats on fixed routes", visible: (r) => hasPermission(r, "settings.manage") },
       { href: "/settings/delivery", label: "Delivery pricing", icon: Banknote, hint: "Per-km rates and fees" },
     ],
   },

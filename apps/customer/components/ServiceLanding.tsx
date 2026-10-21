@@ -1,11 +1,12 @@
 "use client";
 
-import { Ambulance, ArrowRight, Bike, Briefcase, Car, CarFront, ClipboardList, Clock3, Crown, Flame, HardHat, ListChecks, Package, Pill, ShoppingBasket, Sparkles, Store, Truck, UsersRound, WashingMachine, Wrench } from "lucide-react";
+import { Ambulance, ArrowRight, Bike, Briefcase, Bus, Car, CarFront, ClipboardList, Clock3, Crown, Flame, HardHat, ListChecks, Package, Pill, ShoppingBasket, Sparkles, Store, Truck, UsersRound, WashingMachine, Wrench } from "lucide-react";
 import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
 import type { HiveShortcutId } from "@peebee/shared";
 import { useHireAvailability, useHomeMenu } from "../lib/home-menu";
 import { useSpecialCarServices } from "../lib/special-car";
+import { useTaxipress } from "../lib/taxipress";
 
 type LandingGroup = "ride" | "shopping";
 type LandingItem = { title: string; description: string; icon: LucideIcon; href?: string };
@@ -44,10 +45,14 @@ const specialRideItems: { key: "luxury" | "ambulance"; item: LandingItem }[] = [
   { key: "ambulance", item: { title: "Ambulance", description: "Emergency transport, sent to you at once.", icon: Ambulance, href: "/ride/ambulance" } },
 ];
 
+/** Taxipress appears once staff have switched it on and a route is running. It sits before Ambulance. */
+const taxipressItem: LandingItem = { title: "Taxipress", description: "Book a seat on the next taxi along a fixed route.", icon: Bus, href: "/ride/taxipress" };
+
 export function ServiceLanding({ group }: { group: LandingGroup }) {
   const special = useSpecialCarServices();
+  const taxipress = useTaxipress();
   const base = landingContent[group];
-  const content = group === "ride" ? { ...base, items: [...base.items, ...specialRideItems.filter((s) => special[s.key]).map((s) => s.item)] } : base;
+  const content = group === "ride" ? { ...base, items: [...base.items, ...(taxipress.enabled ? [taxipressItem] : []), ...specialRideItems.filter((s) => special[s.key]).map((s) => s.item)] } : base;
 
   return (
     <main className="space-y-6 px-4 pb-8 pt-5">
