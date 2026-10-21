@@ -29,6 +29,10 @@ export type TaxipressSettings = {
   maxParcels18: number;
   parcelFitText: string;
   parcelNotAllowed: string[];
+  /** Minutes Boarding Now before a driver may leave with free seats (departure rule "after wait"). */
+  waitMinutes: number;
+  /** How close (metres) a driver must be to the start stage to join the line. 0 turns the check off. */
+  stageRadiusM: number;
 };
 
 const bool = (value: string | null, fallback: boolean) => (value == null ? fallback : value === "1");
@@ -53,7 +57,7 @@ function items(value: string | null): string[] {
 
 export async function getTaxipressSettings(): Promise<TaxipressSettings> {
   const [
-    enabled, rule, sellRoad, type, digital, cash, flat, block, owed, cashOn, seatFee, discount, maxSeats, accept, p14, p18, fit, notAllowed,
+    enabled, rule, sellRoad, type, digital, cash, flat, block, owed, cashOn, seatFee, discount, maxSeats, accept, p14, p18, fit, notAllowed, wait, radius,
   ] = await Promise.all([
     getSetting("taxipress_enabled"),
     getSetting("taxipress_departure_rule"),
@@ -73,6 +77,8 @@ export async function getTaxipressSettings(): Promise<TaxipressSettings> {
     getSetting("taxipress_max_parcels_18"),
     getSetting("taxipress_parcel_fit_text"),
     getSetting("taxipress_parcel_not_allowed"),
+    getSetting("taxipress_wait_minutes"),
+    getSetting("taxipress_stage_radius_m"),
   ]);
   return {
     enabled: enabled === "1",
@@ -93,6 +99,8 @@ export async function getTaxipressSettings(): Promise<TaxipressSettings> {
     maxParcels18: whole(p18, 0, 50),
     parcelFitText: fit.slice(0, 200),
     parcelNotAllowed: items(notAllowed),
+    waitMinutes: whole(wait, 30, 600),
+    stageRadiusM: whole(radius, 300, 5000),
   };
 }
 
@@ -116,4 +124,6 @@ export async function setTaxipressSettings(next: Partial<TaxipressSettings>): Pr
   if (next.maxParcels18 != null) await setSetting("taxipress_max_parcels_18", String(next.maxParcels18));
   if (next.parcelFitText != null) await setSetting("taxipress_parcel_fit_text", next.parcelFitText);
   if (next.parcelNotAllowed != null) await setSetting("taxipress_parcel_not_allowed", JSON.stringify(next.parcelNotAllowed));
+  if (next.waitMinutes != null) await setSetting("taxipress_wait_minutes", String(next.waitMinutes));
+  if (next.stageRadiusM != null) await setSetting("taxipress_stage_radius_m", String(next.stageRadiusM));
 }

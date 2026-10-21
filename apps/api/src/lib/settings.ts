@@ -616,6 +616,10 @@ const DEFAULTS = {
   taxipress_max_parcels_14: "0",
   taxipress_max_parcels_18: "0",
   taxipress_parcel_fit_text: "Must fit in the taxi's luggage space and be carried by one person.",
+  // Minutes a taxi must have been Boarding Now before the driver may leave with free seats (departure rule "after_wait").
+  taxipress_wait_minutes: "30",
+  // How close (metres) a driver must be to the start stage to join the line. 0 turns the check off.
+  taxipress_stage_radius_m: "300",
   taxipress_parcel_not_allowed: '["Charcoal","Fuel","Wet or raw food"]',
 } as const;
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { hasPermission, type TaxipressAdminRoute, type TaxipressRelayRoute, type TaxipressSettings } from "@peebee/shared";
+import { hasPermission, type TaxipressAdminQueueEntry, type TaxipressAdminRoute, type TaxipressRelayRoute, type TaxipressSettings, type TaxipressTaxi } from "@peebee/shared";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { SettingsPageShell, SettingsSaveBar } from "../../../components/SettingsPageShell";
@@ -10,7 +10,7 @@ import { Badge, ErrorNote, Field, inputCls, ugx } from "../../../components/work
 import { api, errorMessage } from "../../../lib/api";
 import { useAuth } from "../../../lib/auth-context";
 
-type Tab = "settings" | "routes";
+type Tab = "settings" | "routes" | "taxis" | "line";
 const digits = (v: string) => v.replace(/[^\d]/g, "");
 const decimal = (v: string) => v.replace(/[^\d.]/g, "").replace(/(\..*)\./g, "$1");
 const smallBtn = "min-h-9 rounded-full px-3 text-xs font-bold";
@@ -42,11 +42,11 @@ export default function TaxipressPage() {
             (stage names, locations and stops), then run here in each direction with a fare per seat. Taxipress and its routes start switched off.
           </p>
           <div className="flex gap-2 overflow-x-auto pb-1">
-            {([["settings", "Settings"], ["routes", "Routes"]] as [Tab, string][]).map(([id, text]) => (
+            {([["settings", "Settings"], ["routes", "Routes"], ["taxis", "Taxis"], ["line", "The line"]] as [Tab, string][]).map(([id, text]) => (
               <button key={id} type="button" onClick={() => setTab(id)} className={`${smallBtn} shrink-0 ${tab === id ? "bg-gold text-ink-gold" : "bg-gold/15 text-ink"}`}>{text}</button>
             ))}
           </div>
-          {tab === "settings" ? <SettingsTab /> : <RoutesTab />}
+          {tab === "settings" ? <SettingsTab /> : tab === "routes" ? <RoutesTab /> : tab === "taxis" ? <TaxisTab /> : <LineTab />}
         </>
       )}
     </SettingsPageShell>
@@ -71,6 +71,7 @@ function SettingsTab() {
       commissionFlatUgx: String(next.commissionFlatUgx), maxOwedUgx: String(next.maxOwedUgx), seatChoiceFeeUgx: String(next.seatChoiceFeeUgx),
       returnDiscountPercent: String(next.returnDiscountPercent), maxSeatsPerBooking: String(next.maxSeatsPerBooking),
       maxParcels14: String(next.maxParcels14), maxParcels18: String(next.maxParcels18),
+      waitMinutes: String(next.waitMinutes), stageRadiusM: String(next.stageRadiusM),
     });
   }, []);
 
@@ -109,6 +110,7 @@ function SettingsTab() {
         commissionFlatUgx: n("commissionFlatUgx"), blockWhenOwing: s.blockWhenOwing, maxOwedUgx: n("maxOwedUgx"), cashEnabled: s.cashEnabled,
         seatChoiceFeeUgx: n("seatChoiceFeeUgx"), returnDiscountPercent: n("returnDiscountPercent"), maxSeatsPerBooking: n("maxSeatsPerBooking"),
         parcelAcceptRule: s.parcelAcceptRule, maxParcels14: n("maxParcels14"), maxParcels18: n("maxParcels18"), parcelFitText: s.parcelFitText,
+        waitMinutes: n("waitMinutes"), stageRadiusM: n("stageRadiusM"),
         parcelNotAllowed: notAllowed.split("\n").map((x) => x.trim()).filter(Boolean),
       });
       load(res.settings);
@@ -137,6 +139,10 @@ function SettingsTab() {
           {choice("full_only", s.departureRule, "Only when every seat is booked", "The driver can tap On Road only once the taxi is fully booked.", (v) => set("departureRule", v))}
           {choice("driver_choice", s.departureRule, "When the driver decides", "The driver may leave with free seats.", (v) => set("departureRule", v))}
           {choice("after_wait", s.departureRule, "After a wait", "The driver may leave with free seats once the wait has passed.", (v) => set("departureRule", v))}
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Wait before leaving (minutes)" hint="For the “after a wait” rule: minutes boarding before the driver may leave with free seats.">{field("waitMinutes", true)}</Field>
+          <Field label="Join the line within (metres)" hint="How close a driver must be to the start stage. 0 turns the check off.">{field("stageRadiusM", true)}</Field>
         </div>
         <label className="flex items-center gap-2 text-sm font-bold text-ink">
           <Switch checked={s.sellFreeSeatsOnRoad} onChange={(e) => set("sellFreeSeatsOnRoad", e.target.checked)} />
@@ -312,6 +318,104 @@ function FareEditor({ route, busy, onSave }: { route: TaxipressAdminRoute; busy:
         </Field>
       </div>
       <button type="button" disabled={!changed || busy} onClick={() => onSave(Number(fare))} className={`${smallBtn} bg-gold text-ink-gold disabled:opacity-50`}>Save</button>
+    </div>
+  );
+}
+
+function TaxisTab() {
+  const [taxis, setTaxis] = useState<TaxipressTaxi[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [version, setVersion] = useState(0);
+
+  useEffect(() => {
+    let live = true;
+    api.adminListTaxipressTaxis()
+      .then((res) => { if (live) setTaxis(res.taxis); })
+      .catch((err) => { if (live) setError(errorMessage(err)); })
+      .finally(() => { if (live) setLoading(false); });
+    return () => { live = false; };
+  }, [version]);
+
+  async function update(taxi: TaxipressTaxi, patch: Parameters<typeof api.adminUpdateTaxipressTaxi>[1]) {
+    setBusy(taxi.id);
+    setError(null);
+    try { await api.adminUpdateTaxipressTaxi(taxi.id, patch); setVersion((v) => v + 1); } catch (err) { setError(errorMessage(err)); } finally { setBusy(null); }
+  }
+
+  if (loading) return <p className="text-sm text-ink-500">Loading…</p>;
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-ink-500">Each taxi has one approval and two switches. <b>Passengers</b>: it may join the line and take seats. <b>Parcels</b>: it may carry relay parcels (this switch is used when the relay link is added).</p>
+      <ErrorNote message={error} />
+      {taxis.length === 0 && <p className="text-sm text-ink-500">No taxis have applied yet.</p>}
+      {taxis.map((t) => (
+        <section key={t.id} className="home-card space-y-2">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-ink">{t.plate} · {t.seats} seats</p>
+              <p className="text-xs text-ink-500">{t.driverName ?? "Driver"}{t.driverPhone ? ` · ${t.driverPhone}` : ""} · {t.routeName ?? "Route"}</p>
+            </div>
+            <Badge tone={t.status === "approved" ? "good" : t.status === "pending" ? "warn" : "bad"}>{t.status}</Badge>
+          </div>
+          <label className="flex items-center gap-2 text-sm font-bold text-ink">
+            <Switch checked={t.passengersEnabled} disabled={busy === t.id} onChange={(e) => update(t, { passengersEnabled: e.target.checked })} />
+            Passengers
+          </label>
+          <label className="flex items-center gap-2 text-sm font-bold text-ink">
+            <Switch checked={t.parcelsEnabled} disabled={busy === t.id} onChange={(e) => update(t, { parcelsEnabled: e.target.checked })} />
+            Parcels
+          </label>
+          <div className="flex gap-2">
+            {t.status !== "approved" && <button type="button" disabled={busy === t.id} onClick={() => update(t, { status: "approved" })} className={`${smallBtn} bg-gold text-ink-gold disabled:opacity-50`}>Approve</button>}
+            {t.status !== "suspended" && <button type="button" disabled={busy === t.id} onClick={() => update(t, { status: "suspended" })} className={`${smallBtn} bg-gold/15 text-ink disabled:opacity-50`}>Suspend</button>}
+          </div>
+        </section>
+      ))}
+    </div>
+  );
+}
+
+function LineTab() {
+  const [queue, setQueue] = useState<TaxipressAdminQueueEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [version, setVersion] = useState(0);
+
+  useEffect(() => {
+    let live = true;
+    api.adminTaxipressQueue()
+      .then((res) => { if (live) setQueue(res.queue); })
+      .catch((err) => { if (live) setError(errorMessage(err)); })
+      .finally(() => { if (live) setLoading(false); });
+    const id = window.setInterval(() => setVersion((v) => v + 1), 15_000);
+    return () => { live = false; window.clearInterval(id); };
+  }, [version]);
+
+  async function remove(id: string) {
+    setBusy(id);
+    setError(null);
+    try { await api.adminRemoveTaxipressQueueEntry(id); setVersion((v) => v + 1); } catch (err) { setError(errorMessage(err)); } finally { setBusy(null); }
+  }
+
+  if (loading) return <p className="text-sm text-ink-500">Loading…</p>;
+  const label: Record<string, string> = { boarding: "Boarding now", in_line: "In line", on_road: "On the road" };
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-ink-500">Every taxi in a line or on the road right now. Removing a taxi takes it out of the line; the ones behind move up.</p>
+      <ErrorNote message={error} />
+      {queue.length === 0 && <p className="text-sm text-ink-500">No taxi is in a line.</p>}
+      {queue.map((q) => (
+        <section key={q.id} className="home-card flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-sm font-bold text-ink">{q.plate} · {q.seatsTaken}/{q.seatsTotal} seats</p>
+            <p className="text-xs text-ink-500">{label[q.status] ?? q.status} · {q.driverName ?? "Driver"}{q.driverPhone ? ` · ${q.driverPhone}` : ""}</p>
+          </div>
+          <button type="button" disabled={busy === q.id} onClick={() => remove(q.id)} className={`${smallBtn} shrink-0 bg-gold/15 text-ink disabled:opacity-50`}>Remove</button>
+        </section>
+      ))}
     </div>
   );
 }
