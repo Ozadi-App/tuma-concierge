@@ -104,7 +104,7 @@ const rideItems = (special: SpecialCarServices, taxipress: boolean): MenuItem[] 
   { id: "rideshare", label: "Rideshare", icon: UsersRound, href: "/carpool" },
   { id: "selfdrive", label: "Selfdrive", icon: CarFront, href: "/rent" },
   { id: "move", label: "Move", icon: Truck, href: "/ride/move" },
-  ...(special.luxury ? [{ id: "luxury", label: "Luxury", icon: Crown, href: "/ride/luxury" }] : []),
+  ...(special.luxury ? [{ id: "luxury", label: "VIP", icon: Crown, href: "/ride/luxury" }] : []),
   { id: "parcel", label: "Parcel", icon: Package, href: "/deliver/parcel" },
   ...(taxipress ? [{ id: "taxipress", label: "Taxipress", icon: Bus, href: "/ride/taxipress" }] : []),
   ...(special.ambulance ? [{ id: "ambulance", label: "Ambulance", icon: Ambulance, href: "/ride/ambulance" }] : []),

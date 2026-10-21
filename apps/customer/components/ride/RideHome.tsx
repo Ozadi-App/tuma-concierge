@@ -61,9 +61,19 @@ type BoardOption = {
   /** true → gold "Book" (books straight away); false → "Next: …" (needs details first). */
   direct: boolean;
   handoff: Handoff;
+  /** Nav button sublabel (e.g. "Standard · Comfort"), when the row itself doesn't say it. */
+  navSub?: string;
 };
 
-const PREFER_LABEL: Record<Prefer, string> = { boda: "Boda", car: "Car", move: "Move", luxury: "Luxury" };
+type CarSize = "normal" | "large";
+type CarTier = "convenient" | "comfort";
+/** Size is about seats; the ride feel (Convenient / Comfort) is a separate toggle on the car. */
+const CAR_SIZES: Array<{ id: CarSize; label: string; sub: string }> = [
+  { id: "normal", label: "Standard", sub: "3–4 seats" },
+  { id: "large", label: "Large", sub: "5–7 seats" },
+];
+
+const PREFER_LABEL: Record<Prefer, string> = { boda: "Boda", car: "Car", move: "Move", luxury: "VIP" };
 
 function placeIcon(label: string): LucideIcon {
   if (/\b(work|office)\b/i.test(label)) return Briefcase;
@@ -101,6 +111,9 @@ export function RideHome() {
   const [placeFlow, setPlaceFlow] = useState<{ pickup?: Place | null; destination?: Place | null } | null>(null);
   const [handoff, setHandoff] = useState<Handoff | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
+  const [carSize, setCarSize] = useState<CarSize>("normal");
+  const [carTier, setCarTier] = useState<CarTier>("convenient");
+  const [carOpen, setCarOpen] = useState(false);
   const [full, setFull] = useState(false);
   const [trustOpen, setTrustOpen] = useState(false);
   // Multi-stop + Name your fare (Boda).
@@ -230,19 +243,17 @@ export function RideHome() {
       handoff: { mode: "boda", autoBook: true },
     });
     if (tiers) {
-      const car = (size: "normal" | "large", tier: "convenient" | "comfort", title: string, sub: string) => {
-        const o = carOptions?.find((x) => x.size === size && x.tier === tier);
-        out.push({
-          id: `car-${size}-${tier}`, prefer: "car", title, icon: size === "large" ? CarFront : Car, direct: true,
-          sub: o ? (o.nearby > 0 ? `${sub} · ${o.nearby} nearby` : later ? sub : `${sub} · none nearby`) : sub,
-          fare: o?.fare ?? null, pending: carOptions == null,
-          blocked: multi ? "No stops" : o && !later && o.nearby === 0 ? "None nearby" : carOptions != null && !o ? "Unavailable" : undefined,
-          handoff: { mode: "car", tier, size, autoBook: true },
-        });
-      };
-      car("normal", "convenient", "Car · Convenient", "Saloon, 3–4 seats");
-      car("normal", "comfort", "Car · Comfort", "Newer cars, more room");
-      car("large", "convenient", "Car · Large", "Minivan, 5–7 seats");
+      const o = carOptions?.find((x) => x.size === carSize && x.tier === carTier);
+      const sizeInfo = CAR_SIZES.find((z) => z.id === carSize)!;
+      const base = `${sizeInfo.label} · ${carTier === "comfort" ? "Comfort" : "Convenient"}`;
+      out.push({
+        id: "car", prefer: "car", title: "Car", icon: carSize === "large" ? CarFront : Car, direct: true,
+        sub: o ? (o.nearby > 0 ? `${base} · ${o.nearby} nearby` : later ? base : `${base} · none nearby`) : base,
+        fare: o?.fare ?? null, pending: carOptions == null,
+        blocked: multi ? "No stops" : o && !later && o.nearby === 0 ? "None nearby" : carOptions != null && !o ? "Unavailable" : undefined,
+        handoff: { mode: "car", tier: carTier, size: carSize, autoBook: true },
+        navSub: base,
+      });
     }
     if (lightestCargo) {
       const q = quotes[lightestCargo.id];
@@ -257,7 +268,7 @@ export function RideHome() {
     if (cheapestLuxury) {
       const q = quotes[cheapestLuxury.id];
       out.push({
-        id: "luxury", prefer: "luxury", title: "Luxury", icon: Crown, direct: false,
+        id: "luxury", prefer: "luxury", title: "VIP", icon: Crown, direct: false,
         sub: "Chauffeur · hire by the hour next",
         fare: q ?? categoryFare(km, cheapestLuxury.rate_per_km, cheapestLuxury.minimum_fare), pending: !(cheapestLuxury.id in quotes),
         blocked: multi ? "No stops" : undefined,
@@ -265,7 +276,7 @@ export function RideHome() {
       });
     }
     return out;
-  }, [route, whenAt, km, rates, tiers, carOptions, quotes, lightestCargo, cheapestLuxury, stops.length, rideQuote, rideQuoteState]);
+  }, [route, whenAt, km, rates, tiers, carOptions, carSize, carTier, quotes, lightestCargo, cheapestLuxury, stops.length, rideQuote, rideQuoteState]);
 
   const bookable = options.filter((o) => !o.blocked && !o.pending && o.fare != null);
   const bestValue = bookable.length > 1 ? bookable.reduce((a, b) => (b.fare! < a.fare! ? b : a)).id : null;
@@ -368,7 +379,7 @@ export function RideHome() {
         ? {
             tone: chosen.direct ? ("gold" as const) : ("step" as const),
             label: chosen.direct ? `Book ${chosen.prefer === "car" ? "Car" : chosen.title}` : `Next: ${chosen.title} details`,
-            sublabel: [chosen.prefer === "car" ? chosen.title.replace("Car · ", "") : null, whenLabel(whenAt), passenger ? `for ${passenger.name}` : null].filter(Boolean).join(" · "),
+            sublabel: [chosen.navSub ?? null, whenLabel(whenAt), passenger ? `for ${passenger.name}` : null].filter(Boolean).join(" · "),
             detail: chosen.fare != null ? formatUgx(chosen.fare) : undefined,
             icon: chosen.icon,
             disabled: !!chosen.blocked || chosen.pending,
@@ -415,7 +426,7 @@ export function RideHome() {
     { id: "rideshare", label: "Rideshare", icon: UsersRound, sub: "Shared seats", href: "/carpool" },
     { id: "selfdrive", label: "Selfdrive", icon: CarFront, sub: "Drive yourself", href: "/rent", onGo: () => route && saveSelfDriveRoute(route) },
     { id: "move", label: "Move", icon: Truck, sub: lightestCargo ? `from ${Math.round(lightestCargo.minimum_fare / 1000)}k` : "Vans & trucks", prefer: "move" },
-    ...(special.luxury ? [{ id: "luxury", label: "Luxury", icon: Crown, sub: "By the hour", prefer: "luxury" as Prefer }] : []),
+    ...(special.luxury ? [{ id: "luxury", label: "VIP", icon: Crown, sub: "By the hour", prefer: "luxury" as Prefer }] : []),
     // Parcel moved here from the old Send button.
     { id: "parcel", label: "Parcel", icon: Package, sub: "Send a package", href: "/deliver/parcel" },
   ];
@@ -514,24 +525,73 @@ export function RideHome() {
                   {options.map((o) => {
                     const Icon = o.icon;
                     const on = o.id === selected;
+                    const isCar = o.id === "car";
+                    const hasOpt = (size: CarSize, tier?: CarTier) => !!carOptions?.some((x) => x.size === size && (tier == null || x.tier === tier));
+                    const otherTier: CarTier = carTier === "comfort" ? "convenient" : "comfort";
+                    const feel = (size: CarSize, tier: CarTier) => carOptions?.find((x) => x.size === size && x.tier === tier)?.fare;
+                    const comfortExtra = feel(carSize, "comfort") != null && feel(carSize, "convenient") != null ? feel(carSize, "comfort")! - feel(carSize, "convenient")! : null;
                     return (
-                      <label key={o.id} className={`ride-board__row flex cursor-pointer items-center gap-3 px-3.5 py-3 ${on ? "is-on" : ""} ${o.blocked ? "is-blocked" : ""}`}>
-                        <input type="radio" name="ride-option" value={o.id} checked={on} disabled={!!o.blocked} onChange={() => { setSelected(o.id); setPrefer(o.prefer); }} className="sr-only" />
-                        <span className="ride-tile flex h-10 w-10 shrink-0 items-center justify-center rounded-[13px]"><Icon className="h-5 w-5" strokeWidth={1.9} aria-hidden /></span>
-                        <span className="min-w-0 flex-1">
-                          <span className="flex items-center gap-1.5 text-[15px] font-bold text-ink">
-                            <span className="truncate">{o.title}</span>
-                            {o.id === bestValue && <span className="ride-badge">Best value</span>}
+                      <div key={o.id} className={`ride-board__row ${on ? "is-on" : ""} ${o.blocked ? "is-blocked" : ""}`}>
+                        <label className={`flex items-center gap-3 px-3.5 py-3 ${o.blocked ? "cursor-not-allowed" : "cursor-pointer"}`}>
+                          <input
+                            type="radio" name="ride-option" value={o.id} checked={on} disabled={!!o.blocked} className="sr-only"
+                            onChange={() => { setSelected(o.id); setPrefer(o.prefer); if (!isCar) setCarOpen(false); }}
+                            // Fires on every tap, including the already-selected row: that tap folds the Car options.
+                            onClick={() => { if (isCar) setCarOpen(on ? !carOpen : true); }}
+                          />
+                          <span className="ride-tile flex h-10 w-10 shrink-0 items-center justify-center rounded-[13px]"><Icon className="h-5 w-5" strokeWidth={1.9} aria-hidden /></span>
+                          <span className="min-w-0 flex-1">
+                            <span className="flex items-center gap-1.5 text-[15px] font-bold text-ink">
+                              <span className="truncate">{o.title}</span>
+                              {isCar && !o.blocked && <ChevronDown className={`h-4 w-4 shrink-0 text-ink-500 transition-transform motion-reduce:transition-none ${on && carOpen ? "rotate-180" : ""}`} aria-hidden />}
+                              {o.id === bestValue && <span className="ride-badge">Best value</span>}
+                            </span>
+                            <span className="block truncate text-xs text-ink-500">{o.sub}</span>
                           </span>
-                          <span className="block truncate text-xs text-ink-500">{o.sub}</span>
-                        </span>
-                        <span className="shrink-0 text-right">
-                          <span className="block text-[15px] font-bold tabular-nums text-ink">
-                            {o.pending ? <span className="ride-skeleton inline-block h-4 w-16 rounded" aria-label="Checking fare" /> : o.fare != null ? formatUgx(o.fare) : "On next step"}
+                          <span className="shrink-0 text-right">
+                            <span className="block text-[15px] font-bold tabular-nums text-ink">
+                              {o.pending ? <span className="ride-skeleton inline-block h-4 w-16 rounded" aria-label="Checking fare" /> : o.fare != null ? formatUgx(o.fare) : "On next step"}
+                            </span>
+                            <span className="block text-[11px] font-semibold text-ink-500">{o.blocked ?? (arrive ? `arrive ≈ ${arrive}` : "")}</span>
                           </span>
-                          <span className="block text-[11px] font-semibold text-ink-500">{o.blocked ?? (arrive ? `arrive ≈ ${arrive}` : "")}</span>
-                        </span>
-                      </label>
+                        </label>
+                        {isCar && on && carOpen && carOptions && (
+                          <div id="ride-car-options" className="space-y-3 px-3.5 pb-3.5">
+                            <div role="radiogroup" aria-label="Car size" className="grid grid-cols-2 gap-2">
+                              {CAR_SIZES.map((z) => {
+                                const ok = hasOpt(z.id);
+                                const sel = carSize === z.id;
+                                return (
+                                  <button
+                                    key={z.id} type="button" role="radio" aria-checked={sel} disabled={!ok}
+                                    onClick={() => { setCarSize(z.id); if (!hasOpt(z.id, carTier) && hasOpt(z.id, otherTier)) setCarTier(otherTier); }}
+                                    className={`ride-chip flex-col !items-start justify-center gap-0 py-1.5 text-left ${sel ? "is-on" : ""} ${ok ? "" : "opacity-50"}`}
+                                  >
+                                    <span className="text-[13px] font-bold">{z.label}</span>
+                                    <span className="text-[11px] font-semibold opacity-75">{ok ? z.sub : "Unavailable"}</span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <span className="min-w-0 flex-1">
+                                <span className="block text-[13px] font-bold text-ink">Comfort ride</span>
+                                <span className="block text-xs text-ink-500">
+                                  {hasOpt(carSize, "comfort") ? `Newer cars, more room${comfortExtra != null && comfortExtra > 0 ? ` · +${formatUgx(comfortExtra)}` : ""}` : "Not available for this size"}
+                                </span>
+                              </span>
+                              <button
+                                type="button" role="switch" aria-checked={carTier === "comfort"} aria-label="Comfort ride"
+                                disabled={!hasOpt(carSize, "comfort")}
+                                onClick={() => setCarTier(carTier === "comfort" ? "convenient" : "comfort")}
+                                className={`ride-switch relative h-7 w-12 shrink-0 rounded-full disabled:opacity-50 ${carTier === "comfort" ? "is-on" : ""}`}
+                              >
+                                <span className="ride-switch__knob absolute top-1 h-5 w-5 rounded-full" aria-hidden />
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     );
                   })}
                 </div>

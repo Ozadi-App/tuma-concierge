@@ -1,7 +1,7 @@
 import { StandaloneRideBooking } from "../../../components/StandaloneBooking";
 
 export const metadata = {
-  title: "Luxury ride | Peebee",
+  title: "VIP ride | Peebee",
   description: "Chauffeur-driven luxury cars for weddings, parties, red carpet arrivals and VIP transfers.",
 };
 
