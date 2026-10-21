@@ -516,7 +516,7 @@ function CartCheckout() {
             )}
             <section className="home-card space-y-2" aria-live="polite" aria-label="Order summary">
               {quote ? (
-                <OrderBreakdown items={reviewItems} itemsSubtotal={quote.itemsTotal} delivery={reviewDelivery(quote, relayLastMile, relayMeetStageId)} total={quote.total} />
+                <OrderBreakdown items={reviewItems} itemsSubtotal={quote.itemsTotal} delivery={reviewDelivery(quote, relayLastMile, relayMeetStageId)} total={quote.total} showDeliveryLines={false} />
               ) : bagQuote.failed ? (
                 <button type="button" onClick={bagQuote.retry} className="text-sm font-bold text-gold">Could not load the delivery price. Retry</button>
               ) : (

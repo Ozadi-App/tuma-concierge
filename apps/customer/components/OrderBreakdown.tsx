@@ -91,6 +91,7 @@ export function OrderBreakdown({
   fees = 0,
   total,
   deliveryLabel,
+  showDeliveryLines = true,
 }: {
   items: CheckoutItem[];
   itemsSubtotal: number;
@@ -101,6 +102,8 @@ export function OrderBreakdown({
   total: number | null;
   /** Defaults to "Delivery", or "Delivery · Relay" / "Delivery · Direct" where the customer chose. */
   deliveryLabel?: string;
+  /** The faint lines under Delivery (each leg, who collects). Off where the delivery was already chosen on its own step. */
+  showDeliveryLines?: boolean;
 }) {
   const hasItems = items.length > 0 || itemsSubtotal > 0;
   return (
@@ -116,7 +119,7 @@ export function OrderBreakdown({
           <span>{deliveryLabel ?? deliverySectionTitle(delivery)}</span>
           <span>{formatUgx(delivery.total)}</span>
         </div>
-        <DeliveryLines delivery={delivery} />
+        {showDeliveryLines && <DeliveryLines delivery={delivery} />}
       </div>
       {fees > 0 && (
         <div className="flex justify-between gap-3 text-sm text-ink-500">
