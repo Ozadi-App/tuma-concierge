@@ -77,6 +77,10 @@ const DEFAULTS = {
    * nobody's been assigned by this long after the order was created, the
    * app auto-assigns rather than leaving the customer waiting indefinitely. */
   max_assignment_minutes: "5",
+  /** Channels: every switch, limit, percentage and window for creator channels, the shared Spotlight,
+   * memberships, verification, causes and rewards. JSON, read through ../channels/settings.ts, which
+   * validates against the field list in @peebee/shared. Off until an admin turns it on. */
+  channels_config: "{}",
   /** Creator video: which providers are on offer and the limits on uploads. JSON, read through
    * ../video/settings.ts, which clamps every field. Off until an admin turns it on. */
   video_config: "{}",

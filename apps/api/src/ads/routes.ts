@@ -3,6 +3,8 @@ import { requireAuth } from "../auth/middleware.js";
 import { verifyToken } from "../auth/jwt.js";
 import { clientIp, consume, hashKey } from "../lib/ratelimit.js";
 import { getAsset } from "../video/service.js";
+import { activeSubscription } from "../channels/access.js";
+import { getPost } from "../channels/posts.js";
 import { AD_EVENTS, AD_SLOTS, adPlan, adsReady, clickTarget, creatorEarnings, decide, recordEvent, type AdEvent, type AdSlot } from "./service.js";
 import { getAdsConfig } from "./settings.js";
 import { buildVast, EMPTY_VAST } from "./vast.js";
@@ -36,7 +38,14 @@ async function ask(c: Context) {
   const viewer = await viewerKey(c);
   const quota = await consume(`ad-decision:${viewer}`, 120, 3600);
   if (!quota.allowed) return { error: c.json({ error: "rate_limited", retryAfterSeconds: quota.retryAfterSeconds }, 429) } as const;
-  return { ad: await decide({ assetId, slot: slot as AdSlot, viewerKey: viewer }) } as const;
+  // Paying members of a channel watch its posts without ads (when the admin setting allows it).
+  let adFree = false;
+  const postId = c.req.query("post");
+  if (postId && !viewer.startsWith("anon_")) {
+    const post = await getPost(postId).catch(() => null);
+    if (post && post.publisher_type === "channel" && post.video_asset_id === assetId) adFree = !!(await activeSubscription(viewer, post.publisher_id).catch(() => null));
+  }
+  return { ad: await decide({ assetId, slot: slot as AdSlot, viewerKey: viewer, adFree }) } as const;
 }
 
 /** When ads run on one video: a pre-roll, and where the mid-rolls fall. Nothing is charged for asking. */

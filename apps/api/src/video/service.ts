@@ -230,7 +230,7 @@ async function removeAtProvider(row: VideoAssetRow, externalId = row.external_id
  * The addresses a player uses. A protected video only gets a signed, short-lived address, and only
  * when the caller has already been cleared to watch it (the post's access rules decide that, not this).
  */
-export async function playbackFor(row: VideoAssetRow, opts: { cleared: boolean }): Promise<PlaybackSources> {
+export async function playbackFor(row: VideoAssetRow, opts: { cleared: boolean; ttlSeconds?: number }): Promise<PlaybackSources> {
   if (row.status !== "ready") throw new VideoRequestError("not_ready", "This video is still being prepared.", 409);
   const protectedVideo = row.visibility === "protected";
   if (protectedVideo && !opts.cleared) throw new VideoRequestError("locked", "This video is locked.", 403);
@@ -239,7 +239,7 @@ export async function playbackFor(row: VideoAssetRow, opts: { cleared: boolean }
     return await VIDEO_ADAPTERS[row.provider].playback(
       await credsFor(row),
       { externalId: row.external_id, hlsUrl: row.hls_url, mp4Url: row.mp4_url, posterUrl: row.poster_url },
-      { signed: protectedVideo, ttlSeconds: config.signedPlaybackTtlSeconds },
+      { signed: protectedVideo, ttlSeconds: opts.ttlSeconds ?? config.signedPlaybackTtlSeconds },
     );
   } catch (err) {
     wrap(err);
