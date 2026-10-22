@@ -1,7 +1,7 @@
-import { FoodMarketplace } from "../../components/FoodMarketplace";
+import { FoodSubHome } from "../../components/food/FoodSubHome";
 
 export const metadata = { title: "Street Food | Peebee" };
 
 export default function StreetfoodPage() {
-  return <FoodMarketplace mode="directory" category="street_food" />;
+  return <FoodSubHome type="street_food" />;
 }

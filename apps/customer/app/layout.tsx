@@ -6,6 +6,7 @@ import "./food-theme.css";
 import "./pharmacy-theme.css";
 import "./buy-theme.css";
 import "./food-cards.css";
+import "./food-subhome.css";
 import { AppShell } from "../components/AppShell";
 import { CallOverlay } from "../components/CallOverlay";
 import { InstallPrompt } from "../components/InstallPrompt";
