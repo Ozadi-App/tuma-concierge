@@ -138,3 +138,20 @@ test("practice and sandbox share one database; real people and demo people never
     assert.equal(Number((await db.execute("SELECT COUNT(*) n FROM merchant_kyc_cases WHERE merchant_id LIKE 'prac\\_%' ESCAPE '\\'")).rows[0]!.n), seeded, "seeding again adds nothing");
   });
 });
+
+test("every one of the 66 modules has demo data in the practice world", async () => {
+  const { MODULES } = await import("@peebee/shared");
+  const { practiceHarness } = await import("./world-test-helpers.js");
+  const { moduleCoverage, MODULE_PROBES } = await import("./coverage.js");
+  const { seedPracticeWorld } = await import("./seed.js");
+  const { placeStarterOrders } = await import("./demo-customers.js");
+  await practiceHarness();
+  const counts = await runInPractice(async () => {
+    await seedPracticeWorld();
+    await placeStarterOrders();
+    return moduleCoverage();
+  });
+  assert.equal(MODULES.length, Object.keys(MODULE_PROBES).length, "every module has a probe");
+  const empty = MODULES.filter((m) => !(counts[m.key]! > 0)).map((m) => m.key);
+  assert.deepEqual(empty, [], `modules with no demo data: ${empty.join(", ")}`);
+});

@@ -5,7 +5,9 @@ export async function runSeed(statements: DbStatement[], slice = 80): Promise<vo
   for (let i = 0; i < statements.length; i += slice) {
     const part = statements.slice(i, i + slice);
     try {
-      await executeBatch(part);
+      const changes = await executeBatch(part);
+      // INSERT OR IGNORE also ignores a row that breaks a CHECK rule. When asked (tests), say which rows did not go in.
+      if (process.env.PRACTICE_SEED_REPORT) part.forEach((st, k) => { if (changes[k] === 0 && /^INSERT OR IGNORE/.test(st.sql)) console.log("SEED-IGNORED", st.sql.replace(/\s+/g, " ").slice(0, 70), JSON.stringify(st.args).slice(0, 80)); });
     } catch (err) {
       for (const st of part) {
         try { await executeBatch([st]); } catch (inner) {

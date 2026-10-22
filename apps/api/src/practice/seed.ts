@@ -5,7 +5,9 @@ import { runSeed } from "./batch.js";
 import { merchantBusinessStatements } from "../merchants/service.js";
 import { PRACTICE_CUSTOMERS } from "./personas.js";
 import { seedBuyExtras } from "./seed-buy.js";
+import { seedHive } from "./seed-hive.js";
 import { seedLearn } from "./seed-learn.js";
+import { seedMoney } from "./seed-money.js";
 import { seedRide } from "./seed-ride.js";
 
 /** Practice accounts cannot be signed into with a password: a session token is the only way in. */
@@ -139,6 +141,8 @@ export async function seedPracticeWorld(): Promise<PracticeCounts> {
   await seedRide();
   await seedBuyExtras();
   await seedLearn();
+  await seedHive();
+  await seedMoney();
   return practiceCounts();
 }
 

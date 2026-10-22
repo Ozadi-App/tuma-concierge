@@ -1067,6 +1067,7 @@ function practiceModuleOn(def: ModuleDef, values: Map<string, string>): boolean 
 const PRACTICE_VALUES: Partial<Record<SettingKey, string>> = {
   car_scheduled_max_advance_hours: "72",
   car_selfdrive_platform_percent: "15",
+  car_carpool_max_repeat_weeks: "4",
 };
 
 /**

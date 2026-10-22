@@ -10,6 +10,7 @@ import { inPractice, runInPractice } from "../db/practice-context.js";
 import { clientIp } from "../lib/ratelimit.js";
 import { getPlatformEnvironment, getSetting } from "../lib/settings.js";
 import { placeStarterOrders, topUpDemoOrders } from "./demo-customers.js";
+import { moduleCoverage } from "./coverage.js";
 import { PRACTICE_PERSONA_FOR_ROLE } from "./personas.js";
 import { isPracticeSeeded, practiceCounts, resetPracticeWorld, seedPracticeWorld } from "./seed.js";
 
@@ -25,7 +26,7 @@ practiceRoutes.get("/practice/world", requireAuth, async (c) => {
   return c.json({ available, seeded: available ? await isPracticeSeeded() : false });
 });
 
-const sessionSchema = z.object({ role: z.enum(["customer", "rider", "merchant", "restaurant", "pharmacy", "gas", "learner", "educator"]) });
+const sessionSchema = z.object({ role: z.enum(["customer", "rider", "merchant", "restaurant", "pharmacy", "gas", "learner", "educator", "provider", "worker"]) });
 
 /**
  * Starts a practice session: signs the caller in as the practice persona for their app. The caller's own account is not
@@ -36,7 +37,17 @@ practiceRoutes.post("/practice/session", requireAuth, async (c) => {
   if (!(await modeOn())) return c.json({ error: "practice_off", message: "Practice is switched off right now." }, 403);
   const parsed = sessionSchema.safeParse(await c.req.json().catch(() => ({})));
   if (!parsed.success) return c.json({ error: "invalid_body", issues: parsed.error.issues }, 400);
-  const personaId = PRACTICE_PERSONA_FOR_ROLE[parsed.data.role];
+  let personaId = PRACTICE_PERSONA_FOR_ROLE[parsed.data.role];
+  if (!personaId) {
+    // Providers and workers come from the Work and Hire demos, whose ids are set by those installers.
+    personaId = await runInPractice(async () => {
+      if (!(await isPracticeSeeded())) await seedPracticeWorld();
+      const found = parsed.data.role === "provider"
+        ? await db.execute("SELECT user_id AS id FROM work_providers WHERE id LIKE 'wpr\\_demo\\_%' ESCAPE '\\' ORDER BY id LIMIT 1")
+        : await db.execute("SELECT user_id AS id FROM talent_profiles WHERE user_id LIKE 'talent\\_demo\\_%' ESCAPE '\\' ORDER BY user_id LIMIT 1");
+      return String(found.rows[0]?.id ?? "");
+    });
+  }
   if (parsed.data.role === "gas") return gasSession(c, personaId);
   const persona = await runInPractice(async () => {
     if (!(await isPracticeSeeded())) await seedPracticeWorld();
@@ -69,7 +80,7 @@ async function gasSession(c: Context, attendantId: string) {
 const adminGuard = [requireAuth, requireRole("admin"), requirePermission("settings.manage")] as const;
 
 practiceRoutes.get("/admin/practice", ...adminGuard, async (c) =>
-  c.json({ seeded: await isPracticeSeeded(), counts: await practiceCounts(), platformEnvironment: await getPlatformEnvironment() }));
+  c.json({ seeded: await isPracticeSeeded(), counts: await practiceCounts(), coverage: await runInPractice(moduleCoverage), platformEnvironment: await getPlatformEnvironment() }));
 
 practiceRoutes.post("/admin/practice/seed", ...adminGuard, async (c) => {
   const counts = await runInPractice(async () => {

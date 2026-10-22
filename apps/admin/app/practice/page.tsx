@@ -1,14 +1,13 @@
 "use client";
 
-import { MODULES, MODULE_CLUSTERS, resolveModuleAvailability, type ModuleFlags, type PracticeCoverage, type PracticeWorldStatus } from "@peebee/shared";
+import { MODULES, MODULE_CLUSTERS, resolveModuleAvailability, type ModuleFlags, type PracticeWorldStatus } from "@peebee/shared";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { SettingsPageShell } from "../../components/SettingsPageShell";
 import { Switch } from "../../components/ui/Switch";
 import { api, errorMessage } from "../../lib/api";
 
-const COVERAGE_LABEL: Record<PracticeCoverage, string> = { full: "Complete", partial: "Partly simulated", none: "Not simulated yet" };
-const COVERAGE_CLASS: Record<PracticeCoverage, string> = {
+const COVERAGE_CLASS: Record<"full" | "partial" | "none", string> = {
   full: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-200",
   partial: "bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-200",
   none: "bg-red-100 text-red-800 dark:bg-red-950/50 dark:text-red-200",
@@ -47,10 +46,9 @@ export default function PracticePage() {
 
   const available = useMemo(() => (flags ? resolveModuleAvailability(flags) : null), [flags]);
   const totals = useMemo(() => {
-    const t = { full: 0, partial: 0, none: 0 };
-    for (const m of MODULES) t[m.practice.coverage]++;
-    return t;
-  }, []);
+    const filled = MODULES.filter((m) => (world?.coverage?.[m.key] ?? 0) > 0).length;
+    return { filled, empty: MODULES.length - filled, known: !!world?.coverage };
+  }, [world]);
 
   return (
     <SettingsPageShell title="Practice" description="One simulated world for every app: people, content, rides, stores and channels that behave like the real thing without touching real money, orders or people." loading={loading}>
@@ -99,7 +97,9 @@ export default function PracticePage() {
 
           <section className="home-card space-y-2">
             <h2 className="text-base font-bold text-ink">What the practice world holds</h2>
-            <p className="text-xs text-ink-500">{totals.full} modules are fully simulated, {totals.partial} partly, {totals.none} not yet. Anything partial or missing is listed under its module so the gaps are on record rather than found by hand.</p>
+            <p className="text-xs text-ink-500">
+              {totals.known ? `${totals.filled} of ${MODULES.length} modules have demo data${totals.empty ? `; ${totals.empty} are empty and listed below` : ""}.` : "Lay the practice world down to see what each module holds."} The number beside each module is how many demo records it has right now.
+            </p>
           </section>
 
           {MODULE_CLUSTERS.map((cluster) => (
@@ -112,11 +112,10 @@ export default function PracticePage() {
                     <li key={m.key} className="space-y-1 py-3 first:pt-0 last:pb-0" style={{ paddingLeft: (m.key.split(".").length - 1) * 16 }}>
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="text-sm font-bold text-ink">{m.label}</span>
-                        <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${COVERAGE_CLASS[m.practice.coverage]}`}>{COVERAGE_LABEL[m.practice.coverage]}</span>
+                        <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${(world?.coverage?.[m.key] ?? 0) > 0 ? COVERAGE_CLASS.full : COVERAGE_CLASS.none}`}>{world?.coverage ? ((world.coverage[m.key] ?? 0) > 0 ? `${world.coverage[m.key]} records` : "Empty") : "Not laid down"}</span>
                         <span className="rounded-full bg-[rgb(var(--surface-muted))] px-2 py-0.5 text-[11px] font-bold text-ink-500">{on ? "On in Practice" : "Off in Practice"}</span>
                       </div>
                       {m.practice.has.length > 0 && <p className="text-xs text-ink-500"><span className="font-semibold text-ink">Has:</span> {m.practice.has.join(", ")}</p>}
-                      {m.practice.missing && m.practice.missing.length > 0 && <p className="text-xs text-ink-500"><span className="font-semibold text-ink">Missing:</span> {m.practice.missing.join(", ")}</p>}
                     </li>
                   );
                 })}

@@ -111,5 +111,7 @@ export async function placeStarterOrders(): Promise<number> {
       console.error("Practice starter order failed:", err);
     }
   }
+  const { attachLugandaAudio } = await import("./seed-money.js");
+  await attachLugandaAudio().catch((err) => console.error("Practice Luganda audio failed:", err));
   return placed;
 }
