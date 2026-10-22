@@ -40,7 +40,7 @@ export default function OptionsPage() {
 
   const van = queue?.line.find((v) => v.id === queueId) ?? null;
   const route = queue?.route ?? null;
-  const details = taxipress.detailsReady === true;
+  const details = true;
   const maxLap = taxipress.maxLapChildren ?? 2;
   const d = draft ?? emptyDraft(routeId, queueId);
   const fare = route?.farePerSeat ?? 0;
@@ -51,6 +51,9 @@ export default function OptionsPage() {
   const luggageOn = details && taxipress.luggageEnabled && !!prices;
   const luggageAmount = luggageOn ? TAXIPRESS_LUGGAGE_TYPES.reduce((sum, t) => sum + (prices![t] ?? 0) * (d.luggage[t] ?? 0), 0) : 0;
   const total = ride + luggageAmount;
+  const chosen = luggageAmount > 0 || TAXIPRESS_LUGGAGE_TYPES.some((t) => (d.luggage[t] ?? 0) > 0)
+    || (taxipress.assistanceEnabled && !!d.assistance && d.assistance !== "none")
+    || (taxipress.languageEnabled && !!d.language);
   const party = d.children > 0 ? `${d.adults}+${d.children}` : `${d.adults}`;
 
   async function book(withOptions: boolean) {
@@ -83,7 +86,7 @@ export default function OptionsPage() {
   }
 
   useRegisterNavBack(true, () => router.push(`/ride/taxipress/book/${routeId}`));
-  useRegisterNavPrimaryAction(van ? {
+  useRegisterNavPrimaryAction(van && chosen ? {
     tone: "gold",
     icon: ArrowRight,
     label: busy ? "Booking…" : `Continue · ${ugx(total)}`,
@@ -104,7 +107,7 @@ export default function OptionsPage() {
   }
 
   return (
-    <main className="space-y-5 px-4 pb-8 pt-4">
+    <main className="space-y-5 px-4 pb-32 pt-4">
       <header className="space-y-3">
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.14em] text-gold">Step 3 of 3 · Optional</p>
@@ -120,8 +123,6 @@ export default function OptionsPage() {
           </div>
         )}
       </header>
-
-      {!details && <p className="text-sm text-ink-500">Luggage, assistance and language options aren&apos;t available yet. Continue to pay for {seats} seat{seats === 1 ? "" : "s"}.</p>}
 
       {luggageOn && (
         <section aria-label="Luggage" className="space-y-2">
@@ -182,8 +183,8 @@ export default function OptionsPage() {
 
       {error && <p role="alert" className="text-sm font-semibold text-[rgb(var(--color-red,200_40_40))]">{error}</p>}
       {van && (
-        <button type="button" disabled={busy} onClick={() => void book(false)} className="flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-[rgb(var(--color-black-700))] font-bold text-white disabled:opacity-50">
-          <X className="h-5 w-5" aria-hidden /> Skip · {ugx(ride)}
+        <button type="button" disabled={busy} onClick={() => void book(false)} className="flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] font-bold text-ink disabled:opacity-50">
+          <X className="h-5 w-5" aria-hidden /> {busy && !chosen ? "Booking…" : `Skip options · ${ugx(ride)}`}
         </button>
       )}
     </main>

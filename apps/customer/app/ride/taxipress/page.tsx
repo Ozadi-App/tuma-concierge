@@ -21,12 +21,17 @@ export default function TaxipressPage() {
   const [active, setActive] = useState(0);
 
   // One card per route pair: the reverse direction is reached with the swap button.
+  // The reverse is the same relay route the other way, or else a route between the same two stages the other way.
+  const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+  const reverseOf = (r: Route) => (r.reverseId ? taxipress.routes.find((x) => x.id === r.reverseId) : undefined)
+    ?? taxipress.routes.find((x) => x.id !== r.id && same(x.fromName, r.toName) && same(x.toName, r.fromName));
   const cards: Route[] = [];
   for (const r of taxipress.routes) {
-    if (r.reverseId && cards.some((c) => c.id === r.reverseId)) continue;
+    const rev = reverseOf(r);
+    if (rev && cards.some((c) => c.id === rev.id)) continue;
     cards.push(r);
   }
-  const shown = (r: Route) => (swapped[r.id] && r.reverseId ? taxipress.routes.find((x) => x.id === r.reverseId) ?? r : r);
+  const shown = (r: Route) => (swapped[r.id] ? reverseOf(r) ?? r : r);
   const ids = cards.map((c) => shown(c).id).join(",");
 
   useEffect(() => {
@@ -78,7 +83,7 @@ export default function TaxipressPage() {
                       <h2 className="text-2xl font-black leading-tight">{r.fromName} → {r.toName}</h2>
                       {n != null && <p className="mt-1 text-sm text-white/70">{n === 0 ? "No taxi in the line yet" : `${n} taxi${n === 1 ? "" : "s"} in the line`}</p>}
                     </div>
-                    {card.reverseId && (
+                    {reverseOf(card) && (
                       <button type="button" aria-label={`Swap to ${r.toName} → ${r.fromName}`} onClick={() => setSwapped((s) => ({ ...s, [card.id]: !s[card.id] }))} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/15">
                         <ArrowUpDown className="h-5 w-5" aria-hidden />
                       </button>
@@ -86,16 +91,14 @@ export default function TaxipressPage() {
                   </div>
                   <div className="mt-3 flex items-center justify-between gap-3">
                     <span className="rounded-full bg-white px-3 py-1.5 text-sm font-bold text-[rgb(10_10_10)]">{ugx(r.farePerSeat)} / seat</span>
-                    {stops.length > 0 ? (
-                      <button type="button" aria-expanded={isOpen} onClick={() => setOpen(isOpen ? null : card.id)} className="inline-flex min-h-11 items-center gap-1 text-sm text-white/75">
-                        {isOpen ? "Hide stops" : "Show stops"} {isOpen ? <ChevronUp className="h-4 w-4" aria-hidden /> : <ChevronDown className="h-4 w-4" aria-hidden />}
-                      </button>
-                    ) : (
-                      <button type="button" onClick={() => router.push(`/ride/taxipress/book/${r.id}`)} className="inline-flex min-h-11 items-center gap-1 text-sm font-bold text-gold">
-                        Select <ArrowRight className="h-4 w-4" aria-hidden />
-                      </button>
-                    )}
+                    <button type="button" onClick={() => router.push(`/ride/taxipress/book/${r.id}`)} className="inline-flex min-h-11 items-center gap-1 text-sm font-bold text-gold">
+                      Select <ArrowRight className="h-4 w-4" aria-hidden />
+                    </button>
                   </div>
+                  {/* Every route opens to its stops, start to end (just the two stages when none are set). */}
+                  <button type="button" aria-expanded={isOpen} onClick={() => setOpen(isOpen ? null : card.id)} className="mt-2 inline-flex min-h-11 items-center gap-1 text-sm font-semibold text-white/80">
+                    {isOpen ? "Hide stops" : stops.length > 0 ? `Show ${stops.length + 2} stops` : "Show stops"} {isOpen ? <ChevronUp className="h-4 w-4" aria-hidden /> : <ChevronDown className="h-4 w-4" aria-hidden />}
+                  </button>
                 </div>
                 {isOpen && (
                   <div className="bg-[rgb(var(--surface-card))] p-4 text-ink">

@@ -372,6 +372,12 @@ function RoutesTab() {
   const [busy, setBusy] = useState(false);
   const [stagesFor, setStagesFor] = useState<string | null>(null);
   const stagesRoute = routes.find((r) => r.id === stagesFor) ?? null;
+  // Opened from TaxiPress settings with ?stops=<route id>: go straight to that route's stops editor.
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get("stops");
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the query string is readable only after mount
+    if (id) setStagesFor(id);
+  }, []);
 
   const refresh = useCallback(async () => {
     try {
