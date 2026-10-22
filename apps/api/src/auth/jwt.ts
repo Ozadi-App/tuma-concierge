@@ -31,22 +31,28 @@ export type AuthTokenPayload = {
   iat: number;
   /** Set on a guest-checkout token: it only works on that one order (see GUEST_ALLOWED in middleware). */
   guestOrderId?: string;
+  /** Set on a practice-session token: every request it makes runs against the practice database. */
+  practice?: boolean;
 };
+
+/** A practice session is a day: it is a training account, and a fresh one is one tap away. */
+export const PRACTICE_TOKEN_TTL_SECONDS = 24 * 60 * 60;
 
 export async function signToken(payload: {
   sub: string;
   role: AuthTokenPayload["role"];
   phone?: string | null;
   guestOrderId?: string;
+  practice?: boolean;
 }): Promise<string> {
-  return new SignJWT({ role: payload.role, phone: payload.phone ?? null, ...(payload.guestOrderId ? { gst: payload.guestOrderId } : {}) })
+  return new SignJWT({ role: payload.role, phone: payload.phone ?? null, ...(payload.guestOrderId ? { gst: payload.guestOrderId } : {}), ...(payload.practice ? { prc: 1 } : {}) })
     .setProtectedHeader({ alg: "HS256" })
     .setSubject(payload.sub)
     .setJti(crypto.randomUUID())
     .setIssuer(ISSUER)
     .setAudience(AUDIENCE)
     .setIssuedAt()
-    .setExpirationTime(`${TOKEN_TTL_SECONDS}s`)
+    .setExpirationTime(`${payload.practice ? PRACTICE_TOKEN_TTL_SECONDS : TOKEN_TTL_SECONDS}s`)
     .sign(secretKey());
 }
 
@@ -62,5 +68,6 @@ export async function verifyToken(token: string): Promise<AuthTokenPayload> {
     jti: (payload.jti as string | undefined) ?? "",
     iat: (payload.iat as number | undefined) ?? 0,
     ...(typeof payload.gst === "string" ? { guestOrderId: payload.gst } : {}),
+    ...(payload.prc === 1 ? { practice: true } : {}),
   };
 }
