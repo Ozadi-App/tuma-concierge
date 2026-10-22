@@ -909,6 +909,8 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
         bundle?: { deliveryFee: number; orders: Array<{ id: string; restaurantName: string | null; itemsAndDelivery: number; deliveryFee: number }> };
         /** A relay that can be paid now, before any rider accepts it (admin setting). */
         payBeforeRider?: boolean;
+        /** A TaxiPress booking's order: its ticket, and whether cash is allowed (and why not). */
+        taxipress?: { bookingId: string; cashAllowed: boolean; cashReason: string | null } | null;
       } & Partial<CheckoutBreakdown>>(`/v1/orders/${orderId}/checkout`);
     },
     /** What the order page shows: items, subtotal and delivery for the whole combined delivery (or the order), at any stage. */
