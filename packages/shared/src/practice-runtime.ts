@@ -739,6 +739,7 @@ const PRACTICE_MODULE_PREFIXES: ReadonlyArray<readonly [prefix: string, module: 
   ["/v1/relay/", "deliver.relay", "Relay delivery"],
   ["/v1/pharmacy/", "buy.pharmacy", "Pharmacy"],
   ["/v1/marketplace/", "buy.marketplace", "The marketplace"],
+  ["/v1/guest/", "buy.guest", "Guest checkout"],
   ["/v1/gas/", "buy.gas", "Fuel"],
   ["/v1/work/", "hive.work", "Home services"],
   ["/v1/talent/", "hive.hire", "Peebee Hire"],
@@ -751,10 +752,41 @@ function practiceModuleGate(path: string, method: string, body: Record<string, u
   for (const [prefix, module, label] of PRACTICE_MODULE_PREFIXES) {
     if (!path.startsWith(prefix) || practiceModuleOn(module)) continue;
     if (path === "/v1/talent/config") return jsonResponse({ enabled: false, workerSearchEnabled: false });
+    if (path === "/v1/guest/config") return jsonResponse({ enabled: false, cardAvailable: false, maxQuantity: 1, suggestAccount: false, codeStatusEnabled: false });
     if (path === "/v1/taxipress/config") return jsonResponse({ enabled: false, routes: [], cashEnabled: false, seatChoiceFeeUgx: 0, returnDiscountPercent: 0, maxSeatsPerBooking: 0, payWithinMinutes: 0, parcelFitText: "", parcelNotAllowed: [] });
     return paused(label);
   }
   return null;
+}
+
+const PRACTICE_GUEST_KEY = "peebee_practice_guest_orders_v1";
+type PracticeGuestOrder = { code: string; orderId: string; item: string; placedAt: number; total: number };
+const readGuestOrders = (): PracticeGuestOrder[] => { try { return canUseStorage() ? JSON.parse(window.localStorage.getItem(PRACTICE_GUEST_KEY) ?? "[]") : []; } catch { return []; } };
+
+/** Guest checkout in practice: a shared product link bought without an account, then tracked by code. Status moves on by itself. */
+function practiceGuestRequest(path: string, method: string, body: Record<string, unknown>): Response {
+  if (method === "GET" && path === "/v1/guest/config") return jsonResponse({ enabled: true, cardAvailable: false, maxQuantity: 5, suggestAccount: true, codeStatusEnabled: true });
+  if (method === "POST" && path === "/v1/guest/checkout") {
+    const productId = String(body.productId ?? "");
+    const quantity = Math.floor(Number(body.quantity));
+    const product = Object.values(DEMO_MARKETPLACE_PRODUCTS).flat().find((p) => p.id === productId);
+    if (!product || !(quantity >= 1 && quantity <= 5)) return practiceError("Choose a practice product and one to five of it.");
+    if (!String(body.name ?? "").trim() || !String(body.phone ?? "").trim() || !String(body.address ?? "").trim()) return practiceError("Enter a name, phone number and address.");
+    const code = `PB-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+    const total = product.price * quantity + 3_000;
+    const order: PracticeGuestOrder = { code, orderId: `practice-guest-${Date.now()}`, item: product.title, placedAt: Date.now(), total };
+    if (canUseStorage()) window.localStorage.setItem(PRACTICE_GUEST_KEY, JSON.stringify([order, ...readGuestOrders()].slice(0, 20)));
+    return jsonResponse({ orderId: order.orderId, trackingCode: code, token: "practice-guest-token", total, accountCreated: false, existingAccount: false }, 201);
+  }
+  const track = path.match(/^\/v1\/guest\/track\/([^/]+)$/);
+  if (method === "GET" && track) {
+    const order = readGuestOrders().find((o) => o.code === decodeURIComponent(track[1]!).toUpperCase());
+    if (!order) return jsonResponse({ error: "not_found", message: "We couldn't find that tracking code." }, 404);
+    const elapsed = Date.now() - order.placedAt;
+    const status = elapsed < 10_000 ? "received" : elapsed < 25_000 ? "preparing" : elapsed < 45_000 ? "on_the_way" : elapsed < 60_000 ? "arrived" : "delivered";
+    return jsonResponse({ trackingCode: order.code, placedAt: new Date(order.placedAt).toISOString(), canCreateAccount: true, hasAccount: false, codeStatusEnabled: true, item: order.item, status });
+  }
+  return practiceError("Creating an account from a guest order isn't part of practice. Your live account was not changed.");
 }
 
 function handlePracticeRequest(role: PracticeRole, path: string, method: string, body: Record<string, unknown>, query = new URLSearchParams()): Response {
@@ -767,6 +799,7 @@ function handlePracticeRequest(role: PracticeRole, path: string, method: string,
   const paused = practiceModuleGate(path, method, body);
   if (paused) return paused;
 
+  if (role === "customer" && path.startsWith("/v1/guest/")) return practiceGuestRequest(path, method, body);
   if (role === "customer" && path.startsWith("/v1/talent/")) return practiceTalentRequest(path, method, body, query);
   if (role === "customer" && path.startsWith("/v1/work/")) return practiceWorkRequest(path, method, body, query);
   if (role === "customer" && (path.startsWith("/v1/taxipress/") || path.startsWith("/v1/orders/practice-tp-order-") || path.startsWith("/v1/public/receipts/practice-"))) return practiceTaxipressRequest(path, method, body);

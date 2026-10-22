@@ -444,3 +444,26 @@ test("Taxipress practice: a boarded seat has a receipt that verifies, and a canc
   assert.equal((await get(`/v1/public/receipts/practice-tps-${second.id}`)).status, 404, "cancelled: no receipt");
   t.mock.restoreAll();
 });
+
+test("practice: guest checkout places an order, tracks it by code, and obeys the Practice switch", async () => {
+  installStorage();
+  const { rememberModuleAvailability } = await import("@peebee/shared");
+  const fetcher = createPracticeFetch("customer", (async () => { throw new Error("Must not reach the live API"); }) as typeof fetch);
+  startPracticeMode("customer");
+  const stores = await (await fetcher("https://api.test/v1/marketplace/stores")).json() as { stores: { id: string }[] };
+  const products = await (await fetcher(`https://api.test/v1/marketplace/stores/${stores.stores[0]!.id}/products`)).json() as { products: { id: string }[] };
+  const body = { productId: products.products[0]!.id, quantity: 2, name: "Amina", phone: "0700000000", address: "Entebbe Road", lat: 0.05, lng: 32.46, createAccount: false };
+  const placed = await fetcher("https://api.test/v1/guest/checkout", { method: "POST", body: JSON.stringify(body) });
+  assert.equal(placed.status, 201);
+  const { trackingCode } = await placed.json() as { trackingCode: string };
+  const tracked = await (await fetcher(`https://api.test/v1/guest/track/${trackingCode}`)).json() as { status: string; item: string };
+  assert.equal(tracked.status, "received");
+  assert.ok(tracked.item);
+  assert.equal((await fetcher("https://api.test/v1/guest/track/NOPE")).status, 404);
+
+  rememberModuleAvailability({ "buy.guest": { live: true, practice: false } });
+  assert.equal(((await (await fetcher("https://api.test/v1/guest/config")).json()) as { enabled: boolean }).enabled, false);
+  assert.equal((await fetcher("https://api.test/v1/guest/checkout", { method: "POST", body: JSON.stringify(body) })).status, 403);
+  rememberModuleAvailability({});
+  assert.equal(((await (await fetcher("https://api.test/v1/guest/config")).json()) as { enabled: boolean }).enabled, true);
+});

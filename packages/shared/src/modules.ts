@@ -77,7 +77,7 @@ export const MODULES: readonly ModuleDef[] = [
   m("buy.marketplace.live", "buy", "Live selling", "Stores sell on a live stream.", { coverage: "partial", has: ["live sessions"], missing: ["live chat", "live orders"] }, { parent: "buy.marketplace", liveKey: "marketplace_live_enabled", defaultOn: true }),
   m("buy.pharmacy", "buy", "Pharmacy", "Prescriptions and medicine orders.", { coverage: "full", has: ["pharmacies", "prescriptions", "quotes"] }, { parent: "buy", liveKey: "pharmacy_enabled", defaultOn: true }),
   m("buy.gas", "buy", "Fuel (Gas)", "Riders buy fuel vouchers redeemed at stations.", { coverage: "full", has: ["stations", "attendants", "vouchers", "dispenses"] }, { parent: "buy", liveKey: "service_gas_enabled", defaultOn: true }),
-  m("buy.guest", "buy", "Guest checkout", "Order without an account through a shared link.", { coverage: "none", has: [], missing: ["guest links", "guest orders", "guest alerts"] }, { parent: "buy", liveKey: "guest_checkout_enabled", defaultOn: true }),
+  m("buy.guest", "buy", "Guest checkout", "Order without an account through a shared link.", { coverage: "full", has: ["guest orders", "tracking codes", "status that moves on"] }, { parent: "buy", liveKey: "guest_checkout_enabled", defaultOn: true }),
 
   // Learn
   m("learn", "learn", "Peebee Learn", "Schools, classes and courses.", { coverage: "full", has: ["schools", "learners", "educators", "courses", "lessons"] }, { liveKey: "learn_enabled", defaultOn: true }),
