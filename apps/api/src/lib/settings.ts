@@ -80,6 +80,12 @@ const DEFAULTS = {
    * nobody's been assigned by this long after the order was created, the
    * app auto-assigns rather than leaving the customer waiting indefinitely. */
   max_assignment_minutes: "5",
+  /** Creator video: which providers are on offer and the limits on uploads. JSON, read through
+   * ../video/settings.ts, which clamps every field. Off until an admin turns it on. */
+  video_config: "{}",
+  /** Ads over videos: the switches, timing, frequency and the creator revenue share. JSON, read
+   * through ../ads/settings.ts, which clamps every field. Off until an admin turns it on. */
+  ads_config: "{}",
   /** Which payment aggregators are on offer, in priority order — the first
    * entry is primary, each later entry is a fallback tried once everything
    * ahead of it has no working credentials. JSON array of "yo" |

@@ -2,7 +2,7 @@ import { hasPermission, type AdminRole } from "@peebee/shared";
 import type { LucideIcon } from "lucide-react";
 import {
   Activity, Banknote, Briefcase, Bus, Car, ClipboardList, Compass, CreditCard, GraduationCap, Home, KeyRound, Languages,
-  LayoutDashboard, MapPin, Mic, Package, Phone, PiggyBank, Power, Route, Ruler, ShieldCheck, Store, User, UserRound, Users, UsersRound, Wallet, Waypoints,
+  LayoutDashboard, MapPin, Mic, Package, Phone, PiggyBank, Power, Route, Ruler, ShieldCheck, Store, User, UserRound, Users, UsersRound, Video, Wallet, Waypoints,
 } from "lucide-react";
 
 export type NavItem = {
@@ -93,6 +93,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/settings/home-menu", label: "Home menu", icon: Home, hint: "Names and Hive shortcuts", visible: can("settings.manage") },
       { href: "/settings/marketplace", label: "Marketplace", icon: Store, hint: "Pro stores, live and ads" },
       { href: "/settings/learn", label: "Peebee Learn", icon: GraduationCap, hint: "Schools and courses" },
+      { href: "/settings/video-ads", label: "Video & ads", icon: Video, hint: "Creator video providers and ads", keywords: "channels creators cloudinary mux bunny cloudflare advertising campaigns", visible: can("settings.manage") },
       { href: "/settings/guest", label: "Guest checkout", icon: UserRound, hint: "Shared links and alerts" },
       { href: "/settings/shopping-units", label: "Shopping units", icon: Ruler, hint: "Measures and matching", visible: can("settings.manage") },
       { href: "/settings/luganda-audio", label: "Luganda reading", icon: Languages, hint: "Audio voices" },
