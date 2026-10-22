@@ -120,6 +120,8 @@ export default {
         .then((steps) => console.log("Sandbox car demo sweep:", steps))
         .catch((err) => console.error("Sandbox car demo sweep failed:", err)),
     );
+    // The practice world's demo drivers and relay riders play their steps too, as they do in a sandbox platform.
+    ctx.waitUntil(runInPractice(async () => { await sweepSandboxRelay(); await sweepSandboxCar(); }).catch((err) => console.error("Practice demo sweep failed:", err)));
     ctx.waitUntil(
       sweepElectionSessions()
         .then((result) => console.log("Stage election sweep:", JSON.stringify(result)))

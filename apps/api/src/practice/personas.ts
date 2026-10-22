@@ -5,9 +5,9 @@
  * Ids start with `prac_`: nothing in the live database uses that prefix, and a practice token only ever reaches the
  * practice database, so the two can never be confused.
  */
-export type PracticeRole = "customer" | "rider" | "merchant" | "restaurant";
+export type PracticeRole = "customer" | "rider" | "merchant" | "restaurant" | "pharmacy" | "gas";
 
-export const PRACTICE_ROLES: readonly PracticeRole[] = ["customer", "rider", "merchant", "restaurant"];
+export const PRACTICE_ROLES: readonly PracticeRole[] = ["customer", "rider", "merchant", "restaurant", "pharmacy", "gas"];
 
 export type PracticeCustomer = { id: string; name: string; phone: string; areaAddress: string; lat: number; lng: number; walletUgx: number };
 
@@ -27,6 +27,9 @@ export const PRACTICE_PERSONA_FOR_ROLE: Record<PracticeRole, string> = {
   rider: "prac_rider_1",
   merchant: "prac_mu_pe_lakeside_mart",
   restaurant: "prac_ro_lakeview",
+  pharmacy: "prac_mu_pe_lakeview_pharmacy",
+  /** A pump attendant has no user account: the persona is the attendant row, signed in with a pump session. */
+  gas: "prac_fa_1_1",
 };
 
 export const isPracticeId = (id: string): boolean => id.startsWith("prac_");

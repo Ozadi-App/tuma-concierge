@@ -1,8 +1,10 @@
 import { DEMO_FOOD_RESTAURANTS, demoFoodMenu } from "@peebee/shared/demo-food";
 import { PRACTICE_ENTEBBE, PRACTICE_ENTEBBE_PRODUCTS, PRACTICE_ENTEBBE_STORES, PRACTICE_FOOD_RESTAURANTS, PRACTICE_RIDERS } from "@peebee/shared/practice-entebbe";
 import { db, executeBatch, type DbStatement } from "../db/client.js";
+import { runSeed } from "./batch.js";
 import { merchantBusinessStatements } from "../merchants/service.js";
 import { PRACTICE_CUSTOMERS } from "./personas.js";
+import { seedBuyExtras } from "./seed-buy.js";
 import { seedRide } from "./seed-ride.js";
 
 /** Practice accounts cannot be signed into with a password: a session token is the only way in. */
@@ -32,9 +34,9 @@ export async function isPracticeSeeded(): Promise<boolean> {
 }
 
 const user = (id: string, name: string, phone: string, role: "customer" | "rider", walletUgx: number): DbStatement => ({
-  sql: `INSERT OR IGNORE INTO users (id, phone, name, password_hash, role, status, phone_verified_at, wallet_balance, wallet_balance_sandbox, account_code)
-        VALUES (?, ?, ?, ?, ?, 'active', datetime('now'), 0, ?, ?)`,
-  args: [id, phone, name, NO_PASSWORD, role, walletUgx, `PB-${id.slice(-6).toUpperCase()}`],
+  sql: `INSERT OR IGNORE INTO users (id, phone, name, password_hash, role, status, phone_verified_at, wallet_balance, wallet_balance_sandbox)
+        VALUES (?, ?, ?, ?, ?, 'active', datetime('now'), 0, ?)`,
+  args: [id, phone, name, NO_PASSWORD, role, walletUgx],
 });
 
 /**
@@ -71,7 +73,7 @@ export async function seedPracticeWorld(): Promise<PracticeCounts> {
   const categoryId = String(existing.rows[0]?.id ?? "prac_cat_general");
   if (!existing.rows[0]) statements.push({ sql: "INSERT OR IGNORE INTO merchant_categories (id, slug, name, active) VALUES ('prac_cat_general', 'practice-general', 'Practice', 0)", args: [] });
 
-  PRACTICE_ENTEBBE_STORES.filter((s) => s.category !== "pharmacy").forEach((s, i) => {
+  PRACTICE_ENTEBBE_STORES.forEach((s, i) => {
     const ownerId = `prac_mu_${s.id}`;
     statements.push(user(ownerId, `${s.name} owner`, `00000011${String(10 + i).padStart(2, "0")}`, "customer", 0));
     businessOnce(`prac_m_${s.id}`, () => merchantBusinessStatements({
@@ -84,7 +86,7 @@ export async function seedPracticeWorld(): Promise<PracticeCounts> {
                                           address, lat, lng, is_open, delivery_enabled, pickup_enabled, min_order_amount, pro_tier, is_live, live_channel_title, live_stream_url,
                                           live_viewer_count, status, environment)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, ?, ?, ?, ?, ?, ?, 'active', 'sandbox')`,
-      args: [s.id, `prac_m_${s.id}`, `prac_out_${i + 1}`, s.name, s.slug, s.category, s.sub_category ?? null, s.description, s.announcement ?? null, s.logo_url, s.banner_url, s.phone,
+      args: [s.id, `prac_m_${s.id}`, `prac_out_${i + 1}`, s.name, s.slug, s.category === "pharmacy" ? "stores" : s.category, s.category === "pharmacy" ? "pharmacy" : (s.sub_category ?? null), s.description, s.announcement ?? null, s.logo_url, s.banner_url, s.phone,
         s.whatsapp_number, s.address, s.lat ?? PRACTICE_ENTEBBE.lat, s.lng ?? PRACTICE_ENTEBBE.lng, s.is_open, s.min_order_amount, s.pro_tier, s.is_live, s.live_channel_title,
         s.live_stream_url, s.live_viewer_count],
     });
@@ -132,8 +134,9 @@ export async function seedPracticeWorld(): Promise<PracticeCounts> {
   });
 
   // D1 caps a batch; send it in slices so a seed of a few thousand statements never trips it.
-  for (let i = 0; i < statements.length; i += 80) await executeBatch(statements.slice(i, i + 80));
+  await runSeed(statements);
   await seedRide();
+  await seedBuyExtras();
   return practiceCounts();
 }
 

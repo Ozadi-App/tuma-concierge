@@ -1,5 +1,6 @@
 import { PRACTICE_ENTEBBE } from "@peebee/shared/practice-entebbe";
-import { executeBatch, type DbStatement } from "../db/client.js";
+import { type DbStatement } from "../db/client.js";
+import { runSeed } from "./batch.js";
 import { PRACTICE_CUSTOMERS } from "./personas.js";
 
 /**
@@ -13,9 +14,9 @@ const inHours = (h: number) => new Date(Date.now() + h * 3_600_000).toISOString(
 const NO_PASSWORD = "practice-account-no-password";
 
 const user = (id: string, name: string, phone: string): DbStatement => ({
-  sql: `INSERT OR IGNORE INTO users (id, phone, name, password_hash, role, status, phone_verified_at, account_code)
-        VALUES (?, ?, ?, ?, 'customer', 'active', datetime('now'), ?)`,
-  args: [id, phone, name, NO_PASSWORD, `PB-${id.slice(-6).toUpperCase()}`],
+  sql: `INSERT OR IGNORE INTO users (id, phone, name, password_hash, role, status, phone_verified_at)
+        VALUES (?, ?, ?, ?, 'customer', 'active', datetime('now'))`,
+  args: [id, phone, name, NO_PASSWORD],
 });
 
 export const PRACTICE_OWNERS = [
@@ -194,5 +195,5 @@ export async function seedRide(): Promise<void> {
     });
   }
 
-  for (let i = 0; i < s.length; i += 80) await executeBatch(s.slice(i, i + 80));
+  await runSeed(s);
 }

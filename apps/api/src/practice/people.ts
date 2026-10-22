@@ -37,3 +37,7 @@ export const demoPeopleFilter = (viewing: "live" | "sandbox", column: string): s
  */
 export const visibleInWorld = (viewing: "live" | "sandbox", column: string): string =>
   inPractice() ? demoPeopleOnly(column) : viewing === "live" ? realPeopleOnly(column) : "1 = 1";
+
+/** The same rule as `visibleInWorld`, for ids already in hand. */
+export const visibleHere = (viewing: "live" | "sandbox", id: string): boolean =>
+  inPractice() ? isDemoUserId(id) : viewing === "live" ? !isDemoUserId(id) : true;

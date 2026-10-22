@@ -100,9 +100,10 @@ export async function topUpDemoOrders(target = 4, foodTarget = 2): Promise<numbe
  */
 export async function placeStarterOrders(): Promise<number> {
   const { RIDE_SCENARIOS } = await import("./scenarios-ride.js");
+  const { BUY_SCENARIOS } = await import("./scenarios-buy.js");
   let placed = 0;
   let turn = 0;
-  for (const [, scenario] of [...RIDE_SCENARIOS]) {
+  for (const [, scenario] of [...RIDE_SCENARIOS, ...BUY_SCENARIOS]) {
     const customer = PRACTICE_CUSTOMERS[turn++ % PRACTICE_CUSTOMERS.length]!;
     try {
       if (await scenario(customer, await actAs(customer))) placed++;

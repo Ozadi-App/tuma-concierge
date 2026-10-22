@@ -4,6 +4,12 @@ import { practiceHarness } from "./world-test-helpers.js";
 
 test("Ride cluster: every ride module has demo data, visible in practice and hidden from live", async (t) => {
   const { db, tokens, call, json, start } = await practiceHarness();
+  // Switch the modules on for Live too, so "hidden from live" is tested against a live platform that would show them.
+  for (const key of ["car_enabled", "car_ondemand_enabled", "taxipress_enabled", "car_carpool_enabled", "car_selfdrive_enabled", "relay_enabled"]) {
+    await db.execute({ sql: "INSERT INTO settings (key, value) VALUES (?, '1') ON CONFLICT(key) DO UPDATE SET value='1'", args: [key] });
+  }
+  const { invalidateSettingsCache } = await import("../lib/settings.js");
+  invalidateSettingsCache();
   const customer = await start("customer");
   const rows = async (sql: string) => (await db.execute(sql)).rows;
 
@@ -19,7 +25,9 @@ test("Ride cluster: every ride module has demo data, visible in practice and hid
     assert.ok(inPractice.some((c) => c.service_group === "luxury" && c.has_vehicles === 1));
     assert.ok(inPractice.some((c) => c.service_group === "ambulance" && c.has_vehicles === 1));
     const live = await call(tokens.customer, "/car/config");
-    if (live.status === 200) assert.ok((await json<{ categories: { has_vehicles: number }[] }>(live)).categories.every((c) => c.has_vehicles === 0), "no demo cars count for live");
+    assert.equal(live.status, 200);
+    const liveCategories = (await json<{ categories: { service_group: string; has_vehicles: number }[] }>(live)).categories;
+    assert.ok(liveCategories.filter((c) => c.service_group !== "standard").every((c) => c.has_vehicles === 0), "Luxury and Ambulance only exist in practice");
   });
 
   await t.test("carpool, self-drive, deals and Taxipress each have rows a practising customer can read", async () => {
@@ -34,7 +42,11 @@ test("Ride cluster: every ride module has demo data, visible in practice and hid
 
   await t.test("a live customer sees none of the demo fleet or routes", async () => {
     const live = await call(tokens.customer, "/taxipress/config");
-    if (live.status === 200) assert.equal((await json<{ routes: unknown[] }>(live)).routes.length, 0);
+    assert.equal(live.status, 200);
+    const liveConfig = await json<{ enabled: boolean; routes: unknown[] }>(live);
+    assert.equal(liveConfig.routes.length, 0, "no practice route reaches a live customer");
+    const carpool = await json<{ trips: { id: string }[] }>(await call(tokens.customer, "/car/carpool/trips?nearLat=0.0612&nearLng=32.4637&nearLabel=Entebbe"));
+    assert.ok(carpool.trips.every((t) => !t.id.startsWith("prac_")), "no practice trip reaches a live customer");
     const poolLive = (await db.execute("SELECT s.driver_id FROM car_driver_state s WHERE s.online = 1")).rows.length;
     assert.ok(poolLive >= 17, "the demo drivers exist in the database");
   });

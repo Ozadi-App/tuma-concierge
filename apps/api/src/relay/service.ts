@@ -1,3 +1,4 @@
+import { visibleHere } from "../practice/people.js";
 import { ridersForThisWorld } from "../practice/people.js";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { isGuestOrder } from "../guest/service.js";
@@ -104,7 +105,8 @@ export async function planRelay(
   const directKm = opts.tripKm ?? road(pickup, destination);
   if (directKm < settings.minDistanceKm) return null;
 
-  const routes = (await db.execute("SELECT * FROM relay_routes WHERE active = 1")).rows as Row[];
+  const relayWorld = await getPlatformEnvironment();
+  const routes = ((await db.execute("SELECT * FROM relay_routes WHERE active = 1")).rows as Row[]).filter((r) => visibleHere(relayWorld, String(r.id)));
   const { deliveryRatePerKm, minimumDeliveryFee } = await getDeliverySettings();
   const stationsReady = await relayStationsReady();
   const boda = (km: number) => roundFare(km * deliveryRatePerKm, minimumDeliveryFee);

@@ -62,7 +62,7 @@ test("practice and sandbox share one database; real people and demo people never
     const session = await start(rider, "rider");
     assert.equal(session.user.id, "prac_rider_1");
     const counts = await runInPractice(practiceCounts);
-    assert.deepEqual([counts.customers, counts.riders, counts.stores, counts.restaurants], [6, 6, 8, 12]);
+    assert.deepEqual([counts.customers, counts.riders, counts.stores, counts.restaurants], [6, 6, 10, 12]);
     assert.ok(counts.products > 30 && counts.menuItems > 50);
     assert.equal(Number((await db.execute("SELECT COUNT(*) n FROM users WHERE id = 'real_rider'")).rows[0]!.n), 1, "real people are untouched");
   });

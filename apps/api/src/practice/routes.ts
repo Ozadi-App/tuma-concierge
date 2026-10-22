@@ -1,9 +1,10 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { z } from "zod";
 import { logActivity } from "../admin/activity.js";
 import { requirePermission } from "../admin/permissions.js";
 import { requireAuth, requireRole } from "../auth/middleware.js";
 import { signToken } from "../auth/jwt.js";
+import { signGasToken } from "../gas/auth.js";
 import { db } from "../db/client.js";
 import { inPractice, runInPractice } from "../db/practice-context.js";
 import { clientIp } from "../lib/ratelimit.js";
@@ -24,7 +25,7 @@ practiceRoutes.get("/practice/world", requireAuth, async (c) => {
   return c.json({ available, seeded: available ? await isPracticeSeeded() : false });
 });
 
-const sessionSchema = z.object({ role: z.enum(["customer", "rider", "merchant", "restaurant"]) });
+const sessionSchema = z.object({ role: z.enum(["customer", "rider", "merchant", "restaurant", "pharmacy", "gas"]) });
 
 /**
  * Starts a practice session: signs the caller in as the practice persona for their app. The caller's own account is not
@@ -36,6 +37,7 @@ practiceRoutes.post("/practice/session", requireAuth, async (c) => {
   const parsed = sessionSchema.safeParse(await c.req.json().catch(() => ({})));
   if (!parsed.success) return c.json({ error: "invalid_body", issues: parsed.error.issues }, 400);
   const personaId = PRACTICE_PERSONA_FOR_ROLE[parsed.data.role];
+  if (parsed.data.role === "gas") return gasSession(c, personaId);
   const persona = await runInPractice(async () => {
     if (!(await isPracticeSeeded())) await seedPracticeWorld();
     // Demo customers keep ordering, so there is always something to take, prepare or sell.
@@ -47,6 +49,22 @@ practiceRoutes.post("/practice/session", requireAuth, async (c) => {
   const token = await signToken({ sub: personaId, role: persona.role as "customer" | "rider", phone: (persona.phone as string | null) ?? null, practice: true });
   return c.json({ token, role: parsed.data.role, user: { id: personaId, name: persona.name, role: persona.role, phone: persona.phone } });
 });
+
+/** The pump app signs in with its own kind of session: a practice attendant with a shift already open. */
+async function gasSession(c: Context, attendantId: string) {
+  const attendant = await runInPractice(async () => {
+    if (!(await isPracticeSeeded())) await seedPracticeWorld();
+    const found = (await db.execute({ sql: "SELECT id, outlet_id, full_name FROM fuel_pump_attendants WHERE id = ?", args: [attendantId] })).rows[0];
+    if (found) {
+      const open = await db.execute({ sql: "SELECT id FROM fuel_attendant_shifts WHERE attendant_id = ? AND status = 'open' AND date(opened_at) = date('now') LIMIT 1", args: [attendantId] });
+      if (!open.rows[0]) await db.execute({ sql: "INSERT INTO fuel_attendant_shifts (id, attendant_id, outlet_id, status) VALUES (?, ?, ?, 'open')", args: [`prac_shift_${Date.now()}`, attendantId, found.outlet_id] });
+    }
+    return found;
+  });
+  if (!attendant) return c.json({ error: "practice_not_ready", message: "The practice world is missing its pump attendant." }, 503);
+  const token = await signGasToken({ kind: "attendant", id: attendantId, outletId: String(attendant.outlet_id), practice: true });
+  return c.json({ token, role: "gas", attendant: { id: attendantId, name: attendant.full_name, outletId: attendant.outlet_id } });
+}
 
 const adminGuard = [requireAuth, requireRole("admin"), requirePermission("settings.manage")] as const;
 
