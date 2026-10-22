@@ -44,6 +44,24 @@ test("Fuel attendant practice: receive a relay parcel from the matatu, then the 
   assert.equal(journey.relay.releasedTo, "customer");
 });
 
+test("practice: a ride is taken by a driver at once, and calling the driver is answered at once", async () => {
+  installStorage();
+  const fetcher = createPracticeFetch("customer", (async () => { throw new Error("Must not access live calls"); }) as typeof fetch);
+  startPracticeMode("customer");
+  const post = (path: string, body: object = {}) => fetcher(`https://api.test/v1${path}`, { method: "POST", body: JSON.stringify(body) });
+  const booked = await post("/car/bookings", { serviceTier: "comfort", vehicleSize: "large", pickupLat: 0.0512, pickupLng: 32.4637, destinationLat: 0.0712, destinationLng: 32.4837, pickupAddress: "Entebbe", destinationAddress: "Kitoro" });
+  assert.equal(booked.status, 201);
+  const { order } = await booked.json() as { order: { rider_id: string | null; car_driver_name: string | null } };
+  assert.ok(order.rider_id?.startsWith("practice-car-driver-"), "a driver has already accepted");
+  assert.ok(order.car_driver_name);
+  const placed = await post("/calls", { calleeId: order.rider_id, orderId: "practice-order" });
+  assert.equal(placed.status, 201);
+  const { call } = await placed.json() as { call: { id: string; status: string; provider: string } };
+  assert.deepEqual([call.status, call.provider], ["accepted", "mock"]);
+  assert.equal(((await (await fetcher(`https://api.test/v1/calls/${call.id}`)).json()) as { call: { status: string } }).call.status, "accepted");
+  assert.equal(((await (await post(`/calls/${call.id}/end`, { reason: "ended" })).json()) as { call: { status: string } }).call.status, "ended");
+});
+
 function installStorage() {
   const values = new Map<string, string>();
   const localStorage = {

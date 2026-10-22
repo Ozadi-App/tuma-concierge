@@ -32,7 +32,7 @@ export default function LoginPage() {
   }
 
   return <AuthJourney mode={mode} onModeChange={setMode} busy={busy} welcomeTitle="Your next ride starts here." description="Own a car, drive one, or do both. Put your journey to work." signupTitle="Ready to hit the road?">
-    <form onSubmit={submit} className="home-card space-y-3">
+    <form onSubmit={submit} className="home-card flex flex-col gap-3.5">
       {mode === "register" && <input required value={name} onChange={(e) => setName(e.target.value)} placeholder="Your full name" className="min-h-12 w-full rounded-xl border border-[var(--border-faint)] px-3"/>}
       <input required value={identifier} onChange={(e) => setIdentifier(e.target.value)} placeholder="Email or phone" className="min-h-12 w-full rounded-xl border border-[var(--border-faint)] px-3"/>
       <input required minLength={6} type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" className="min-h-12 w-full rounded-xl border border-[var(--border-faint)] px-3"/>

@@ -17,6 +17,7 @@ import { requireAuth } from "../auth/middleware.js";
 import { db } from "../db/client.js";
 import { newId } from "../lib/ids.js";
 import { notifyUser } from "../lib/webpush.js";
+import { isDemoCarDriver, sandboxCarDemoOn } from "../car/sandbox-demo.js";
 import { getActiveCallProvider, getPlatformEnvironment } from "../lib/settings.js";
 import {
   createCallSession,
@@ -59,9 +60,18 @@ callRoutes.post("/calls", async (c) => {
   const d = parsed.data;
   if (d.calleeId === user.sub) return c.json({ error: "cannot_call_self" }, 400);
 
-  const provider = await getActiveCallProvider();
   const environment = await getPlatformEnvironment();
   const id = newId("call");
+  // A sandbox demo car driver has no phone to ring: it picks up at once, on a call with no audio.
+  if (isDemoCarDriver(d.calleeId) && (await sandboxCarDemoOn())) {
+    await db.execute({
+      sql: `INSERT INTO calls (id, caller_id, callee_id, order_id, restaurant_id, provider, status, environment, answered_at)
+            VALUES (?, ?, ?, ?, ?, 'mock', 'accepted', ?, datetime('now'))`,
+      args: [id, user.sub, d.calleeId, d.orderId ?? null, d.restaurantId ?? null, environment],
+    });
+    return c.json({ call: (await db.execute({ sql: "SELECT * FROM calls WHERE id = ?", args: [id] })).rows[0] }, 201);
+  }
+  const provider = await getActiveCallProvider();
   await db.execute({
     sql: `INSERT INTO calls (id, caller_id, callee_id, order_id, restaurant_id, provider, status, environment)
           VALUES (?, ?, ?, ?, ?, ?, 'ringing', ?)`,
