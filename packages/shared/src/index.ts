@@ -303,6 +303,7 @@ export { TALENT_DEMO } from "./practice-talent.js";
 export * from "./talent-admin-client.js";
 export * from "./video-ads-client.js";
 export * from "./channels-config.js";
+export * from "./channels-client.js";
 
 export * from "./education/types.js";
 export * from "./education/studio.js";

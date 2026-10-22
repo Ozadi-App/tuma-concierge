@@ -1638,6 +1638,9 @@ function rememberPlatformEnvironment(environment: unknown) {
   if ((before === "sandbox") !== (environment === "sandbox") && typeof window.location?.reload === "function") window.location.reload();
 }
 
+/** Everything the Channels feature serves. */
+const CHANNELS_PATHS = /^\/v1\/(channels|posts|comments|spotlight\/feed|public\/(channels|causes|donations|media)|creator|subscriptions|tiers|ads|video|admin\/(channels|video|ads))(\/|$|\?)/;
+
 export function createPracticeFetch(role: PracticeRole, realFetch: typeof fetch = fetch): typeof fetch {
   return (async (input: RequestInfo | URL, init?: RequestInit) => {
     const request = input instanceof Request ? input : null;
@@ -1658,6 +1661,13 @@ export function createPracticeFetch(role: PracticeRole, realFetch: typeof fetch 
     if (sandbox && url.pathname.startsWith("/v1/auth/")) return realFetch(input, init);
     if (url.pathname === "/v1/auth/logout" && method === "POST") return jsonResponse({ ok: true });
     if (!url.pathname.startsWith("/v1/")) return realFetch(input, init);
+    // Channels, creator video and ads. Sandbox talks to the real sandbox data; practice mode never creates anything real.
+    if (CHANNELS_PATHS.test(url.pathname)) {
+      if (sandbox) return realFetch(input, init);
+      if (url.pathname === "/v1/channels/config") return jsonResponse({ enabled: false });
+      if (method === "GET") return jsonResponse({ error: "channels_unavailable", message: "Channels are not part of practice mode." }, 503);
+      return jsonResponse({ error: "channels_unavailable", message: "Channels are not part of practice mode." }, 503);
+    }
     return handlePracticeRequest(role, url.pathname, method, parseBody(init), url.searchParams);
   }) as typeof fetch;
 }

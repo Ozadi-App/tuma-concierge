@@ -8,6 +8,7 @@ import { talentMethods } from "./talent-client.js";
 import { talentAdminMethods } from "./talent-admin-client.js";
 import { educationMethods } from "./education-client.js";
 import { videoAdsMethods } from "./video-ads-client.js";
+import { channelsMethods } from "./channels-client.js";
 import type { PracticeRole } from "./practice.js";
 import type {
   FareCounter,
@@ -3085,6 +3086,7 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
     ...talentAdminMethods(request),
     ...educationMethods(request),
     ...videoAdsMethods(request),
+    ...channelsMethods(request),
     /** A job photo as a Blob (private: the request carries the sign-in header, so it can't be a plain image URL). */
     async workPhotoBlob(photoId: string): Promise<Blob> {
       const res = await f(`${root}/v1/work/photos/${encodeURIComponent(photoId)}`, { headers: authHeaders() });
