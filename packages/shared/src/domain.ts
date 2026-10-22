@@ -441,6 +441,8 @@ export type DeliverySettings = {
    * that kind; anything already in flight finishes. Shopping, parcels, rides
    * (incl. Peebee Car bookings) and food. */
   services: ServiceSwitches;
+  /** Every module's Live and Practice switch (admin → Practice & services). `available` already accounts for parent modules. */
+  modules?: import("./modules.js").ModuleSettings;
   enabledModes: MatchingMode[];
   nearestWindowSeconds: number;
   maxAssignmentMinutes: number;

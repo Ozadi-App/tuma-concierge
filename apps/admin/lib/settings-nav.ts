@@ -47,7 +47,7 @@ export const SETTINGS_LINKS: SettingsLink[] = [
   {
     href: "/settings/services",
     label: "Services",
-    description: "Switch shopping, parcels, rides and food on or off — dependent apps and features pause with them.",
+    description: "Every cluster and module, on or off in Live and in Practice — dependent apps and features pause with them.",
     icon: Power,
   },
   {
@@ -164,6 +164,13 @@ export const SETTINGS_LINKS: SettingsLink[] = [
     description: "Stage creation, loan interest, recorder role, admin visibility.",
     icon: PiggyBank,
     show: (role) => hasPermission(role, "payments.manage"),
+  },
+  {
+    href: "/practice",
+    label: "Practice",
+    description: "The simulated world for every app: switch it on, see what each module contains.",
+    icon: FlaskConical,
+    show: (role) => hasPermission(role, "settings.manage"),
   },
   {
     href: "/settings/platform",

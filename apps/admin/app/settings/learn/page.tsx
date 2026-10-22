@@ -1,5 +1,6 @@
 "use client";
 
+import { ModuleState } from "../../../components/ModuleState";
 import { EDUCATION_STREAMS, hasPermission, type EducationStream, type LearnSettings, type SchoolStatus, type StudioSchool } from "@peebee/shared";
 import { AlertCircle, CheckCircle2, GraduationCap, Layers, ShieldAlert, Wallet } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
@@ -74,14 +75,14 @@ function Toggle({ on, disabled, onChange, label }: { on: boolean; disabled: bool
   );
 }
 
-function SwitchRow({ title, hint, on, disabled, onChange }: { title: string; hint: string; on: boolean; disabled: boolean; onChange: (v: boolean) => void }) {
+function SwitchRow({ title, hint, on, disabled, onChange, managed }: { title: string; hint: string; on: boolean; disabled: boolean; onChange: (v: boolean) => void; managed?: boolean }) {
   return (
     <div className="flex items-center justify-between gap-4 border-t border-[var(--border-faint)] pt-4">
       <div className="min-w-0">
         <span className="block text-sm font-bold text-ink">{title}</span>
         <span className="text-xs text-ink-500">{hint}</span>
       </div>
-      <Toggle on={on} disabled={disabled} onChange={onChange} label={title} />
+      {managed ? <ModuleState on={on} /> : <Toggle on={on} disabled={disabled} onChange={onChange} label={title} />}
     </div>
   );
 }
@@ -194,15 +195,15 @@ export default function LearnSettingsPage() {
                 <p className="text-xs text-ink-500">Educators build schools, classes, courses and lessons here</p>
               </div>
             </div>
-            <SwitchRow title="Studio open" hint="When off, educators can't create or edit anything. Published courses stay visible." on={settings.enabled} disabled={!canManage} onChange={(v) => patch("enabled", v)} />
-            <SwitchRow title="Masterclasses" hint="Short open programmes next to ordinary classes" on={settings.masterclassesEnabled} disabled={!canManage} onChange={(v) => patch("masterclassesEnabled", v)} />
-            <SwitchRow title="Enrolment" hint="Learners can join published courses, free or paid from their wallet" on={settings.enrolmentsEnabled} disabled={!canManage} onChange={(v) => patch("enrolmentsEnabled", v)} />
-            <SwitchRow title="Video and audio uploads" hint="Educators can attach a file to a lesson" on={settings.videoUploadsEnabled} disabled={!canManage} onChange={(v) => patch("videoUploadsEnabled", v)} />
-            <SwitchRow title="School fees" hint="Schools can invoice learners, who pay from their wallet" on={settings.feesEnabled} disabled={!canManage} onChange={(v) => patch("feesEnabled", v)} />
-            <SwitchRow title="Live classroom and TV" hint="Educators can run live sessions that push content to a TV and quizzes to students' phones" on={settings.liveEnabled} disabled={!canManage} onChange={(v) => patch("liveEnabled", v)} />
-            <SwitchRow title="Learn on a linked TV" hint="Learners can link a TV to their account with a code and watch lessons, take quizzes and follow their courses on it. Paying always happens on the phone." on={settings.tvLearnEnabled} disabled={!canManage} onChange={(v) => patch("tvLearnEnabled", v)} />
+            <SwitchRow managed title="Studio open" hint="When off, educators can't create or edit anything. Published courses stay visible." on={settings.enabled} disabled={!canManage} onChange={(v) => patch("enabled", v)} />
+            <SwitchRow managed title="Masterclasses" hint="Short open programmes next to ordinary classes" on={settings.masterclassesEnabled} disabled={!canManage} onChange={(v) => patch("masterclassesEnabled", v)} />
+            <SwitchRow managed title="Enrolment" hint="Learners can join published courses, free or paid from their wallet" on={settings.enrolmentsEnabled} disabled={!canManage} onChange={(v) => patch("enrolmentsEnabled", v)} />
+            <SwitchRow managed title="Video and audio uploads" hint="Educators can attach a file to a lesson" on={settings.videoUploadsEnabled} disabled={!canManage} onChange={(v) => patch("videoUploadsEnabled", v)} />
+            <SwitchRow managed title="School fees" hint="Schools can invoice learners, who pay from their wallet" on={settings.feesEnabled} disabled={!canManage} onChange={(v) => patch("feesEnabled", v)} />
+            <SwitchRow managed title="Live classroom and TV" hint="Educators can run live sessions that push content to a TV and quizzes to students' phones" on={settings.liveEnabled} disabled={!canManage} onChange={(v) => patch("liveEnabled", v)} />
+            <SwitchRow managed title="Learn on a linked TV" hint="Learners can link a TV to their account with a code and watch lessons, take quizzes and follow their courses on it. Paying always happens on the phone." on={settings.tvLearnEnabled} disabled={!canManage} onChange={(v) => patch("tvLearnEnabled", v)} />
             <SwitchRow title="TV is a Pro feature" hint="Off (the launch setting): every educator can use the TV classroom for free. On: connecting a screen and teaching on it needs Learn Pro, which educators can buy from their wallet or staff can grant. Teaching to phones and the practice classes stay free." on={settings.tvProRequired} disabled={!canManage} onChange={(v) => patch("tvProRequired", v)} />
-            <SwitchRow title="Live video lessons" hint="Educators can schedule a live lesson with a Zoom, Meet or Jitsi link that learners join from the lesson" on={settings.liveLessonsEnabled} disabled={!canManage} onChange={(v) => patch("liveLessonsEnabled", v)} />
+            <SwitchRow managed title="Live video lessons" hint="Educators can schedule a live lesson with a Zoom, Meet or Jitsi link that learners join from the lesson" on={settings.liveLessonsEnabled} disabled={!canManage} onChange={(v) => patch("liveLessonsEnabled", v)} />
             <div className="field-box flex flex-col rounded-2xl bg-[rgb(var(--surface-muted))] p-3">
               <label htmlFor="liveLessonHosts" className="mb-1 text-xs font-bold text-ink-500">Allowed live lesson hosts</label>
               <input
@@ -214,19 +215,19 @@ export default function LearnSettingsPage() {
               />
               <span className="mt-1 text-[10px] text-ink-500">Comma separated. A live lesson link must point to one of these (subdomains allowed).</span>
             </div>
-            <SwitchRow title="Certificates" hint="A certificate is issued when a learner finishes a course (educators can switch it off per course)" on={settings.certificatesEnabled} disabled={!canManage} onChange={(v) => patch("certificatesEnabled", v)} />
-            <SwitchRow title="Badges" hint="Learners earn badges for milestones such as their first lesson or a perfect quiz" on={settings.badgesEnabled} disabled={!canManage} onChange={(v) => patch("badgesEnabled", v)} />
-            <SwitchRow title="Drip release" hint="Educators can open a section some days after a learner enrols" on={settings.dripEnabled} disabled={!canManage} onChange={(v) => patch("dripEnabled", v)} />
-            <SwitchRow title="Prerequisites" hint="Educators can require items to be done in order, or another course to be finished first" on={settings.prerequisitesEnabled} disabled={!canManage} onChange={(v) => patch("prerequisitesEnabled", v)} />
-            <SwitchRow title="Assignments" hint="Educators can set assignments, mark what learners hand in, and see a gradebook" on={settings.assignmentsEnabled} disabled={!canManage} onChange={(v) => patch("assignmentsEnabled", v)} />
-            <SwitchRow title="Coupons" hint="Educators can create discount codes for their courses" on={settings.couponsEnabled} disabled={!canManage} onChange={(v) => patch("couponsEnabled", v)} />
-            <SwitchRow title="Bundles" hint="Educators can sell several of their courses together for one price" on={settings.bundlesEnabled} disabled={!canManage} onChange={(v) => patch("bundlesEnabled", v)} />
-            <SwitchRow title="School passes" hint="Educators can sell timed access to every course of a school" on={settings.subscriptionsEnabled} disabled={!canManage} onChange={(v) => patch("subscriptionsEnabled", v)} />
-            <SwitchRow title="Reviews" hint="Learners can rate and review a course once they are part-way through it" on={settings.reviewsEnabled} disabled={!canManage} onChange={(v) => patch("reviewsEnabled", v)} />
-            <SwitchRow title="Questions and answers" hint="Learners can ask questions on a course or lesson; teachers and classmates answer" on={settings.qaEnabled} disabled={!canManage} onChange={(v) => patch("qaEnabled", v)} />
-            <SwitchRow title="Announcements" hint="Educators can post announcements that learners see on the course" on={settings.announcementsEnabled} disabled={!canManage} onChange={(v) => patch("announcementsEnabled", v)} />
-            <SwitchRow title="Cohorts" hint="Educators can run intakes of a course with a start date and a seat limit" on={settings.cohortsEnabled} disabled={!canManage} onChange={(v) => patch("cohortsEnabled", v)} />
-            <SwitchRow title="Extra teachers" hint="Educators can add other teachers who edit and mark a course with them" on={settings.instructorsEnabled} disabled={!canManage} onChange={(v) => patch("instructorsEnabled", v)} />
+            <SwitchRow managed title="Certificates" hint="A certificate is issued when a learner finishes a course (educators can switch it off per course)" on={settings.certificatesEnabled} disabled={!canManage} onChange={(v) => patch("certificatesEnabled", v)} />
+            <SwitchRow managed title="Badges" hint="Learners earn badges for milestones such as their first lesson or a perfect quiz" on={settings.badgesEnabled} disabled={!canManage} onChange={(v) => patch("badgesEnabled", v)} />
+            <SwitchRow managed title="Drip release" hint="Educators can open a section some days after a learner enrols" on={settings.dripEnabled} disabled={!canManage} onChange={(v) => patch("dripEnabled", v)} />
+            <SwitchRow managed title="Prerequisites" hint="Educators can require items to be done in order, or another course to be finished first" on={settings.prerequisitesEnabled} disabled={!canManage} onChange={(v) => patch("prerequisitesEnabled", v)} />
+            <SwitchRow managed title="Assignments" hint="Educators can set assignments, mark what learners hand in, and see a gradebook" on={settings.assignmentsEnabled} disabled={!canManage} onChange={(v) => patch("assignmentsEnabled", v)} />
+            <SwitchRow managed title="Coupons" hint="Educators can create discount codes for their courses" on={settings.couponsEnabled} disabled={!canManage} onChange={(v) => patch("couponsEnabled", v)} />
+            <SwitchRow managed title="Bundles" hint="Educators can sell several of their courses together for one price" on={settings.bundlesEnabled} disabled={!canManage} onChange={(v) => patch("bundlesEnabled", v)} />
+            <SwitchRow managed title="School passes" hint="Educators can sell timed access to every course of a school" on={settings.subscriptionsEnabled} disabled={!canManage} onChange={(v) => patch("subscriptionsEnabled", v)} />
+            <SwitchRow managed title="Reviews" hint="Learners can rate and review a course once they are part-way through it" on={settings.reviewsEnabled} disabled={!canManage} onChange={(v) => patch("reviewsEnabled", v)} />
+            <SwitchRow managed title="Questions and answers" hint="Learners can ask questions on a course or lesson; teachers and classmates answer" on={settings.qaEnabled} disabled={!canManage} onChange={(v) => patch("qaEnabled", v)} />
+            <SwitchRow managed title="Announcements" hint="Educators can post announcements that learners see on the course" on={settings.announcementsEnabled} disabled={!canManage} onChange={(v) => patch("announcementsEnabled", v)} />
+            <SwitchRow managed title="Cohorts" hint="Educators can run intakes of a course with a start date and a seat limit" on={settings.cohortsEnabled} disabled={!canManage} onChange={(v) => patch("cohortsEnabled", v)} />
+            <SwitchRow managed title="Extra teachers" hint="Educators can add other teachers who edit and mark a course with them" on={settings.instructorsEnabled} disabled={!canManage} onChange={(v) => patch("instructorsEnabled", v)} />
             <SwitchRow title="Show quiz answers" hint="After a quiz, learners see which answers were right and why" on={settings.revealQuizAnswers} disabled={!canManage} onChange={(v) => patch("revealQuizAnswers", v)} />
             <SwitchRow title="Show exam answers" hint="After an exam, learners see which answers were right. Off keeps the paper reusable." on={settings.revealExamAnswers} disabled={!canManage} onChange={(v) => patch("revealExamAnswers", v)} />
             <SwitchRow title="Publish automatically" hint="A course goes live as soon as it has its first lesson. When off, the educator publishes it themselves." on={settings.publishByDefault} disabled={!canManage} onChange={(v) => patch("publishByDefault", v)} />
@@ -272,7 +273,7 @@ export default function LearnSettingsPage() {
               <h2 className="text-base font-bold text-ink">Trial classes and demo content</h2>
               <p className="text-xs text-ink-500">Two practice live classes that run themselves, opened with a code, and the visibility of demo courses</p>
             </div>
-            <SwitchRow title="Trial live classes" hint="Anyone signed in can join a practice class with its code and see a class in progress with no tutor online" on={settings.trialClassesEnabled} disabled={!canManage} onChange={(v) => patch("trialClassesEnabled", v)} />
+            <SwitchRow managed title="Trial live classes" hint="Anyone signed in can join a practice class with its code and see a class in progress with no tutor online" on={settings.trialClassesEnabled} disabled={!canManage} onChange={(v) => patch("trialClassesEnabled", v)} />
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {(["trialCodeA", "trialCodeB"] as const).map((key, i) => (
                 <div key={key} className="field-box flex flex-col rounded-2xl bg-[rgb(var(--surface-muted))] p-3">
@@ -307,7 +308,7 @@ export default function LearnSettingsPage() {
                 <p className="text-xs text-ink-500">Whether courses can cost money, and how much</p>
               </div>
             </div>
-            <SwitchRow title="Paid courses" hint="When off, every course is free" on={settings.paidCoursesEnabled} disabled={!canManage} onChange={(v) => patch("paidCoursesEnabled", v)} />
+            <SwitchRow managed title="Paid courses" hint="When off, every course is free" on={settings.paidCoursesEnabled} disabled={!canManage} onChange={(v) => patch("paidCoursesEnabled", v)} />
             <div className="field-box flex flex-col rounded-2xl bg-[rgb(var(--surface-muted))] p-3 sm:max-w-xs">
               <label htmlFor="max-price" className="mb-1 text-xs font-bold text-ink-500">Highest course price (UGX)</label>
               <input

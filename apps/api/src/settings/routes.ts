@@ -7,6 +7,7 @@ import { hasPermission, requirePermission } from "../admin/permissions.js";
 import { requireAuth, requireRole } from "../auth/middleware.js";
 import { db } from "../db/client.js";
 import { clientIp } from "../lib/ratelimit.js";
+import { getModuleSettings, setModuleFlags, unknownModuleKeys } from "../lib/modules.js";
 import {
   getActiveCallProvider,
   getActiveMapsProvider,
@@ -154,6 +155,7 @@ async function fullSettings() {
     // How delivery distances follow the road (the server address is removed for non-staff in GET /settings).
     ...(await getRoadSettings().then((road) => ({ roadDistanceFactor: road.factor, routingServerUrl: road.routingServerUrl ?? "" }))),
     services,
+    modules: await getModuleSettings(),
     ...matching,
     paymentsActiveProviders: activeProviders,
     paymentsDemoMode: demoMode,
@@ -772,6 +774,56 @@ settingsRoutes.put(
     return c.json({ settings: after });
   },
 );
+
+const modulesUpdateSchema = z.object({
+  live: z.record(z.string(), z.boolean()).optional(),
+  practice: z.record(z.string(), z.boolean()).optional(),
+  practiceModeEnabled: z.boolean().optional(),
+  practiceAutoInSandbox: z.boolean().optional(),
+});
+
+async function modulesPayload() {
+  const [modules, practiceModeEnabled, auto] = await Promise.all([getModuleSettings(), getSetting("user_practice_mode_enabled"), getSetting("practice_auto_in_sandbox")]);
+  return { modules, practiceModeEnabled: practiceModeEnabled === "1", practiceAutoInSandbox: auto !== "0" };
+}
+
+/** Every module's Live and Practice switch, and the master Practice switches. */
+settingsRoutes.get("/admin/modules", requireAuth, requireRole("admin"), requirePermission("settings.manage"), async (c) => c.json(await modulesPayload()));
+
+/**
+ * One place that turns modules on and off, in Live and in Practice. Only the switches named in the body change.
+ * Each change is logged by module, so the activity log shows who switched Carpool on in Practice and off in Live.
+ */
+settingsRoutes.put("/admin/modules", requireAuth, requireRole("admin"), requirePermission("settings.manage"), async (c) => {
+  const user = c.get("user");
+  const parsed = modulesUpdateSchema.safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) return c.json({ error: "invalid_body", issues: parsed.error.issues }, 400);
+  const unknown = unknownModuleKeys(parsed.data);
+  if (unknown.length) return c.json({ error: "unknown_module", message: `Unknown module: ${unknown.join(", ")}` }, 400);
+  const before = await modulesPayload();
+  await setModuleFlags(parsed.data);
+  if (parsed.data.practiceModeEnabled != null) await setSetting("user_practice_mode_enabled", parsed.data.practiceModeEnabled ? "1" : "0");
+  if (parsed.data.practiceAutoInSandbox != null) await setSetting("practice_auto_in_sandbox", parsed.data.practiceAutoInSandbox ? "1" : "0");
+  const after = await modulesPayload();
+  const changed: string[] = [];
+  for (const world of ["live", "practice"] as const) {
+    for (const [key, on] of Object.entries(parsed.data[world] ?? {})) {
+      if (before.modules.flags[key]?.[world] !== on) changed.push(`${key} ${world} ${on ? "on" : "off"}`);
+    }
+  }
+  if (before.practiceModeEnabled !== after.practiceModeEnabled) changed.push(`practice mode ${after.practiceModeEnabled ? "on" : "off"}`);
+  if (before.practiceAutoInSandbox !== after.practiceAutoInSandbox) changed.push(`practice auto-open in sandbox ${after.practiceAutoInSandbox ? "on" : "off"}`);
+  if (changed.length) {
+    await logActivity({
+      actor: user, action: "modules.update", entityType: "modules",
+      summary: `Switched: ${changed.join(", ")}`,
+      before: { flags: before.modules.flags, practiceModeEnabled: before.practiceModeEnabled, practiceAutoInSandbox: before.practiceAutoInSandbox },
+      after: { flags: after.modules.flags, practiceModeEnabled: after.practiceModeEnabled, practiceAutoInSandbox: after.practiceAutoInSandbox },
+      revertible: false, ip: clientIp(c),
+    });
+  }
+  return c.json(after);
+});
 
 const environmentSchema = z.object({ environment: z.enum(["live", "sandbox"]) });
 

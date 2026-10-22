@@ -1,5 +1,10 @@
 export const PRACTICE_MODE_STORAGE_KEY = "peebee_practice_mode";
 
+/** Whether this device is currently inside the practice world. Kept here (not in the runtime) so light code can ask. */
+export function isPracticeStorageOn(): boolean {
+  try { return typeof window !== "undefined" && window.localStorage.getItem(PRACTICE_MODE_STORAGE_KEY) === "1"; } catch { return false; }
+}
+
 export type PracticeRole = "customer" | "rider" | "restaurant" | "merchant" | "gas" | "learner";
 
 export type PracticeStep = {

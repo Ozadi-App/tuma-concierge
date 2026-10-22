@@ -3,6 +3,7 @@ import { practiceTaxipressRequest, resetPracticeTaxipress } from "./practice-tax
 import { practiceWalletView, practiceWalletBalance, practiceWalletSpend, practiceWalletRefund, resetPracticeWallet } from "./practice-wallet.js";
 import { practiceWorkRequest, resetPracticeWork } from "./practice-work.js";
 import { PRACTICE_MODE_STORAGE_KEY, type PracticeRole } from "./practice.js";
+import { practiceModuleOn } from "./modules.js";
 import { roundFare } from "./fare.js";
 import { haversineKm } from "./geo.js";
 import { demoFoodImage, demoFoodMenu } from "./demo-food.js";
@@ -723,12 +724,48 @@ function practiceError(message = "That action is outside this practice scenario.
   return jsonResponse({ error: "practice_action_unavailable", message }, 409);
 }
 
+/**
+ * The Practice switches from admin → Services, applied to the simulated API the way the real API applies the Live ones.
+ * Most routes of a switched-off module answer 403 like the live service-paused refusal; the configuration reads that the
+ * apps use to decide what to show come back as "off" instead, so tiles disappear rather than error.
+ */
+const PRACTICE_MODULE_PREFIXES: ReadonlyArray<readonly [prefix: string, module: string, label: string]> = [
+  ["/v1/car/rentals", "ride.car.selfdrive", "Self-drive hire"],
+  ["/v1/car/carpool", "ride.car.carpool", "Carpool"],
+  ["/v1/car/deals", "ride.car.deals", "Owner-driver deals"],
+  ["/v1/car/", "ride.car", "Peebee Car"],
+  ["/v1/taxipress/", "ride.taxipress", "Taxipress"],
+  ["/v1/orders/practice-tp-order-", "ride.taxipress", "Taxipress"],
+  ["/v1/relay/", "deliver.relay", "Relay delivery"],
+  ["/v1/pharmacy/", "buy.pharmacy", "Pharmacy"],
+  ["/v1/marketplace/", "buy.marketplace", "The marketplace"],
+  ["/v1/gas/", "buy.gas", "Fuel"],
+  ["/v1/work/", "hive.work", "Home services"],
+  ["/v1/talent/", "hive.hire", "Peebee Hire"],
+  ["/v1/education/", "learn", "Peebee Learn"],
+];
+
+function practiceModuleGate(path: string, method: string, body: Record<string, unknown>): Response | null {
+  const paused = (label: string) => jsonResponse({ error: "service_paused", message: `${label} is switched off in Practice right now.` }, 403);
+  if (method === "POST" && path === "/v1/orders" && body.isRide && !practiceModuleOn("ride.boda")) return paused("Boda rides");
+  for (const [prefix, module, label] of PRACTICE_MODULE_PREFIXES) {
+    if (!path.startsWith(prefix) || practiceModuleOn(module)) continue;
+    if (path === "/v1/talent/config") return jsonResponse({ enabled: false, workerSearchEnabled: false });
+    if (path === "/v1/taxipress/config") return jsonResponse({ enabled: false, routes: [], cashEnabled: false, seatChoiceFeeUgx: 0, returnDiscountPercent: 0, maxSeatsPerBooking: 0, payWithinMinutes: 0, parcelFitText: "", parcelNotAllowed: [] });
+    return paused(label);
+  }
+  return null;
+}
+
 function handlePracticeRequest(role: PracticeRole, path: string, method: string, body: Record<string, unknown>, query = new URLSearchParams()): Response {
   let state = loadState(role);
   const save = (patch: Partial<PracticeState>) => {
     state = { ...state, ...patch };
     saveState(state);
   };
+
+  const paused = practiceModuleGate(path, method, body);
+  if (paused) return paused;
 
   if (role === "customer" && path.startsWith("/v1/talent/")) return practiceTalentRequest(path, method, body, query);
   if (role === "customer" && path.startsWith("/v1/work/")) return practiceWorkRequest(path, method, body, query);
@@ -738,10 +775,10 @@ function handlePracticeRequest(role: PracticeRole, path: string, method: string,
     if (path === "/v1/car/rentals/listings") return jsonResponse({ days: 1, vehicles: PRACTICE_RENTAL_CARS });
     if (path === "/v1/car/rentals/mine") return jsonResponse({ rentals: canUseStorage() ? JSON.parse(window.localStorage.getItem(PRACTICE_RENTALS_KEY) ?? "[]") : [] });
     if (path === "/v1/car/rentals/renter-profile") return jsonResponse({ status: "approved", isSimulated: true, ninMasked: "••••••••••0000", residentialAddress: "Practice address · Entebbe", residenceMethod: "bill", hasNationalId: true, hasRentReceipt: false, hasLandlordLetter: false, hasResidenceBill: true, tenancyStart: null, tenancyEnd: null, reviewNotes: null });
-    if (path === "/v1/car/config") return jsonResponse({ onDemandEnabled: true, matchingMode: "first_to_claim", emergencyNumber: "999", maxHireHours: 24, scheduled: { maxAdvanceHours: 72, minLeadMinutes: 30 }, carpool: { maxSeatsPerBooking: 3, maxRepeatWeeks: 0 }, selfDrive: null, serviceTiers: { ratePerKm: 2_000, minimumFare: 8_000, comfortPremiumPercent: 30, xlPremiumPercent: 50, xlMinSeats: 6 }, vehiclePhotos: false, kyc: null, deals: null, categories: [
+    if (path === "/v1/car/config") return jsonResponse({ onDemandEnabled: practiceModuleOn("ride.car.ondemand"), matchingMode: "first_to_claim", emergencyNumber: "999", maxHireHours: 24, scheduled: practiceModuleOn("ride.car.scheduled") ? { maxAdvanceHours: 72, minLeadMinutes: 30 } : null, carpool: practiceModuleOn("ride.car.carpool") ? { maxSeatsPerBooking: 3, maxRepeatWeeks: 0 } : null, selfDrive: practiceModuleOn("ride.car.selfdrive") ? { maxDays: 7 } : null, serviceTiers: { ratePerKm: 2_000, minimumFare: 8_000, comfortPremiumPercent: 30, xlPremiumPercent: 50, xlMinSeats: 6 }, vehiclePhotos: false, kyc: null, deals: null, categories: [
       { id: PRACTICE_CAR_CATEGORY_ID, kind: "passenger", name: "Normal · Saloon", seats: 4, cargo_type: null, size_label: null, reference_image_key: null, rate_per_km: 2_000, minimum_fare: 8_000 },
       { id: "practice-car-large", kind: "passenger", name: "Large · Minivan", seats: 7, cargo_type: null, size_label: null, reference_image_key: null, rate_per_km: 3_000, minimum_fare: 12_000 },
-      ...PRACTICE_SPECIAL_CATEGORIES.map(({ rider: _rider, ...category }) => ({ ...category, cargo_type: null, size_label: null, reference_image_key: null })),
+      ...PRACTICE_SPECIAL_CATEGORIES.filter((category) => practiceModuleOn(category.service_group === "luxury" ? "ride.luxury" : "ride.ambulance")).map(({ rider: _rider, ...category }) => ({ ...category, cargo_type: null, size_label: null, reference_image_key: null })),
     ] });
     if (path === "/v1/car/category-nearby") return jsonResponse({ nearby: practiceSpecialCategory(query.get("categoryId")) ? 1 : 2 });
     if (path === "/v1/car/carpool/trips") return jsonResponse({ trips: practiceRideshareTrips(query), maxSeatsPerBooking: 3 });

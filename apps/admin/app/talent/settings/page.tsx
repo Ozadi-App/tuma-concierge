@@ -1,5 +1,6 @@
 "use client";
 
+
 import { Select } from "../../../components/ui/Select";
 import type { TalentAdminCategory, TalentAdminSettings, TalentJobType } from "@peebee/shared";
 import { useCallback, useEffect, useState } from "react";
@@ -94,18 +95,18 @@ export default function TalentSettingsPage() {
       {ro && <p className="text-xs text-ink-500">You can view these settings but not change them.</p>}
       <section className="home-card space-y-3 !p-3.5">
         <h2 className="text-sm font-bold text-ink">Availability</h2>
-        <Toggle label="Peebee Hire is on" hint="Master switch for customers. Staff keep access to finish open work." checked={form.enabled} disabled={ro} onChange={(v) => set("enabled", v)} />
+        <Toggle managed label="Peebee Hire is on" hint="Master switch for customers. Staff keep access to finish open work." checked={form.enabled} disabled={ro} onChange={(v) => set("enabled", v)} />
         <div className="space-y-1.5"><p className="text-xs font-semibold text-ink-500">Kinds of job people can post</p><div className="flex flex-wrap gap-1.5">{TYPES.map((t) => <Chip key={t} on={form.jobTypes.includes(t)} disabled={ro} onClick={() => set("jobTypes", form.jobTypes.includes(t) ? form.jobTypes.filter((x) => x !== t) : TYPES.filter((x) => x === t || form.jobTypes.includes(x)))}>{label(t)}</Chip>)}</div></div>
-        <Toggle label="Find-a-worker search" hint="The directory where anyone can search for workers." checked={form.workerSearchEnabled} disabled={ro} onChange={(v) => set("workerSearchEnabled", v)} />
+        <Toggle managed label="Find-a-worker search" hint="The directory where anyone can search for workers." checked={form.workerSearchEnabled} disabled={ro} onChange={(v) => set("workerSearchEnabled", v)} />
         <Toggle label="Riders can offer other work" checked={form.ridersCanWork} disabled={ro} onChange={(v) => set("ridersCanWork", v)} />
-        <Toggle label="Ratings" checked={form.reviewsEnabled} disabled={ro} onChange={(v) => set("reviewsEnabled", v)} />
-        <Toggle label="Messaging between employer and applicant" checked={form.chatEnabled} disabled={ro} onChange={(v) => set("chatEnabled", v)} />
+        <Toggle managed label="Ratings" checked={form.reviewsEnabled} disabled={ro} onChange={(v) => set("reviewsEnabled", v)} />
+        <Toggle managed label="Messaging between employer and applicant" checked={form.chatEnabled} disabled={ro} onChange={(v) => set("chatEnabled", v)} />
         <Toggle label="Hide phone numbers until hired" hint="Otherwise numbers are shown to employers straight away." checked={form.hideContacts} disabled={ro} onChange={(v) => set("hideContacts", v)} />
       </section>
 
       <section className="home-card space-y-3 !p-3.5">
         <h2 className="text-sm font-bold text-ink">Repeating jobs</h2>
-        <Toggle label="Employers can repeat jobs" hint="Rebook the same worker, or put the job up again, every day, week or month." checked={form.recurringEnabled} disabled={ro} onChange={(v) => set("recurringEnabled", v)} />
+        <Toggle managed label="Employers can repeat jobs" hint="Rebook the same worker, or put the job up again, every day, week or month." checked={form.recurringEnabled} disabled={ro} onChange={(v) => set("recurringEnabled", v)} />
         <div className="space-y-1.5"><p className="text-xs font-semibold text-ink-500">Repeat intervals offered</p><div className="flex flex-wrap gap-1.5">{(["daily", "weekly", "biweekly", "monthly"] as const).map((f) => <Chip key={f} on={form.recurringFrequencies.includes(f)} disabled={ro} onClick={() => set("recurringFrequencies", form.recurringFrequencies.includes(f) ? form.recurringFrequencies.filter((x) => x !== f) : (["daily", "weekly", "biweekly", "monthly"] as const).filter((x) => x === f || form.recurringFrequencies.includes(x)))}>{label(f)}</Chip>)}</div></div>
         <p className="text-xs text-ink-500">To make repeating a Pro feature, mark &ldquo;Recurring jobs&rdquo; as Pro in the Money tab. The limits are further down.</p>
       </section>

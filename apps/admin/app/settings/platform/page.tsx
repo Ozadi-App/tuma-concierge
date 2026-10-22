@@ -1,7 +1,8 @@
 "use client";
 
 import { hasPermission, type PlatformEnvironment } from "@peebee/shared";
-import { FlaskConical, GraduationCap } from "lucide-react";
+import { FlaskConical } from "lucide-react";
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { SettingsPageShell } from "../../../components/SettingsPageShell";
 import { api, errorMessage } from "../../../lib/api";
@@ -11,8 +12,6 @@ export default function PlatformStateSettingsPage() {
   const { user } = useAuth();
   const canManagePayments = hasPermission(user?.adminRole ?? null, "payments.manage");
   const [platformEnvironment, setPlatformEnvironment] = useState<PlatformEnvironment>("live");
-  const [practiceModeEnabled, setPracticeModeEnabled] = useState(false);
-  const [practiceAutoInSandbox, setPracticeAutoInSandbox] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -21,8 +20,6 @@ export default function PlatformStateSettingsPage() {
       .getSettings()
       .then(({ settings }) => {
         setPlatformEnvironment(settings.platformEnvironment);
-        setPracticeModeEnabled(settings.practiceModeEnabled);
-        setPracticeAutoInSandbox(settings.practiceAutoInSandbox);
       })
       .catch((err) => setError(errorMessage(err)))
       .finally(() => setLoading(false));
@@ -40,91 +37,8 @@ export default function PlatformStateSettingsPage() {
     <SettingsPageShell title="Platform state" loading={loading}>
       {error && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">{error}</p>}
       <PlatformEnvironmentToggle current={platformEnvironment} onChanged={setPlatformEnvironment} />
-      <PracticeModeAvailability current={practiceModeEnabled} onChanged={setPracticeModeEnabled} />
-      <PracticeAutoInSandbox current={practiceAutoInSandbox} sandbox={platformEnvironment === "sandbox"} practiceOn={practiceModeEnabled} onChanged={setPracticeAutoInSandbox} />
+      <p className="text-xs text-ink-500">Practice mode, and whether it opens by itself in sandbox, now live under <Link href="/practice" className="font-bold text-ink underline">Practice</Link>.</p>
     </SettingsPageShell>
-  );
-}
-
-function PracticeAutoInSandbox({ current, sandbox, practiceOn, onChanged }: { current: boolean; sandbox: boolean; practiceOn: boolean; onChanged: (enabled: boolean) => void }) {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function toggle() {
-    setBusy(true);
-    setError(null);
-    try {
-      const response = await api.adminUpdateSettings({ practiceAutoInSandbox: !current });
-      onChanged(response.settings.practiceAutoInSandbox);
-    } catch (err) {
-      setError(errorMessage(err));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <section className="home-card space-y-3 border border-[var(--border-faint)]">
-      <div className="min-w-0">
-        <span className="block text-sm font-bold text-ink">Open the practice world in sandbox</span>
-        <span className={`mt-0.5 inline-block rounded-full px-2 py-0.5 text-[11px] font-bold ${current ? "bg-sky-100 text-sky-700 dark:bg-sky-950/60 dark:text-sky-200" : "bg-[rgb(var(--surface-muted))] text-ink-500"}`}>{current ? "On" : "Off"}</span>
-      </div>
-      <p className="text-xs text-ink-500">
-        While the platform is in sandbox (the &ldquo;*demo&rdquo; label), the customer app opens in the simulated Entebbe world by itself: Taxipress, shops, food, cars and trucks, paid from a practice wallet, with simulated riders and drivers.
-        Customers can still leave it from the blue Practice mode tab. It does nothing while the platform is live, or while User Practice Mode above is unavailable.
-      </p>
-      {current && sandbox && !practiceOn && <p className="rounded-xl bg-gold/10 p-3 text-xs text-ink">User Practice Mode is unavailable, so this has no effect yet.</p>}
-      {error && <p role="alert" className="text-xs font-semibold text-red-600">{error}</p>}
-      <button type="button" onClick={toggle} disabled={busy} className="min-h-11 rounded-full border border-[var(--border-faint)] px-5 text-sm font-bold text-ink disabled:opacity-50">{busy ? "Saving…" : current ? "Turn off" : "Turn on"}</button>
-    </section>
-  );
-}
-
-function PracticeModeAvailability({ current, onChanged }: { current: boolean; onChanged: (enabled: boolean) => void }) {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function toggle() {
-    setBusy(true);
-    setError(null);
-    try {
-      const response = await api.adminUpdateSettings({ practiceModeEnabled: !current });
-      onChanged(response.settings.practiceModeEnabled);
-    } catch (err) {
-      setError(errorMessage(err));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <section className={`home-card space-y-3 border-2 ${current ? "border-sky-400 bg-sky-50/60 dark:bg-sky-950/30" : "border-[var(--border-faint)]"}`}>
-      <div className="flex items-center gap-3">
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-sky-100 text-sky-700 dark:bg-sky-950/60 dark:text-sky-200">
-          <GraduationCap className="h-5 w-5" strokeWidth={1.75} aria-hidden />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block text-sm font-bold text-ink">User Practice Mode</span>
-          <span className={`mt-0.5 inline-block rounded-full px-2 py-0.5 text-[11px] font-bold ${current ? "bg-sky-100 text-sky-700 dark:bg-sky-950/60 dark:text-sky-200" : "bg-[rgb(var(--surface-muted))] text-ink-500"}`}>
-            {current ? "Available to users" : "Unavailable"}
-          </span>
-        </span>
-      </div>
-      <p className="text-xs text-ink-500">
-        Lets customers, riders, restaurants and merchants practise inside their real app screens using isolated sample data.
-        New or incomplete users are reminded every seven days unless they finish or choose not to be reminded again.
-        Practice never creates live orders, changes balances, notifies other users or calls a payment provider.
-      </p>
-      {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">{error}</p>}
-      <button
-        type="button"
-        onClick={toggle}
-        disabled={busy}
-        className="min-h-9 w-full rounded-full border border-sky-500 px-4 text-xs font-bold text-sky-700 disabled:opacity-60 dark:text-sky-200"
-      >
-        {busy ? "Saving…" : current ? "Disable user practice" : "Enable user practice"}
-      </button>
-    </section>
   );
 }
 

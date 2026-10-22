@@ -1,5 +1,6 @@
 "use client";
 
+import { ModuleState } from "../../../components/ModuleState";
 import { Switch } from "../../../components/ui/Switch";
 import { Select } from "../../../components/ui/Select";
 
@@ -79,7 +80,7 @@ export default function LugandaAudioSettingsPage() {
       <form onSubmit={onSubmit} className="space-y-5">
         <section className="home-card space-y-3">
           <label className="flex items-center gap-2 text-sm font-semibold text-ink">
-            <Switch checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
+            <ModuleState on={enabled} />
             Let riders listen to their shopping lists in Luganda
           </label>
           <p className="text-xs text-ink-500">

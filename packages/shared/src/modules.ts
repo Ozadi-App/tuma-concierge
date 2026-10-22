@@ -1,0 +1,225 @@
+/**
+ * The one list of everything on the platform that can be switched on or off.
+ *
+ * Every module has two independent switches: Live (what real users get) and Practice (the simulated Entebbe world).
+ * A module can therefore be on in Practice while still off in Live; staff try it there, then switch Live on.
+ * Modules sit in clusters (Ride, Buy, Learn...) and can nest (Ride > Peebee Car > Carpool). A module is only
+ * available when every module above it is also on, in the same world.
+ *
+ * `liveKey` points a module at the setting that already gates it on the server, so the old switches and these
+ * share one value. Modules without one are stored in `modules_live` (default on).
+ */
+
+export type ModuleWorld = "live" | "practice";
+
+export type ModuleClusterId = "ride" | "deliver" | "buy" | "learn" | "hive" | "money";
+
+export type ModuleClusterDef = { id: ModuleClusterId; label: string; description: string };
+
+/** How much of a module the Practice world already simulates (see `practice` on each module). */
+export type PracticeCoverage = "full" | "partial" | "none";
+
+export type ModuleDef = {
+  key: string;
+  cluster: ModuleClusterId;
+  /** Key of the module this one sits under; the cluster's own switch for a top-level module. */
+  parent?: string;
+  label: string;
+  description: string;
+  /** The `settings` row that already gates this module in Live. `defaultOn` is what that row means when empty. */
+  liveKey?: string;
+  defaultOn?: boolean;
+  /** What the Practice world holds for this module: people, content, orders, places. */
+  practice: { coverage: PracticeCoverage; has: string[]; missing?: string[] };
+};
+
+export const MODULE_CLUSTERS: readonly ModuleClusterDef[] = [
+  { id: "ride", label: "Ride", description: "Boda, Peebee Car, Luxury, Ambulance, Move, Taxipress and carpools." },
+  { id: "deliver", label: "Deliver", description: "Parcels and long-distance relay between towns." },
+  { id: "buy", label: "Buy", description: "Shopping lists, food, stores, pharmacy and fuel." },
+  { id: "learn", label: "Learn", description: "Schools, courses, live classes and certificates." },
+  { id: "hive", label: "Hive", description: "Home services and the Peebee Hire marketplace." },
+  { id: "money", label: "Money", description: "Paid memberships and reading aloud." },
+];
+
+const m = (
+  key: string, cluster: ModuleClusterId, label: string, description: string,
+  practice: ModuleDef["practice"], extra: Partial<Pick<ModuleDef, "parent" | "liveKey" | "defaultOn">> = {},
+): ModuleDef => ({ key, cluster, label, description, practice, ...extra });
+
+export const MODULES: readonly ModuleDef[] = [
+  // Ride
+  m("ride", "ride", "Rides", "Every way of moving a person. Off pauses all of them.", { coverage: "full", has: ["customers", "boda riders", "car drivers", "trips"] }, { liveKey: "service_ride_enabled", defaultOn: true }),
+  m("ride.boda", "ride", "Boda", "Motorcycle rides, multi-stop trips and Name your fare.", { coverage: "full", has: ["boda riders", "stages", "fare offers", "live trips"] }, { parent: "ride" }),
+  m("ride.for_other", "ride", "Ride for someone else", "Book a ride on behalf of another passenger.", { coverage: "partial", has: ["saved passengers"], missing: ["passenger trip-link sharing"] }, { parent: "ride", liveKey: "ride_for_other_enabled", defaultOn: true }),
+  m("ride.bidding", "ride", "Name your fare", "Riders and drivers counter the customer's price.", { coverage: "full", has: ["fare offers", "counter offers"] }, { parent: "ride", liveKey: "bidding_enabled", defaultOn: false }),
+  m("ride.car", "ride", "Peebee Car", "Car rides with owners, drivers and vehicles.", { coverage: "full", has: ["car drivers", "vehicles", "car types", "owners"] }, { parent: "ride", liveKey: "car_enabled", defaultOn: false }),
+  m("ride.car.ondemand", "ride", "On-demand car rides", "Book a car now.", { coverage: "full", has: ["car drivers", "trips"] }, { parent: "ride.car", liveKey: "car_ondemand_enabled", defaultOn: false }),
+  m("ride.car.scheduled", "ride", "Scheduled rides", "Book a car for later.", { coverage: "partial", has: ["scheduled bookings"], missing: ["driver watch alerts"] }, { parent: "ride.car", liveKey: "car_scheduled_enabled", defaultOn: false }),
+  m("ride.car.carpool", "ride", "Carpool", "Share seats on a driver's trip.", { coverage: "partial", has: ["carpool trips"], missing: ["weekly repeats", "seat payment timeouts"] }, { parent: "ride.car", liveKey: "car_carpool_enabled", defaultOn: false }),
+  m("ride.car.selfdrive", "ride", "Self-drive rental", "Rent a car and drive it yourself.", { coverage: "full", has: ["rental cars", "owners", "inspections", "renter KYC"] }, { parent: "ride.car", liveKey: "car_selfdrive_enabled", defaultOn: false }),
+  m("ride.car.deals", "ride", "Owner-driver deals", "Drivers apply to owners' cars on agreed terms.", { coverage: "partial", has: ["owners", "drivers"], missing: ["deal applications", "rent/share terms"] }, { parent: "ride.car", liveKey: "car_deals_enabled", defaultOn: false }),
+  m("ride.luxury", "ride", "Luxury", "Chauffeured sedans, SUVs and limousines, with hourly hire.", { coverage: "full", has: ["luxury cars", "chauffeurs", "hourly hire"] }, { parent: "ride" }),
+  m("ride.ambulance", "ride", "Ambulance", "Basic and ICU patient transport.", { coverage: "full", has: ["ambulances", "crews"] }, { parent: "ride" }),
+  m("ride.move", "ride", "Move (cargo)", "Vans and trucks for loads.", { coverage: "full", has: ["cargo vans", "pickups", "box trucks", "heavy trucks", "owners"] }, { parent: "ride", liveKey: "service_cargo_enabled", defaultOn: true }),
+  m("ride.taxipress", "ride", "Taxipress", "Seats on the next shared taxi along a fixed route.", { coverage: "full", has: ["routes", "taxis", "queue", "seat bookings", "parcels"] }, { parent: "ride", liveKey: "taxipress_enabled", defaultOn: false }),
+
+  // Deliver
+  m("deliver", "deliver", "Deliveries", "Every way of moving a parcel.", { coverage: "full", has: ["customers", "riders", "parcels"] }),
+  m("deliver.parcel", "deliver", "Parcel delivery", "Send a parcel across town.", { coverage: "full", has: ["riders", "parcel orders", "receipts"] }, { parent: "deliver", liveKey: "service_parcel_enabled", defaultOn: true }),
+  m("deliver.relay", "deliver", "Relay delivery", "Long parcels boda → matatu → boda.", { coverage: "full", has: ["matatu routes", "operators", "petrol stations", "relay orders"] }, { parent: "deliver", liveKey: "relay_enabled", defaultOn: false }),
+
+  // Buy
+  m("buy", "buy", "Buy", "Everything customers purchase.", { coverage: "full", has: ["customers", "stores", "restaurants"] }),
+  m("buy.shopping", "buy", "Shopping lists", "A rider shops a list for the customer.", { coverage: "full", has: ["shopping lists", "riders", "merchants", "outlets"] }, { parent: "buy", liveKey: "service_shopping_enabled", defaultOn: true }),
+  m("buy.food", "buy", "Food ordering", "Restaurants, kitchens, street food and juices.", { coverage: "full", has: ["restaurants", "menus", "dishes", "reviews", "orders"] }, { parent: "buy", liveKey: "service_food_enabled", defaultOn: true }),
+  m("buy.marketplace", "buy", "Marketplace", "Pro stores, products and ads.", { coverage: "full", has: ["stores", "products", "spotlight", "carts"] }, { parent: "buy", liveKey: "marketplace_enabled", defaultOn: true }),
+  m("buy.marketplace.live", "buy", "Live selling", "Stores sell on a live stream.", { coverage: "partial", has: ["live sessions"], missing: ["live chat", "live orders"] }, { parent: "buy.marketplace", liveKey: "marketplace_live_enabled", defaultOn: true }),
+  m("buy.pharmacy", "buy", "Pharmacy", "Prescriptions and medicine orders.", { coverage: "full", has: ["pharmacies", "prescriptions", "quotes"] }, { parent: "buy", liveKey: "pharmacy_enabled", defaultOn: true }),
+  m("buy.gas", "buy", "Fuel (Gas)", "Riders buy fuel vouchers redeemed at stations.", { coverage: "full", has: ["stations", "attendants", "vouchers", "dispenses"] }, { parent: "buy", liveKey: "service_gas_enabled", defaultOn: true }),
+  m("buy.guest", "buy", "Guest checkout", "Order without an account through a shared link.", { coverage: "none", has: [], missing: ["guest links", "guest orders", "guest alerts"] }, { parent: "buy", liveKey: "guest_checkout_enabled", defaultOn: true }),
+
+  // Learn
+  m("learn", "learn", "Peebee Learn", "Schools, classes and courses.", { coverage: "full", has: ["schools", "learners", "educators", "courses", "lessons"] }, { liveKey: "learn_enabled", defaultOn: true }),
+  m("learn.masterclasses", "learn", "Masterclasses", "One-off paid expert sessions.", { coverage: "partial", has: ["creators"], missing: ["masterclass bookings"] }, { parent: "learn", liveKey: "learn_masterclasses_enabled", defaultOn: true }),
+  m("learn.paid_courses", "learn", "Paid courses", "Courses sold to learners.", { coverage: "full", has: ["courses", "invoices"] }, { parent: "learn", liveKey: "learn_paid_courses_enabled", defaultOn: true }),
+  m("learn.live", "learn", "Live classes", "Live classrooms with whiteboard and chat.", { coverage: "full", has: ["meetings", "participants", "chat"] }, { parent: "learn", liveKey: "learn_live_enabled", defaultOn: true }),
+  m("learn.tv", "learn", "TV Learn", "Learning on the TV app.", { coverage: "partial", has: ["trial picker"], missing: ["TV pairing"] }, { parent: "learn", liveKey: "learn_tv_learn_enabled", defaultOn: true }),
+  m("learn.certificates", "learn", "Certificates", "Issued when a course is completed.", { coverage: "full", has: ["credentials"] }, { parent: "learn", liveKey: "learn_certificates_enabled", defaultOn: true }),
+  m("learn.assignments", "learn", "Assignments", "Homework, submissions and marking.", { coverage: "full", has: ["worksheets", "submissions", "merits"] }, { parent: "learn", liveKey: "learn_assignments_enabled", defaultOn: true }),
+  m("learn.reviews", "learn", "Course reviews", "Learners rate courses.", { coverage: "partial", has: ["peer review"], missing: ["course ratings"] }, { parent: "learn", liveKey: "learn_reviews_enabled", defaultOn: true }),
+  m("learn.subscriptions", "learn", "Subscriptions", "Passes that unlock learning.", { coverage: "full", has: ["subscription passes"] }, { parent: "learn", liveKey: "learn_subscriptions_enabled", defaultOn: true }),
+
+  m("learn.enrolments", "learn", "Enrolment", "Learners join published courses, free or paid from their wallet.", { coverage: "full", has: ["courses", "enrolments"] }, { parent: "learn", liveKey: "learn_enrolments_enabled", defaultOn: true }),
+  m("learn.uploads", "learn", "Video and audio uploads", "Educators attach files to lessons.", { coverage: "partial", has: ["lessons"], missing: ["uploaded media"] }, { parent: "learn", liveKey: "learn_video_uploads_enabled", defaultOn: true }),
+  m("learn.fees", "learn", "School fees", "Schools invoice learners, who pay from their wallet.", { coverage: "full", has: ["tuition invoices"] }, { parent: "learn", liveKey: "learn_fees_enabled", defaultOn: true }),
+  m("learn.live_lessons", "learn", "Live video lessons", "Scheduled lessons with a Zoom, Meet or Jitsi link.", { coverage: "full", has: ["live meetings"] }, { parent: "learn", liveKey: "learn_live_lessons_enabled", defaultOn: true }),
+  m("learn.trial_classes", "learn", "Trial live classes", "Anyone signed in can join a practice class.", { coverage: "full", has: ["trial class", "tutors"] }, { parent: "learn", liveKey: "learn_trial_classes_enabled", defaultOn: true }),
+  m("learn.badges", "learn", "Badges", "Milestone badges for learners.", { coverage: "full", has: ["merit stars", "stickers"] }, { parent: "learn", liveKey: "learn_badges_enabled", defaultOn: true }),
+  m("learn.drip", "learn", "Drip release", "Sections open some days after enrolment.", { coverage: "none", has: [], missing: ["scheduled section release"] }, { parent: "learn", liveKey: "learn_drip_enabled", defaultOn: true }),
+  m("learn.prerequisites", "learn", "Prerequisites", "Items done in order, or another course first.", { coverage: "none", has: [], missing: ["locked lessons"] }, { parent: "learn", liveKey: "learn_prerequisites_enabled", defaultOn: true }),
+  m("learn.coupons", "learn", "Coupons", "Discount codes on courses.", { coverage: "none", has: [], missing: ["coupon codes"] }, { parent: "learn", liveKey: "learn_coupons_enabled", defaultOn: true }),
+  m("learn.bundles", "learn", "Bundles", "Several courses sold for one price.", { coverage: "none", has: [], missing: ["bundles"] }, { parent: "learn", liveKey: "learn_bundles_enabled", defaultOn: true }),
+  m("learn.qa", "learn", "Questions and answers", "Learners ask questions on a lesson.", { coverage: "full", has: ["questions", "upvotes"] }, { parent: "learn", liveKey: "learn_qa_enabled", defaultOn: true }),
+  m("learn.announcements", "learn", "Announcements", "Educators post to a course.", { coverage: "partial", has: ["guardian alerts"], missing: ["course announcements"] }, { parent: "learn", liveKey: "learn_announcements_enabled", defaultOn: true }),
+  m("learn.cohorts", "learn", "Cohorts", "Intakes of a course with a start date and seat limit.", { coverage: "none", has: [], missing: ["cohorts"] }, { parent: "learn", liveKey: "learn_cohorts_enabled", defaultOn: true }),
+  m("learn.instructors", "learn", "Extra teachers", "Other teachers who edit and mark a course.", { coverage: "partial", has: ["educators"], missing: ["co-teaching"] }, { parent: "learn", liveKey: "learn_instructors_enabled", defaultOn: true }),
+
+  // Hive
+  m("hive", "hive", "Hive", "Home services and hiring.", { coverage: "full", has: ["customers", "providers", "workers"] }),
+  m("hive.work", "hive", "Home services (Work)", "Clean, Laundry and Fix jobs with providers.", { coverage: "full", has: ["providers", "catalogue", "jobs", "photos"] }, { parent: "hive", liveKey: "work_enabled", defaultOn: true }),
+  m("hive.work.chat", "hive", "Job chat", "Customer and provider chat on a job.", { coverage: "partial", has: ["messages"], missing: ["photo messages"] }, { parent: "hive.work", liveKey: "work_chat_enabled", defaultOn: true }),
+  m("hive.work.tracking", "hive", "Provider tracking", "Live location of a provider on the way.", { coverage: "partial", has: ["job status"], missing: ["live location"] }, { parent: "hive.work", liveKey: "work_tracking_enabled", defaultOn: true }),
+  m("hive.work.photos", "hive", "Photos on jobs", "Customer and provider attach photos to a job.", { coverage: "partial", has: ["jobs"], missing: ["job photos"] }, { parent: "hive.work", liveKey: "work_photos_enabled", defaultOn: true }),
+  m("hive.work.tomorrow", "hive", "Book for tomorrow", "Offer “Tomorrow” as a time for a job.", { coverage: "full", has: ["jobs"] }, { parent: "hive.work", liveKey: "work_schedule_tomorrow_enabled", defaultOn: true }),
+  m("hive.work.onsite", "hive", "On-site checks", "Confirm the provider arrived at the address.", { coverage: "none", has: [], missing: ["arrival checks"] }, { parent: "hive.work", liveKey: "work_onsite_check_enabled", defaultOn: false }),
+  m("hive.hire", "hive", "Peebee Hire", "Find workers, gigs and projects.", { coverage: "full", has: ["workers", "gigs", "projects", "hiring posts", "escrow"] }, { parent: "hive", liveKey: "talent_enabled", defaultOn: false }),
+  m("hive.hire.gigs", "hive", "Gigs", "Short jobs workers apply to.", { coverage: "full", has: ["gigs", "applications"] }, { parent: "hive.hire", liveKey: "talent_gigs_enabled", defaultOn: true }),
+  m("hive.hire.projects", "hive", "Projects", "Larger jobs with milestones.", { coverage: "full", has: ["projects", "milestones"] }, { parent: "hive.hire", liveKey: "talent_projects_enabled", defaultOn: true }),
+  m("hive.hire.hiring", "hive", "Hiring posts", "Employers advertise open roles.", { coverage: "full", has: ["roles"] }, { parent: "hive.hire", liveKey: "talent_hiring_enabled", defaultOn: true }),
+  m("hive.hire.search", "hive", "Worker search", "Customers browse workers.", { coverage: "full", has: ["workers"] }, { parent: "hive.hire", liveKey: "talent_worker_search_enabled", defaultOn: true }),
+  m("hive.hire.reviews", "hive", "Ratings", "Employers and workers rate each other.", { coverage: "partial", has: ["workers"], missing: ["rating history"] }, { parent: "hive.hire", liveKey: "talent_reviews_enabled", defaultOn: true }),
+  m("hive.hire.chat", "hive", "Messaging", "Employer and applicant chat.", { coverage: "partial", has: ["applications"], missing: ["conversations"] }, { parent: "hive.hire", liveKey: "talent_chat_enabled", defaultOn: true }),
+  m("hive.hire.recurring", "hive", "Repeat jobs", "Rebook the same worker daily, weekly or monthly.", { coverage: "none", has: [], missing: ["recurring jobs"] }, { parent: "hive.hire", liveKey: "talent_recurring_enabled", defaultOn: true }),
+
+  // Money
+  m("money", "money", "Money", "Paid memberships and reading aloud.", { coverage: "full", has: ["wallets", "mobile money"] }),
+  m("money.pro", "money", "Peebee Pro", "Paid subscription for riders and stores.", { coverage: "partial", has: ["rider Pro card"], missing: ["store Pro", "renewals"] }, { parent: "money", liveKey: "pro_subscription_enabled", defaultOn: false }),
+  m("money.luganda_audio", "money", "Luganda list reading", "Read shopping lists aloud in Luganda.", { coverage: "none", has: [], missing: ["audio samples"] }, { parent: "money", liveKey: "luganda_audio_enabled", defaultOn: false }),
+];
+
+export const MODULE_KEYS: readonly string[] = MODULES.map((x) => x.key);
+
+const BY_KEY = new Map(MODULES.map((x) => [x.key, x]));
+export const getModule = (key: string): ModuleDef | undefined => BY_KEY.get(key);
+
+/** A cluster's own top-level module is the one whose key equals the cluster id, if any; otherwise its roots are those with no parent. */
+export function parentOf(def: ModuleDef): ModuleDef | undefined {
+  return def.parent ? BY_KEY.get(def.parent) : undefined;
+}
+
+export function childrenOf(key: string): ModuleDef[] {
+  return MODULES.filter((x) => x.parent === key);
+}
+
+/** Per-world switches as stored: what an admin set, before the parent chain is applied. */
+export type ModuleFlags = Record<string, { live: boolean; practice: boolean }>;
+
+/** What a module is actually doing: its own switch AND every module above it. */
+export type ModuleAvailability = Record<string, { live: boolean; practice: boolean }>;
+
+export function resolveModuleAvailability(flags: ModuleFlags): ModuleAvailability {
+  const out: ModuleAvailability = {};
+  const resolve = (def: ModuleDef): { live: boolean; practice: boolean } => {
+    const done = out[def.key];
+    if (done) return done;
+    const own = flags[def.key] ?? { live: true, practice: true };
+    const up = def.parent ? resolve(BY_KEY.get(def.parent)!) : { live: true, practice: true };
+    return (out[def.key] = { live: own.live && up.live, practice: own.practice && up.practice });
+  };
+  for (const def of MODULES) resolve(def);
+  return out;
+}
+
+/** The wire shape of GET /v1/settings `modules`: raw flags (for the admin editor) and resolved availability (for apps). */
+export type ModuleSettings = { flags: ModuleFlags; available: ModuleAvailability };
+
+/** Admin write: only the flags that changed, per world. */
+export type ModuleSettingsUpdate = { live?: Record<string, boolean>; practice?: Record<string, boolean> };
+
+export const MODULE_SWITCHES_STORAGE_KEY = "peebee_module_availability";
+
+/** Remembers the last availability the API sent so code outside React (the practice world) can ask without a request. */
+export function rememberModuleAvailability(available: ModuleAvailability | undefined) {
+  try {
+    if (available && typeof window !== "undefined") window.localStorage.setItem(MODULE_SWITCHES_STORAGE_KEY, JSON.stringify(available));
+  } catch { /* storage blocked: modules then read as on */ }
+}
+
+function readRemembered(): ModuleAvailability | null {
+  try {
+    if (typeof window === "undefined") return null;
+    const raw = window.localStorage.getItem(MODULE_SWITCHES_STORAGE_KEY);
+    return raw ? (JSON.parse(raw) as ModuleAvailability) : null;
+  } catch { return null; }
+}
+
+/** Is this module on for the given world? Unknown modules and an unloaded cache read as on, so a slow load never hides things. */
+export function isModuleOn(key: string, world: ModuleWorld, available: ModuleAvailability | null | undefined = readRemembered()): boolean {
+  return available?.[key]?.[world] ?? true;
+}
+
+/** Practice runs only on the device that opted in; the same helper the practice world answers with. */
+export function practiceModuleOn(key: string): boolean {
+  return isModuleOn(key, "practice");
+}
+
+/** Where an app already reads each module from in GET /v1/settings, so existing screens obey the switches without changes. */
+const SETTINGS_PATH: Record<string, string> = {
+  "ride": "services.ride", "ride.move": "services.cargo", "deliver.parcel": "services.parcel", "buy.shopping": "services.shopping", "buy.food": "services.food",
+  "ride.for_other": "rideForOtherEnabled", "ride.bidding": "bidding.enabled",
+  "ride.car": "car.enabled", "ride.car.ondemand": "car.onDemandEnabled", "ride.car.scheduled": "car.scheduled.enabled", "ride.car.carpool": "car.carpool.enabled",
+  "ride.car.selfdrive": "car.selfDrive.enabled", "ride.car.deals": "car.deals.enabled",
+  "buy.marketplace": "marketplace.enabled", "buy.marketplace.live": "marketplace.liveEnabled", "buy.pharmacy": "pharmacy.enabled", "buy.gas": "gas.enabled",
+  "hive.work": "work.enabled", "money.pro": "proSubscriptionEnabled", "money.luganda_audio": "lugandaAudioEnabled",
+};
+
+/**
+ * Settings an app receives, narrowed to what the given world allows. In Live the stored values already are the Live
+ * switches, so a module can only turn one off (a parent being off). In Practice the stored values are ignored: the
+ * Practice switch decides, so something off in Live can still be tried there.
+ */
+export function applyModuleAvailability<T extends object>(settings: T, available: ModuleAvailability | undefined, world: ModuleWorld): T {
+  if (!available) return settings;
+  const next = structuredClone(settings) as Record<string, unknown>;
+  for (const [key, path] of Object.entries(SETTINGS_PATH)) {
+    const on = isModuleOn(key, world, available);
+    if (on && world === "live") continue;
+    const parts = path.split(".");
+    let node: Record<string, unknown> | undefined = next;
+    for (const part of parts.slice(0, -1)) node = node && typeof node[part] === "object" && node[part] ? (node[part] as Record<string, unknown>) : undefined;
+    const last = parts[parts.length - 1]!;
+    if (node && last in node) node[last] = on;
+  }
+  return next as T;
+}

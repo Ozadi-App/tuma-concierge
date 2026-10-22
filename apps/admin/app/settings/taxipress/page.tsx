@@ -1,5 +1,6 @@
 "use client";
 
+import { ModuleState } from "../../../components/ModuleState";
 import { hasPermission, type TaxipressAdminQueueEntry, type TaxipressAdminRoute, type TaxipressRelayRoute, type TaxipressReport, type TaxipressSettings, type TaxipressTaxi } from "@peebee/shared";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
@@ -132,7 +133,7 @@ function SettingsTab() {
       {!ready && <MigrationNotice />}
       <section className="home-card space-y-3">
         <label className="flex items-center gap-2 text-sm font-bold text-ink">
-          <Switch checked={s.enabled} onChange={(e) => set("enabled", e.target.checked)} />
+          <ModuleState on={s.enabled} />
           Taxipress is on
         </label>
         <p className="text-xs text-ink-500">Off hides it from customers entirely. It also stays hidden while no route is running.</p>

@@ -1,4 +1,6 @@
 import type { PublicReceipt } from "./receipt.js";
+import { applyModuleAvailability, rememberModuleAvailability, type ModuleSettingsUpdate, type ModuleSettings } from "./modules.js";
+import { isPracticeStorageOn } from "./practice.js";
 import type { TaxipressAdminQueueEntry, TaxipressAdminRoute, TaxipressBoardingResult, TaxipressBooking, TaxipressConfig, TaxipressDriverView, TaxipressLineEntry, TaxipressOutcome, TaxipressQueueView, TaxipressRelayRoute, TaxipressReport, TaxipressSettings, TaxipressTaxi } from "./taxipress.js";
 import type { BagTrip, RelayAdminOrder, RelayRouteStage, RelayMerchantOrder, RelayOpenLeg, RelayOperator, RelayOperatorParcels, RelayQuote, RelayRoute, RelaySettings, RelayStation, RelayStationParcels, RelayTrack } from "./relay.js";
 import type { AdminRole } from "./permissions.js";
@@ -175,6 +177,8 @@ import type {
 
 export type CreateApiClientOptions = {
   baseUrl: string;
+  /** The admin app edits the raw settings; every other app gets them narrowed to what the Live or Practice switches allow. */
+  rawSettings?: boolean;
   /** Optional fetch override (tests). */
   fetchImpl?: typeof fetch;
   /** Bearer token for authenticated requests. */
@@ -329,7 +333,7 @@ export type PharmacyPrescription = {
   updatedAt: string;
 };
 
-export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }: CreateApiClientOptions) {
+export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized, rawSettings }: CreateApiClientOptions) {
   const root = baseUrl.replace(/\/$/, "");
   const f = fetchImpl ?? fetch;
 
@@ -1898,7 +1902,18 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
 
     // Delivery pricing settings (rate per km, service range) — public read, admin write.
     async getSettings() {
-      return request<{ settings: DeliverySettings }>("/v1/settings");
+      const res = await request<{ settings: DeliverySettings }>("/v1/settings");
+      const available = res.settings.modules?.available;
+      rememberModuleAvailability(available);
+      if (rawSettings || !available) return res;
+      return { settings: applyModuleAvailability(res.settings, available, isPracticeStorageOn() ? "practice" : "live") };
+    },
+    /** Admin: change Live and/or Practice switches for any modules. */
+    async adminUpdateModules(input: ModuleSettingsUpdate & { practiceModeEnabled?: boolean; practiceAutoInSandbox?: boolean }) {
+      return request<{ modules: ModuleSettings; practiceModeEnabled: boolean; practiceAutoInSandbox: boolean }>("/v1/admin/modules", { method: "PUT", body: JSON.stringify(input) });
+    },
+    async adminGetModules() {
+      return request<{ modules: ModuleSettings; practiceModeEnabled: boolean; practiceAutoInSandbox: boolean }>("/v1/admin/modules");
     },
     async getPracticeStatus(experience: PracticeRole) {
       return request<{ practice: { experience: PracticeRole; available: boolean; completed: boolean; optedOut: boolean; lastPromptedAt: string | null; shouldPrompt: boolean; reminderDays: number } }>(`/v1/practice/${experience}/status`);

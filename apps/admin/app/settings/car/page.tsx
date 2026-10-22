@@ -1,5 +1,6 @@
 "use client";
 
+import { ModuleState } from "../../../components/ModuleState";
 import { Switch } from "../../../components/ui/Switch";
 import { Select } from "../../../components/ui/Select";
 
@@ -200,14 +201,14 @@ export default function CarSettingsPage() {
       <form onSubmit={onSubmit} className="space-y-5">
         <section className="home-card space-y-3">
           <label className="flex items-center gap-2 text-sm font-bold text-ink">
-            <Switch checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
+            <ModuleState on={enabled} />
             Peebee Car is on
           </label>
           <p className="text-xs text-ink-500">
             The master switch. Off hides everything car-related. It needs the car database tables (migration 0065) to be applied first.
           </p>
           <label className="flex items-center gap-2 text-sm font-bold text-ink">
-            <Switch checked={onDemand} disabled={!enabled} onChange={(e) => setOnDemand(e.target.checked)} />
+            <ModuleState on={onDemand} />
             Customers can book a car now
           </label>
           <div className="space-y-1 border-t border-[var(--border-faint)] pt-3">
@@ -268,7 +269,7 @@ export default function CarSettingsPage() {
 
         <section className="home-card space-y-3">
           <label className="flex items-center gap-2 text-sm font-bold text-ink">
-            <Switch checked={schedEnabled} disabled={!enabled} onChange={(e) => setSchedEnabled(e.target.checked)} />
+            <ModuleState on={schedEnabled} />
             Customers can schedule a car for later
           </label>
           <div className="grid grid-cols-2 gap-3">
@@ -293,7 +294,7 @@ export default function CarSettingsPage() {
 
         <section className="home-card space-y-3">
           <label className="flex items-center gap-2 text-sm font-bold text-ink">
-            <Switch checked={cpEnabled} disabled={!enabled} onChange={(e) => setCpEnabled(e.target.checked)} />
+            <ModuleState on={cpEnabled} />
             Carpool: drivers publish trips, passengers book seats
           </label>
           <div className="grid grid-cols-2 gap-3">
@@ -317,7 +318,7 @@ export default function CarSettingsPage() {
 
         <section className="home-card space-y-3">
           <label className="flex items-center gap-2 text-sm font-bold text-ink">
-            <Switch checked={sdEnabled} disabled={!enabled} onChange={(e) => setSdEnabled(e.target.checked)} />
+            <ModuleState on={sdEnabled} />
             Self-drive hire: owners rent vehicles out by the day
           </label>
           <div className="grid grid-cols-2 gap-3">
@@ -341,7 +342,7 @@ export default function CarSettingsPage() {
 
         <section className="home-card space-y-3">
           <label className="flex items-center gap-2 text-sm font-bold text-ink">
-            <Switch checked={dealsOn} disabled={!enabled} onChange={(e) => setDealsOn(e.target.checked)} />
+            <ModuleState on={dealsOn} />
             Drivers can apply to owners&apos; cars
           </label>
           <div className="space-y-2">

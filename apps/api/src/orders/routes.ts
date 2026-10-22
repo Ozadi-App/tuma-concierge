@@ -22,6 +22,7 @@ import {
   type ServiceKey,
 } from "../lib/settings.js";
 import { servicePaused } from "../lib/service-gate.js";
+import { isModuleLive } from "../lib/modules.js";
 import { getRideTrackingSettings } from "../settings/ride-tracking.js";
 import { computeCheckoutFees, isCashDepositOk, riderPayout } from "../lib/monetization.js";
 import { notifyUser } from "../lib/webpush.js";
@@ -364,6 +365,8 @@ export async function createOrderFromInput(
   // (anything already in flight carries on).
   const service: ServiceKey = d.type === "shopping" ? "shopping" : d.isRide ? "ride" : "parcel";
   if (!(await isServiceEnabled(service))) return servicePaused(c, service);
+  // A boda ride (not a car booking) also needs the Boda module on.
+  if (d.isRide && !car && !(await isModuleLive("ride.boda"))) return servicePaused(c, "ride");
 
   const list = await db.execute({
     sql: "SELECT * FROM lists WHERE id = ?",
