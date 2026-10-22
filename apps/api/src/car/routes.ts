@@ -1,3 +1,4 @@
+import { visibleInWorld } from "../practice/people.js";
 import { Hono } from "hono";
 import { z } from "zod";
 import { CAR_MODEL_CATALOG } from "@peebee/shared";
@@ -50,8 +51,9 @@ carRoutes.get("/car/config", async (c) => {
   // Luxury and Ambulance groups, hourly rates and descriptions exist once migration 0101 is applied.
   // `has_vehicles` lets the customer app show Luxury / Ambulance only once Peebee has approved at least one such vehicle,
   // while owners can still see the category to register one.
+  const world = await getPlatformEnvironment();
   const categoryExtras = (await hasColumn("vehicle_categories", "service_group"))
-    ? ", service_group, rate_per_hour, description, EXISTS (SELECT 1 FROM vehicles v WHERE v.category_id = vehicle_categories.id AND v.status = 'approved') AS has_vehicles"
+    ? `, service_group, rate_per_hour, description, EXISTS (SELECT 1 FROM vehicles v WHERE v.category_id = vehicle_categories.id AND v.status = 'approved' AND ${visibleInWorld(world, "v.owner_id")}) AS has_vehicles`
     : "";
   const categories = await db.execute(
     `SELECT id, kind, name, seats, cargo_type, size_label, reference_image_key, rate_per_km, minimum_fare${categoryExtras}

@@ -8,7 +8,7 @@ import { db } from "../db/client.js";
 import { inPractice, runInPractice } from "../db/practice-context.js";
 import { clientIp } from "../lib/ratelimit.js";
 import { getPlatformEnvironment, getSetting } from "../lib/settings.js";
-import { topUpDemoOrders } from "./demo-customers.js";
+import { placeStarterOrders, topUpDemoOrders } from "./demo-customers.js";
 import { PRACTICE_PERSONA_FOR_ROLE } from "./personas.js";
 import { isPracticeSeeded, practiceCounts, resetPracticeWorld, seedPracticeWorld } from "./seed.js";
 
@@ -54,7 +54,11 @@ practiceRoutes.get("/admin/practice", ...adminGuard, async (c) =>
   c.json({ seeded: await isPracticeSeeded(), counts: await practiceCounts(), platformEnvironment: await getPlatformEnvironment() }));
 
 practiceRoutes.post("/admin/practice/seed", ...adminGuard, async (c) => {
-  const counts = await runInPractice(seedPracticeWorld);
+  const counts = await runInPractice(async () => {
+    await seedPracticeWorld();
+    await placeStarterOrders();
+    return practiceCounts();
+  });
   await logActivity({ actor: c.get("user"), action: "practice.seed", entityType: "practice", summary: "Laid down the practice world", after: counts, ip: clientIp(c) });
   return c.json({ seeded: true, counts });
 });
@@ -69,7 +73,9 @@ practiceRoutes.post("/admin/practice/orders", ...adminGuard, async (c) => {
 practiceRoutes.post("/admin/practice/reset", ...adminGuard, async (c) => {
   const counts = await runInPractice(async () => {
     await resetPracticeWorld();
-    return seedPracticeWorld();
+    await seedPracticeWorld();
+    await placeStarterOrders();
+    return practiceCounts();
   });
   await logActivity({ actor: c.get("user"), action: "practice.reset", entityType: "practice", summary: "Reset the practice world to its starting state", after: counts, ip: clientIp(c) });
   return c.json({ seeded: true, counts });

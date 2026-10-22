@@ -2,10 +2,10 @@ import { db } from "../db/client.js";
 import { signToken } from "../auth/jwt.js";
 import { PRACTICE_CUSTOMERS, type PracticeCustomer } from "./personas.js";
 
-type Answer = { status: number; body: Record<string, any> };
+export type Answer = { status: number; body: Record<string, any> };
 
 /** What a demo customer does is done through the real API, signed in as that customer, so every rule applies to them as to anyone. */
-async function actAs(customer: PracticeCustomer) {
+export async function actAs(customer: PracticeCustomer) {
   const { default: app } = await import("../app.js");
   const token = await signToken({ sub: customer.id, role: "customer", phone: customer.phone, practice: true });
   return async (method: string, path: string, body?: unknown): Promise<Answer> => {
@@ -14,9 +14,9 @@ async function actAs(customer: PracticeCustomer) {
   };
 }
 
-type Scenario = (customer: PracticeCustomer, call: Awaited<ReturnType<typeof actAs>>) => Promise<string | null>;
+export type Scenario = (customer: PracticeCustomer, call: Awaited<ReturnType<typeof actAs>>) => Promise<string | null>;
 
-const where = (c: PracticeCustomer) => ({ destinationArea: c.areaAddress.split(",")[0], destinationAddress: c.areaAddress, destinationLat: c.lat, destinationLng: c.lng });
+export const where = (c: PracticeCustomer) => ({ destinationArea: c.areaAddress.split(",")[0], destinationAddress: c.areaAddress, destinationLat: c.lat, destinationLng: c.lng });
 
 const SHOPPING_LISTS: Array<{ title: string; total: number; items: Array<{ name: string; quantity: number }> }> = [
   { title: "Weekend groceries", total: 38_000, items: [{ name: "Rice 2kg", quantity: 1 }, { name: "Cooking oil 1L", quantity: 1 }, { name: "Tomatoes", quantity: 6 }, { name: "Onions", quantity: 4 }] },
@@ -89,6 +89,25 @@ export async function topUpDemoOrders(target = 4, foodTarget = 2): Promise<numbe
       if (await scenario(customer, await actAs(customer))) placed++;
     } catch (err) {
       console.error("Practice demo order failed:", err);
+    }
+  }
+  return placed;
+}
+
+/**
+ * A starting history across every cluster, so a freshly laid-down world already has rides booked, seats taken and so on.
+ * Each cluster adds its scenarios to STARTER_SCENARIOS. Run inside runInPractice, after the world is seeded.
+ */
+export async function placeStarterOrders(): Promise<number> {
+  const { RIDE_SCENARIOS } = await import("./scenarios-ride.js");
+  let placed = 0;
+  let turn = 0;
+  for (const [, scenario] of [...RIDE_SCENARIOS]) {
+    const customer = PRACTICE_CUSTOMERS[turn++ % PRACTICE_CUSTOMERS.length]!;
+    try {
+      if (await scenario(customer, await actAs(customer))) placed++;
+    } catch (err) {
+      console.error("Practice starter order failed:", err);
     }
   }
   return placed;

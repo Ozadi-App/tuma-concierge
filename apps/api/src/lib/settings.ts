@@ -1056,13 +1056,32 @@ export function ancestorsLive(def: ModuleDef, values: Map<string, string>): bool
   return true;
 }
 
+/** A module's own Practice switch (on unless an admin turned it off) and every module above it. */
+function practiceModuleOn(def: ModuleDef, values: Map<string, string>): boolean {
+  const flags = parseFlagMap(values.get("modules_practice"));
+  for (let d: ModuleDef | undefined = def; d; d = d.parent ? getModule(d.parent) : undefined) if (flags[d.key] === false) return false;
+  return true;
+}
+
+/** Values the practice world needs that the live platform may leave unset (a booking window, the platform's cut of a rental). */
+const PRACTICE_VALUES: Partial<Record<SettingKey, string>> = {
+  car_scheduled_max_advance_hours: "72",
+  car_selfdrive_platform_percent: "15",
+};
+
 /**
  * Reads a setting. A module's Live switch reads as off while any module above it (its cluster, or Peebee Car for
- * Carpool) is off, so every existing gate obeys the Services page without knowing about it.
+ * Carpool) is off, so every existing gate obeys the Services page without knowing about it. Inside a practice request
+ * the module switches are the Practice ones instead, so something off in Live can still be tried in Practice.
  */
 export async function getSetting(key: SettingKey): Promise<string> {
   const values = await loadSettings();
   const def = MODULE_BY_LIVE_KEY.get(key);
+  if (inPractice()) {
+    if (def) return practiceModuleOn(def, values) ? "1" : "0";
+    const forced = PRACTICE_VALUES[key];
+    if (forced !== undefined) return forced;
+  }
   if (def?.parent && !ancestorsLive(def, values)) return "0";
   return values.get(key) ?? DEFAULTS[key];
 }

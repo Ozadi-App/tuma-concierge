@@ -3,6 +3,7 @@ import { PRACTICE_ENTEBBE, PRACTICE_ENTEBBE_PRODUCTS, PRACTICE_ENTEBBE_STORES, P
 import { db, executeBatch, type DbStatement } from "../db/client.js";
 import { merchantBusinessStatements } from "../merchants/service.js";
 import { PRACTICE_CUSTOMERS } from "./personas.js";
+import { seedRide } from "./seed-ride.js";
 
 /** Practice accounts cannot be signed into with a password: a session token is the only way in. */
 const NO_PASSWORD = "practice-account-no-password";
@@ -132,6 +133,7 @@ export async function seedPracticeWorld(): Promise<PracticeCounts> {
 
   // D1 caps a batch; send it in slices so a seed of a few thousand statements never trips it.
   for (let i = 0; i < statements.length; i += 80) await executeBatch(statements.slice(i, i + 80));
+  await seedRide();
   return practiceCounts();
 }
 
