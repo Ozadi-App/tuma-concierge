@@ -60,6 +60,8 @@ export type TaxipressSettings = {
 
 export type TaxipressLuggageType = "personal" | "standard" | "large" | "excess" | "fragile" | "commercial";
 export const TAXIPRESS_LUGGAGE_TYPES: TaxipressLuggageType[] = ["personal", "standard", "large", "excess", "fragile", "commercial"];
+/** Fly Express defaults, used whenever the config does not carry prices. Commercial is assessed at the stage. */
+export const TAXIPRESS_DEFAULT_LUGGAGE_PRICES: Record<TaxipressLuggageType, number | null> = { personal: 0, standard: 2000, large: 4000, excess: 6000, fragile: 7000, commercial: null };
 export const TAXIPRESS_LUGGAGE_LABELS: Record<TaxipressLuggageType, { name: string; note: string }> = {
   personal: { name: "Personal bag", note: "On your lap" },
   standard: { name: "Standard", note: "Up to 15 kg" },
