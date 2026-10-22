@@ -45,6 +45,7 @@ export {
   exitPracticeMode,
   isPracticeJourneyComplete,
   isPracticeMode,
+  isSandboxDemo,
   practicePaymentCode,
   practiceStartPath,
   startPracticeMode,

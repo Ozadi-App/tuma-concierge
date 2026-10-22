@@ -21,9 +21,6 @@ const DEFAULTS = {
   /** Allows users to launch isolated guided practice journeys. Unlike
    * platform_environment this never redirects operational API traffic. */
   user_practice_mode_enabled: "1",
-  /** While the platform is in sandbox (the "*demo" label), the customer app opens in the simulated Entebbe
-   * practice world by itself instead of waiting for a user to switch practice mode on. Customers can still leave it. */
-  practice_auto_in_sandbox: "1",
   delivery_rate_per_km: "1000",
   /** Floor on a parcel ride's distance-priced delivery fee (UGX) — a rider
    * still has to go collect and deliver the item even when pickup and
