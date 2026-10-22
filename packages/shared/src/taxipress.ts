@@ -41,7 +41,35 @@ export type TaxipressSettings = {
   noShowFeePercent: number;
   /** Move a removed taxi's passengers to the next taxi with room, instead of refunding them. */
   rebookOnRemoval: boolean;
+  /** How many taxis waiting in the line (after the one Boarding Now) passengers may book. The boarding taxi is never bookable. */
+  bookableTaxis: number;
+  /** Children who may ride on an adult's lap without a seat, per booking (Fly Express: 2). Any more need a seat. */
+  maxLapChildren: number;
+  /** A child's seat costs this share of the adult fare. */
+  childSeatFarePercent: number;
+  luggageEnabled: boolean;
+  /** Price per item, by luggage type. null means it is assessed at the stage. */
+  luggagePrices: Record<TaxipressLuggageType, number | null>;
+  assistanceEnabled: boolean;
+  languageEnabled: boolean;
+  /** A passenger may book a seat for someone else (their name, phone and an emergency contact). */
+  bookForOthersEnabled: boolean;
+  /** Show a route's stops (the Relay stages along it) to passengers. */
+  showStops: boolean;
 };
+
+export type TaxipressLuggageType = "personal" | "standard" | "large" | "excess" | "fragile" | "commercial";
+export const TAXIPRESS_LUGGAGE_TYPES: TaxipressLuggageType[] = ["personal", "standard", "large", "excess", "fragile", "commercial"];
+export const TAXIPRESS_LUGGAGE_LABELS: Record<TaxipressLuggageType, { name: string; note: string }> = {
+  personal: { name: "Personal bag", note: "On your lap" },
+  standard: { name: "Standard", note: "Up to 15 kg" },
+  large: { name: "Large", note: "Up to 25 kg" },
+  excess: { name: "Excess", note: "Stage approval" },
+  fragile: { name: "Fragile", note: "Handled with care" },
+  commercial: { name: "Commercial", note: "Priced at the stage" },
+};
+export type TaxipressAssistance = "none" | "boarding" | "priority" | "mobility";
+export type TaxipressLanguage = "en" | "lg" | "sw";
 
 /** What the customer app needs to decide whether to show Taxipress, and what to say. */
 export type TaxipressConfig = {
@@ -55,6 +83,11 @@ export type TaxipressConfig = {
     fromName: string;
     toName: string;
     farePerSeat: number;
+    relayRouteId?: string;
+    /** The route the other way, for the swap button. */
+    reverseId?: string | null;
+    /** Stops along the way, in order, when staff show them. */
+    stops?: string[];
   }>;
   cashEnabled: boolean;
   seatChoiceFeeUgx: number;
@@ -64,6 +97,15 @@ export type TaxipressConfig = {
   payWithinMinutes: number;
   parcelFitText: string;
   parcelNotAllowed: string[];
+  /** False until the passengers, luggage and options migration (0128) is applied: the app then books seats only. */
+  detailsReady?: boolean;
+  maxLapChildren?: number;
+  childSeatFarePercent?: number;
+  luggageEnabled?: boolean;
+  luggagePrices?: Record<TaxipressLuggageType, number | null>;
+  assistanceEnabled?: boolean;
+  languageEnabled?: boolean;
+  bookForOthersEnabled?: boolean;
 };
 
 export type TaxipressAdminRoute = {
@@ -121,6 +163,48 @@ export type TaxipressLineEntry = {
   boardingAt: string | null;
   departedAt: string | null;
   driverName: string | null;
+  /** Passengers may book this taxi now: one of the first taxis waiting behind the boarding one, with seats left. */
+  bookable?: boolean;
+  /** Estimated departure (ISO), or null when there isn't enough to go on. */
+  departsAt?: string | null;
+};
+
+/** A taxi's public profile. Fields with no real data are null and are hidden, never made up. */
+export type TaxipressTaxiProfile = {
+  queueId: string;
+  plate: string;
+  seatLayout: "14" | "18";
+  vehicleType: string | null;
+  colour: string | null;
+  photoUrl: string | null;
+  driverName: string | null;
+  driverPhotoUrl: string | null;
+  memberSince: string | null;
+  tripsCount: number | null;
+  rating: number | null;
+  ratingCount: number | null;
+  reviews: Array<{ rating: number; comment: string | null; createdAt: string }>;
+  status: TaxipressLineEntry["status"];
+  position: number | null;
+  seatsLeft: number;
+  bookable: boolean;
+  departsAt: string | null;
+  route: { id: string; fromName: string; toName: string; stops: string[] };
+};
+
+/** Who is travelling and what they bring, on one booking. */
+export type TaxipressBookingDetails = {
+  adults: number;
+  children: number;
+  childSeats: number;
+  luggage: Partial<Record<TaxipressLuggageType, number>>;
+  luggageAmount: number;
+  assistance: TaxipressAssistance | null;
+  language: TaxipressLanguage | null;
+  forSomeoneElse: boolean;
+  travellerName: string | null;
+  travellerPhone: string | null;
+  emergencyPhone: string | null;
 };
 
 /** Everything the driver's Taxipress screen needs. */
@@ -183,6 +267,8 @@ export type TaxipressBooking = {
   outcome: TaxipressOutcome | null;
   /** The receipt for a seat that boarded and was settled; its QR opens the verification page. */
   receiptRef: string | null;
+  /** Present once migration 0128 is applied. */
+  details?: TaxipressBookingDetails | null;
   route: { id: string; fromName: string; toName: string; directionLabel: string };
   taxi: { queueId: string; plate: string; seatLayout: "14" | "18"; driverName: string | null; driverPhone: string | null; status: string; position: number | null; seatsLeft: number };
 };
@@ -197,6 +283,10 @@ export type TaxipressManifestPassenger = {
   paymentMethod: "app" | "cash";
   paymentStatus: TaxipressPaymentStatus;
   status: TaxipressBookingStatus;
+  adults?: number;
+  children?: number;
+  bags?: number;
+  travellerName?: string | null;
 };
 
 /** The taxis waiting on a route, with the route's fare, for the passenger's choice. */

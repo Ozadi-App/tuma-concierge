@@ -94,7 +94,17 @@ test("taxipress: boarding confirmation and settlement", async (t) => {
     const [van1, van2] = line;
 
     type Booked = { booking: { id: string; orderId: string; ticketCode: string }; order: { id: string } };
-    const book = async (who: string, queueId: string, seats: number, payment: "app" | "cash") => json<Booked>(await call(who, "taxipress/bookings", { queueId, seats, payment }));
+    // Only taxis waiting in line can be booked (v5). These tests are about settling at boarding, so a seat
+    // booked after the taxi started boarding is booked as if just before it did.
+    const book = async (who: string, queueId: string, seats: number, payment: "app" | "cash") => {
+      const was = (await client.execute({ sql: "SELECT status FROM taxipress_queue WHERE id = ?", args: [queueId] })).rows[0]?.status;
+      if (was === "boarding") await client.execute({ sql: "UPDATE taxipress_queue SET status = 'in_line' WHERE id = ?", args: [queueId] });
+      try {
+        return await json<Booked>(await call(who, "taxipress/bookings", { queueId, seats, payment }));
+      } finally {
+        if (was === "boarding") await client.execute({ sql: "UPDATE taxipress_queue SET status = 'boarding' WHERE id = ?", args: [queueId] });
+      }
+    };
     const board = (who: string, codeText: string) => call(who, "taxipress/driver/board", { code: codeText });
     const payWallet = async (who: string, b: Booked) => {
       await client.execute({ sql: "UPDATE users SET wallet_balance = wallet_balance + 100000 WHERE id = ?", args: [who] });

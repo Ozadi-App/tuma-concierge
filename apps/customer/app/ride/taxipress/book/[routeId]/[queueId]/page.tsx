@@ -1,122 +1,190 @@
 "use client";
 
-import type { TaxipressLineEntry, TaxipressQueueView } from "@peebee/shared";
-import { ChevronLeft, Minus, Plus, Wallet } from "lucide-react";
+import { TAXIPRESS_LUGGAGE_LABELS, TAXIPRESS_LUGGAGE_TYPES, type TaxipressAssistance, type TaxipressLanguage, type TaxipressLuggageType, type TaxipressQueueView } from "@peebee/shared";
+import { Accessibility, ArrowRight, Armchair, Ban, Box, Briefcase, Bus, Gem, HandHelping, Luggage, Minus, Package, Plus, ShoppingBag, X } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { api, errorMessage } from "../../../../../../lib/api";
+import { useRegisterNavBack, useRegisterNavPrimaryAction } from "../../../../../../lib/nav-primary-action";
 import { useTaxipress } from "../../../../../../lib/taxipress";
+import { clearDraft, clock, emptyDraft, readDraft, saveDraft, seatsFor, setPayReturn, ugx, type TaxipressDraft } from "../../../../../../lib/taxipress-draft";
 
-const ugx = (n: number) => `UGX ${n.toLocaleString("en-UG")}`;
+const LUGGAGE_ICON: Record<TaxipressLuggageType, typeof Luggage> = { personal: Briefcase, standard: Luggage, large: Box, excess: Package, fragile: Gem, commercial: ShoppingBag };
+const ASSISTANCE: Array<{ id: TaxipressAssistance; label: string; icon: typeof Ban }> = [
+  { id: "none", label: "None required", icon: Ban },
+  { id: "boarding", label: "Boarding help", icon: HandHelping },
+  { id: "priority", label: "Priority seating", icon: Armchair },
+  { id: "mobility", label: "Mobility support", icon: Accessibility },
+];
+const LANGUAGES: Array<{ id: TaxipressLanguage; label: string }> = [{ id: "en", label: "English" }, { id: "lg", label: "Luganda" }, { id: "sw", label: "Swahili" }];
 
-/** Choose seats and how to pay on one taxi in the line. */
-export default function BookTaxiPage() {
+/** TaxiPress step 3 (optional): luggage, assistance and language, then book and hand over to the checkout. */
+export default function OptionsPage() {
   const { routeId, queueId } = useParams<{ routeId: string; queueId: string }>();
   const router = useRouter();
   const taxipress = useTaxipress();
   const [queue, setQueue] = useState<TaxipressQueueView | null>(null);
-  const [loaded, setLoaded] = useState(false);
-  const [seats, setSeats] = useState(1);
-  const [payment, setPayment] = useState<"app" | "cash">("app");
+  const [draft, setDraftState] = useState<TaxipressDraft | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- the draft lives in sessionStorage, readable only after mount
+  useEffect(() => { setDraftState({ ...(readDraft(routeId) ?? emptyDraft(routeId)), queueId }); }, [routeId, queueId]);
   useEffect(() => {
     let live = true;
-    api.getTaxipressQueue(routeId)
-      .then((q) => { if (live) setQueue(q); })
-      .catch((err) => { if (live) setError(errorMessage(err)); })
-      .finally(() => { if (live) setLoaded(true); });
+    api.getTaxipressQueue(routeId).then((q) => { if (live) setQueue(q); }).catch((err) => { if (live) setError(errorMessage(err)); });
     return () => { live = false; };
   }, [routeId]);
+  const setDraft = (patch: Partial<TaxipressDraft>) => setDraftState((d) => { const next = { ...(d ?? emptyDraft(routeId, queueId)), ...patch }; saveDraft(next); return next; });
 
-  const van: TaxipressLineEntry | undefined = queue?.line.find((v) => v.id === queueId);
-  const fare = queue?.route?.farePerSeat ?? 0;
-  const most = Math.max(1, Math.min(taxipress.maxSeatsPerBooking, van?.seatsLeft ?? 1));
-  const count = Math.min(seats, most);
-  const total = fare * count;
+  const van = queue?.line.find((v) => v.id === queueId) ?? null;
+  const route = queue?.route ?? null;
+  const details = taxipress.detailsReady === true;
+  const maxLap = taxipress.maxLapChildren ?? 2;
+  const d = draft ?? emptyDraft(routeId, queueId);
+  const fare = route?.farePerSeat ?? 0;
+  const childSeats = details ? Math.max(0, d.children - maxLap) : 0;
+  const seats = details ? seatsFor(d.adults, d.children, maxLap) : d.adults;
+  const ride = Math.round(fare * d.adults + fare * childSeats * (taxipress.childSeatFarePercent ?? 100) / 100);
+  const prices = taxipress.luggagePrices;
+  const luggageOn = details && taxipress.luggageEnabled && !!prices;
+  const luggageAmount = luggageOn ? TAXIPRESS_LUGGAGE_TYPES.reduce((sum, t) => sum + (prices![t] ?? 0) * (d.luggage[t] ?? 0), 0) : 0;
+  const total = ride + luggageAmount;
+  const party = d.children > 0 ? `${d.adults}+${d.children}` : `${d.adults}`;
 
-  async function book() {
-    if (!van) return;
+  async function book(withOptions: boolean) {
+    if (!van || busy) return;
     setBusy(true);
     setError("");
     try {
-      const { booking, order } = await api.bookTaxipressSeats({ queueId: van.id, seats: count, payment });
-      if (payment === "cash") {
-        // Cash is confirmed on the order straight away; the passenger pays the driver at boarding.
-        await api.fundOrder(order.id, { paymentMethod: "cash" });
-        router.push(`/ride/taxipress/ticket/${booking.id}`);
-      } else if (booking.paymentStatus === "paid") {
-        // Practice mode pays from the practice wallet as the seat is booked.
-        router.push(`/ride/taxipress/ticket/${booking.id}`);
-      } else {
-        router.push(`/orders/${order.id}/pay`);
-      }
+      const { booking, order } = await api.bookTaxipressSeats({
+        queueId: van.id,
+        ...(details ? {
+          adults: d.adults, children: d.children,
+          ...(withOptions ? {
+            luggage: luggageOn ? d.luggage : undefined,
+            assistance: taxipress.assistanceEnabled ? d.assistance : undefined,
+            language: taxipress.languageEnabled ? d.language : undefined,
+          } : {}),
+          ...(d.forSomeoneElse ? { forSomeoneElse: true, travellerName: d.travellerName.trim(), travellerPhone: d.travellerPhone.trim(), emergencyPhone: d.emergencyPhone.trim() || null } : {}),
+        } : { seats }),
+      });
+      clearDraft();
+      const ticket = `/ride/taxipress/ticket/${booking.id}`;
+      if (booking.paymentStatus !== "unpaid") { router.push(ticket); return; }
+      // The shared checkout takes it from here (wallet, Mobile Money or cash) and comes back to the ticket.
+      setPayReturn(order.id, ticket);
+      router.push(`/orders/${order.id}/pay`);
     } catch (err) {
       setError(errorMessage(err));
       setBusy(false);
     }
   }
 
+  useRegisterNavBack(true, () => router.push(`/ride/taxipress/book/${routeId}`));
+  useRegisterNavPrimaryAction(van ? {
+    tone: "gold",
+    icon: ArrowRight,
+    label: busy ? "Booking…" : `Continue · ${ugx(total)}`,
+    sublabel: "to payment",
+    busy,
+    disabled: busy || !draft,
+    onClick: () => void book(true),
+  } : null);
+
+  if (queue && (!van || !route)) {
+    return (
+      <main className="space-y-3 px-4 pb-8 pt-4">
+        <h1 className="text-xl font-bold text-ink">That taxi isn&apos;t available</h1>
+        <p className="text-sm text-ink-500">It may have started boarding, left or been booked full. Choose another taxi.</p>
+        <Link href={`/ride/taxipress/book/${routeId}`} className="inline-flex min-h-11 items-center font-bold text-gold">See the line</Link>
+      </main>
+    );
+  }
+
   return (
     <main className="space-y-5 px-4 pb-8 pt-4">
-      <Link href="/ride/taxipress" className="inline-flex min-h-11 items-center gap-1 text-sm font-semibold text-ink-500">
-        <ChevronLeft className="h-4 w-4" aria-hidden /> Taxipress
-      </Link>
-      {!loaded ? null : !van || !queue?.route ? (
-        <section className="home-card space-y-2 border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-5">
-          <h1 className="text-lg font-bold">That taxi isn&apos;t available</h1>
-          <p className="text-sm text-ink-500">It may have left or been booked full. Choose another taxi in the line.</p>
-          <Link href="/ride/taxipress" className="inline-flex min-h-11 items-center font-bold text-gold">See the line</Link>
+      <header className="space-y-3">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.14em] text-gold">Step 3 of 3 · Optional</p>
+          <h1 className="mt-1 text-3xl font-black tracking-tight text-ink">Make it yours</h1>
+        </div>
+        {route && van && (
+          <div className="flex items-center gap-2 rounded-full bg-[rgb(var(--color-black-700))] px-4 py-3 text-white" aria-label="Your booking so far">
+            <Bus className="h-4 w-4 shrink-0 text-gold" aria-hidden />
+            <span className="min-w-0 flex-1 truncate text-sm">
+              {route.fromName} → {route.toName} · <span className="font-mono">{van.plate}</span>{van.departsAt ? ` · ~${clock(van.departsAt)}` : ""} · {party}
+            </span>
+            <span className="shrink-0 text-sm font-bold text-gold">{ride.toLocaleString("en-UG")}</span>
+          </div>
+        )}
+      </header>
+
+      {!details && <p className="text-sm text-ink-500">Luggage, assistance and language options aren&apos;t available yet. Continue to pay for {seats} seat{seats === 1 ? "" : "s"}.</p>}
+
+      {luggageOn && (
+        <section aria-label="Luggage" className="space-y-2">
+          <div className="flex items-baseline justify-between px-1">
+            <h2 className="text-base font-bold text-ink">Luggage</h2>
+            {luggageAmount > 0 && <span className="text-sm text-ink-500">+ {ugx(luggageAmount)}</span>}
+          </div>
+          <div className="-mx-4 flex snap-x gap-3 overflow-x-auto px-4 pb-1">
+            {TAXIPRESS_LUGGAGE_TYPES.map((t) => {
+              const n = d.luggage[t] ?? 0;
+              const price = prices![t];
+              const Icon = LUGGAGE_ICON[t];
+              return (
+                <div key={t} className={`flex w-[8.25rem] shrink-0 snap-start flex-col rounded-[22px] border p-3 ${n > 0 ? "border-gold bg-gold/15" : "border-[var(--border-faint)] bg-[rgb(var(--surface-card))]"}`}>
+                  <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gold/15 text-gold"><Icon className="h-5 w-5" aria-hidden /></span>
+                  <span className="mt-2 text-sm font-bold text-ink">{TAXIPRESS_LUGGAGE_LABELS[t].name}</span>
+                  <span className="mt-auto pt-3 text-xs text-ink-500">{price == null ? TAXIPRESS_LUGGAGE_LABELS[t].note : price === 0 ? "Free" : `${TAXIPRESS_LUGGAGE_LABELS[t].note.replace("Up to ", "≤")} · ${price.toLocaleString("en-UG")}`}</span>
+                  <span className="mt-2 flex items-center justify-between rounded-full border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-0.5">
+                    <button type="button" aria-label={`Fewer ${TAXIPRESS_LUGGAGE_LABELS[t].name}`} disabled={n <= 0} onClick={() => setDraft({ luggage: { ...d.luggage, [t]: n - 1 } })} className="flex h-9 w-9 items-center justify-center rounded-full text-ink disabled:opacity-30"><Minus className="h-4 w-4" aria-hidden /></button>
+                    <span className="text-sm font-bold text-ink">{n}</span>
+                    <button type="button" aria-label={`More ${TAXIPRESS_LUGGAGE_LABELS[t].name}`} disabled={n >= 10} onClick={() => setDraft({ luggage: { ...d.luggage, [t]: n + 1 } })} className="flex h-9 w-9 items-center justify-center rounded-full text-ink disabled:opacity-30"><Plus className="h-4 w-4" aria-hidden /></button>
+                  </span>
+                </div>
+              );
+            })}
+          </div>
         </section>
-      ) : (
-        <>
-          <section className="home-card space-y-1 border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-5">
-            <p className="text-xs font-bold uppercase tracking-wide text-ink-500">{queue.route.directionLabel}</p>
-            <h1 className="text-xl font-bold">{queue.route.fromName} → {queue.route.toName}</h1>
-            <p className="text-sm text-ink-500">{van.plate} · {van.driverName ?? "Driver"} · {van.status === "boarding" ? "Boarding now" : `${van.position === 1 ? "Next" : `${van.position}th`} in line`}</p>
-            <p className="text-sm font-semibold text-gold">{van.seatsLeft} seat{van.seatsLeft === 1 ? "" : "s"} left</p>
-          </section>
+      )}
 
-          <section className="home-card flex items-center justify-between gap-3 border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-4">
-            <div>
-              <p className="text-sm font-bold text-ink">Seats</p>
-              <p className="text-[11px] text-ink-500">{ugx(fare)} each</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <button type="button" aria-label="Fewer seats" disabled={count <= 1} onClick={() => setSeats(count - 1)} className="flex h-11 w-11 items-center justify-center rounded-full border border-[var(--border-faint)] text-ink disabled:opacity-40"><Minus className="h-4 w-4" aria-hidden /></button>
-              <span className="w-8 text-center text-lg font-bold text-ink" aria-live="polite">{count}</span>
-              <button type="button" aria-label="More seats" disabled={count >= most} onClick={() => setSeats(count + 1)} className="flex h-11 w-11 items-center justify-center rounded-full border border-[var(--border-faint)] text-ink disabled:opacity-40"><Plus className="h-4 w-4" aria-hidden /></button>
-            </div>
-          </section>
-
-          <section aria-label="How you will pay" className="space-y-2">
-            <h2 className="px-1 text-sm font-bold text-ink">How will you pay?</h2>
-            <div role="group" className="grid gap-2">
-              <button type="button" aria-pressed={payment === "app"} onClick={() => setPayment("app")} className={`rounded-2xl px-3 py-3 text-left ${payment === "app" ? "bg-gold text-ink-gold" : "bg-gold/15 text-ink"}`}>
-                <span className="block text-sm font-bold">Pay in the app</span>
-                <span className="block text-xs opacity-80">Wallet or Mobile Money on the next screen. Pay within {taxipress.payWithinMinutes} minutes to keep your seats.</span>
-              </button>
-              {taxipress.cashEnabled && (
-                <button type="button" aria-pressed={payment === "cash"} onClick={() => setPayment("cash")} className={`rounded-2xl px-3 py-3 text-left ${payment === "cash" ? "bg-gold text-ink-gold" : "bg-gold/15 text-ink"}`}>
-                  <span className="block text-sm font-bold">Pay cash to the driver</span>
-                  <span className="block text-xs opacity-80">Hand the driver {ugx(total)} when you board.</span>
+      {details && taxipress.assistanceEnabled && (
+        <section aria-label="Assistance" className="space-y-2">
+          <h2 className="px-1 text-base font-bold text-ink">Assistance</h2>
+          <div className="grid grid-cols-2 gap-2">
+            {ASSISTANCE.map(({ id, label, icon: Icon }) => {
+              const on = d.assistance === id;
+              return (
+                <button key={id} type="button" aria-pressed={on} onClick={() => setDraft({ assistance: id })} className={`flex min-h-14 items-center gap-2.5 rounded-2xl border px-3 text-left text-sm font-bold ${on ? "border-transparent bg-[rgb(var(--color-black-700))] text-gold" : "border-[var(--border-faint)] bg-[rgb(var(--surface-card))] text-ink"}`}>
+                  <Icon className="h-5 w-5 shrink-0" aria-hidden /> <span className="min-w-0">{label}</span>
                 </button>
-              )}
-            </div>
-          </section>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
-          <section className="home-card space-y-1 border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-4 text-sm">
-            <div className="flex justify-between"><span className="text-ink-500">{count} seat{count === 1 ? "" : "s"} × {ugx(fare)}</span><span className="font-bold text-ink">{ugx(total)}</span></div>
-            <p className="flex items-start gap-2 pt-1 text-xs text-ink-500"><Wallet className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />The taxi leaves when every seat is booked, so your time may change.</p>
-          </section>
+      {details && taxipress.languageEnabled && (
+        <section aria-label="Preferred language" className="space-y-2">
+          <h2 className="px-1 text-base font-bold text-ink">Preferred language</h2>
+          <div role="radiogroup" className="grid grid-cols-3 gap-1 rounded-2xl bg-[rgb(var(--surface-muted))] p-1">
+            {LANGUAGES.map((l) => (
+              <button key={l.id} type="button" role="radio" aria-checked={d.language === l.id} onClick={() => setDraft({ language: d.language === l.id ? null : l.id })} className={`min-h-11 rounded-xl text-sm font-bold ${d.language === l.id ? "bg-[rgb(var(--surface-card))] text-ink shadow-sm" : "text-ink-500"}`}>
+                {l.label}
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
 
-          {error && <p role="alert" className="text-sm font-semibold text-[rgb(var(--color-red,200_40_40))]">{error}</p>}
-          <button type="button" disabled={busy} onClick={book} className="min-h-12 w-full rounded-full bg-gold font-bold text-ink-gold disabled:opacity-50">
-            {busy ? "Please wait…" : `${payment === "cash" ? "Book" : "Book and pay"} · ${ugx(total)}`}
-          </button>
-        </>
+      {error && <p role="alert" className="text-sm font-semibold text-[rgb(var(--color-red,200_40_40))]">{error}</p>}
+      {van && (
+        <button type="button" disabled={busy} onClick={() => void book(false)} className="flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-[rgb(var(--color-black-700))] font-bold text-white disabled:opacity-50">
+          <X className="h-5 w-5" aria-hidden /> Skip · {ugx(ride)}
+        </button>
       )}
     </main>
   );

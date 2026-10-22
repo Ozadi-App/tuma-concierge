@@ -16,6 +16,12 @@ import { formatUgx } from "../../../../lib/order-display";
 import { useLivePolling } from "../../../../lib/use-live-polling";
 import { useNetworkStatus } from "../../../../lib/use-network-status";
 import { useRegisterNavPrimaryAction, useRegisterNavBack } from "../../../../lib/nav-primary-action";
+import { payReturnKey } from "../../../../lib/taxipress-draft";
+
+/** Where to go once this order is paid (or on Back): a flow that sent the customer here (TaxiPress) can ask to come back. */
+function afterPay(id: string) {
+  try { return sessionStorage.getItem(payReturnKey(id)) || `/orders/${id}`; } catch { return `/orders/${id}`; }
+}
 
 type Method = "mobile_money" | "wallet" | "cash";
 type Quote = Awaited<ReturnType<typeof api.getOrderCheckout>>;
@@ -87,7 +93,7 @@ export default function PaymentPage() {
       setQuote(nextQuote);
       // Paid already (a relay paid before its rider): nothing left to do here, the order page follows it.
       const paid = current.payments.some((p) => p.type === "collection" && p.status === "successful");
-      if (!["Create", "Match", "Fund"].includes(current.order.stage) || (paid && current.order.stage !== "Fund")) router.replace(`/orders/${id}`);
+      if (!["Create", "Match", "Fund"].includes(current.order.stage) || (paid && current.order.stage !== "Fund")) router.replace(afterPay(id));
     } catch (err) { setError(errorMessage(err)); }
     finally { polling.current = false; }
   }, [id, router]);
@@ -141,7 +147,7 @@ export default function PaymentPage() {
       if (result.funded || result.payment?.status === "successful") {
         // A combined delivery is paid once (quote.bundle); only an older part-paid one still chains to the next pickup.
         const nextUnpaidPickup = quote?.bundle ? undefined : detail?.bundleStops?.find((stop) => stop.id !== id && stop.stage === "Match");
-        router.replace(nextUnpaidPickup ? `/orders/${nextUnpaidPickup.id}/pay` : `/orders/${id}`);
+        router.replace(nextUnpaidPickup ? `/orders/${nextUnpaidPickup.id}/pay` : afterPay(id));
       }
       else await load();
     } catch (err) { setError(errorMessage(err)); await load(); }
@@ -151,7 +157,7 @@ export default function PaymentPage() {
   // The final pay step is the bottom nav's gold right capsule (both themes),
   // wired to the same pay() with the same disabled rules.
   // Pay step: nav Back returns to the order.
-  useRegisterNavBack(true, () => router.push(`/orders/${id}`));
+  useRegisterNavBack(true, () => router.push(afterPay(id)));
   useRegisterNavPrimaryAction({
     tone: "gold",
     label: busy ? "Please wait…" : pending ? "Waiting for payment" : method === "cash" ? "Continue with cash" : `Pay${amount == null ? "" : ` ${formatUgx(amount)}`}`,

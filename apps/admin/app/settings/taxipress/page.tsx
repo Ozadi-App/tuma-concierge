@@ -1,6 +1,6 @@
 "use client";
 
-import { hasPermission, type TaxipressAdminQueueEntry, type TaxipressAdminRoute, type TaxipressRelayRoute, type TaxipressReport, type TaxipressSettings, type TaxipressTaxi } from "@peebee/shared";
+import { hasPermission, TAXIPRESS_LUGGAGE_LABELS, TAXIPRESS_LUGGAGE_TYPES, type TaxipressLuggageType, type TaxipressAdminQueueEntry, type TaxipressAdminRoute, type TaxipressRelayRoute, type TaxipressReport, type TaxipressSettings, type TaxipressTaxi } from "@peebee/shared";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { SettingsPageShell, SettingsSaveBar } from "../../../components/SettingsPageShell";
@@ -68,13 +68,15 @@ function SettingsTab() {
     setNotAllowed(next.parcelNotAllowed.join("\n"));
     setNum({
       commissionDigitalPercent: String(next.commissionDigitalPercent), commissionCashPercent: String(next.commissionCashPercent),
-      commissionFlatUgx: String(next.commissionFlatUgx), maxOwedUgx: String(next.maxOwedUgx), seatChoiceFeeUgx: String(next.seatChoiceFeeUgx),
+      commissionFlatUgx: String(next.commissionFlatUgx), maxOwedUgx: String(next.maxOwedUgx),
       returnDiscountPercent: String(next.returnDiscountPercent), maxSeatsPerBooking: String(next.maxSeatsPerBooking),
       maxParcels14: String(next.maxParcels14), maxParcels18: String(next.maxParcels18),
       waitMinutes: String(next.waitMinutes), stageRadiusM: String(next.stageRadiusM),
       payWithinMinutes: String(next.payWithinMinutes), maxCashBookings: String(next.maxCashBookings),
       freeCancelMinutes: String(next.freeCancelMinutes), cancelRetentionPercent: String(next.cancelRetentionPercent),
       noShowMinutes: String(next.noShowMinutes), noShowFeePercent: String(next.noShowFeePercent),
+      childSeatFarePercent: String(next.childSeatFarePercent),
+      ...Object.fromEntries(TAXIPRESS_LUGGAGE_TYPES.map((t) => [`luggage_${t}`, next.luggagePrices[t] == null ? "" : String(next.luggagePrices[t])])),
     });
   }, []);
 
@@ -111,11 +113,16 @@ function SettingsTab() {
         enabled: s.enabled, departureRule: s.departureRule, sellFreeSeatsOnRoad: s.sellFreeSeatsOnRoad,
         commissionType: s.commissionType, commissionDigitalPercent: n("commissionDigitalPercent"), commissionCashPercent: n("commissionCashPercent"),
         commissionFlatUgx: n("commissionFlatUgx"), blockWhenOwing: s.blockWhenOwing, maxOwedUgx: n("maxOwedUgx"), cashEnabled: s.cashEnabled,
-        seatChoiceFeeUgx: n("seatChoiceFeeUgx"), returnDiscountPercent: n("returnDiscountPercent"), maxSeatsPerBooking: n("maxSeatsPerBooking"),
+        returnDiscountPercent: n("returnDiscountPercent"), maxSeatsPerBooking: n("maxSeatsPerBooking"),
         parcelAcceptRule: s.parcelAcceptRule, maxParcels14: n("maxParcels14"), maxParcels18: n("maxParcels18"), parcelFitText: s.parcelFitText,
         waitMinutes: n("waitMinutes"), stageRadiusM: n("stageRadiusM"), payWithinMinutes: n("payWithinMinutes"), maxCashBookings: n("maxCashBookings"),
         freeCancelMinutes: n("freeCancelMinutes"), cancelRetentionPercent: n("cancelRetentionPercent"), feeTo: s.feeTo,
         noShowMinutes: n("noShowMinutes"), noShowFeePercent: n("noShowFeePercent"), rebookOnRemoval: s.rebookOnRemoval,
+        bookableTaxis: s.bookableTaxis, maxLapChildren: s.maxLapChildren, childSeatFarePercent: n("childSeatFarePercent"),
+        luggageEnabled: s.luggageEnabled, assistanceEnabled: s.assistanceEnabled, languageEnabled: s.languageEnabled,
+        bookForOthersEnabled: s.bookForOthersEnabled, showStops: s.showStops,
+        // A blank luggage price means "priced at the stage".
+        luggagePrices: Object.fromEntries(TAXIPRESS_LUGGAGE_TYPES.map((t) => [t, (num[`luggage_${t}`] ?? "") === "" ? null : n(`luggage_${t}`)])) as Record<TaxipressLuggageType, number | null>,
         parcelNotAllowed: notAllowed.split("\n").map((x) => x.trim()).filter(Boolean),
       });
       load(res.settings);
@@ -160,7 +167,6 @@ function SettingsTab() {
         <p className="text-xs text-ink-500">The fare per seat is set on each route. Mid-route fares are a per-route switch.</p>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Most seats in one booking">{field("maxSeatsPerBooking", true)}</Field>
-          <Field label="Choose-your-seat fee (UGX)">{field("seatChoiceFeeUgx", true)}</Field>
           <Field label="Return trip discount (%)">{field("returnDiscountPercent", false)}</Field>
           <Field label="Minutes to pay in the app" hint="Unpaid seats are given back after this.">{field("payWithinMinutes", true)}</Field>
           <Field label="Cash bookings one passenger may hold" hint="Cash can be a no-show, so this is capped.">{field("maxCashBookings", true)}</Field>
@@ -168,6 +174,58 @@ function SettingsTab() {
         <label className="flex items-center gap-2 text-sm font-bold text-ink">
           <Switch checked={s.cashEnabled} onChange={(e) => set("cashEnabled", e.target.checked)} />
           Passengers may pay cash to the driver
+        </label>
+      </section>
+
+      <section className="home-card space-y-3">
+        <p className="text-sm font-bold text-ink">Booking a taxi</p>
+        <p className="text-xs text-ink-500">The taxi Boarding Now is never bookable. Passengers pick from the next taxis waiting behind it.</p>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Taxis open for booking">
+            <Select value={String(s.bookableTaxis)} onValueChange={(v) => set("bookableTaxis", Number(v))} aria-label="Taxis open for booking" sizing="stretch" className="w-full rounded-xl border border-[var(--border-faint)] px-3 py-2.5 text-sm">
+              {[1, 2, 3, 4, 5].map((k) => <option key={k} value={String(k)}>{k === 1 ? "Only the next taxi" : `The next ${k} taxis`}</option>)}
+            </Select>
+          </Field>
+          <Field label="Children free on a lap" hint="Per booking. Each child beyond this needs a seat.">
+            <Select value={String(s.maxLapChildren)} onValueChange={(v) => set("maxLapChildren", Number(v))} aria-label="Children free on a lap" sizing="stretch" className="w-full rounded-xl border border-[var(--border-faint)] px-3 py-2.5 text-sm">
+              {[0, 1, 2, 3, 4].map((k) => <option key={k} value={String(k)}>{k === 0 ? "None, every child pays" : `Up to ${k}`}</option>)}
+            </Select>
+          </Field>
+          <Field label="Child seat fare (%)" hint="Share of the adult fare for a child who takes a seat.">{field("childSeatFarePercent", false)}</Field>
+        </div>
+        <label className="flex items-center gap-2 text-sm font-bold text-ink">
+          <Switch checked={s.bookForOthersEnabled} onChange={(e) => set("bookForOthersEnabled", e.target.checked)} />
+          Passengers may book for someone else
+        </label>
+        <label className="flex items-center gap-2 text-sm font-bold text-ink">
+          <Switch checked={s.showStops} onChange={(e) => set("showStops", e.target.checked)} />
+          Show each route&apos;s stops to passengers
+        </label>
+        <p className="text-xs text-ink-500">Stops are the stages set on the route in <Link href="/settings/relay" className="font-semibold text-gold">Relay settings</Link>.</p>
+      </section>
+
+      <section className="home-card space-y-3">
+        <p className="text-sm font-bold text-ink">Luggage and trip options</p>
+        <label className="flex items-center gap-2 text-sm font-bold text-ink">
+          <Switch checked={s.luggageEnabled} onChange={(e) => set("luggageEnabled", e.target.checked)} />
+          Passengers may add luggage
+        </label>
+        {s.luggageEnabled && (
+          <div className="grid grid-cols-2 gap-3">
+            {TAXIPRESS_LUGGAGE_TYPES.map((t) => (
+              <Field key={t} label={`${TAXIPRESS_LUGGAGE_LABELS[t].name} (UGX)`} hint={`${TAXIPRESS_LUGGAGE_LABELS[t].note}. Blank: priced at the stage.`}>
+                <input inputMode="numeric" value={num[`luggage_${t}`] ?? ""} onChange={(e) => setNum((x) => ({ ...x, [`luggage_${t}`]: digits(e.target.value) }))} className={inputCls} />
+              </Field>
+            ))}
+          </div>
+        )}
+        <label className="flex items-center gap-2 text-sm font-bold text-ink">
+          <Switch checked={s.assistanceEnabled} onChange={(e) => set("assistanceEnabled", e.target.checked)} />
+          Passengers may ask for assistance (boarding help, priority seating, mobility support)
+        </label>
+        <label className="flex items-center gap-2 text-sm font-bold text-ink">
+          <Switch checked={s.languageEnabled} onChange={(e) => set("languageEnabled", e.target.checked)} />
+          Passengers may choose a preferred language
         </label>
       </section>
 
