@@ -1,7 +1,7 @@
-import { FoodMarketplace } from "../../components/FoodMarketplace";
+import { FoodSubHome } from "../../components/food/FoodSubHome";
 
 export const metadata = { title: "Bakeries | Peebee" };
 
 export default function BakeriesPage() {
-  return <FoodMarketplace mode="directory" category="bakery" />;
+  return <FoodSubHome type="bakery" />;
 }
