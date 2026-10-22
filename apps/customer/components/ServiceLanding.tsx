@@ -9,7 +9,7 @@ import { useSpecialCarServices } from "../lib/special-car";
 import { useTaxipress } from "../lib/taxipress";
 
 type LandingGroup = "ride" | "shopping";
-type LandingItem = { title: string; description: string; icon: LucideIcon; href?: string };
+type LandingItem = { title: string; description: string; icon: LucideIcon; href?: string; wide?: boolean };
 
 const landingContent: Record<LandingGroup, { eyebrow: string; title: string; description: string; items: LandingItem[] }> = {
   ride: {
@@ -42,17 +42,20 @@ const landingContent: Record<LandingGroup, { eyebrow: string; title: string; des
 /** Luxury and Ambulance appear on the Ride home screen once Peebee has an approved vehicle of that kind. */
 const specialRideItems: { key: "luxury" | "ambulance"; item: LandingItem }[] = [
   { key: "luxury", item: { title: "VIP", description: "Chauffeur cars for weddings, parties and red carpet.", icon: Crown, href: "/ride/luxury" } },
-  { key: "ambulance", item: { title: "Ambulance", description: "Emergency transport, sent to you at once.", icon: Ambulance, href: "/ride/ambulance" } },
+  { key: "ambulance", item: { title: "Ambulance", description: "Emergency transport, sent to you at once.", icon: Ambulance, href: "/ride/ambulance", wide: true } },
 ];
 
-/** Taxipress appears once staff have switched it on and a route is running. It sits before Ambulance. */
-const taxipressItem: LandingItem = { title: "Taxipress", description: "Book a seat on the next taxi along a fixed route.", icon: Bus, href: "/ride/taxipress" };
+/** Taxipress appears once staff have switched it on and a route is running. It is a full-width card, with Ambulance stacked right below it. */
+const taxipressItem: LandingItem = { title: "Taxipress", description: "Book a seat on the next taxi along a fixed route.", icon: Bus, href: "/ride/taxipress", wide: true };
 
 export function ServiceLanding({ group }: { group: LandingGroup }) {
   const special = useSpecialCarServices();
   const taxipress = useTaxipress();
   const base = landingContent[group];
   const content = group === "ride" ? { ...base, items: [...base.items, ...(taxipress.enabled ? [taxipressItem] : []), ...specialRideItems.filter((s) => special[s.key]).map((s) => s.item)] } : base;
+  // Wide cards (Taxipress, Ambulance) stack full-width under the two-column grid; the rest stay in it.
+  const gridItems = content.items.filter((item) => !item.wide);
+  const wideItems = content.items.filter((item) => item.wide);
 
   return (
     <main className="space-y-6 px-4 pb-8 pt-5">
@@ -63,7 +66,7 @@ export function ServiceLanding({ group }: { group: LandingGroup }) {
       </section>
 
       <section aria-label={`${content.title} services`} className="grid grid-cols-2 gap-3">
-        {content.items.map((item, index) => {
+        {[...gridItems, ...wideItems].map((item, index) => {
           const Icon = item.icon;
           const card = (
             <>
@@ -78,7 +81,7 @@ export function ServiceLanding({ group }: { group: LandingGroup }) {
             </>
           );
           // An odd last card spans both columns so the grid never leaves a hole.
-          const span = content.items.length % 2 === 1 && index === content.items.length - 1 ? " col-span-2" : "";
+          const span = item.wide || (index === gridItems.length - 1 && gridItems.length % 2 === 1) ? " col-span-2" : "";
           const classes = "home-card min-h-[148px] rounded-3xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-4 text-left transition-transform active:scale-[0.98]";
 
           return item.href ? (
