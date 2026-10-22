@@ -27,7 +27,8 @@ const SHOPPING_LISTS: Array<{ title: string; total: number; items: Array<{ name:
 /** Placing an order puts it at Create; asking to be matched is what lets riders see it. */
 async function openToRiders(call: Awaited<ReturnType<typeof actAs>>, orderId: string): Promise<string | null> {
   const matched = await call("POST", `/orders/${orderId}/match`, {});
-  if (matched.status >= 300) console.error("Practice demo match failed:", matched.status, JSON.stringify(matched.body));
+  // "No riders nearby yet" is normal: the order stays open and widens to every rider after a minute.
+  if (matched.status >= 300 && matched.body.error !== "no_riders_available") console.error("Practice demo match failed:", matched.status, JSON.stringify(matched.body));
   // A new order opens to riders within a kilometre and widens over a minute. These have "been waiting", so any practice rider sees them.
   await db.execute({ sql: "UPDATE orders SET updated_at = datetime('now', '-90 seconds') WHERE id = ? AND rider_id IS NULL", args: [orderId] });
   return orderId;
@@ -63,25 +64,27 @@ const food: Scenario = async (customer, call) => {
   return order.status === 201 ? String(order.body.order?.id ?? order.body.id ?? "") : null;
 };
 
-const SCENARIOS: readonly Scenario[] = [shopping, food, parcel, food, shopping];
-
-/** Orders still waiting for a rider. */
-async function openJobCount(): Promise<number> {
-  const res = await db.execute("SELECT COUNT(*) AS n FROM orders WHERE rider_id IS NULL AND stage IN ('Create', 'Match')");
-  return Number(res.rows[0]?.n ?? 0);
+/** Orders waiting for a rider, and food orders waiting for the restaurant to accept. */
+async function waiting(): Promise<{ forRiders: number; forRestaurants: number }> {
+  const res = await db.execute(`SELECT
+      SUM(CASE WHEN restaurant_id IS NULL THEN 1 ELSE 0 END) AS riders,
+      SUM(CASE WHEN restaurant_id IS NOT NULL THEN 1 ELSE 0 END) AS restaurants
+    FROM orders WHERE rider_id IS NULL AND stage IN ('Create', 'Match') AND customer_id LIKE 'prac\\_%' ESCAPE '\\'`);
+  return { forRiders: Number(res.rows[0]?.riders ?? 0), forRestaurants: Number(res.rows[0]?.restaurants ?? 0) };
 }
 
 /**
- * Keeps the practice world alive: when fewer than `target` orders are waiting for a rider, demo customers place more,
- * so a rider who opens practice always has something to take, and a merchant or restaurant always has something coming.
- * Must run inside runInPractice. Returns how many orders were placed.
+ * Keeps the practice world alive: demo customers place orders until `target` are waiting for a rider and a couple of food
+ * orders are waiting for a restaurant, so a rider who opens practice always has something to take and a restaurant always
+ * has something to accept. Must run inside runInPractice. Returns how many orders were placed.
  */
-export async function topUpDemoOrders(target = 4): Promise<number> {
+export async function topUpDemoOrders(target = 4, foodTarget = 2): Promise<number> {
   let placed = 0;
-  let attempts = 0;
-  while ((await openJobCount()) < target && attempts++ < target * 2) {
-    const customer = PRACTICE_CUSTOMERS[(attempts + Math.floor(Math.random() * PRACTICE_CUSTOMERS.length)) % PRACTICE_CUSTOMERS.length]!;
-    const scenario = SCENARIOS[Math.floor(Math.random() * SCENARIOS.length)]!;
+  for (let attempt = 0; attempt < (target + foodTarget) * 2; attempt++) {
+    const { forRiders, forRestaurants } = await waiting();
+    const scenario = forRiders < target ? (Math.random() < 0.6 ? shopping : parcel) : forRestaurants < foodTarget ? food : null;
+    if (!scenario) break;
+    const customer = PRACTICE_CUSTOMERS[Math.floor(Math.random() * PRACTICE_CUSTOMERS.length)]!;
     try {
       if (await scenario(customer, await actAs(customer))) placed++;
     } catch (err) {

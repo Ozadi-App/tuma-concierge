@@ -1,3 +1,4 @@
+import { ridersForThisWorld } from "../practice/people.js";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { isGuestOrder } from "../guest/service.js";
 import { roundFare } from "@peebee/shared";
@@ -776,7 +777,7 @@ async function notifyRidersOfLastMile(orderId: string): Promise<void> {
   if (!leg3) return;
   const { lastMileRadiusKm } = await getRelaySettings();
   const atStation = (await relayRow(orderId))?.drop_mode === "station";
-  const riders = (await db.execute("SELECT user_id, stage_lat, stage_lng FROM riders WHERE verified = 1 AND is_online = 1 AND stage_lat IS NOT NULL AND stage_lng IS NOT NULL")).rows as Row[];
+  const riders = (await db.execute(`SELECT user_id, stage_lat, stage_lng FROM riders WHERE verified = 1 AND is_online = 1 AND stage_lat IS NOT NULL AND stage_lng IS NOT NULL AND ${ridersForThisWorld("user_id")}`)).rows as Row[];
   const near = riders
     .filter((r) => haversineKm(Number(r.stage_lat), Number(r.stage_lng), Number(leg3.from_lat), Number(leg3.from_lng)) <= lastMileRadiusKm)
     .slice(0, 25);

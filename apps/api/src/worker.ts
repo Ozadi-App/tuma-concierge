@@ -1,6 +1,6 @@
 import app from "./app.js";
 import { setAiBinding, type AiBinding } from "./ai/binding.js";
-import { setD1Binding, setPracticeBinding, type D1Database } from "./db/client.js";
+import { setD1Binding, type D1Database } from "./db/client.js";
 import { renewSubscriptions } from "./riders/subscription.js";
 import { renewProSubscriptions } from "./riders/pro-subscription.js";
 import { sweepProviderOperations } from "./payments/reconciliation.js";
@@ -18,7 +18,6 @@ import { sweepActivationMessages } from "./onboarding/service.js";
 import { sweepFoodHours } from "./restaurants/hours.js";
 import { sweepSandboxCar } from "./car/sandbox-demo.js";
 import { sweepSandboxRelay } from "./relay/sandbox-demo.js";
-import { practiceAvailable } from "./db/client.js";
 import { runInPractice } from "./db/practice-context.js";
 import { topUpDemoOrders } from "./practice/demo-customers.js";
 
@@ -26,14 +25,13 @@ import { topUpDemoOrders } from "./practice/demo-customers.js";
  * conflicts with @types/node's DOM-lib globals) just for one field. */
 type CfExecutionContext = { waitUntil(promise: Promise<unknown>): void; passThroughOnException(): void };
 
-type WorkerEnv = Record<string, unknown> & { DB?: D1Database; PRACTICE_DB?: D1Database; RIDER_DOCS?: R2Bucket; AI?: AiBinding };
+type WorkerEnv = Record<string, unknown> & { DB?: D1Database; RIDER_DOCS?: R2Bucket; AI?: AiBinding };
 
 function bindEnv(env: WorkerEnv): void {
   for (const [key, value] of Object.entries(env)) {
     if (typeof value === "string") process.env[key] = value;
   }
   setD1Binding(env.DB);
-  setPracticeBinding(env.PRACTICE_DB);
   setR2Binding(env.RIDER_DOCS);
   setAiBinding(env.AI);
 }
@@ -54,7 +52,7 @@ export default {
   async scheduled(event: { cron?: string }, env: WorkerEnv, ctx: CfExecutionContext): Promise<void> {
     bindEnv(env);
     // The shared practice world keeps itself busy: demo customers place orders for practising riders, merchants and restaurants.
-    if (practiceAvailable()) ctx.waitUntil(runInPractice(() => topUpDemoOrders(4)).catch((err) => console.error("Practice top-up failed:", err)));
+    ctx.waitUntil(runInPractice(() => topUpDemoOrders(4)).catch((err) => console.error("Practice top-up failed:", err)));
     ctx.waitUntil(sweepFoodHours().catch((err) => console.error("Food hours sweep failed:", err)));
     ctx.waitUntil(sweepActivationMessages().catch(() => console.error('Activation message retry failed')));
     ctx.waitUntil(

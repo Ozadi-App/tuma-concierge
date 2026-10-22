@@ -1,6 +1,6 @@
 "use client";
 
-import { MODULES, MODULE_CLUSTERS, resolveModuleAvailability, type ModuleFlags, type PracticeCoverage } from "@peebee/shared";
+import { MODULES, MODULE_CLUSTERS, resolveModuleAvailability, type ModuleFlags, type PracticeCoverage, type PracticeWorldStatus } from "@peebee/shared";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { SettingsPageShell } from "../../components/SettingsPageShell";
@@ -18,6 +18,7 @@ export default function PracticePage() {
   const [flags, setFlags] = useState<ModuleFlags | null>(null);
   const [practiceMode, setPracticeMode] = useState(false);
   const [autoSandbox, setAutoSandbox] = useState(true);
+  const [world, setWorld] = useState<PracticeWorldStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -27,7 +28,13 @@ export default function PracticePage() {
       .then((r) => { setFlags(r.modules.flags); setPracticeMode(r.practiceModeEnabled); setAutoSandbox(r.practiceAutoInSandbox); })
       .catch((err) => setError(errorMessage(err)))
       .finally(() => setLoading(false));
+    api.adminPracticeWorld().then(setWorld).catch(() => undefined);
   }, []);
+
+  async function worldAction(label: string, run: () => Promise<unknown>) {
+    setBusy(label); setError(null);
+    try { await run(); setWorld(await api.adminPracticeWorld()); } catch (err) { setError(errorMessage(err)); } finally { setBusy(null); }
+  }
 
   async function save(label: string, update: Parameters<typeof api.adminUpdateModules>[0]) {
     setBusy(label); setError(null);
@@ -66,6 +73,28 @@ export default function PracticePage() {
               </span>
             </label>
             <p className="text-xs text-ink-500">Which modules exist in the practice world is set on <Link href="/settings/services" className="font-bold text-ink underline">Services</Link> (Practice tab). A module can be on there while it is still off in Live.</p>
+          </section>
+
+          <section className="home-card space-y-3">
+            <div>
+              <h2 className="text-base font-bold text-ink">The shared practice world</h2>
+              <p className="text-xs text-ink-500">
+                One set of demo people, shops, menus and orders, the same data the platform-wide Sandbox shows. Practising users act as a demo persona inside it, so a demo customer&rsquo;s order reaches practising riders, merchants and restaurants.
+                {world?.platformEnvironment === "sandbox" ? " The whole platform is in sandbox right now, so everyone sees it." : " The platform is live, so only people who start practice see it."} Switch the whole platform on <Link href="/settings/platform" className="font-bold text-ink underline">Platform state</Link>.
+              </p>
+            </div>
+            {world && (
+              <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {([["Customers", world.counts.customers], ["Riders", world.counts.riders], ["Merchants", world.counts.merchants], ["Restaurants", world.counts.restaurants], ["Stores", world.counts.stores], ["Products", world.counts.products], ["Dishes", world.counts.menuItems], ["Orders", world.counts.orders]] as const).map(([label, n]) => (
+                  <div key={label} className="rounded-xl bg-[rgb(var(--surface-muted))] px-3 py-2"><dt className="text-[11px] font-semibold text-ink-500">{label}</dt><dd className="text-lg font-bold text-ink">{n}</dd></div>
+                ))}
+              </dl>
+            )}
+            <div className="flex flex-wrap gap-2">
+              <button type="button" disabled={!!busy} onClick={() => worldAction("seed", () => api.adminSeedPractice())} className="admin-btn-gold min-h-10 px-4 text-sm font-bold">{busy === "seed" ? "Working…" : world?.seeded ? "Add anything missing" : "Lay down the practice world"}</button>
+              <button type="button" disabled={!!busy || !world?.seeded} onClick={() => worldAction("orders", () => api.adminPracticeOrders())} className="min-h-10 rounded-full border border-[var(--border-faint)] px-4 text-sm font-bold text-ink disabled:opacity-50">{busy === "orders" ? "Working…" : "Demo customers place orders now"}</button>
+              <button type="button" disabled={!!busy || !world?.seeded} onClick={() => { if (window.confirm("Clear every practice order and put demo balances back? Real data is not touched.")) void worldAction("reset", () => api.adminResetPractice()); }} className="min-h-10 rounded-full border border-red-300 px-4 text-sm font-bold text-red-700 disabled:opacity-50">{busy === "reset" ? "Working…" : "Reset practice orders and money"}</button>
+            </div>
           </section>
 
           <section className="home-card space-y-2">

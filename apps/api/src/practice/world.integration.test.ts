@@ -5,10 +5,14 @@ import test from "node:test";
 import { createClient, type Client, type InArgs } from "@libsql/client/node";
 import app from "../app.js";
 import { signToken } from "../auth/jwt.js";
-import { setD1Binding, setPracticeBinding, type D1Database } from "../db/client.js";
+import { setD1Binding, type D1Database } from "../db/client.js";
+import { runInPractice } from "../db/practice-context.js";
 import { splitSqlStatements } from "../db/split-sql.js";
 import { resetSchemaCache } from "../lib/schema.js";
 import { invalidateSettingsCache } from "../lib/settings.js";
+import { topUpDemoOrders } from "./demo-customers.js";
+import { ridersForThisWorld } from "./people.js";
+import { practiceCounts, resetPracticeWorld, seedPracticeWorld } from "./seed.js";
 
 function shim(client: Client): D1Database {
   const prepare = (sql: string) => ({
@@ -37,91 +41,100 @@ async function freshDatabase(): Promise<Client> {
   return client;
 }
 
-test("the shared practice world is a separate database that every app's practice persona shares", async (t) => {
+test("practice and sandbox share one database; real people and demo people never meet", async (t) => {
   process.env.JWT_SECRET = "local-practice-world-test-secret-only";
   resetSchemaCache();
-  const live = await freshDatabase();
-  const practice = await freshDatabase();
-  setD1Binding(shim(live));
-  setPracticeBinding(undefined);
-  await live.execute({ sql: "INSERT INTO users (id, phone, name, password_hash, role) VALUES ('real_rider', '0771', 'Real Rider', 'h', 'rider'), ('real_cust', '0772', 'Real Customer', 'h', 'customer')", args: [] });
-  await live.execute({ sql: "INSERT INTO settings (key, value) VALUES ('user_practice_mode_enabled', '1') ON CONFLICT(key) DO UPDATE SET value='1'", args: [] });
+  const db = await freshDatabase();
+  setD1Binding(shim(db));
+  await db.execute({ sql: "INSERT INTO users (id, phone, name, password_hash, role) VALUES ('real_rider', '0771', 'Real Rider', 'h', 'rider'), ('real_cust', '0772', 'Real Customer', 'h', 'customer'), ('real_admin', '0773', 'Real Admin', 'h', 'admin')", args: [] });
+  await db.execute({ sql: "UPDATE users SET admin_role = 'super_admin' WHERE id = 'real_admin'", args: [] });
+  await db.execute({ sql: "INSERT INTO riders (user_id, verified, is_online, stage_lat, stage_lng) VALUES ('real_rider', 1, 1, 0.0612, 32.4637)", args: [] });
+  await db.execute({ sql: "INSERT INTO settings (key, value) VALUES ('user_practice_mode_enabled', '1') ON CONFLICT(key) DO UPDATE SET value='1'", args: [] });
   invalidateSettingsCache();
-  const realRider = await signToken({ sub: "real_rider", role: "rider" });
-  const realCustomer = await signToken({ sub: "real_cust", role: "customer" });
+  const rider = await signToken({ sub: "real_rider", role: "rider" });
+  const customer = await signToken({ sub: "real_cust", role: "customer" });
+  const admin = await signToken({ sub: "real_admin", role: "admin" });
   const call = (token: string, path: string, init: RequestInit = {}) => app.request(`/v1${path}`, { ...init, headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", ...(init.headers ?? {}) } });
-  const start = async (token: string, role: string) => (await (await call(token, "/practice/session", { method: "POST", body: JSON.stringify({ role }) })).json()) as { token: string; user: { id: string } };
+  const json = async <T = Record<string, any>>(res: Response) => (await res.json()) as T;
+  const start = async (token: string, role: string) => json<{ token: string; user: { id: string } }>(await call(token, "/practice/session", { method: "POST", body: JSON.stringify({ role }) }));
 
-  await t.test("without a practice database, practice is unavailable and never answered from live", async () => {
-    assert.equal(((await (await call(realRider, "/practice/world")).json()) as { available: boolean }).available, false);
-    assert.equal((await call(realRider, "/practice/session", { method: "POST", body: JSON.stringify({ role: "rider" }) })).status, 503);
-    const stray = await signToken({ sub: "prac_rider_1", role: "rider", practice: true });
-    assert.equal((await call(stray, "/riders/me")).status, 503);
+  await t.test("the first session lays the world down in the same database, signed in as a persona", async () => {
+    const session = await start(rider, "rider");
+    assert.equal(session.user.id, "prac_rider_1");
+    const counts = await runInPractice(practiceCounts);
+    assert.deepEqual([counts.customers, counts.riders, counts.stores, counts.restaurants], [6, 6, 8, 12]);
+    assert.ok(counts.products > 30 && counts.menuItems > 50);
+    assert.equal(Number((await db.execute("SELECT COUNT(*) n FROM users WHERE id = 'real_rider'")).rows[0]!.n), 1, "real people are untouched");
   });
 
-  setPracticeBinding(shim(practice));
-
-  await t.test("the first session lays the world down, signed in as a persona, not as the real user", async () => {
-    const rider = await start(realRider, "rider");
-    assert.equal(rider.user.id, "prac_rider_1");
-    assert.equal(((await (await call(rider.token, "/riders/me")).json()) as { user?: { id: string } }).user?.id ?? "prac_rider_1", "prac_rider_1");
-    const rows = (sql: string, db: Client) => db.execute(sql).then((r) => Number(r.rows[0]!.n));
-    assert.ok((await rows("SELECT COUNT(*) n FROM users WHERE id LIKE 'prac_%'", practice)) > 20);
-    assert.equal(await rows("SELECT COUNT(*) n FROM users WHERE id LIKE 'prac_%'", live), 0, "nothing practice reaches the live database");
-    assert.equal(await rows("SELECT COUNT(*) n FROM restaurants", live), 0);
+  await t.test("demo businesses are sandbox rows: a real customer's lists stay free of them", async () => {
+    assert.equal((await json<{ restaurants: unknown[] }>(await call(customer, "/restaurants"))).restaurants.length, 0);
+    const liveStores = (await json<{ stores: { id: string }[] }>(await call(customer, "/marketplace/stores"))).stores;
+    assert.ok(liveStores.every((s) => !s.id.startsWith("pe_")), "an empty live marketplace shows its own samples, never the practice shops");
+    const demo = await start(customer, "customer");
+    const restaurants = (await json<{ restaurants: { id: string }[] }>(await call(demo.token, "/restaurants"))).restaurants;
+    assert.equal(restaurants.length, 12);
+    assert.ok(restaurants.every((r) => r.id.startsWith("prac_rest_")));
+    assert.ok((await json<{ stores: unknown[] }>(await call(demo.token, "/marketplace/stores"))).stores.length >= 8);
   });
 
-  await t.test("customer, merchant and restaurant personas all see the same world", async () => {
-    const customer = await start(realCustomer, "customer");
-    const restaurants = (await (await call(customer.token, "/restaurants")).json()) as { restaurants: { id: string }[] };
-    assert.equal(restaurants.restaurants.length, 12);
-    assert.ok(restaurants.restaurants.every((r) => r.id.startsWith("prac_rest_")));
-    const stores = (await (await call(customer.token, "/marketplace/stores")).json()) as { stores: { id: string }[] };
-    assert.ok(stores.stores.length >= 8);
+  await t.test("merchant and restaurant personas own the same businesses the customer shops at", async () => {
+    const merchant = await start(customer, "merchant");
+    assert.ok(JSON.stringify(await json(await call(merchant.token, "/merchants/me"))).includes("prac_m_pe_lakeside_mart"));
+    const restaurant = await start(customer, "restaurant");
+    assert.equal(restaurant.user.id, "prac_ro_lakeview");
+  });
 
-    const merchant = await start(realCustomer, "merchant");
-    const mine = (await (await call(merchant.token, "/merchants/me")).json()) as { merchants?: { id: string }[] };
-    assert.ok(JSON.stringify(mine).includes("prac_m_pe_lakeside_mart"));
+  await t.test("demo customers order, and only the demo riders see it", async () => {
+    await runInPractice(() => topUpDemoOrders(4));
+    const waiting = async (clause: string) => Number((await db.execute(`SELECT COUNT(*) n FROM orders WHERE customer_id LIKE 'prac\\_%' ESCAPE '\\' AND rider_id IS NULL AND ${clause}`)).rows[0]!.n);
+    assert.ok((await waiting("restaurant_id IS NULL")) >= 4, "orders are waiting for riders");
+    assert.ok((await waiting("restaurant_id IS NOT NULL")) >= 2, "food orders are waiting for restaurants");
+    const demoRider = await start(rider, "rider");
+    const demoJobs = (await json<{ jobs: unknown[] }>(await call(demoRider.token, "/riders/jobs/available"))).jobs;
+    assert.ok(demoJobs.length >= 1, "a practising rider sees what the demo customers ordered");
+    const realJobs = (await json<{ jobs: unknown[] }>(await call(rider, "/riders/jobs/available"))).jobs;
+    assert.equal(realJobs.length, 0, "a real rider on the live platform sees none of it");
+  });
 
-    const liveRestaurants = (await (await call(realCustomer, "/restaurants")).json()) as { restaurants: unknown[] };
-    assert.equal(liveRestaurants.restaurants.length, 0, "a real customer's live list stays empty");
+  await t.test("rider pools: practice offers demo riders only, live offers real riders only", async () => {
+    const pool = async () => (await db.execute(`SELECT user_id FROM riders WHERE verified = 1 AND is_online = 1 AND ${ridersForThisWorld("user_id")}`)).rows.map((r) => String(r.user_id));
+    const inLive = await pool();
+    const inPractice = await runInPractice(pool);
+    assert.deepEqual(inLive, ["real_rider"]);
+    assert.ok(inPractice.length === 6 && inPractice.every((id) => id.startsWith("prac_")));
+  });
+
+  await t.test("admin lists hide demo people on the live view and show them on the sandbox view", async () => {
+    const ids = async (path: string, key: string) => (await json<Record<string, { id?: string }[]>>(await call(admin, path)))[key]!.map((r) => String(r.id));
+    assert.ok(!(await ids("/admin/riders?environment=live", "riders")).some((id) => id.startsWith("prac_")));
+    assert.ok((await ids("/admin/riders?environment=sandbox", "riders")).some((id) => id.startsWith("prac_")));
+    assert.ok(!(await ids("/admin/customers?environment=live", "customers")).some((id) => id.startsWith("prac_")));
+    assert.ok((await ids("/admin/customers?environment=sandbox", "customers")).some((id) => id.startsWith("prac_")));
+    const stats = await json<{ users: Record<string, number> }>(await call(admin, "/admin/stats?environment=live"));
+    assert.ok(JSON.stringify(stats).length > 0);
   });
 
   await t.test("a practice persona cannot start another session or reach admin", async () => {
-    const customer = await start(realCustomer, "customer");
-    assert.equal((await call(customer.token, "/practice/session", { method: "POST", body: JSON.stringify({ role: "rider" }) })).status, 409);
-    assert.equal((await call(customer.token, "/admin/practice")).status, 403);
+    const demo = await start(customer, "customer");
+    assert.equal((await call(demo.token, "/practice/session", { method: "POST", body: JSON.stringify({ role: "rider" }) })).status, 409);
+    assert.equal((await call(demo.token, "/admin/practice")).status, 403);
   });
 
-  await t.test("seeding twice changes nothing", async () => {
-    const before = (await practice.execute("SELECT COUNT(*) n FROM menu_items")).rows[0]!.n;
-    await start(realCustomer, "restaurant");
-    assert.equal((await practice.execute("SELECT COUNT(*) n FROM menu_items")).rows[0]!.n, before);
+  await t.test("reset clears demo orders and money, keeps the shops, and leaves real data alone", async () => {
+    await db.execute({ sql: "INSERT INTO lists (id, customer_id, title, status, environment) VALUES ('real_list', 'real_cust', 'Mine', 'draft', 'live')", args: [] });
+    await db.execute({ sql: "INSERT INTO orders (id, list_id, customer_id, environment) VALUES ('real_order', 'real_list', 'real_cust', 'live')", args: [] });
+    await db.execute({ sql: "UPDATE users SET wallet_balance_sandbox = 1 WHERE id = 'prac_cust_amina'", args: [] });
+    const before = await runInPractice(practiceCounts);
+    assert.ok(before.orders > 0);
+    await runInPractice(async () => { await resetPracticeWorld(); await seedPracticeWorld(); });
+    const after = await runInPractice(practiceCounts);
+    assert.equal(after.orders, 0);
+    assert.deepEqual([after.stores, after.restaurants, after.menuItems], [before.stores, before.restaurants, before.menuItems]);
+    assert.equal(Number((await db.execute("SELECT wallet_balance_sandbox v FROM users WHERE id = 'prac_cust_amina'")).rows[0]!.v), 250_000);
+    assert.equal(Number((await db.execute("SELECT COUNT(*) n FROM orders WHERE id = 'real_order'")).rows[0]!.n), 1);
+    const seeded = Number((await db.execute("SELECT COUNT(*) n FROM merchant_kyc_cases WHERE merchant_id LIKE 'prac\\_%' ESCAPE '\\'")).rows[0]!.n);
+    await runInPractice(seedPracticeWorld);
+    assert.equal(Number((await db.execute("SELECT COUNT(*) n FROM merchant_kyc_cases WHERE merchant_id LIKE 'prac\\_%' ESCAPE '\\'")).rows[0]!.n), seeded, "seeding again adds nothing");
   });
-});
-
-test("demo customers place real orders that a practice rider can see and take", async () => {
-  process.env.JWT_SECRET = "local-practice-world-test-secret-only";
-  resetSchemaCache();
-  const live = await freshDatabase();
-  const practice = await freshDatabase();
-  setD1Binding(shim(live));
-  setPracticeBinding(shim(practice));
-  await live.execute({ sql: "INSERT INTO users (id, phone, name, password_hash, role) VALUES ('real_rider', '0771', 'Real Rider', 'h', 'rider')", args: [] });
-  await live.execute({ sql: "INSERT INTO settings (key, value) VALUES ('user_practice_mode_enabled', '1') ON CONFLICT(key) DO UPDATE SET value='1'", args: [] });
-  invalidateSettingsCache();
-  const { runInPractice } = await import("../db/practice-context.js");
-  const { seedPracticeWorld } = await import("./seed.js");
-  const { topUpDemoOrders } = await import("./demo-customers.js");
-  await runInPractice(seedPracticeWorld);
-  const placed = await runInPractice(() => topUpDemoOrders(4));
-  const orders = (await practice.execute("SELECT id, type, stage, customer_id, restaurant_id FROM orders")).rows;
-  console.log("placed", placed, JSON.stringify(orders));
-  assert.ok(placed >= 3, "demo customers placed orders");
-  assert.equal(Number((await live.execute("SELECT COUNT(*) n FROM orders")).rows[0]!.n), 0, "none in live");
-  const token = await signToken({ sub: "real_rider", role: "rider" });
-  const session = (await (await app.request("/v1/practice/session", { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ role: "rider" }) })).json()) as { token: string };
-  const jobs = (await (await app.request("/v1/riders/jobs/available", { headers: { Authorization: `Bearer ${session.token}` } })).json()) as { jobs: Array<{ id: string }> };
-  console.log("jobs", JSON.stringify(jobs).slice(0, 600), JSON.stringify((await practice.execute("select user_id, verified, is_online, stage_lat, stage_lng from riders limit 2")).rows));
-  assert.ok(jobs.jobs.length >= 1, "the practice rider sees what demo customers ordered");
 });

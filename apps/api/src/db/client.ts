@@ -1,5 +1,4 @@
 import { createClient, type Client, type InArgs } from "@libsql/client/web";
-import { inPractice } from "./practice-context.js";
 
 /**
  * Primary DB is Cloudflare D1 (native Worker binding — no HTTP hop, no
@@ -33,30 +32,6 @@ export type D1Database = {
 export type DbStatement = { sql: string; args?: unknown[] };
 
 let d1Binding: D1Database | null = null;
-
-let practiceBinding: D1Database | null = null;
-
-/** Called with the PRACTICE_DB binding. Without one, practice is simply unavailable; it never falls back to live. */
-export function setPracticeBinding(binding: D1Database | undefined): void {
-  practiceBinding = binding ?? null;
-}
-
-export class PracticeUnavailableError extends Error {
-  constructor() { super("The practice database is not set up."); }
-}
-
-export function practiceAvailable(): boolean {
-  return Boolean(practiceBinding) || Boolean(process.env.PRACTICE_TURSO_DATABASE_URL);
-}
-
-let cachedPracticeTurso: Client | null = null;
-function practiceClient(): Client {
-  if (practiceBinding) return wrapD1(practiceBinding);
-  const url = process.env.PRACTICE_TURSO_DATABASE_URL;
-  if (!url) throw new PracticeUnavailableError();
-  cachedPracticeTurso ??= createClient({ url, authToken: process.env.PRACTICE_TURSO_AUTH_TOKEN });
-  return cachedPracticeTurso;
-}
 
 /** Called once per request from worker.ts before any route handler runs. */
 export function setD1Binding(binding: D1Database | undefined): void {
@@ -99,11 +74,6 @@ function buildTursoClient(): Client {
 let cachedTurso: Client | null = null;
 
 function client(): Client {
-  if (inPractice()) return practiceClient();
-  return liveClient();
-}
-
-function liveClient(): Client {
   if (d1Binding) return wrapD1(d1Binding);
   if (!cachedTurso) cachedTurso = buildTursoClient();
   return cachedTurso;
@@ -116,14 +86,6 @@ export const db: Client = new Proxy({} as Client, {
   },
 });
 
-/** The live database, even from inside a practice request. For admin configuration and nothing that belongs to a person. */
-export const liveDb: Client = new Proxy({} as Client, {
-  get(_target, prop, receiver) {
-    const value = Reflect.get(liveClient(), prop, receiver);
-    return typeof value === "function" ? value.bind(liveClient()) : value;
-  },
-});
-
 /**
  * Execute a set of writes atomically. D1 guarantees that `batch` either
  * commits every prepared statement or rolls the whole batch back; libSQL's
@@ -133,13 +95,11 @@ export const liveDb: Client = new Proxy({} as Client, {
  */
 export async function executeBatch(statements: DbStatement[]): Promise<number[]> {
   if (statements.length === 0) return [];
-  const target = inPractice() ? practiceBinding : d1Binding;
-  if (inPractice() && !practiceBinding && !process.env.PRACTICE_TURSO_DATABASE_URL) throw new PracticeUnavailableError();
-  if (target) {
+  if (d1Binding) {
     const prepared = statements.map((statement) =>
-      target.prepare(statement.sql).bind(...(statement.args ?? [])),
+      d1Binding!.prepare(statement.sql).bind(...(statement.args ?? [])),
     );
-    const results = await target.batch(prepared);
+    const results = await d1Binding.batch(prepared);
     return results.map((result) => result.meta.changes);
   }
   const results = await client().batch(

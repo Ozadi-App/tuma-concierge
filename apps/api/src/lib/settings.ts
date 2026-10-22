@@ -1,7 +1,7 @@
 import type { MatchingMode } from "@peebee/shared";
 import { MODULES, getModule, type ModuleDef } from "@peebee/shared";
 import { DEFAULT_HOME_MENU, DEFAULT_RIDE_TRACKING_SETTINGS, DEFAULT_SHOPPING_UNIT_SETTINGS, DEFAULT_TIME_FEES, type JobExpirySettings, type TimeFeeSettings } from "@peebee/shared";
-import { db, liveDb } from "../db/client.js";
+import { db } from "../db/client.js";
 import { inPractice } from "../db/practice-context.js";
 
 const DEFAULTS = {
@@ -1016,7 +1016,7 @@ async function loadSettings(): Promise<Map<string, string>> {
     const version = settingsVersion;
     settingsLoading = (async () => {
       try {
-        const res = await liveDb.execute("SELECT key, value FROM settings");
+        const res = await db.execute("SELECT key, value FROM settings");
         const values = new Map<string, string>();
         for (const row of res.rows) values.set(String(row.key), String(row.value ?? ""));
         // A save that landed while this read was in flight must not be hidden behind the older snapshot.
@@ -1080,7 +1080,7 @@ export async function getSettingRaw(key: SettingKey): Promise<string> {
 export async function setSetting(key: SettingKey, value: string, opts: { force?: boolean } = {}): Promise<void> {
   const def = MODULE_BY_LIVE_KEY.get(key);
   if (def?.parent && !opts.force && value === "0" && !ancestorsLive(def, await loadSettings())) return;
-  await liveDb.execute({
+  await db.execute({
     sql: `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, datetime('now'))
           ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`,
     args: [key, value],

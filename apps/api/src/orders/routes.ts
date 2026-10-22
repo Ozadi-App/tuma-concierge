@@ -1,3 +1,4 @@
+import { ridersForThisWorld } from "../practice/people.js";
 import { Hono, type Context } from "hono";
 import { roadKm } from "../lib/road-distance.js";
 import { z } from "zod";
@@ -1100,7 +1101,7 @@ async function findAutoMatchCandidate(
     : "";
   const eligible = await db.execute({
     sql: `SELECT u.id, u.name, r.stage_lat, r.stage_lng, r.area${ownRangeColumn} FROM riders r JOIN users u ON u.id = r.user_id
-          WHERE r.verified = 1 AND r.is_online = 1
+          WHERE r.verified = 1 AND r.is_online = 1 AND ${ridersForThisWorld("r.user_id")}
           ${subscriptionGate}
           AND u.id NOT IN (
             SELECT rider_id FROM orders WHERE rider_id IS NOT NULL AND stage NOT IN ('Settle', 'Cancelled') AND environment = ?

@@ -175,6 +175,9 @@ import type {
   WalletUsageReport,
 } from "./domain.js";
 
+export type PracticeWorldCounts = { customers: number; riders: number; merchants: number; stores: number; products: number; restaurants: number; menuItems: number; orders: number };
+export type PracticeWorldStatus = { seeded: boolean; counts: PracticeWorldCounts; platformEnvironment?: "live" | "sandbox" };
+
 export type CreateApiClientOptions = {
   baseUrl: string;
   /** The admin app edits the raw settings; every other app gets them narrowed to what the Live or Practice switches allow. */
@@ -1907,6 +1910,26 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized, 
       rememberModuleAvailability(available);
       if (rawSettings || !available) return res;
       return { settings: applyModuleAvailability(res.settings, available, isPracticeStorageOn() ? "practice" : "live") };
+    },
+    /** Is the shared practice world on offer, and is it laid down yet? */
+    async practiceWorld() {
+      return request<{ available: boolean; seeded: boolean }>("/v1/practice/world");
+    },
+    /** Signs in as the demo persona for this app. The returned token makes every following request run as the sandbox. */
+    async startPracticeSession(role: "customer" | "rider" | "merchant" | "restaurant") {
+      return request<{ token: string; role: string; user: { id: string; name: string; role: string; phone: string | null } }>("/v1/practice/session", { method: "POST", body: JSON.stringify({ role }) });
+    },
+    async adminPracticeWorld() {
+      return request<PracticeWorldStatus>("/v1/admin/practice");
+    },
+    async adminSeedPractice() {
+      return request<PracticeWorldStatus>("/v1/admin/practice/seed", { method: "POST" });
+    },
+    async adminResetPractice() {
+      return request<PracticeWorldStatus>("/v1/admin/practice/reset", { method: "POST" });
+    },
+    async adminPracticeOrders() {
+      return request<{ placed: number }>("/v1/admin/practice/orders", { method: "POST" });
     },
     /** Admin: change Live and/or Practice switches for any modules. */
     async adminUpdateModules(input: ModuleSettingsUpdate & { practiceModeEnabled?: boolean; practiceAutoInSandbox?: boolean }) {

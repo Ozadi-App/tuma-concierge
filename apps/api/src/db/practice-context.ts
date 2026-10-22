@@ -1,14 +1,13 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 
 /**
- * Which database a request talks to. Requests made with a practice session token run inside `runInPractice`, and every
- * query they make (through `db` or `executeBatch`) goes to the practice database. Nothing else changes: the same routes,
- * the same rules, a different set of rows. The live database is never reachable from inside this context except through
- * `liveDb`, which only configuration reads use.
+ * Practice is the sandbox, seen by one person at a time. A request made with a practice session token runs inside
+ * `runInPractice`: the platform environment reads as "sandbox" for that request only, so it reads and writes the same
+ * demo data the platform-wide Sandbox switch shows everyone. The database is the same one; nothing is copied.
+ *
+ * Demo people are told apart by their `prac_` ids. See practice/people.ts for how live traffic keeps clear of them.
  */
 const store = new AsyncLocalStorage<true>();
 
 export const inPractice = (): boolean => store.getStore() === true;
 export const runInPractice = <T>(fn: () => T): T => store.run(true, fn);
-/** Run something against the live database even when called from a practice request (settings, schema probes). */
-export const runInLive = <T>(fn: () => T): T => store.exit(fn);
