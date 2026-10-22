@@ -1,7 +1,7 @@
-import { FoodMarketplace } from "../../components/FoodMarketplace";
+import { EatHome } from "../../components/food/EatHome";
 
 export const metadata = { title: "Food | Peebee" };
 
 export default function FoodPage() {
-  return <FoodMarketplace mode="home" />;
+  return <EatHome />;
 }
