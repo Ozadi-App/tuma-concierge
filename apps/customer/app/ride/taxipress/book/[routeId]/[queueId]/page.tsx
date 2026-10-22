@@ -7,7 +7,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { api, errorMessage } from "../../../../../../lib/api";
 import { useRegisterNavBack, useRegisterNavPrimaryAction } from "../../../../../../lib/nav-primary-action";
-import { useTaxipress } from "../../../../../../lib/taxipress";
+import { taxipressOptions, useTaxipress } from "../../../../../../lib/taxipress";
 import { clearDraft, clock, emptyDraft, readDraft, saveDraft, seatsFor, setPayReturn, ugx, type TaxipressDraft } from "../../../../../../lib/taxipress-draft";
 
 const LUGGAGE_ICON: Record<TaxipressLuggageType, typeof Luggage> = { personal: Briefcase, standard: Luggage, large: Box, excess: Package, fragile: Gem, commercial: ShoppingBag };
@@ -47,13 +47,14 @@ export default function OptionsPage() {
   const childSeats = details ? Math.max(0, d.children - maxLap) : 0;
   const seats = details ? seatsFor(d.adults, d.children, maxLap) : d.adults;
   const ride = Math.round(fare * d.adults + fare * childSeats * (taxipress.childSeatFarePercent ?? 100) / 100);
-  const prices = taxipress.luggagePrices;
-  const luggageOn = details && taxipress.luggageEnabled && !!prices;
-  const luggageAmount = luggageOn ? TAXIPRESS_LUGGAGE_TYPES.reduce((sum, t) => sum + (prices![t] ?? 0) * (d.luggage[t] ?? 0), 0) : 0;
+  const opts = taxipressOptions(taxipress);
+  const prices = opts.prices;
+  const luggageOn = details && opts.luggage;
+  const luggageAmount = luggageOn ? TAXIPRESS_LUGGAGE_TYPES.reduce((sum, t) => sum + (prices[t] ?? 0) * (d.luggage[t] ?? 0), 0) : 0;
   const total = ride + luggageAmount;
   const chosen = luggageAmount > 0 || TAXIPRESS_LUGGAGE_TYPES.some((t) => (d.luggage[t] ?? 0) > 0)
-    || (taxipress.assistanceEnabled && !!d.assistance && d.assistance !== "none")
-    || (taxipress.languageEnabled && !!d.language);
+    || (opts.assistance && !!d.assistance && d.assistance !== "none")
+    || (opts.language && !!d.language);
   const party = d.children > 0 ? `${d.adults}+${d.children}` : `${d.adults}`;
 
   async function book(withOptions: boolean) {
@@ -67,8 +68,8 @@ export default function OptionsPage() {
           adults: d.adults, children: d.children,
           ...(withOptions ? {
             luggage: luggageOn ? d.luggage : undefined,
-            assistance: taxipress.assistanceEnabled ? d.assistance : undefined,
-            language: taxipress.languageEnabled ? d.language : undefined,
+            assistance: opts.assistance ? d.assistance : undefined,
+            language: opts.language ? d.language : undefined,
           } : {}),
           ...(d.forSomeoneElse ? { forSomeoneElse: true, travellerName: d.travellerName.trim(), travellerPhone: d.travellerPhone.trim(), emergencyPhone: d.emergencyPhone.trim() || null } : {}),
         } : { seats }),
@@ -86,15 +87,24 @@ export default function OptionsPage() {
   }
 
   useRegisterNavBack(true, () => router.push(`/ride/taxipress/book/${routeId}`));
-  useRegisterNavPrimaryAction(van && chosen ? {
+  // v5 sticky bar: Back + one action. Continue once an option is chosen, otherwise Skip (never the module nav).
+  useRegisterNavPrimaryAction(chosen ? {
     tone: "gold",
     icon: ArrowRight,
     label: busy ? "Booking…" : `Continue · ${ugx(total)}`,
     sublabel: "to payment",
     busy,
-    disabled: busy || !draft,
+    disabled: busy || !draft || !van,
     onClick: () => void book(true),
-  } : null);
+  } : {
+    tone: "gold",
+    icon: X,
+    label: busy ? "Booking…" : `Skip · ${ugx(ride)}`,
+    sublabel: "no options, to payment",
+    busy,
+    disabled: busy || !draft || !van,
+    onClick: () => void book(false),
+  });
 
   if (queue && (!van || !route)) {
     return (
@@ -133,7 +143,7 @@ export default function OptionsPage() {
           <div className="-mx-4 flex snap-x gap-3 overflow-x-auto px-4 pb-1">
             {TAXIPRESS_LUGGAGE_TYPES.map((t) => {
               const n = d.luggage[t] ?? 0;
-              const price = prices![t];
+              const price = prices[t];
               const Icon = LUGGAGE_ICON[t];
               return (
                 <div key={t} className={`flex w-[8.25rem] shrink-0 snap-start flex-col rounded-[22px] border p-3 ${n > 0 ? "border-gold bg-gold/15" : "border-[var(--border-faint)] bg-[rgb(var(--surface-card))]"}`}>
@@ -152,7 +162,7 @@ export default function OptionsPage() {
         </section>
       )}
 
-      {details && taxipress.assistanceEnabled && (
+      {details && opts.assistance && (
         <section aria-label="Assistance" className="space-y-2">
           <h2 className="px-1 text-base font-bold text-ink">Assistance</h2>
           <div className="grid grid-cols-2 gap-2">
@@ -168,7 +178,7 @@ export default function OptionsPage() {
         </section>
       )}
 
-      {details && taxipress.languageEnabled && (
+      {details && opts.language && (
         <section aria-label="Preferred language" className="space-y-2">
           <h2 className="px-1 text-base font-bold text-ink">Preferred language</h2>
           <div role="radiogroup" className="grid grid-cols-3 gap-1 rounded-2xl bg-[rgb(var(--surface-muted))] p-1">
@@ -182,11 +192,6 @@ export default function OptionsPage() {
       )}
 
       {error && <p role="alert" className="text-sm font-semibold text-[rgb(var(--color-red,200_40_40))]">{error}</p>}
-      {van && (
-        <button type="button" disabled={busy} onClick={() => void book(false)} className="flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] font-bold text-ink disabled:opacity-50">
-          <X className="h-5 w-5" aria-hidden /> {busy && !chosen ? "Booking…" : `Skip options · ${ugx(ride)}`}
-        </button>
-      )}
     </main>
   );
 }

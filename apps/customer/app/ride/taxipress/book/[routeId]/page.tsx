@@ -7,7 +7,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { api, errorMessage } from "../../../../../lib/api";
 import { useRegisterNavBack, useRegisterNavPrimaryAction } from "../../../../../lib/nav-primary-action";
-import { useTaxipress } from "../../../../../lib/taxipress";
+import { taxipressOptions, useTaxipress } from "../../../../../lib/taxipress";
 import { clock, emptyDraft, minutesFromNow, readDraft, saveDraft, seatsFor, ugx, type TaxipressDraft } from "../../../../../lib/taxipress-draft";
 
 const REFRESH_MS = 10_000;
@@ -134,7 +134,7 @@ function BookLine() {
         {selected && !fits && <p role="alert" className="text-xs font-semibold text-[rgb(var(--color-red,200_40_40))]">{selected.plate} has {selected.seatsLeft} seat{selected.seatsLeft === 1 ? "" : "s"} left. Choose fewer passengers or another taxi.</p>}
       </section>
 
-      {details && taxipress.bookForOthersEnabled && (
+      {details && taxipressOptions(taxipress).forOthers && (
         <section aria-label="Booking for someone else" className="home-card space-y-3 border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-4">
           <label className="flex items-center justify-between gap-3">
             <span>
