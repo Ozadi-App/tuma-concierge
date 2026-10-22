@@ -290,6 +290,10 @@ const DEFAULTS = {
   car_driver_max_pickup_km: "10",
   /** Shown beside Ambulance requests: a life-threatening emergency should also call this. */
   car_emergency_number: "999",
+  /** Sandbox only: demo car drivers near every pickup take the rides testers book, start to finish. */
+  car_sandbox_demo: "1",
+  /** How long each demo driver step waits for a real person to act first. */
+  car_sandbox_demo_step_seconds: "12",
   car_convenient_rate_per_km: "2000",
   car_convenient_minimum_fare: "8000",
   car_comfort_premium_percent: "30",
@@ -654,6 +658,10 @@ export type CarSettings = {
   maxPickupKm: number;
   /** Phone number shown with Ambulance requests. */
   emergencyNumber?: string;
+  /** Sandbox only: demo car drivers take the rides testers book. */
+  sandboxDemo?: boolean;
+  /** Seconds each demo driver step waits for a real person to act first. */
+  sandboxDemoStepSeconds?: number;
   servicePricing?: { ratePerKm: number; minimumFare: number; comfortPremiumPercent: number; xlPremiumPercent: number; xlMinSeats: number };
   withdrawalsEnabled: boolean;
   withdrawalMinAmount: number;
@@ -719,7 +727,7 @@ export async function getCarServicePricing(): Promise<NonNullable<CarSettings["s
 }
 
 export async function getCarSettings(): Promise<CarSettings> {
-  const [enabled, onDemand, mode, owner, driver, platform, maxKm, wdEnabled, wdMin, sEnabled, sMax, sLead, sOpen, sWatch, sNoSig, sSpeed, cpEnabled, cpSeats, cpRepeat, cpCutoff, cpPay, cpRadius, sdEnabled, sdPct, sdDays, sdDeposit, sdApprove, sdGrace, sdInspections, vpMax, vpMin, kycOwner, kycDriverId, kycLicence, dEnabled, dShare, dRent, dMin, dMax, dRentMax, emergencyNumber] = await Promise.all([
+  const [enabled, onDemand, mode, owner, driver, platform, maxKm, wdEnabled, wdMin, sEnabled, sMax, sLead, sOpen, sWatch, sNoSig, sSpeed, cpEnabled, cpSeats, cpRepeat, cpCutoff, cpPay, cpRadius, sdEnabled, sdPct, sdDays, sdDeposit, sdApprove, sdGrace, sdInspections, vpMax, vpMin, kycOwner, kycDriverId, kycLicence, dEnabled, dShare, dRent, dMin, dMax, dRentMax, emergencyNumber, sandboxDemo, sandboxDemoStep] = await Promise.all([
     getSetting("car_enabled"),
     getSetting("car_ondemand_enabled"),
     getSetting("car_matching_mode"),
@@ -761,6 +769,8 @@ export async function getCarSettings(): Promise<CarSettings> {
     getSetting("car_deal_max_owner_share_percent"),
     getSetting("car_deal_max_rent_per_day"),
     getSetting("car_emergency_number"),
+    getSetting("car_sandbox_demo"),
+    getSetting("car_sandbox_demo_step_seconds"),
   ]);
   const sdPercent = sdPct === "" ? NaN : Number(sdPct);
   const clamp = (v: string, lo: number, hi: number, fallback: number) => Math.min(hi, Math.max(lo, Math.floor(Number(v)) || fallback));
@@ -777,6 +787,8 @@ export async function getCarSettings(): Promise<CarSettings> {
     shares,
     maxPickupKm: Math.min(200, Math.max(1, Number(maxKm) || 10)),
     emergencyNumber: /^[0-9+*#]{2,15}$/.test(String(emergencyNumber ?? "").trim()) ? String(emergencyNumber).trim() : "999",
+    sandboxDemo: sandboxDemo !== "0",
+    sandboxDemoStepSeconds: clamp(sandboxDemoStep, 3, 600, 12),
     servicePricing: await getCarServicePricing(),
     withdrawalsEnabled: wdEnabled === "1",
     withdrawalMinAmount: Math.max(0, Math.floor(Number(wdMin) || 0)),
@@ -835,6 +847,8 @@ export async function setCarSettings(next: CarSettings): Promise<void> {
   await setSetting("car_share_platform_percent", String(next.shares.platform));
   await setSetting("car_driver_max_pickup_km", String(next.maxPickupKm));
   if (next.emergencyNumber != null) await setSetting("car_emergency_number", next.emergencyNumber);
+  if (next.sandboxDemo != null) await setSetting("car_sandbox_demo", next.sandboxDemo ? "1" : "0");
+  if (next.sandboxDemoStepSeconds != null) await setSetting("car_sandbox_demo_step_seconds", String(next.sandboxDemoStepSeconds));
   if (next.servicePricing) {
     await setSetting("car_convenient_rate_per_km", String(next.servicePricing.ratePerKm));
     await setSetting("car_convenient_minimum_fare", String(next.servicePricing.minimumFare));

@@ -20,6 +20,8 @@ export default function CarSettingsPage() {
   const [platform, setPlatform] = useState("10");
   const [maxKm, setMaxKm] = useState("10");
   const [emergencyNumber, setEmergencyNumber] = useState("999");
+  const [sandboxDemo, setSandboxDemo] = useState(true);
+  const [sandboxStep, setSandboxStep] = useState("12");
   const [ratePerKm, setRatePerKm] = useState("2000");
   const [minimumFare, setMinimumFare] = useState("8000");
   const [comfortPremium, setComfortPremium] = useState("30");
@@ -71,6 +73,8 @@ export default function CarSettingsPage() {
     setPlatform(String(c.shares.platform));
     setMaxKm(String(c.maxPickupKm));
     setEmergencyNumber(c.emergencyNumber ?? "999");
+    setSandboxDemo(c.sandboxDemo ?? true);
+    setSandboxStep(String(c.sandboxDemoStepSeconds ?? 12));
     setRatePerKm(String(c.servicePricing?.ratePerKm ?? 2000));
     setMinimumFare(String(c.servicePricing?.minimumFare ?? 8000));
     setComfortPremium(String(c.servicePricing?.comfortPremiumPercent ?? 30));
@@ -138,6 +142,8 @@ export default function CarSettingsPage() {
           shares: { owner: Number(owner), driver: Number(driver), platform: Number(platform) },
           maxPickupKm: Math.min(200, Math.max(1, Number(maxKm) || 10)),
           emergencyNumber: /^[0-9+*#]{2,15}$/.test(emergencyNumber.trim()) ? emergencyNumber.trim() : "999",
+          sandboxDemo,
+          sandboxDemoStepSeconds: Math.min(600, Math.max(3, Number(sandboxStep) || 12)),
           servicePricing: { ratePerKm: Number(ratePerKm), minimumFare: Number(minimumFare), comfortPremiumPercent: Number(comfortPremium), xlPremiumPercent: Number(xlPremium), xlMinSeats: Number(xlMinSeats) },
           scheduled: {
             enabled: schedEnabled,
@@ -220,6 +226,16 @@ export default function CarSettingsPage() {
             <label className="text-xs font-semibold text-ink-500" htmlFor="car-emergency">Emergency phone number shown with Ambulance requests</label>
             <input id="car-emergency" inputMode="tel" value={emergencyNumber} onChange={(e) => setEmergencyNumber(e.target.value.replace(/[^0-9+*#]/g, "").slice(0, 15))} className={input} />
             <p className="text-xs text-ink-500">Customers are told to call this first if someone&apos;s life is in danger.</p>
+          </div>
+          <div className="space-y-2 border-t border-[var(--border-faint)] pt-3">
+            <label className="flex items-center gap-2 text-sm font-bold text-ink">
+              <Switch checked={sandboxDemo} onChange={(e) => setSandboxDemo(e.target.checked)} />
+              Sandbox demo drivers
+            </label>
+            <p className="text-xs text-ink-500">Sandbox only. Demo cars wait near every pickup, accept the rides testers book and drive them to the end, and answer calls at once. Never used in live.</p>
+            <label className="block space-y-1 text-xs font-semibold text-ink-500" htmlFor="car-demo-step">Seconds between demo driver steps
+              <input id="car-demo-step" inputMode="numeric" value={sandboxStep} disabled={!sandboxDemo} onChange={(e) => setSandboxStep(digits(e.target.value).slice(0, 3))} className={input} />
+            </label>
           </div>
         </section>
 

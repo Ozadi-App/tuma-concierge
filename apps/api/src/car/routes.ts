@@ -15,6 +15,7 @@ import { createOrderFromInput } from "../orders/routes.js";
 import { checkPaymentStatus, initiateDisbursement, UnsupportedNetworkError } from "../payments/service.js";
 import { creditWallet, debitWallet } from "../wallet/service.js";
 import { passengerSchema } from "../passengers/routes.js";
+import { ensureSandboxCarDrivers } from "./sandbox-demo.js";
 import { categoryFare, endAssignment, MAX_HIRE_HOURS, nearbyCategoryDrivers, quoteFare } from "./service.js";
 import { baseMimeType, extensionForMime } from "../lib/mime.js";
 import { getR2Bucket, uploadResponseHeaders } from "../storage/r2.js";
@@ -70,6 +71,7 @@ carRoutes.get("/car/service-options", async (c) => {
   const pricing = settings.servicePricing!;
   const t = parsed.data;
   const distanceKm = haversineKm(t.pickupLat, t.pickupLng, t.destinationLat, t.destinationLng);
+  await ensureSandboxCarDrivers(t.pickupLat, t.pickupLng);
   const counts = await nearbyTierCounts(t.pickupLat, t.pickupLng, settings.maxPickupKm, pricing.xlMinSeats);
   const options = (["normal", "large"] as const).flatMap((size) => (["convenient", "comfort"] as const).map((tier) => ({ size, tier, fare: tierFare(distanceKm, tier, pricing, size), nearby: counts[size][tier] })));
   return c.json({ distanceKm: Math.round(distanceKm * 10) / 10, options });
@@ -83,6 +85,7 @@ carRoutes.get("/car/category-nearby", async (c) => {
   const category = await activeCategory(parsed.data.categoryId);
   if (!category) return c.json({ error: "invalid_category" }, 400);
   const settings = await getCarSettings();
+  await ensureSandboxCarDrivers(parsed.data.lat, parsed.data.lng);
   return c.json({ nearby: await nearbyCategoryDrivers(parsed.data.categoryId, parsed.data.lat, parsed.data.lng, settings.maxPickupKm) });
 });
 
@@ -549,6 +552,7 @@ carRoutes.post("/car/bookings", async (c) => {
   const distanceKm = haversineKm(t.pickupLat, t.pickupLng, t.destinationLat, t.destinationLng);
   const fare = isTier ? tierFare(distanceKm, parsed.data.serviceTier!, settings.servicePricing!, vehicleSize) : categoryFare(category, distanceKm, parsed.data.hireHours);
   if (fare <= 0) return c.json({ error: "no_price", message: "This car type has no price set yet." }, 409);
+  await ensureSandboxCarDrivers(t.pickupLat, t.pickupLng);
   // Luxury and ambulance cars are few: say so up front instead of leaving the customer waiting for nobody.
   if ((category.service_group === "luxury" || category.service_group === "ambulance") && !parsed.data.scheduledFor) {
     if ((await nearbyCategoryDrivers(String(category.id), t.pickupLat, t.pickupLng, settings.maxPickupKm)) === 0) {

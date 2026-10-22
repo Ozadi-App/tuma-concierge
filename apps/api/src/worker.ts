@@ -16,6 +16,7 @@ import { expireStaleVouchers } from "./gas/vouchers.js";
 import { sweepStageEscalations, sweepStageFines, sweepElectionSessions } from "./stages/escalation.js";
 import { sweepActivationMessages } from "./onboarding/service.js";
 import { sweepFoodHours } from "./restaurants/hours.js";
+import { sweepSandboxCar } from "./car/sandbox-demo.js";
 import { sweepSandboxRelay } from "./relay/sandbox-demo.js";
 
 /** Minimal local stand-in so we don't need @cloudflare/workers-types (which
@@ -109,6 +110,11 @@ export default {
       sweepSandboxRelay()
         .then((steps) => console.log("Sandbox relay demo sweep:", steps))
         .catch((err) => console.error("Sandbox relay demo sweep failed:", err)),
+    );
+    ctx.waitUntil(
+      sweepSandboxCar()
+        .then((steps) => console.log("Sandbox car demo sweep:", steps))
+        .catch((err) => console.error("Sandbox car demo sweep failed:", err)),
     );
     ctx.waitUntil(
       sweepElectionSessions()

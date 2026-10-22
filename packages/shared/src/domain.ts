@@ -306,6 +306,10 @@ export type CarSettings = {
   maxPickupKm: number;
   /** Phone number shown with Ambulance requests (default 999). */
   emergencyNumber?: string;
+  /** Sandbox only: demo car drivers near every pickup take the rides testers book, start to finish. */
+  sandboxDemo?: boolean;
+  /** Seconds each demo driver step waits for a real person to act first. */
+  sandboxDemoStepSeconds?: number;
   servicePricing?: { ratePerKm: number; minimumFare: number; comfortPremiumPercent: number; xlPremiumPercent: number; xlMinSeats: number };
   /** Owners and drivers may cash their ride earnings out to mobile money. */
   withdrawalsEnabled: boolean;

@@ -66,6 +66,7 @@ import { appBaseUrl } from "../verify/service.js";
 import { payFromWallet } from "../wallet/service.js";
 import { checkoutBreakdown, deliveryOrders } from "./checkout-breakdown.js";
 import { bundleCheckoutQuote, fundBundle, notifyRiderOfCombinedDelivery, prepaidBundleGroup, unfundedBundleGroup, unpaidBundleGroup } from "./bundle-funding.js";
+import { stepSandboxCar } from "../car/sandbox-demo.js";
 import { stepSandboxRelay } from "../relay/sandbox-demo.js";
 import { isSubscriptionCurrent } from "../riders/subscription.js";
 import { guestStageHook } from "../guest/notify.js";
@@ -748,6 +749,10 @@ orderRoutes.get("/orders/:id", async (c) => {
   }
   // A sandbox relay parcel: the demo riders, matatu and station take their next step as it's watched.
   if (order.environment === "sandbox" && order.type === "parcel" && (await stepSandboxRelay(id).catch(() => null))) {
+    order = (await getOrder(id)) ?? order;
+  }
+  // A sandbox car ride: the demo drivers take it and play each driver step as it's watched.
+  if (order.environment === "sandbox" && order.is_ride && (await stepSandboxCar(id).catch(() => null))) {
     order = (await getOrder(id)) ?? order;
   }
 

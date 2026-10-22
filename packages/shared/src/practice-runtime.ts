@@ -1347,6 +1347,17 @@ function handlePracticeRequest(role: PracticeRole, path: string, method: string,
   if (method === "GET" && path === "/v1/chat/threads") return jsonResponse({ threads: [] });
   if (method === "GET" && path === "/v1/restaurants/me/chat") return jsonResponse({ threads: [] });
   if (method === "GET" && path.startsWith("/v1/calls/incoming")) return jsonResponse({ call: null });
+  // Calling a practice driver or rider: they answer at once, on a call with no audio, and the call ends when you hang up.
+  const practiceCall = (status: "accepted" | "ended", id: string, extra: { calleeId?: string; orderId?: string | null } = {}) => ({
+    call: { id, caller_id: "practice-customer", callee_id: extra.calleeId ?? "practice-rider", order_id: extra.orderId ?? PRACTICE_ORDER_ID, restaurant_id: null, provider: "mock" as const, status,
+      caller_session_id: null, callee_session_id: null, offer_sdp: null, answer_sdp: null, created_at: nowIso(-2_000), answered_at: nowIso(-1_000), ended_at: status === "ended" ? nowIso() : null, duration_seconds: status === "ended" ? 1 : null },
+  });
+  if (method === "POST" && path === "/v1/calls") {
+    return jsonResponse(practiceCall("accepted", `practice-call-${Date.now()}`, { calleeId: typeof body.calleeId === "string" ? body.calleeId : undefined, orderId: typeof body.orderId === "string" ? body.orderId : null }), 201);
+  }
+  const callId = path.match(/^\/v1\/calls\/(practice-call-\d+)(\/end)?$/);
+  if (callId && method === "GET" && !callId[2]) return jsonResponse(practiceCall("accepted", callId[1]));
+  if (callId && method === "POST" && callId[2]) return jsonResponse(practiceCall("ended", callId[1]));
 
   return practiceError();
 }
