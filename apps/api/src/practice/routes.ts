@@ -25,7 +25,7 @@ practiceRoutes.get("/practice/world", requireAuth, async (c) => {
   return c.json({ available, seeded: available ? await isPracticeSeeded() : false });
 });
 
-const sessionSchema = z.object({ role: z.enum(["customer", "rider", "merchant", "restaurant", "pharmacy", "gas"]) });
+const sessionSchema = z.object({ role: z.enum(["customer", "rider", "merchant", "restaurant", "pharmacy", "gas", "learner", "educator"]) });
 
 /**
  * Starts a practice session: signs the caller in as the practice persona for their app. The caller's own account is not
