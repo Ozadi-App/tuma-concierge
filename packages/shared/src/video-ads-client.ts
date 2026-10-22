@@ -63,6 +63,26 @@ export type AdCreativeInput = {
   ctaLabel?: string | null; durationSeconds?: number; skipAfterSeconds?: number | null;
 };
 
+export type VideoProviderOption = {
+  key: VideoProviderKey; displayName: string; summary: string; supportsDirectUpload: boolean; supportsProtectedPlayback: boolean;
+  platform: { available: boolean };
+  byo: { allowed: boolean; needsAccount: boolean; connected: boolean; fields: VideoCredentialField[] };
+};
+
+export type VideoAssetView = {
+  id: string; provider: VideoProviderKey; source: "platform" | "byo" | "link"; title: string | null; status: "uploading" | "processing" | "ready" | "failed" | "deleted";
+  durationSeconds: number | null; width: number | null; height: number | null; posterUrl: string | null; visibility: "public" | "protected"; error: string | null; createdAt: string;
+};
+
+export type VideoUploadInstructions = {
+  externalId: string; uploadUrl: string; method: "POST" | "PUT" | "PATCH"; protocol: "tus" | "form" | "raw"; headers?: Record<string, string>; fields?: Record<string, string>; expiresAt: string;
+};
+
+export type AdDecision = {
+  serveId: string; token: string; slot: "preroll" | "midroll";
+  creative: { kind: "video" | "image"; mediaUrl: string; posterUrl: string | null; headline: string | null; ctaLabel: string | null; hasClickThrough: boolean; durationSeconds: number; skipAfterSeconds: number };
+};
+
 type Request = <T>(path: string, init?: RequestInit) => Promise<T>;
 
 export function videoAdsMethods(request: Request) {
@@ -84,6 +104,24 @@ export function videoAdsMethods(request: Request) {
     adminTestVideoCredentials(provider: VideoProviderKey) {
       return send<{ ok: boolean; message?: string }>("POST", `/v1/admin/video/credentials/${enc(provider)}/test`);
     },
+    // --- creators
+    videoProviders() { return request<{ enabled: boolean; byoEnabled: boolean; maxDurationSeconds: number; providers: VideoProviderOption[] }>("/v1/video/providers"); },
+    connectVideoAccount(provider: VideoProviderKey, fields: Record<string, string>) { return send<{ connected: true; changed: string[] }>("PUT", `/v1/video/connections/${enc(provider)}`, { fields }); },
+    disconnectVideoAccount(provider: VideoProviderKey) { return send<{ ok: true }>("DELETE", `/v1/video/connections/${enc(provider)}`); },
+    startVideoUpload(input: { source: "platform" | "byo"; provider?: VideoProviderKey; title?: string; maxDurationSeconds?: number; protectedPlayback?: boolean }) {
+      return send<{ asset: VideoAssetView; upload: VideoUploadInstructions }>("POST", "/v1/video/uploads", input);
+    },
+    importVideo(input: { provider: VideoProviderKey; reference: string; title?: string }) { return send<{ asset: VideoAssetView }>("POST", "/v1/video/assets/import", input); },
+    videoAsset(id: string) { return request<{ asset: VideoAssetView }>(`/v1/video/assets/${enc(id)}`); },
+    deleteVideoAsset(id: string) { return send<{ ok: true }>("DELETE", `/v1/video/assets/${enc(id)}`); },
+
+    // --- players
+    adsPlan(assetId: string) { return request<{ preroll: boolean; midrollAtSeconds: number[]; skipAfterSeconds: number }>(`/v1/ads/plan?asset=${enc(assetId)}`); },
+    adsDecision(assetId: string, slot: "preroll" | "midroll", postId?: string) {
+      return request<{ ad: AdDecision | null }>(`/v1/ads/decision?asset=${enc(assetId)}&slot=${slot}${postId ? `&post=${enc(postId)}` : ""}`);
+    },
+    adsEarnings(days = 30) { return request<{ impressions: number; earnedUgx: number; days: number }>(`/v1/ads/earnings?days=${days}`); },
+
     adminGetAds() {
       return request<AdsAdminOverview>("/v1/admin/ads");
     },

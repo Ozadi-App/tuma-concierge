@@ -7,7 +7,7 @@ import {
   type Rider,
   type RiderSubscriptionView,
 } from "@peebee/shared";
-import { CheckCircle2, LogOut, MapPin, PiggyBank, TriangleAlert, Upload, User } from "lucide-react";
+import { CheckCircle2, LogOut, MapPin, Megaphone, PiggyBank, TriangleAlert, Upload, User } from "lucide-react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
@@ -28,6 +28,19 @@ const LocationMapPicker = dynamic(
   () => import("../../components/LocationMapPicker").then((m) => m.LocationMapPicker),
   { ssr: false },
 );
+
+/** Offered to drivers once an admin has opened the Spotlight to them. */
+function SpotlightLink() {
+  const [on, setOn] = useState(false);
+  useEffect(() => { api.channelsConfig().then((c) => setOn(c.enabled && !!c.publishing?.publishers.includes("driver"))).catch(() => setOn(false)); }, []);
+  if (!on) return null;
+  return (
+    <Link href="/spotlight" className="flex min-h-11 w-full items-center justify-center gap-2 rounded-full border border-[var(--border-faint)] px-4 text-sm font-bold text-ink">
+      <Megaphone className="h-4 w-4" strokeWidth={2} aria-hidden />
+      Share in the Spotlight
+    </Link>
+  );
+}
 
 function Field({
   label,
@@ -521,6 +534,8 @@ export default function AccountPage() {
           RSLA
         </Link>
       )}
+
+      <SpotlightLink />
 
       <button
         onClick={logout}
