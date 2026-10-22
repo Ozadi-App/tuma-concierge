@@ -19,8 +19,9 @@ import { useRegisterNavPrimaryAction, useRegisterNavBack } from "../../../../lib
 import { payReturnKey } from "../../../../lib/taxipress-draft";
 
 /** Where to go once this order is paid (or on Back): a flow that sent the customer here (TaxiPress) can ask to come back. */
-function afterPay(id: string) {
-  try { return sessionStorage.getItem(payReturnKey(id)) || `/orders/${id}`; } catch { return `/orders/${id}`; }
+function afterPay(id: string, ticketId?: string | null) {
+  const fallback = ticketId ? `/ride/taxipress/ticket/${ticketId}` : `/orders/${id}`;
+  try { return sessionStorage.getItem(payReturnKey(id)) || fallback; } catch { return fallback; }
 }
 
 type Method = "mobile_money" | "wallet" | "cash";
@@ -46,6 +47,7 @@ export default function PaymentPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const paying = useRef(false);
+  const ticketId = useRef<string | null>(null);
   const polling = useRef(false);
   const load = useCallback(async () => {
     if (polling.current) return;
@@ -91,17 +93,20 @@ export default function PaymentPage() {
       }
       setDetail(current);
       setQuote(nextQuote);
+      ticketId.current = nextQuote.taxipress?.bookingId ?? null;
       // Paid already (a relay paid before its rider): nothing left to do here, the order page follows it.
       const paid = current.payments.some((p) => p.type === "collection" && p.status === "successful");
-      if (!["Create", "Match", "Fund"].includes(current.order.stage) || (paid && current.order.stage !== "Fund")) router.replace(afterPay(id));
+      if (!["Create", "Match", "Fund"].includes(current.order.stage) || (paid && current.order.stage !== "Fund")) router.replace(afterPay(id, ticketId.current));
     } catch (err) { setError(errorMessage(err)); }
     finally { polling.current = false; }
   }, [id, router]);
   useLivePolling(() => void load(), 4000, [load]);
+  // TaxiPress: cash can be switched off, or the passenger may already hold the most cash bookings allowed.
+  const cashBlocked = quote?.taxipress?.cashAllowed === false ? quote.taxipress.cashReason ?? "Cash isn't available for this ride." : null;
   // A relay is paid in the app, never in cash.
   useEffect(() => {
-    if (quote?.payBeforeRider && method === "cash") setMethod("mobile_money");
-  }, [quote?.payBeforeRider, method]);
+    if ((quote?.payBeforeRider || cashBlocked) && method === "cash") setMethod("mobile_money");
+  }, [quote?.payBeforeRider, cashBlocked, method]);
 
   useEffect(() => {
     let active = true;
@@ -128,7 +133,7 @@ export default function PaymentPage() {
     && (combinedStops.length < 2 || combinedStops.every((stop) => stop.stage === "Match"))));
   const methods = payFirst ? METHODS.filter((m) => m.id !== "cash") : METHODS;
   const insufficient = method === "wallet" && selectedWallet?.balance != null && amount != null && selectedWallet.balance < amount;
-  const disabled = busy || !online || !ready || amount == null ||
+  const disabled = busy || (method === "cash" && !!cashBlocked) || !online || !ready || amount == null ||
     (method === "mobile_money" && !network) ||
     (method === "wallet" && (!selectedWallet || selectedWallet.balance == null || insufficient));
 
@@ -147,7 +152,7 @@ export default function PaymentPage() {
       if (result.funded || result.payment?.status === "successful") {
         // A combined delivery is paid once (quote.bundle); only an older part-paid one still chains to the next pickup.
         const nextUnpaidPickup = quote?.bundle ? undefined : detail?.bundleStops?.find((stop) => stop.id !== id && stop.stage === "Match");
-        router.replace(nextUnpaidPickup ? `/orders/${nextUnpaidPickup.id}/pay` : afterPay(id));
+        router.replace(nextUnpaidPickup ? `/orders/${nextUnpaidPickup.id}/pay` : afterPay(id, ticketId.current));
       }
       else await load();
     } catch (err) { setError(errorMessage(err)); await load(); }
@@ -157,7 +162,7 @@ export default function PaymentPage() {
   // The final pay step is the bottom nav's gold right capsule (both themes),
   // wired to the same pay() with the same disabled rules.
   // Pay step: nav Back returns to the order.
-  useRegisterNavBack(true, () => router.push(afterPay(id)));
+  useRegisterNavBack(true, () => router.push(afterPay(id, ticketId.current)));
   useRegisterNavPrimaryAction({
     tone: "gold",
     label: busy ? "Please wait…" : pending ? "Waiting for payment" : method === "cash" ? "Continue with cash" : `Pay${amount == null ? "" : ` ${formatUgx(amount)}`}`,
@@ -180,13 +185,14 @@ export default function PaymentPage() {
       <fieldset disabled={busy || pending} className={`grid gap-2 ${methods.length === 2 ? "grid-cols-2" : "grid-cols-3"}`}>
         <legend className="sr-only">Payment method</legend>
         {methods.map(({ id: value, label, icon: Icon }) => (
-          <label key={value} className={`flex min-h-24 cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border-2 p-2 text-center text-sm font-bold ${method === value ? "border-gold bg-gold/10 text-ink" : "border-[var(--border-faint)] text-ink-500"}`}>
-            <input type="radio" name="payment-method" value={value} checked={method === value} onChange={() => setMethod(value)} className="sr-only peer" />
+          <label key={value} className={`flex min-h-24 flex-col items-center justify-center gap-2 rounded-2xl border-2 p-2 text-center text-sm font-bold ${value === "cash" && cashBlocked ? "cursor-not-allowed opacity-50" : "cursor-pointer"} ${method === value ? "border-gold bg-gold/10 text-ink" : "border-[var(--border-faint)] text-ink-500"}`}>
+            <input type="radio" name="payment-method" value={value} checked={method === value} disabled={value === "cash" && !!cashBlocked} aria-describedby={value === "cash" && cashBlocked ? "cash-blocked" : undefined} onChange={() => setMethod(value)} className="sr-only peer" />
             <Icon className="h-6 w-6 peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-gold" aria-hidden />
             {label}
           </label>
         ))}
       </fieldset>
+      {cashBlocked && <p id="cash-blocked" className="-mt-2 text-sm text-ink-500">{cashBlocked}</p>}
       <section className="home-card space-y-4">
 
         <fieldset disabled={busy || pending} hidden={method !== "mobile_money"} className="min-w-0">

@@ -22,6 +22,26 @@ export default function TaxipressTicketPage() {
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
 
+  // Back from a Mobile Money payment: settle it now so the ticket shows Paid without waiting.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const orderId = params.get("order");
+    if (params.get("payment_return") !== "1" || !orderId) return;
+    let live = true;
+    api.getOrder(orderId)
+      .then(async (detail) => {
+        const pending = detail.payments.find((p) => p.type === "collection" && ["pending", "unknown"].includes(p.status));
+        if (pending) await api.refreshPayment(pending.id);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!live) return;
+        window.history.replaceState(null, "", window.location.pathname);
+        setTick((t) => t + 1);
+      });
+    return () => { live = false; };
+  }, []);
+
   useEffect(() => {
     let live = true;
     api.getTaxipressBooking(id)

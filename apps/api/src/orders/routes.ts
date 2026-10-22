@@ -65,6 +65,7 @@ import { getR2Bucket, uploadResponseHeaders } from "../storage/r2.js";
 import { appBaseUrl } from "../verify/service.js";
 import { payFromWallet } from "../wallet/service.js";
 import { checkoutBreakdown, deliveryOrders } from "./checkout-breakdown.js";
+import { taxipressPayRules } from "../taxipress/pay-rules.js";
 import { bundleCheckoutQuote, fundBundle, notifyRiderOfCombinedDelivery, prepaidBundleGroup, unfundedBundleGroup, unpaidBundleGroup } from "./bundle-funding.js";
 import { stepSandboxCar } from "../car/sandbox-demo.js";
 import { stepSandboxRelay } from "../relay/sandbox-demo.js";
@@ -80,6 +81,11 @@ import {
 
 function paymentReturnUrl(orderId: string): string {
   return `${appBaseUrl("customer")}/orders/${orderId}/pay?payment_return=1`;
+}
+
+/** A TaxiPress order's Mobile Money callback lands on its ticket, which settles the payment. */
+function taxipressReturnUrl(bookingId: string, orderId: string): string {
+  return `${appBaseUrl("customer")}/ride/taxipress/ticket/${bookingId}?payment_return=1&order=${encodeURIComponent(orderId)}`;
 }
 
 export const orderRoutes = new Hono();
@@ -1773,6 +1779,8 @@ orderRoutes.get("/orders/:id/checkout", async (c) => {
     cash: baseAmount,
     ...(await checkoutBreakdown([order])),
     payBeforeRider,
+    // TaxiPress: whether cash is allowed (switch and per-passenger limit) and the ticket to return to.
+    taxipress: await taxipressPayRules(String(order.id), String(order.customer_id)),
   });
 });
 
@@ -1819,6 +1827,11 @@ orderRoutes.post("/orders/:id/fund", async (c) => {
   }
   if (payFirst && parsed.data.paymentMethod === "cash") {
     return c.json({ error: "relay_requires_prepay", message: "Relay deliveries are paid in the app, not in cash." }, 409);
+  }
+  // TaxiPress: the cash switch and the per-passenger cash-booking limit apply here too.
+  const taxipress = await taxipressPayRules(id, String(order.customer_id));
+  if (taxipress && parsed.data.paymentMethod === "cash" && !taxipress.cashAllowed) {
+    return c.json({ error: "taxipress_cash_not_allowed", message: taxipress.cashReason }, 409);
   }
 
   // Combined delivery (two pickups, one rider): one payment from the first pickup covers every pickup.
@@ -1960,7 +1973,7 @@ orderRoutes.post("/orders/:id/fund", async (c) => {
       msisdn: parsed.data.msisdn,
       amount,
       name: user.name,
-      returnUrl: (await isGuestOrder(id)) ? guestReturnUrl(id) : paymentReturnUrl(id),
+      returnUrl: (await isGuestOrder(id)) ? guestReturnUrl(id) : taxipress ? taxipressReturnUrl(taxipress.bookingId, id) : paymentReturnUrl(id),
       forceMock: order.environment === "sandbox",
     });
     providerRef = initiated.providerRef;
