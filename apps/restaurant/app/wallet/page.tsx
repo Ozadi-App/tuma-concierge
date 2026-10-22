@@ -128,7 +128,7 @@ export default function MerchantWalletPage() {
     <div className="space-y-5 px-4 pb-8 pt-4">
       <div className="flex items-center gap-3">
         <Link href="/" aria-label="Back" className="rounded-full p-2 text-ink"><ArrowLeft className="h-5 w-5" /></Link>
-        <div><h1 className="text-xl font-bold text-ink">Merchant balance</h1><p className="text-xs text-ink-500">Backed UGX payable to {restaurant.name}</p></div>
+        <div><p className="rs-eyebrow">Money</p><h1 className="rs-title">Business balance</h1><p className="text-xs text-ink-500">Backed UGX payable to {restaurant.name}</p></div>
       </div>
 
       {error && <div className="flex gap-2 rounded-2xl border border-red-300 bg-red-50 p-3 text-sm text-red-800"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />{error}</div>}

@@ -7,8 +7,8 @@ import { useAuth } from "../lib/auth-context";
 
 const PUBLIC_PATHS = ["/login", "/forgot-password"];
 // Always reachable for a signed-in owner even before their restaurant is
-// registered/approved — /account is where that registration form lives.
-const ALWAYS_ALLOWED_PATHS = ["/account", "/verify"];
+// registered/approved — /business is where that registration form lives.
+const ALWAYS_ALLOWED_PATHS = ["/account", "/business", "/verify"];
 // Reachable no matter the auth state at all — this is where the emailed
 // "Verify Email Address" link redirects to, and the person clicking it may
 // be signed out here (different device/browser than where they signed up).

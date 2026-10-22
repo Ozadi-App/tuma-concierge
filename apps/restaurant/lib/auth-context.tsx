@@ -62,10 +62,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [user]);
 
   useEffect(() => {
+    // Wait for the stored user to load: otherwise a cold start briefly reports
+    // "no restaurant" and the Orders page bounces the owner to registration.
+    if (!ready) return;
     setRestaurantReady(false);
     void refreshRestaurant();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id]);
+  }, [ready, user?.id]);
 
   // Keep the server-controlled working-hours state fresh on every seller tab.
   useEffect(() => {

@@ -8,12 +8,12 @@ import {
 } from "@peebee/shared";
 import {
   Camera,
-  Check,
   ChevronRight,
   FolderOpen,
   Plus,
   Search,
   Settings2,
+  Star,
   UtensilsCrossed,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -21,6 +21,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { MenuItemEditor } from "../../components/MenuItemEditor";
 import { MenuPhoto } from "../../components/MenuPhoto";
 import { Modal } from "../../components/Modal";
+import { toast } from "../../components/shell/Toaster";
+import { PageHeader } from "../../components/ui/Page";
+import { Switch } from "../../components/ui/Switch";
 import { api, errorMessage } from "../../lib/api";
 
 const money = (value: number) => `UGX ${value.toLocaleString("en-UG")}`;
@@ -236,59 +239,32 @@ function DishRow({
   photoRevision: number;
 }) {
   return (
-    <article className="rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-3">
-      <button type="button" role="switch" aria-checked={!!item.is_featured} aria-label={`${item.name} featured`} disabled={busy} onClick={onFeature} className={`mb-3 min-h-11 w-full rounded-full border border-[var(--border-faint)] text-xs font-bold ${item.is_featured?"bg-gold/15 text-ink":"text-ink-500"}`}>{item.is_featured?"Featured in your storefront":"Feature this dish"}</button>
-      <button
-        type="button"
-        onClick={onEdit}
-        aria-label={`Edit ${item.name}`}
-        className="flex w-full items-center gap-3 text-left"
-      >
-        <div className="w-20 shrink-0 overflow-hidden rounded-xl">
-          <MenuPhoto
-            id={item.id}
-            hasPhoto={!!item.photo_key}
-            revision={photoRevision}
-          />
+    <article className={`rs-dish flex-col !items-stretch ${item.available ? "" : "is-off"}`}>
+      <button type="button" onClick={onEdit} aria-label={`Edit ${item.name}`} className="flex w-full items-center gap-3 text-left">
+        <div className="rs-dish-photo">
+          <MenuPhoto id={item.id} hasPhoto={!!item.photo_key} revision={photoRevision} />
+          {item.is_featured ? <span className="absolute right-1.5 top-1.5 rounded-full bg-gold p-1 text-ink-gold"><Star size={11} fill="currentColor" aria-hidden /></span> : null}
         </div>
         <div className="min-w-0 flex-1">
-          <h3 className="break-words font-bold">{item.name}</h3>
-          <p className="mt-1 text-sm">{money(item.price)}</p>
-          <p className="mt-1 text-xs text-ink-500">
-            {item.options.length
-              ? `${item.options.length} choice group${item.options.length === 1 ? "" : "s"}`
-              : "One price, no choices"}
+          <h3 className="truncate font-bold">{item.name}</h3>
+          <p className="mt-0.5 text-sm font-semibold">{money(item.price)}</p>
+          <p className="mt-0.5 truncate text-xs text-ink-500">
+            {item.prep_time_minutes ? `${item.prep_time_minutes} min · ` : ""}
+            {item.options.length ? `${item.options.length} choice group${item.options.length === 1 ? "" : "s"}` : "One price"}
             {!item.photo_key ? " · Add a photo" : ""}
           </p>
         </div>
         <ChevronRight size={18} className="shrink-0 text-ink-500" />
       </button>
-      <div className="mt-2 flex items-center justify-between border-t border-[var(--border-faint)] pt-2">
-        <span className="text-xs text-ink-500">
-          {item.prep_time_minutes
-            ? `${item.prep_time_minutes} min preparation`
-            : "Ready when you are"}
-        </span>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={!!item.available}
-          aria-label={`${item.name} available to order`}
-          onClick={onToggle}
-          disabled={busy}
-          className={`flex min-h-11 items-center gap-2 rounded-full px-3 text-xs font-bold disabled:opacity-50 ${item.available ? "bg-gold/15 text-ink" : "bg-[rgb(var(--surface-muted))] text-ink-500"}`}
-        >
-          {busy ? (
-            "Updating…"
-          ) : item.available ? (
-            <>
-              <Check size={14} />
-              Available
-            </>
-          ) : (
-            "Unavailable"
-          )}
-        </button>
+      <div className="grid grid-cols-2 gap-2 border-t border-[var(--border-faint)] pt-2">
+        <label className="!flex-row-reverse rounded-xl px-2 py-1.5 text-xs font-semibold">
+          <Switch aria-label={`${item.name} featured`} checked={!!item.is_featured} disabled={busy} onChange={onFeature} />
+          <span>{busy ? "Updating…" : "Featured"}</span>
+        </label>
+        <label className="rounded-xl px-2 py-1.5 text-xs font-semibold">
+          <Switch aria-label={`${item.name} available to order`} checked={!!item.available} disabled={busy} onChange={onToggle} />
+          <span>{item.available ? "Available" : "Unavailable"}</span>
+        </label>
       </div>
     </article>
   );
@@ -327,7 +303,7 @@ export default function MenuPage() {
       );
     } catch (err) {
       if (err instanceof ApiError && err.status === 404)
-        router.replace("/account");
+        router.replace("/business");
       else setError(errorMessage(err));
     }
   }, [router]);
@@ -351,9 +327,8 @@ export default function MenuPage() {
     try {
       await api.updateMenuItem(item.id, featured?{featured:!item.is_featured}:{ available: !item.available });
       await load();
-      setNotice(
-        featured?`${item.name} ${item.is_featured?"removed from":"added to"} featured dishes.`:`${item.name} is now ${item.available ? "unavailable" : "available to order"}.`,
-      );
+      const message = featured?`${item.name} ${item.is_featured?"removed from":"added to"} featured dishes.`:`${item.name} is now ${item.available ? "unavailable" : "available to order"}.`;
+      toast(message);
     } catch (err) {
       setError(errorMessage(err));
     } finally {
@@ -383,31 +358,30 @@ export default function MenuPage() {
     }));
 
   return (
-    <div className="space-y-5 px-4 pb-8 pt-4">
-      <header className="flex items-center justify-between gap-3">
-        <div>
-          <p className="text-xs font-semibold text-ink-500">
-            Create. Organise. Serve.
-          </p>
-          <h1 className="mt-1 text-2xl font-bold">Your menu</h1>
-        </div>
-        <button
-          type="button"
-          disabled={!menu}
-          onClick={() =>
-            openEditor(
-              null,
-              selectedSection === "all" || selectedSection === "none"
-                ? null
-                : selectedSection,
-            )
-          }
-          className="flex min-h-12 shrink-0 items-center gap-2 rounded-full bg-gold px-4 text-sm font-bold text-ink-gold disabled:opacity-50"
-        >
-          <Plus size={18} />
-          Add dish
-        </button>
-      </header>
+    <div className="space-y-5 px-4 pb-8 pt-4 lg:px-8">
+      <PageHeader
+        eyebrow="Storefront"
+        title="Your menu"
+        description="Create. Organise. Serve."
+        actions={
+          <button
+            type="button"
+            disabled={!menu}
+            onClick={() =>
+              openEditor(
+                null,
+                selectedSection === "all" || selectedSection === "none"
+                  ? null
+                  : selectedSection,
+              )
+            }
+            className="rs-btn rs-btn-gold disabled:opacity-50"
+          >
+            <Plus size={18} />
+            Add dish
+          </button>
+        }
+      />
       {menu && (
         <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
           <p className="text-ink-500">
@@ -507,7 +481,7 @@ export default function MenuPage() {
                 type="button"
                 aria-pressed={selectedSection === section.id}
                 onClick={() => setSelectedSection(section.id)}
-                className={`min-h-11 shrink-0 rounded-full border px-4 text-xs font-bold ${selectedSection === section.id ? "border-gold bg-gold/15 text-ink" : "border-[var(--border-faint)] text-ink-500"}`}
+                className="rs-chip shrink-0"
               >
                 {section.name} · {section.count}
               </button>
@@ -519,7 +493,7 @@ export default function MenuPage() {
                 <h2 className="text-sm font-bold text-ink-500">
                   {section.name}
                 </h2>
-                <div className="space-y-3">
+                <div className="grid gap-3 lg:grid-cols-2">
                   {section.items.map((item) => (
                     <DishRow
                       key={item.id}

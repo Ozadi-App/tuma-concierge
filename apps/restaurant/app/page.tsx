@@ -43,7 +43,7 @@ function OrderCard({
 }) {
   const awaiting = order.stage === "Create" || order.stage === "Match";
   return (
-    <article className="rounded-3xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-4">
+    <article className="rs-card !p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="font-mono text-xs text-ink-500" title={order.id}>
@@ -193,14 +193,14 @@ function OrdersInbox() {
   }, [view, load]);
   return (
     <section className="space-y-4" aria-label="Food orders">
-      <div className="flex items-center gap-2">
+      <div className="rs-seg">
         {(["active", "history"] as const).map((tab) => (
           <button
             type="button"
             key={tab}
             aria-pressed={view === tab}
             onClick={() => setView(tab)}
-            className={`min-h-12 flex-1 rounded-2xl border px-4 text-sm font-bold ${view === tab ? "border-gold bg-gold/15" : "border-[var(--border-faint)] text-ink-500"}`}
+            className="min-h-11 flex-1"
           >
             {tab === "active" ? "Active orders" : "History"}
             {feed ? ` · ${feed.counts[tab]}` : ""}
@@ -279,7 +279,7 @@ export default function HomePage() {
   const { restaurant, restaurantReady, refreshRestaurant } = useAuth();
   const router = useRouter();
   useEffect(() => {
-    if (restaurantReady && !restaurant) router.replace("/account");
+    if (restaurantReady && !restaurant) router.replace("/business");
   }, [restaurantReady, restaurant, router]);
   if (!restaurantReady)
     return (
@@ -289,11 +289,12 @@ export default function HomePage() {
     );
   if (!restaurant) return null;
   return (
-    <div className="space-y-4 px-4 pb-8 pt-4">
-      <header className="flex items-center justify-between gap-3">
+    <div className="space-y-4 px-4 pb-8 pt-4 lg:px-8">
+      <header className="flex items-end justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-sm text-ink-500">{restaurant.name}</p>
-          <h1 className="mt-1 text-2xl font-bold">Orders</h1>
+          <p className="rs-eyebrow">Today</p>
+          <h1 className="rs-title">Orders</h1>
+          <p className="mt-1 truncate text-sm text-ink-500">{restaurant.name}</p>
         </div>
         {restaurant.status === "active" ? (
           <OpenStatusCard
@@ -340,14 +341,14 @@ export default function HomePage() {
       <div className="flex flex-wrap gap-2">
         <Link
           href="/payments"
-          className="flex min-h-11 items-center gap-2 rounded-full border border-[var(--border-faint)] px-3 text-xs font-bold"
+          className="rs-chip !text-ink"
         >
           <ShieldCheck size={15} />
           Rider payment
         </Link>
         <Link
           href="/wallet"
-          className="flex min-h-11 items-center gap-2 rounded-full border border-[var(--border-faint)] px-3 text-xs font-bold"
+          className="rs-chip !text-ink"
         >
           <WalletCards size={15} />
           Business balance

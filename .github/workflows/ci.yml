@@ -48,7 +48,7 @@ jobs:
         working-directory: apps/api
         run: npm test
       - name: Menu editor save and retry tests
-        run: pnpm --filter api exec tsx --test ../restaurant/lib/menu-editor.test.ts
+        run: pnpm --filter api exec tsx --test ../restaurant/lib/menu-editor.test.ts ../restaurant/lib/storefront-palette.test.ts
       - name: Customer cart and card pricing tests
         run: pnpm --filter api exec tsx --test ../customer/lib/cart.test.ts ../customer/lib/product-pricing.test.ts ../customer/lib/buy-home.test.ts ../customer/lib/hive-home.test.ts
 

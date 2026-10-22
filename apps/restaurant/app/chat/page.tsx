@@ -32,8 +32,8 @@ export default function RestaurantChatThreadsPage() {
   useLivePolling(load, 6000, [load]);
 
   return (
-    <div className="space-y-5 px-4 pb-6 pt-4">
-      <h1 className="text-xl font-bold text-ink">Chat</h1>
+    <div className="space-y-5 px-4 pb-6 pt-4 lg:px-8">
+      <div><p className="rs-eyebrow">Today</p><h1 className="rs-title">Messages</h1></div>
 
       {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
 

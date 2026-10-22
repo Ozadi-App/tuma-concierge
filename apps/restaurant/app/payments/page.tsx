@@ -48,13 +48,13 @@ export default function MerchantPaymentConfirmationPage() {
   const complete = payment && ["available", "held", "settlement_pending", "paid"].includes(payment.status);
 
   return (
-    <div className="space-y-5 px-4 pb-24 pt-4">
+    <div className="space-y-5 px-4 pb-24 pt-4 lg:px-8">
       <header className="flex items-center gap-2">
         <Link href="/" aria-label="Back" className="flex h-9 w-9 items-center justify-center rounded-full text-ink-500">
           <ChevronLeft className="h-5 w-5" aria-hidden />
         </Link>
         <div>
-          <h1 className="text-xl font-bold text-ink">Confirm rider payment</h1>
+          <p className="rs-eyebrow">Money</p><h1 className="rs-title">Rider payments</h1>
           <p className="text-xs text-ink-500">Confirm only after checking the goods and amount together.</p>
         </div>
       </header>

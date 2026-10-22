@@ -1,6 +1,7 @@
 "use client";
 
-import { Select } from "@peebee/shared/select";
+import { Select } from "./ui/Select";
+import { Switch } from "./ui/Switch";
 import type { MenuCategory, MenuItem, MenuItemBadge } from "@peebee/shared";
 import {
   Camera,
@@ -504,32 +505,34 @@ export function MenuItemEditor({
                       changeOption(option.key, { name: event.target.value })
                     }
                   />
-                  <div className="flex flex-wrap gap-4 text-sm">
-                    <label className="flex min-h-11 items-center gap-2">
-                      <input
-                        type="checkbox"
+                  <div className="divide-y divide-[var(--border-faint)] rounded-2xl border border-[var(--border-faint)] px-3 text-sm">
+                    <label className="min-h-12 py-2">
+                      <Switch
                         checked={option.required}
                         onChange={(event) =>
                           changeOption(option.key, {
                             required: event.target.checked,
                           })
                         }
-                        className="accent-gold"
                       />
-                      Must choose
+                      <span>
+                        <span className="block font-semibold">Must choose</span>
+                        <span className="block text-xs text-ink-500">Customers pick before adding to cart</span>
+                      </span>
                     </label>
-                    <label className="flex min-h-11 items-center gap-2">
-                      <input
-                        type="checkbox"
+                    <label className="min-h-12 py-2">
+                      <Switch
                         checked={option.multiSelect}
                         onChange={(event) =>
                           changeOption(option.key, {
                             multiSelect: event.target.checked,
                           })
                         }
-                        className="accent-gold"
                       />
-                      Allow several
+                      <span>
+                        <span className="block font-semibold">Allow several</span>
+                        <span className="block text-xs text-ink-500">Off means one choice only</span>
+                      </span>
                     </label>
                   </div>
                   <p className="text-xs text-ink-500">
@@ -673,7 +676,13 @@ export function MenuItemEditor({
                   ))}
                 </div>
               </article>
-              <label className="flex min-h-12 items-center justify-between gap-3 rounded-2xl border border-[var(--border-faint)] p-3">
+              <label className="min-h-12 rounded-2xl border border-[var(--border-faint)] p-3">
+                <Switch
+                  checked={draft.available}
+                  onChange={(event) =>
+                    patch({ available: event.target.checked })
+                  }
+                />
                 <span>
                   <span className="block text-sm font-bold">
                     Available to order
@@ -682,14 +691,6 @@ export function MenuItemEditor({
                     Turn off when this dish is not ready to serve.
                   </span>
                 </span>
-                <input
-                  type="checkbox"
-                  className="h-5 w-5 accent-gold"
-                  checked={draft.available}
-                  onChange={(event) =>
-                    patch({ available: event.target.checked })
-                  }
-                />
               </label>
             </>
           )}
