@@ -1,122 +1,122 @@
 "use client";
 
-import type { TaxipressBooking, TaxipressQueueView } from "@peebee/shared";
-import { Bus, ChevronLeft, ChevronRight, Ticket } from "lucide-react";
+import type { TaxipressConfig } from "@peebee/shared";
+import { ArrowRight, ArrowUpDown, ChevronDown, ChevronLeft, ChevronUp, Ticket } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { api, errorMessage } from "../../../lib/api";
+import { api } from "../../../lib/api";
 import { useTaxipress } from "../../../lib/taxipress";
+import { journey, ugx } from "../../../lib/taxipress-draft";
 
-const ugx = (n: number) => `UGX ${n.toLocaleString("en-UG")}`;
-const REFRESH_MS = 10_000;
+type Route = TaxipressConfig["routes"][number];
 
-/** Taxipress home: pick a way, see the taxis in the line, book a seat. */
+/** TaxiPress step 1: pick a route (swap it to travel the other way, open it to see its stops). */
 export default function TaxipressPage() {
   const taxipress = useTaxipress();
-  const [picked, setPicked] = useState<string | null>(null);
-  const routeId = taxipress.routes.find((r) => r.id === picked)?.id ?? taxipress.routes[0]?.id ?? null;
+  const router = useRouter();
+  const [open, setOpen] = useState<string | null>(null);
+  const [swapped, setSwapped] = useState<Record<string, boolean>>({});
+  const [counts, setCounts] = useState<Record<string, number>>({});
+  const [active, setActive] = useState(0);
 
-  const [queue, setQueue] = useState<TaxipressQueueView | null>(null);
-  const [bookings, setBookings] = useState<TaxipressBooking[]>([]);
-  const [error, setError] = useState("");
-  const [tick, setTick] = useState(0);
+  // One card per route pair: the reverse direction is reached with the swap button.
+  const cards: Route[] = [];
+  for (const r of taxipress.routes) {
+    if (r.reverseId && cards.some((c) => c.id === r.reverseId)) continue;
+    cards.push(r);
+  }
+  const shown = (r: Route) => (swapped[r.id] && r.reverseId ? taxipress.routes.find((x) => x.id === r.reverseId) ?? r : r);
+  const ids = cards.map((c) => shown(c).id).join(",");
 
   useEffect(() => {
-    if (!routeId) return;
     let live = true;
-    api.getTaxipressQueue(routeId)
-      .then((q) => { if (live) { setQueue(q); setError(""); } })
-      .catch((err) => { if (live) setError(errorMessage(err)); });
-    const id = window.setTimeout(() => setTick((t) => t + 1), REFRESH_MS);
-    return () => { live = false; window.clearTimeout(id); };
-  }, [routeId, tick]);
+    for (const id of ids.split(",").filter(Boolean)) {
+      api.getTaxipressQueue(id).then((q) => { if (live) setCounts((c) => ({ ...c, [id]: q.line.length })); }).catch(() => {});
+    }
+    return () => { live = false; };
+  }, [ids]);
 
   useEffect(() => {
     let live = true;
     api.getMyTaxipressBookings()
-      .then((res) => { if (live) setBookings(res.bookings.filter((b) => b.status === "booked" || b.status === "boarded")); })
+      .then((res) => { if (live) setActive(res.bookings.filter((b) => b.status === "booked" || b.status === "boarded").length); })
       .catch(() => {});
     return () => { live = false; };
   }, []);
 
-  const current = queue?.route && queue.route.id === routeId ? queue : null;
-
   return (
-    <main className="space-y-5 px-4 pb-8 pt-4">
-      <Link href="/ride" className="inline-flex min-h-11 items-center gap-1 text-sm font-semibold text-ink-500">
-        <ChevronLeft className="h-4 w-4" aria-hidden /> Ride
-      </Link>
-      <section className="home-card border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-5">
-        <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gold/10 text-gold"><Bus size={22} strokeWidth={1.8} aria-hidden /></span>
-        <h1 className="mt-3 text-2xl font-bold">Taxipress</h1>
-        <p className="mt-1 text-sm leading-relaxed text-ink-500">Book a seat on the next taxi, or on a later one in the line. A taxi leaves when every seat is booked.</p>
-      </section>
-
-      {bookings.length > 0 && (
-        <section aria-label="Your seats" className="space-y-2">
-          <h2 className="px-1 text-sm font-bold text-ink">Your seats</h2>
-          {bookings.map((b) => (
-            <Link key={b.id} href={`/ride/taxipress/ticket/${b.id}`} className="ride-link-tile flex items-center justify-between gap-3 rounded-2xl p-3">
-              <span className="flex min-w-0 items-center gap-3">
-                <Ticket className="h-5 w-5 shrink-0 text-gold" aria-hidden />
-                <span className="min-w-0">
-                  <span className="block truncate text-sm font-bold text-ink">{b.route.fromName} → {b.route.toName}</span>
-                  <span className="block text-[11px] text-ink-500">{b.seats} seat{b.seats === 1 ? "" : "s"} · {b.taxi.plate} · {b.paymentStatus === "unpaid" ? "Payment due" : b.paymentStatus === "pay_driver" ? "Pay the driver" : "Paid"}</span>
-                </span>
-              </span>
-              <ChevronRight className="h-4 w-4 shrink-0 text-ink-500" aria-hidden />
-            </Link>
-          ))}
-        </section>
-      )}
+    <main className="space-y-4 px-4 pb-8 pt-4">
+      <div className="flex items-center justify-between">
+        <Link href="/ride" className="inline-flex min-h-11 items-center gap-1 text-sm font-semibold text-ink-500">
+          <ChevronLeft className="h-4 w-4" aria-hidden /> Ride
+        </Link>
+        <Link href="/ride/taxipress/tickets" className="inline-flex min-h-11 items-center gap-1.5 text-sm font-bold text-gold">
+          <Ticket className="h-4 w-4" aria-hidden /> My tickets{active > 0 ? ` (${active})` : ""}
+        </Link>
+      </div>
+      <header>
+        <p className="text-xs font-bold uppercase tracking-[0.14em] text-gold">TaxiPress · Step 1 of 3</p>
+        <h1 className="mt-1 text-3xl font-black tracking-tight text-ink">Select a route</h1>
+        <p className="mt-1 text-sm text-ink-500">Swap to travel the other way. Open a route to see its stops.</p>
+      </header>
 
       {!taxipress.enabled ? (
-        <p className="text-sm text-ink-500" role="status">Taxipress isn&apos;t running right now.</p>
+        <p className="text-sm text-ink-500" role="status">TaxiPress isn&apos;t running right now.</p>
       ) : (
-        <section aria-label="Taxis in the line" className="space-y-3">
-          {taxipress.routes.length > 1 && (
-            <div role="group" aria-label="Which way" className="grid gap-2">
-              {taxipress.routes.map((r) => (
-                <button key={r.id} type="button" aria-pressed={routeId === r.id} onClick={() => setPicked(r.id)} className={`min-h-11 rounded-2xl px-3 text-left text-sm font-bold ${routeId === r.id ? "bg-gold text-ink-gold" : "bg-gold/15 text-ink"}`}>
-                  {r.fromName} → {r.toName}
-                </button>
-              ))}
-            </div>
-          )}
-          {error && <p role="alert" className="text-xs font-semibold text-[rgb(var(--color-red,200_40_40))]">{error}</p>}
-          {current && (
-            <>
-              <p className="px-1 text-xs text-ink-500">{current.route!.fromName} → {current.route!.toName} · {ugx(current.route!.farePerSeat)} per seat</p>
-              {current.line.length === 0 ? (
-                <p className="text-sm text-ink-500" role="status">No taxi is in the line yet. Check again in a moment.</p>
-              ) : (
-                <ol className="space-y-2">
-                  {current.line.map((van) => (
-                    <li key={van.id}>
-                      <Link
-                        href={van.fullyBooked ? "#" : `/ride/taxipress/book/${routeId}/${van.id}`}
-                        aria-disabled={van.fullyBooked}
-                        className={`ride-link-tile flex items-center justify-between gap-3 rounded-2xl p-3 ${van.fullyBooked ? "pointer-events-none opacity-60" : ""}`}
-                      >
-                        <span className="min-w-0">
-                          <span className="block text-sm font-bold text-ink">
-                            {van.status === "boarding" ? "Boarding now" : van.position === 1 ? "Next" : `${van.position}${van.position === 2 ? "nd" : van.position === 3 ? "rd" : "th"} in line`} · {van.plate}
-                          </span>
-                          <span className="block text-[11px] text-ink-500">{van.driverName ?? "Driver"} · {van.seatsTotal}-seater</span>
-                        </span>
-                        <span className="shrink-0 text-right">
-                          <span className="block text-sm font-bold text-gold">{van.fullyBooked ? "Fully booked" : `${van.seatsLeft} seat${van.seatsLeft === 1 ? "" : "s"} left`}</span>
-                          {!van.fullyBooked && <span className="block text-[11px] font-semibold text-ink-500">Book</span>}
-                        </span>
-                      </Link>
-                    </li>
-                  ))}
-                </ol>
-              )}
-              {current.onRoad.length > 0 && <p className="px-1 text-[11px] text-ink-500">{current.onRoad.length} taxi{current.onRoad.length === 1 ? " is" : "s are"} already on the road.</p>}
-            </>
-          )}
-        </section>
+        <ul className="space-y-3">
+          {cards.map((card) => {
+            const r = shown(card);
+            const stops = r.stops ?? [];
+            const isOpen = open === card.id;
+            const n = counts[r.id];
+            return (
+              <li key={card.id} className="overflow-hidden rounded-[28px] bg-[rgb(var(--color-black-700))] text-white shadow-sm">
+                <div className="relative p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <h2 className="text-2xl font-black leading-tight">{r.fromName} → {r.toName}</h2>
+                      {n != null && <p className="mt-1 text-sm text-white/70">{n === 0 ? "No taxi in the line yet" : `${n} taxi${n === 1 ? "" : "s"} in the line`}</p>}
+                    </div>
+                    {card.reverseId && (
+                      <button type="button" aria-label={`Swap to ${r.toName} → ${r.fromName}`} onClick={() => setSwapped((s) => ({ ...s, [card.id]: !s[card.id] }))} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/15">
+                        <ArrowUpDown className="h-5 w-5" aria-hidden />
+                      </button>
+                    )}
+                  </div>
+                  <div className="mt-3 flex items-center justify-between gap-3">
+                    <span className="rounded-full bg-white px-3 py-1.5 text-sm font-bold text-[rgb(10_10_10)]">{ugx(r.farePerSeat)} / seat</span>
+                    {stops.length > 0 ? (
+                      <button type="button" aria-expanded={isOpen} onClick={() => setOpen(isOpen ? null : card.id)} className="inline-flex min-h-11 items-center gap-1 text-sm text-white/75">
+                        {isOpen ? "Hide stops" : "Show stops"} {isOpen ? <ChevronUp className="h-4 w-4" aria-hidden /> : <ChevronDown className="h-4 w-4" aria-hidden />}
+                      </button>
+                    ) : (
+                      <button type="button" onClick={() => router.push(`/ride/taxipress/book/${r.id}`)} className="inline-flex min-h-11 items-center gap-1 text-sm font-bold text-gold">
+                        Select <ArrowRight className="h-4 w-4" aria-hidden />
+                      </button>
+                    )}
+                  </div>
+                </div>
+                {isOpen && (
+                  <div className="bg-[rgb(var(--surface-card))] p-4 text-ink">
+                    <ol className="space-y-0">
+                      {journey(r.fromName, stops, r.toName).map((s, i, all) => (
+                        <li key={`${s}-${i}`} className="relative flex items-center gap-3 py-1.5 pl-1">
+                          {i < all.length - 1 && <span className="absolute left-[11px] top-1/2 h-full w-0.5 bg-gold/60" aria-hidden />}
+                          <span className={`relative h-4 w-4 shrink-0 rounded-full border-2 border-gold ${i === all.length - 1 ? "bg-gold" : "bg-[rgb(var(--surface-card))]"}`} aria-hidden />
+                          <span className="text-[15px] font-semibold">{s}{i === 0 ? " · start stage" : i === all.length - 1 ? " · end stage" : ""}</span>
+                        </li>
+                      ))}
+                    </ol>
+                    <Link href={`/ride/taxipress/book/${r.id}`} className="mt-3 flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-gold text-lg font-bold text-ink-gold">
+                      Select route <ArrowRight className="h-5 w-5" aria-hidden />
+                    </Link>
+                  </div>
+                )}
+              </li>
+            );
+          })}
+        </ul>
       )}
     </main>
   );

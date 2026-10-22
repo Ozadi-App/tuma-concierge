@@ -1,12 +1,13 @@
 "use client";
 
-import { receiptUrl, type TaxipressBooking } from "@peebee/shared";
+import { receiptUrl, TAXIPRESS_LUGGAGE_LABELS, type TaxipressBooking } from "@peebee/shared";
 import { ChevronLeft } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { CodeQr } from "../../../../../components/CodeQr";
 import { api, errorMessage } from "../../../../../lib/api";
+import { setPayReturn } from "../../../../../lib/taxipress-draft";
 
 const ugx = (n: number) => `UGX ${n.toLocaleString("en-UG")}`;
 const PAYMENT: Record<TaxipressBooking["paymentStatus"], string> = { unpaid: "Payment due", paid: "Paid", pay_driver: "Pay the driver", cancelled: "Cancelled" };
@@ -51,8 +52,8 @@ export default function TaxipressTicketPage() {
 
   return (
     <main className="space-y-5 px-4 pb-8 pt-4">
-      <Link href="/ride/taxipress" className="inline-flex min-h-11 items-center gap-1 text-sm font-semibold text-ink-500">
-        <ChevronLeft className="h-4 w-4" aria-hidden /> Taxipress
+      <Link href="/ride/taxipress/tickets" className="inline-flex min-h-11 items-center gap-1 text-sm font-semibold text-ink-500">
+        <ChevronLeft className="h-4 w-4" aria-hidden /> My tickets
       </Link>
       {!loaded ? null : !booking || !taxi ? (
         <p className="text-sm text-ink-500" role="alert">{error || "That ticket wasn't found."}</p>
@@ -81,7 +82,12 @@ export default function TaxipressTicketPage() {
           <section className="home-card space-y-2 border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-5 text-sm">
             <Row label="Taxi" value={`${taxi.plate} · ${taxi.seatLayout}-seater`} />
             <Row label="Driver" value={taxi.driverName ?? "—"} />
-            <Row label="Seats" value={String(booking.seats)} />
+            <Row label="Seats" value={seatsText(booking)} />
+            {booking.details?.forSomeoneElse && booking.details.travellerName && <Row label="Passenger" value={`${booking.details.travellerName}${booking.details.travellerPhone ? ` · ${booking.details.travellerPhone}` : ""}`} />}
+            {booking.details?.emergencyPhone && <Row label="Emergency contact" value={booking.details.emergencyPhone} />}
+            {luggageText(booking) && <Row label="Luggage" value={luggageText(booking)!} />}
+            {booking.details?.assistance && booking.details.assistance !== "none" && <Row label="Assistance" value={{ boarding: "Boarding help", priority: "Priority seating", mobility: "Mobility support" }[booking.details.assistance]} />}
+            {booking.details?.language && <Row label="Language" value={{ en: "English", lg: "Luganda", sw: "Swahili" }[booking.details.language]} />}
             <Row label="Total" value={ugx(booking.amount)} />
             <Row label="Payment" value={booking.status === "boarded" || booking.status === "completed" ? "Settled" : PAYMENT[booking.paymentStatus]} />
             {!cancelled && booking.status === "booked" && (
@@ -99,7 +105,7 @@ export default function TaxipressTicketPage() {
           )}
 
           {booking.paymentStatus === "unpaid" && !cancelled && booking.status === "booked" && booking.paymentMethod === "app" && (
-            <Link href={`/orders/${booking.orderId}/pay`} className="flex min-h-12 w-full items-center justify-center rounded-full bg-gold font-bold text-ink-gold">Pay now</Link>
+            <Link href={`/orders/${booking.orderId}/pay`} onClick={() => setPayReturn(booking.orderId, `/ride/taxipress/ticket/${booking.id}`)} className="flex min-h-12 w-full items-center justify-center rounded-full bg-gold font-bold text-ink-gold">Pay now</Link>
           )}
           {!cancelled && booking.status === "booked" && taxi.driverPhone && (
             <a href={`tel:${taxi.driverPhone}`} className="flex min-h-12 w-full items-center justify-center rounded-full border border-[var(--border-faint)] font-bold text-ink">Call the driver</a>
@@ -147,4 +153,17 @@ function Row({ label, value }: { label: string; value: string }) {
       <span className="text-right font-bold text-ink">{value}</span>
     </div>
   );
+}
+
+function seatsText(b: TaxipressBooking) {
+  const d = b.details;
+  if (!d || d.children === 0) return String(b.seats);
+  const lap = d.children - d.childSeats;
+  return `${b.seats} · ${d.adults} adult${d.adults === 1 ? "" : "s"}, ${d.children} child${d.children === 1 ? "" : "ren"}${lap > 0 ? ` (${lap} on lap)` : ""}`;
+}
+
+function luggageText(b: TaxipressBooking) {
+  const items = Object.entries(b.details?.luggage ?? {}).filter(([, n]) => (n ?? 0) > 0);
+  if (items.length === 0) return null;
+  return items.map(([t, n]) => `${n} ${TAXIPRESS_LUGGAGE_LABELS[t as keyof typeof TAXIPRESS_LUGGAGE_LABELS].name.toLowerCase()}`).join(", ");
 }

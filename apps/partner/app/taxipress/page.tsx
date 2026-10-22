@@ -227,6 +227,7 @@ function Board({ view, onChange }: { view: TaxipressDriverView; onChange: () => 
           {onRoad ? "On the road" : entry.status === "boarding" ? "Boarding now" : front ? "You're next" : `${ordinal(entry.position ?? 0)} in the line`}
         </h2>
         <SeatCounter entry={entry} />
+        <PartyCounts bookings={view.bookings} walkUps={entry.walkUpSeats} />
         {!onRoad && (
           <div className="flex items-center justify-between gap-3 rounded-2xl bg-[rgb(var(--surface-muted))] p-3">
             <div className="min-w-0">
@@ -290,7 +291,10 @@ function Board({ view, onChange }: { view: TaxipressDriverView; onChange: () => 
             {view.bookings.map((b) => (
               <li key={b.id} className="flex items-center justify-between gap-3 rounded-xl bg-[rgb(var(--surface-muted))] px-3 py-2">
                 <span className="min-w-0">
-                  <span className="block truncate text-sm font-bold text-ink">{b.passengerName ?? "Passenger"} · {b.seats} seat{b.seats === 1 ? "" : "s"}</span>
+                  <span className="block truncate text-sm font-bold text-ink">{b.travellerName ?? b.passengerName ?? "Passenger"} · {b.seats} seat{b.seats === 1 ? "" : "s"}</span>
+                  {(b.children ?? 0) + (b.bags ?? 0) > 0 && (
+                    <span className="block truncate text-[11px] text-ink-500">{b.adults ?? b.seats} adult{(b.adults ?? b.seats) === 1 ? "" : "s"}{b.children ? `, ${b.children} child${b.children === 1 ? "" : "ren"}` : ""}{b.bags ? ` · ${b.bags} bag${b.bags === 1 ? "" : "s"}` : ""}</span>
+                  )}
                   {b.passengerPhone && <a href={`tel:${b.passengerPhone}`} className="block text-[11px] text-ink-500 underline-offset-2 hover:underline">{b.passengerPhone}</a>}
                 </span>
                 <span className={`shrink-0 text-right text-xs font-bold ${b.paymentStatus === "paid" ? "text-green" : b.paymentStatus === "pay_driver" ? "text-gold" : "text-ink-500"}`}>
@@ -322,6 +326,26 @@ function Board({ view, onChange }: { view: TaxipressDriverView; onChange: () => 
         />
       )}
     </div>
+  );
+}
+
+/** Who is on this taxi's bookings: adults, children and bags (shown once a booking carries them), and stage sales. */
+function PartyCounts({ bookings, walkUps }: { bookings: TaxipressDriverView["bookings"]; walkUps: number }) {
+  const live = bookings.filter((b) => b.status === "booked" || b.status === "boarded");
+  if (!live.some((b) => b.adults != null)) return null;
+  const adults = live.reduce((n, b) => n + (b.adults ?? b.seats), 0);
+  const children = live.reduce((n, b) => n + (b.children ?? 0), 0);
+  const bags = live.reduce((n, b) => n + (b.bags ?? 0), 0);
+  const tiles = [["Adults", adults], ["Children", children], ["Bags", bags], ["Sold at the stage", walkUps]] as const;
+  return (
+    <dl className="grid grid-cols-2 gap-2">
+      {tiles.map(([label, n]) => (
+        <div key={label} className="rounded-2xl bg-[rgb(var(--surface-muted))] px-3 py-2">
+          <dt className="text-[11px] font-semibold text-ink-500">{label}</dt>
+          <dd className="text-lg font-black text-ink">{n}</dd>
+        </div>
+      ))}
+    </dl>
   );
 }
 

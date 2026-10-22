@@ -1,5 +1,5 @@
 import type { PublicReceipt } from "./receipt.js";
-import type { TaxipressAdminQueueEntry, TaxipressAdminRoute, TaxipressBoardingResult, TaxipressBooking, TaxipressConfig, TaxipressDriverView, TaxipressLineEntry, TaxipressOutcome, TaxipressQueueView, TaxipressRelayRoute, TaxipressReport, TaxipressSettings, TaxipressTaxi } from "./taxipress.js";
+import type { TaxipressAssistance, TaxipressLanguage, TaxipressLuggageType, TaxipressTaxiProfile, TaxipressAdminQueueEntry, TaxipressAdminRoute, TaxipressBoardingResult, TaxipressBooking, TaxipressConfig, TaxipressDriverView, TaxipressLineEntry, TaxipressOutcome, TaxipressQueueView, TaxipressRelayRoute, TaxipressReport, TaxipressSettings, TaxipressTaxi } from "./taxipress.js";
 import type { BagTrip, RelayAdminOrder, RelayRouteStage, RelayMerchantOrder, RelayOpenLeg, RelayOperator, RelayOperatorParcels, RelayQuote, RelayRoute, RelaySettings, RelayStation, RelayStationParcels, RelayTrack } from "./relay.js";
 import type { AdminRole } from "./permissions.js";
 import { workMethods } from "./work-client.js";
@@ -783,8 +783,11 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
       return request<TaxipressQueueView>(`/v1/taxipress/routes/${encodeURIComponent(routeId)}/queue`);
     },
     /** Book seats on a taxi in the line. Pay next on the order's pay screen, or hand cash to the driver. */
-    async bookTaxipressSeats(input: { queueId: string; seats: number; payment: "app" | "cash" }) {
+    async bookTaxipressSeats(input: { queueId: string; seats?: number; payment?: "app" | "cash"; adults?: number; children?: number; luggage?: Partial<Record<TaxipressLuggageType, number>>; assistance?: TaxipressAssistance | null; language?: TaxipressLanguage | null; forSomeoneElse?: boolean; travellerName?: string | null; travellerPhone?: string | null; emergencyPhone?: string | null }) {
       return request<{ booking: TaxipressBooking; order: { id: string } }>("/v1/taxipress/bookings", { method: "POST", body: JSON.stringify(input) });
+    },
+    async getTaxipressTaxiProfile(queueId: string) {
+      return request<{ profile: TaxipressTaxiProfile }>(`/v1/taxipress/taxis/${encodeURIComponent(queueId)}/profile`);
     },
     async getMyTaxipressBookings() {
       return request<{ bookings: TaxipressBooking[] }>("/v1/taxipress/bookings/mine");

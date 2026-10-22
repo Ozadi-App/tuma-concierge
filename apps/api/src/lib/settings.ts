@@ -641,6 +641,15 @@ const DEFAULTS = {
   // When a taxi leaves the line, move its passengers to the next taxi with room (off: refund them).
   taxipress_rebook_on_removal: "1",
   taxipress_parcel_not_allowed: '["Charcoal","Fuel","Wet or raw food"]',
+  taxipress_bookable_taxis: "3",
+  taxipress_max_lap_children: "2",
+  taxipress_child_seat_fare_percent: "100",
+  taxipress_luggage_enabled: "1",
+  taxipress_luggage_prices: '{"personal":0,"standard":2000,"large":4000,"excess":6000,"fragile":7000,"commercial":null}',
+  taxipress_assistance_enabled: "1",
+  taxipress_language_enabled: "1",
+  taxipress_book_for_others_enabled: "1",
+  taxipress_show_stops: "1",
 } as const;
 
 export type SettingKey = keyof typeof DEFAULTS;
