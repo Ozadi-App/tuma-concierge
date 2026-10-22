@@ -1164,6 +1164,11 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
       return json<{ rider: Rider }>(res);
     },
     /** Fetches a rider's profile photo as a Blob (not JSON — raw fetch; caller builds an object URL). */
+    async taxipressDriverPhotoBlob(path: string): Promise<Blob> {
+      const res = await f(`${root}${path}`, { headers: authHeaders() });
+      if (!res.ok) throw new Error(`API ${res.status}: failed to load driver photo`);
+      return res.blob();
+    },
     async riderPhotoBlob(userId: string): Promise<Blob> {
       const res = await f(`${root}/v1/riders/${userId}/photo`, { headers: authHeaders() });
       if (!res.ok) throw new Error(`API ${res.status}: failed to load rider photo`);

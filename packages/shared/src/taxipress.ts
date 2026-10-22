@@ -145,6 +145,8 @@ export type TaxipressTaxi = {
 };
 
 export type TaxipressLineEntry = {
+  /** API path for the driver's face photo (auth needed), or null for an initials avatar. */
+  driverPhotoUrl?: string | null;
   id: string;
   taxiId: string;
   driverId: string;

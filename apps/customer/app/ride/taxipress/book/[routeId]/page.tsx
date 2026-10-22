@@ -1,7 +1,8 @@
 "use client";
 
 import type { TaxipressLineEntry, TaxipressQueueView } from "@peebee/shared";
-import { Check, ChevronRight, Clock, Minus, Plus, Ticket, User } from "lucide-react";
+import { Check, ChevronRight, Clock, Minus, Plus, Ticket } from "lucide-react";
+import { DriverAvatar } from "../../../../../components/taxipress/DriverAvatar";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { api, errorMessage } from "../../../../../lib/api";
@@ -53,7 +54,7 @@ function BookLine() {
   const waiting = (queue?.line ?? []).filter((v) => v.status === "in_line" && !bookable.includes(v));
   const selected = bookable.find((v) => v.id === draft.queueId) ?? null;
   const maxLap = taxipress.maxLapChildren ?? 2;
-  const details = taxipress.detailsReady === true;
+  const details = true;
   const seats = details ? seatsFor(draft.adults, draft.children, maxLap) : draft.adults;
   const fare = route?.farePerSeat ?? 0;
   const childPct = taxipress.childSeatFarePercent ?? 100;
@@ -87,7 +88,7 @@ function BookLine() {
         <section aria-label="Boarding now" className="rounded-[24px] bg-[rgb(var(--color-black-700))] p-4 text-white">
           <div className="flex items-center gap-3">
             <span className="h-3 w-3 shrink-0 rounded-full bg-green-400 ring-4 ring-green-400/25" aria-hidden />
-            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/10"><User className="h-5 w-5" aria-hidden /></span>
+            <DriverAvatar name={boarding.driverName} photoUrl={boarding.driverPhotoUrl} dark />
             <span className="min-w-0 flex-1">
               <span className="block truncate font-mono text-xl font-bold tracking-wider">{boarding.plate}</span>
               <span className="block truncate text-sm text-white/65">{boarding.driverName ?? "Driver"} · Commuter ({boarding.seatsTotal})</span>
@@ -100,6 +101,12 @@ function BookLine() {
             {" "}{boarding.seatsTaken}/{boarding.seatsTotal} · not bookable
           </p>
         </section>
+      )}
+      {queue && queue.line.length > 0 && !boarding && (
+        <p aria-label="Boarding now" className="flex items-center gap-2 rounded-2xl bg-[rgb(var(--color-black-700))] px-4 py-2.5 text-sm text-white/75">
+          <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-white/40" aria-hidden />
+          No taxi boarding right now
+        </p>
       )}
 
       <ol className="space-y-3">
@@ -157,10 +164,12 @@ function TaxiCard({ van, rank, routeId, selected, onSelect }: { van: TaxipressLi
   return (
     <li className={`home-card border-2 bg-[rgb(var(--surface-card))] p-4 ${selected ? "border-gold" : "border-[var(--border-faint)]"}`}>
       <button type="button" onClick={() => router.push(`/ride/taxipress/taxi/${van.id}?route=${routeId}`)} className="flex w-full items-center gap-3 text-left" aria-label={`${van.plate} profile`}>
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gold/15 text-lg font-bold text-gold">{rank}</span>
-        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[rgb(var(--surface-muted))] text-ink-500"><User className="h-5 w-5" aria-hidden /></span>
+        <DriverAvatar name={van.driverName} photoUrl={van.driverPhotoUrl} />
         <span className="min-w-0 flex-1">
-          <span className="block truncate font-mono text-xl font-bold tracking-wider text-ink">{van.plate}</span>
+          <span className="flex items-center gap-2">
+            <span className="truncate font-mono text-xl font-bold tracking-wider text-ink">{van.plate}</span>
+            <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold ${rank === 1 ? "bg-gold text-ink-gold" : "bg-[rgb(var(--surface-muted))] text-ink-500"}`}>{rank === 1 ? "Next" : rank === 2 ? "Waiting" : "Later"}</span>
+          </span>
           <span className="block truncate text-sm text-ink-500">{van.driverName ?? "Driver"} · {van.seatLayout === "18" ? "Highroof" : "Commuter"} ({van.seatsTotal})</span>
         </span>
         <ChevronRight className="h-5 w-5 shrink-0 text-ink-500" aria-hidden />

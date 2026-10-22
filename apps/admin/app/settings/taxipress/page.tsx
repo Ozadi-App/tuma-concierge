@@ -343,6 +343,7 @@ function RoutesTab() {
             </div>
             <Badge tone={r.active && r.relayActive ? "good" : r.active ? "warn" : "neutral"}>{r.active ? (r.relayActive ? "Running" : "Relay route off") : "Off"}</Badge>
           </div>
+          <Link href={`/settings/relay?stops=${encodeURIComponent(r.relayRouteId)}`} className="inline-block text-xs font-semibold text-gold">Edit stops on this route →</Link>
           <FareEditor route={r} busy={busy === r.id} onSave={(fare) => run(r.id, () => api.adminUpdateTaxipressRoute(r.id, { farePerSeat: fare }))} />
           <label className="flex items-center gap-2 text-sm font-bold text-ink">
             <Switch checked={r.stopPricingEnabled} disabled={busy === r.id} onChange={(e) => run(r.id, () => api.adminUpdateTaxipressRoute(r.id, { stopPricingEnabled: e.target.checked }))} />

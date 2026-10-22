@@ -9,9 +9,20 @@ type Row = Record<string, unknown>;
  * Taxipress v5: passengers, luggage and options on a booking, the taxi profile, route stops and
  * departure estimates. Migration 0128 adds the columns; until it is applied a booking is seats only.
  */
-export async function detailsReady(): Promise<boolean> {
+export async function detailsColumnsReady(): Promise<boolean> {
   return (await hasColumn("taxipress_bookings", "adults")) && (await hasColumn("taxipress_bookings", "emergency_phone"));
 }
+
+/**
+ * Booking options always work. With migration 0128 they live in their own columns; before it, the same
+ * details are kept as JSON on a hidden, cancelled `lists` row (a table every deployment has) keyed by booking.
+ */
+export async function detailsReady(): Promise<boolean> {
+  return true;
+}
+
+export const detailsListId = (bookingId: string) => `tpdetails_${bookingId}`;
+
 
 export type Assistance = "none" | "boarding" | "priority" | "mobility";
 export type Language = "en" | "lg" | "sw";
@@ -87,14 +98,41 @@ export function detailsFromRow(row: Row): BookingDetails {
   };
 }
 
-export async function saveDetails(bookingId: string, d: BookingDetails): Promise<void> {
-  if (!(await detailsReady())) return;
+export async function saveDetails(bookingId: string, d: BookingDetails, owner?: { customerId: string; environment: string }): Promise<void> {
+  if (!(await detailsColumnsReady())) {
+    if (!owner) return;
+    await db.execute({
+      sql: "INSERT OR REPLACE INTO lists (id, customer_id, title, status, environment, customer_hidden) VALUES (?, ?, ?, 'cancelled', ?, 1)",
+      args: [detailsListId(bookingId), owner.customerId, JSON.stringify(d), owner.environment],
+    });
+    return;
+  }
   await db.execute({
     sql: `UPDATE taxipress_bookings SET adults = ?, children = ?, child_seats = ?, luggage_json = ?, luggage_amount = ?, assistance = ?, language = ?,
             for_someone_else = ?, traveller_name = ?, traveller_phone = ?, emergency_phone = ? WHERE id = ?`,
     args: [d.adults, d.children, d.childSeats, JSON.stringify(d.luggage), d.luggageAmount, d.assistance, d.language,
       d.forSomeoneElse ? 1 : 0, d.travellerName, d.travellerPhone, d.emergencyPhone, bookingId],
   });
+}
+
+/** A booking's options from whichever store holds them; null when none were given. */
+export async function loadDetails(bookingId: string): Promise<BookingDetails | null> {
+  if (await detailsColumnsReady()) {
+    const d = (await db.execute({ sql: "SELECT seats, adults, children, child_seats, luggage_json, luggage_amount, assistance, language, for_someone_else, traveller_name, traveller_phone, emergency_phone FROM taxipress_bookings WHERE id = ?", args: [bookingId] })).rows[0] as Row | undefined;
+    if (d) return detailsFromRow(d);
+  }
+  const row = (await db.execute({ sql: "SELECT title FROM lists WHERE id = ?", args: [detailsListId(bookingId)] })).rows[0] as Row | undefined;
+  if (!row) return null;
+  try {
+    const j = JSON.parse(String(row.title)) as BookingDetails;
+    return detailsFromRow({
+      adults: j.adults, children: j.children, child_seats: j.childSeats, luggage_json: JSON.stringify(j.luggage ?? {}), luggage_amount: j.luggageAmount,
+      assistance: j.assistance, language: j.language, for_someone_else: j.forSomeoneElse ? 1 : 0,
+      traveller_name: j.travellerName, traveller_phone: j.travellerPhone, emergency_phone: j.emergencyPhone,
+    });
+  } catch {
+    return null;
+  }
 }
 
 /** The stops along a Taxipress route, in travel order: the Relay stages staff already keep for the route. */
@@ -199,7 +237,7 @@ export async function taxiProfile(entry: LineEntry & { bookable: boolean; depart
     colour: str(taxi?.colour),
     photoUrl: str(taxi?.photo_url),
     driverName: entry.driverName,
-    driverPhotoUrl: null,
+    driverPhotoUrl: entry.driverPhotoUrl ?? null,
     memberSince: str(taxi?.approved_at) ?? str(taxi?.created_at),
     tripsCount: tripsCount > 0 ? tripsCount : null,
     rating, ratingCount, reviews,

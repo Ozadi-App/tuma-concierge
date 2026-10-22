@@ -8,7 +8,7 @@ import { createOrderFromInput } from "../orders/routes.js";
 import { directionLabel } from "../relay/direction.js";
 import { cancelTermsFor, collectedFor } from "./cancel-terms.js";
 import { lineOf, queueReady } from "./queue.js";
-import { decorateLine, detailsFromRow, detailsReady, luggageCount, priceBooking, saveDetails, type BookingDetails, type BookingDetailsInput } from "./details.js";
+import { decorateLine, loadDetails, luggageCount, priceBooking, saveDetails, type BookingDetails, type BookingDetailsInput } from "./details.js";
 import { getTaxipressSettings } from "./settings.js";
 
 type Row = Record<string, unknown>;
@@ -93,10 +93,7 @@ async function toBooking(row: Row, forPassenger: boolean): Promise<TaxipressBook
     if (r) outcome = { kind: r.kind as NonNullable<TaxipressBooking["outcome"]>["kind"], refunded: Number(r.refunded), fee: Number(r.fee) };
   }
   let details: BookingDetails | null = null;
-  if (await detailsReady()) {
-    const d = (await db.execute({ sql: "SELECT seats, adults, children, child_seats, luggage_json, luggage_amount, assistance, language, for_someone_else, traveller_name, traveller_phone, emergency_phone FROM taxipress_bookings WHERE id = ?", args: [String(row.bk_id)] })).rows[0] as Row | undefined;
-    if (d) details = detailsFromRow(d);
-  }
+  details = await loadDetails(String(row.bk_id));
   const createdMs = Date.parse(`${String(row.bk_created_at).replace(" ", "T")}Z`);
   return {
     id: String(row.bk_id),
@@ -280,7 +277,7 @@ export async function bookSeats(c: Context, input: BookInput) {
 
   const farePerSeat = Number(entry.fare_per_seat);
   const priced = priceBooking({ adults, children, luggage }, farePerSeat, settings);
-  const amount = withDetails && (await detailsReady()) ? priced.amount : farePerSeat * seatCount;
+  const amount = withDetails ? priced.amount : farePerSeat * seatCount;
   if (!(amount > 0)) return c.json({ error: "no_fare", message: "This route has no fare set yet." }, 409);
 
   // Race-safe: only one request can take the last seats, and only while the taxi is still in the line.
@@ -334,7 +331,7 @@ export async function bookSeats(c: Context, input: BookInput) {
         travellerName: input.forSomeoneElse ? (input.travellerName ?? null) : null,
         travellerPhone: input.forSomeoneElse ? (input.travellerPhone ?? null) : null,
         emergencyPhone: input.emergencyPhone ?? null,
-      });
+      }, { customerId: user.sub, environment });
     }
     // The seat belongs to this taxi's driver from the start; the passenger pays next.
     await db.execute({ sql: "UPDATE orders SET rider_id = ?, stage = 'Match', updated_at = datetime('now') WHERE id = ? AND rider_id IS NULL", args: [String(entry.driver_id), orderId] });

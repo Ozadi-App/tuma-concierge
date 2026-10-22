@@ -7,7 +7,8 @@ import { db } from "../db/client.js";
 import { newId } from "../lib/ids.js";
 import { bookingFor, bookSeats, manifestFor, myBookings, releaseStaleBookings } from "./bookings.js";
 import { activeQueue, applyTaxi, arrive, driverView, goOnRoad, joinLine, leaveLine, lineOf, listTaxis, onRoadOf, removeFromLine, startBoarding, TaxipressError, updateLocation, updateTaxi, walkUp } from "./queue.js";
-import { decorateLine, detailsReady, stopsFor, taxiProfile } from "./details.js";
+import { decorateLine, detailsColumnsReady, detailsReady, stopsFor, taxiProfile } from "./details.js";
+import { getR2Bucket, uploadResponseHeaders } from "../storage/r2.js";
 import { getTaxipressSettings, LUGGAGE_TYPES, setTaxipressSettings } from "./settings.js";
 import { cancelBooking, markNoShow } from "./cancellation.js";
 import { confirmBoarding, settlementReport } from "./settlement.js";
@@ -35,27 +36,47 @@ function fail(c: Context, e: unknown) {
  * What the app needs to decide whether to show Taxipress. Always answers: `enabled` is true only
  * when staff switched it on, the migration is applied and at least one route is running.
  */
+/** A driver's face photo, for passengers choosing a taxi. Only while that taxi is boarding or in the line. */
+taxipressRoutes.get("/taxipress/queue/:queueId/driver-photo", requireAuth, async (c) => {
+  const row = (await db.execute({
+    sql: `SELECT COALESCE(rd.profile_photo_key, u.profile_photo_key) AS k FROM taxipress_queue q
+          LEFT JOIN riders rd ON rd.user_id = q.driver_id LEFT JOIN users u ON u.id = q.driver_id
+          WHERE q.id = ? AND q.status IN ('boarding', 'in_line')`,
+    args: [c.req.param("queueId") ?? ""],
+  })).rows[0] as Record<string, unknown> | undefined;
+  const key = row?.k ? String(row.k) : null;
+  if (!key) return c.json({ error: "not_found" }, 404);
+  const object = await getR2Bucket().get(key);
+  if (!object) return c.json({ error: "not_found" }, 404);
+  return new Response(object.body, {
+    headers: { ...uploadResponseHeaders(object.httpMetadata?.contentType, "image/jpeg"), "Cache-Control": "private, max-age=600" },
+  });
+});
+
 taxipressRoutes.get("/taxipress/config", async (c) => {
   const settings = await getTaxipressSettings();
   const routes = settings.enabled && (await taxipressReady()) ? await listActiveTaxipressRoutes() : [];
   const stops = settings.showStops ? await Promise.all(routes.map((r) => stopsFor(r.relayRouteId, r.direction))) : routes.map(() => []);
   const ready = await detailsReady();
+  const columns = await detailsColumnsReady();
   return c.json({
     enabled: routes.length > 0,
     routes: routes.map((r, i) => ({
       id: r.id, directionLabel: r.directionLabel, routeCode: r.routeCode, fromName: r.fromName, toName: r.toName,
       farePerSeat: r.farePerSeat, relayRouteId: r.relayRouteId,
-      reverseId: routes.find((o) => o.relayRouteId === r.relayRouteId && o.direction !== r.direction)?.id ?? null,
+      reverseId: (routes.find((o) => o.relayRouteId === r.relayRouteId && o.direction !== r.direction)
+        ?? routes.find((o) => o.id !== r.id && o.fromName.trim().toLowerCase() === r.toName.trim().toLowerCase() && o.toName.trim().toLowerCase() === r.fromName.trim().toLowerCase()))?.id ?? null,
       stops: stops[i],
     })),
     detailsReady: ready,
+    detailsStore: columns ? "columns" : "fallback",
     maxLapChildren: settings.maxLapChildren,
     childSeatFarePercent: settings.childSeatFarePercent,
-    luggageEnabled: ready && settings.luggageEnabled,
+    luggageEnabled: settings.luggageEnabled,
     luggagePrices: settings.luggagePrices,
-    assistanceEnabled: ready && settings.assistanceEnabled,
-    languageEnabled: ready && settings.languageEnabled,
-    bookForOthersEnabled: ready && settings.bookForOthersEnabled,
+    assistanceEnabled: settings.assistanceEnabled,
+    languageEnabled: settings.languageEnabled,
+    bookForOthersEnabled: settings.bookForOthersEnabled,
     cashEnabled: settings.cashEnabled,
     seatChoiceFeeUgx: settings.seatChoiceFeeUgx,
     returnDiscountPercent: settings.returnDiscountPercent,
