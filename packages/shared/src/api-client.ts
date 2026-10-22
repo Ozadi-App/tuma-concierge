@@ -564,6 +564,16 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
     },
 
     // Restaurant browsing + food checkout — see apps/api/src/restaurants/customer.ts.
+    /** Dishes from open food businesses within `radiusKm` (straight line) of the customer,
+     * featured first then nearest. Without lat/lng: open businesses' dishes, no distance. */
+    async foodNearbyItems(params: { lat?: number | null; lng?: number | null; radiusKm?: number; q?: string } = {}) {
+      const qs = new URLSearchParams();
+      if (params.lat != null && params.lng != null) { qs.set("lat", String(params.lat)); qs.set("lng", String(params.lng)); }
+      if (params.radiusKm != null) qs.set("radiusKm", String(params.radiusKm));
+      if (params.q) qs.set("q", params.q);
+      const query = qs.toString();
+      return request<{ items: FoodNearbyItem[]; located: boolean; radiusKm: number; paused?: boolean }>(`/v1/food/nearby-items${query ? `?${query}` : ""}`);
+    },
     async listRestaurants() {
       return request<{ restaurants: Restaurant[]; /** Food ordering is switched off by an admin. */ paused?: boolean }>("/v1/restaurants");
     },
@@ -3093,3 +3103,12 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
 }
 
 export type ApiClient = ReturnType<typeof createApiClient>;
+
+/** One dish row from GET /v1/food/nearby-items. */
+export interface FoodNearbyItem {
+  id: string; restaurantId: string; restaurantName: string; businessType: string;
+  name: string; description: string | null; price: number; from: boolean;
+  photoKey: string | null; updatedAt: string | null; isFeatured: boolean;
+  prepTimeMinutes: number | null; badge: string | null; categoryName: string | null;
+  distanceKm: number | null; isDemo: boolean;
+}
