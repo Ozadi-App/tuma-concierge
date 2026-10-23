@@ -2,7 +2,7 @@
 
 import { useRegisterNavPrimaryAction, useRegisterNavBack } from "../../lib/nav-primary-action";
 import type { Rental, RentalInspection, RentalVehicle, SelfDriveResidenceMethod, SelfDriveRenterKycProfile } from "@peebee/shared";
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, Crown, Sparkles } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { api, errorMessage } from "../../lib/api";
@@ -39,6 +39,7 @@ export default function RentPage() {
   const [bookingStep, setBookingStep] = useState<"details" | "payment" | null>(null);
   const [periodType, setPeriodType] = useState<"hourly" | "half_day" | "full_day">("full_day");
   const [hourCount, setHourCount] = useState(1);
+  const [fleetFilter, setFleetFilter] = useState<"all" | "vip" | "standard" | "suv" | "van">("all");
   const [mine, setMine] = useState<Rental[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -354,16 +355,99 @@ export default function RentPage() {
         </>
       ) : (
         <>
-          <section className="space-y-1"><h2 className="text-lg font-bold text-ink">Available cars</h2><p className="text-sm text-ink-500">Choose a car first. You’ll confirm dates, licence and renter checks before payment.</p></section>
+          <section className="space-y-2">
+            <div>
+              <h2 className="text-lg font-bold text-ink">Available cars</h2>
+              <p className="text-sm text-ink-500">Choose a car first. You’ll confirm dates, licence and renter checks before payment.</p>
+            </div>
+            {vehicles && vehicles.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                {[
+                  { id: "all", label: `All (${vehicles.length})` },
+                  { id: "vip", label: "👑 VIP Fleet (500k+)", isVip: true },
+                  { id: "standard", label: "Standard (<500k)" },
+                  { id: "suv", label: "SUVs & 4WD" },
+                  { id: "van", label: "Vans & MPVs" },
+                ].map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setFleetFilter(tab.id as typeof fleetFilter)}
+                    className={`rounded-full px-3 py-1.5 text-xs font-bold transition-colors ${
+                      fleetFilter === tab.id
+                        ? tab.isVip ? "bg-gold text-ink-gold shadow-sm" : "bg-ink text-white dark:bg-white dark:text-black"
+                        : "bg-ink/5 text-ink-500 hover:bg-ink/10 dark:bg-white/10 dark:text-ink-400"
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </section>
           {vehicles === null && <div className="home-card text-sm text-ink-500">{busy === "search" ? "Finding cars available for the next 24 hours…" : "Car listings are loading…"}</div>}
           {vehicles?.length === 0 && <div className="home-card space-y-1"><p className="font-semibold text-ink">No cars are available right now.</p><p className="text-sm text-ink-500">Please check again shortly or return later.</p></div>}
-          {vehicles?.map((v) => (
-            <section key={v.id} className="overflow-hidden rounded-[28px] border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] shadow-[var(--shadow-card)]">
-              <RentalVehicleGallery vehicleId={v.id} photoIds={v.photos ?? []} name={v.name} />
+          {vehicles?.filter((v) => {
+            if (fleetFilter === "vip") return v.isVip || v.dailyPrice >= 500_000;
+            if (fleetFilter === "standard") return !v.isVip && v.dailyPrice < 500_000;
+            if (fleetFilter === "suv") return /suv|prado|cruiser|harrier|velar|g-wagon|gle|x-trail/i.test(`${v.category} ${v.name}`);
+            if (fleetFilter === "van") return /van|mpv|minibus|commuter|wish|noah|alphard|safari/i.test(`${v.category} ${v.name}`);
+            return true;
+          }).map((v) => (
+            <section key={v.id} className={`overflow-hidden rounded-[28px] border bg-[rgb(var(--surface-card))] shadow-[var(--shadow-card)] transition-all ${v.isVip || v.dailyPrice >= 500_000 ? "border-gold/50 shadow-[0_4px_20px_rgba(234,179,8,0.12)]" : "border-[var(--border-faint)]"}`}>
+              <RentalVehicleGallery vehicleId={v.id} photoIds={v.photos ?? []} name={v.name} fallbackImage={v.image} />
               <div className="space-y-3 p-4">
-                <div><p className="text-base font-bold text-ink">{v.name}</p><p className="mt-1 text-sm text-ink-500">{v.category}{v.seats ? ` · ${v.seats} seats` : ""} · {v.serviceClass === "comfort" ? "Comfort" : "Convenient"}</p></div>
-                <div className="flex items-end justify-between gap-3 rounded-2xl bg-[rgb(var(--surface-muted))] p-3"><div><p className="text-xs text-ink-500">From</p><p className="text-lg font-bold text-ink">{ugx(v.hourlyPrice ?? Math.round(v.dailyPrice * 1.2 / 24))}<span className="text-xs font-medium text-ink-500"> / hour</span></p><p className="text-xs text-ink-500">or {ugx(v.dailyPrice)} per day</p></div><p className="text-right text-xs text-ink-500">Refundable deposit<br/><b className="text-sm text-ink">{ugx(v.deposit)}</b></p></div>
-                <button type="button" onClick={() => request(v)} className="min-h-12 w-full rounded-full bg-gold px-4 font-bold text-ink-gold">Book this car</button>
+                <div>
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-base font-bold text-ink">{v.name}</p>
+                    {(v.isVip || v.dailyPrice >= 500_000) && (
+                      <span className="shrink-0 inline-flex items-center gap-1 rounded-full bg-gold/15 px-2.5 py-0.5 text-xs font-black text-ink-gold border border-gold/40">
+                        <Crown className="h-3 w-3 text-gold fill-gold" /> VIP FLEET
+                      </span>
+                    )}
+                  </div>
+                  <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs">
+                    {v.plate && (
+                      <span className="inline-flex items-center rounded border border-amber-500 bg-amber-400 px-2 py-0.5 font-mono text-[11px] font-black text-black shadow-xs">
+                        {v.plate}
+                      </span>
+                    )}
+                    {v.modelNumber && (
+                      <span className="rounded-md bg-ink/5 px-2 py-0.5 text-[11px] font-bold text-ink-500 dark:bg-white/10">
+                        {v.modelNumber}
+                      </span>
+                    )}
+                    {v.driverPolicy === "with_driver_only" ? (
+                      <span className="rounded-md bg-amber-500/10 px-2 py-0.5 text-[11px] font-bold text-amber-700 dark:text-amber-300">
+                        Chauffeur Driven
+                      </span>
+                    ) : (
+                      <span className="rounded-md bg-emerald-500/10 px-2 py-0.5 text-[11px] font-bold text-emerald-700 dark:text-emerald-300">
+                        Self Drive
+                      </span>
+                    )}
+                    <span className="text-ink-500">{v.category}{v.seats ? ` · ${v.seats} seats` : ""} · {v.serviceClass === "comfort" ? "Comfort" : "Convenient"}</span>
+                  </div>
+                </div>
+                <div className="rounded-2xl bg-[rgb(var(--surface-muted))] p-3 space-y-2">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-500">Town Run (Daily)</p>
+                      <p className="text-lg font-black text-ink">{ugx(v.townDailyUgx ?? v.dailyPrice)}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-500">Upcountry (Daily)</p>
+                      <p className={`text-base font-bold ${v.isVip || v.dailyPrice >= 500_000 ? "text-gold" : "text-ink"}`}>
+                        {ugx(v.upcountryDailyUgx ?? Math.round(v.dailyPrice * 1.3))}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between border-t border-[var(--border-faint)] pt-2 text-xs text-ink-500">
+                    <span>{v.hourlyPrice ? `${ugx(v.hourlyPrice)}/hr` : "Full-day booking"}</span>
+                    <span>Refundable deposit: <b className="text-ink">{ugx(v.deposit)}</b></span>
+                  </div>
+                </div>
+                <button type="button" onClick={() => request(v)} className="min-h-12 w-full rounded-full bg-gold px-4 font-bold text-ink-gold">Book this {v.isVip || v.dailyPrice >= 500_000 ? "VIP car" : "car"}</button>
               </div>
             </section>
           ))}

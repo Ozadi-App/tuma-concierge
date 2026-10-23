@@ -1,0 +1,149 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500" width="100%" height="100%">
+  <defs>
+    <!-- Studio Background Gradient -->
+    <radialGradient id="bgGlow" cx="50%" cy="45%" r="65%">
+      <stop offset="0%" stop-color="#1E293B" />
+      <stop offset="60%" stop-color="#0F172A" />
+      <stop offset="100%" stop-color="#020617" />
+    </radialGradient>
+
+    <!-- Floor Reflection Gradient -->
+    <linearGradient id="floorGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#334155" stop-opacity="0.6" />
+      <stop offset="100%" stop-color="#020617" stop-opacity="0" />
+    </linearGradient>
+
+    <!-- Car Body Metallic Gradient -->
+    <linearGradient id="bodyGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#DC2626" />
+      <stop offset="35%" stop-color="#7F1D1D" />
+      <stop offset="85%" stop-color="#450A0A" />
+      <stop offset="100%" stop-color="#020617" />
+    </linearGradient>
+
+    <!-- Wheel Rim Gradient -->
+    <radialGradient id="rimGrad" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#F1F5F9" />
+      <stop offset="50%" stop-color="#94A3B8" />
+      <stop offset="85%" stop-color="#334155" />
+      <stop offset="100%" stop-color="#0F172A" />
+    </radialGradient>
+
+    <!-- Tire Gradient -->
+    <radialGradient id="tireGrad" cx="50%" cy="50%" r="50%">
+      <stop offset="70%" stop-color="#18181B" />
+      <stop offset="90%" stop-color="#27272A" />
+      <stop offset="100%" stop-color="#09090B" />
+    </radialGradient>
+
+    <!-- Studio Shadow -->
+    <radialGradient id="shadowGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#000000" stop-opacity="0.75" />
+      <stop offset="70%" stop-color="#000000" stop-opacity="0.3" />
+      <stop offset="100%" stop-color="#000000" stop-opacity="0" />
+    </radialGradient>
+  </defs>
+
+  <!-- Background Canvas -->
+  <rect width="800" height="500" fill="url(#bgGlow)" />
+
+  <!-- Studio Ambient Lighting / Vignette -->
+  <circle cx="400" cy="220" r="340" fill="#EAB308" fill-opacity="0.04" />
+
+  <!-- Header Card Information -->
+  <g transform="translate(36, 36)">
+    <!-- Brand Tag -->
+    <text x="0" y="0" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="11" font-weight="900" fill="#FDE047" letter-spacing="1.5">PP · CAR RENTAL &amp; RIDESHARE</text>
+    <!-- Headline -->
+    <text x="0" y="24" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="20" font-weight="900" fill="#F8FAFC" letter-spacing="-0.5">Range Rover Sport · 2018</text>
+    <!-- Subtitle -->
+    <text x="0" y="44" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="13" font-weight="600" fill="#94A3B8">VIP Dynamic Performance SUV</text>
+  </g>
+
+  
+    <!-- VIP Crown Badge -->
+    <g transform="translate(640, 24)">
+      <rect x="0" y="0" width="136" height="34" rx="17" fill="#EAB308" fill-opacity="0.18" stroke="#EAB308" stroke-width="1.5" />
+      <path d="M16 23L12 11L18 15L24 9L30 15L36 11L32 23Z" fill="#EAB308" />
+      <text x="44" y="22" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12" font-weight="900" fill="#EAB308" letter-spacing="1">VIP FLEET</text>
+    </g>
+
+  <!-- Under-Car Shadow -->
+  <ellipse cx="410" cy="378" rx="310" ry="22" fill="url(#shadowGlow)" />
+
+  <!-- Car Body Main Structure -->
+  <g id="vehicle-body">
+    
+      <!-- Sleek Modern SUV Silhouette -->
+      <path d="M120 330 L150 240 L210 215 L280 140 L530 135 L610 185 L690 240 L700 330 Z" fill="url(#bodyGrad)" stroke="#DC2626" stroke-width="2" />
+      <!-- Floating Roof Accent -->
+      <path d="M270 135 L540 130 L615 180" stroke="#FDE047" stroke-width="2.5" fill="none" opacity="0.8" />
+      <!-- Windows -->
+      <path d="M295 148 L390 145 L390 205 L235 205 Z" fill="#09090B" fill-opacity="0.85" stroke="#52525B" stroke-width="1" />
+      <rect x="405" y="145" width="115" height="60" fill="#09090B" fill-opacity="0.85" stroke="#52525B" stroke-width="1" />
+      <path d="M535 145 L595 180 L590 205 L535 205 Z" fill="#09090B" fill-opacity="0.85" stroke="#52525B" stroke-width="1" />
+      <!-- Muscular Character Line -->
+      <path d="M150 250 Q 400 240 685 248" stroke="#DC2626" stroke-width="2.5" fill="none" />
+      <!-- Flush Door Handles -->
+      <rect x="365" y="235" width="26" height="5" rx="2.5" fill="#FDE047" opacity="0.9" />
+      <rect x="495" y="235" width="26" height="5" rx="2.5" fill="#FDE047" opacity="0.9" />
+      <!-- Dynamic LED Headlight -->
+      <path d="M665 240 L695 245 L675 258 Z" fill="#F8FAFC" filter="drop-shadow(0 0 6px rgba(56,189,248,0.7))" />
+    
+  </g>
+
+  <!-- Rear Wheel Assembly -->
+  <g transform="translate(220, 330)">
+    <circle cx="0" cy="0" r="50" fill="url(#tireGrad)" stroke="#27272A" stroke-width="4" />
+    <circle cx="0" cy="0" r="32.5" fill="url(#rimGrad)" stroke="#E2E8F0" stroke-width="1.5" />
+    <!-- 5-Spoke Sport Rim -->
+    <line x1="0" y1="-28" x2="0" y2="28" stroke="#F8FAFC" stroke-width="4" />
+    <line x1="-26" y1="-10" x2="26" y2="10" stroke="#F8FAFC" stroke-width="4" />
+    <line x1="-18" y1="20" x2="18" y2="-20" stroke="#F8FAFC" stroke-width="4" />
+    <circle cx="0" cy="0" r="8" fill="#0F172A" stroke="#E2E8F0" stroke-width="2" />
+    <!-- Brake Caliper Accent -->
+    <path d="M-12 -22 A 25 25 0 0 1 12 -22" stroke="#FDE047" stroke-width="5" fill="none" stroke-linecap="round" />
+  </g>
+
+  <!-- Front Wheel Assembly -->
+  <g transform="translate(580, 330)">
+    <circle cx="0" cy="0" r="50" fill="url(#tireGrad)" stroke="#27272A" stroke-width="4" />
+    <circle cx="0" cy="0" r="32.5" fill="url(#rimGrad)" stroke="#E2E8F0" stroke-width="1.5" />
+    <!-- 5-Spoke Sport Rim -->
+    <line x1="0" y1="-28" x2="0" y2="28" stroke="#F8FAFC" stroke-width="4" />
+    <line x1="-26" y1="-10" x2="26" y2="10" stroke="#F8FAFC" stroke-width="4" />
+    <line x1="-18" y1="20" x2="18" y2="-20" stroke="#F8FAFC" stroke-width="4" />
+    <circle cx="0" cy="0" r="8" fill="#0F172A" stroke="#E2E8F0" stroke-width="2" />
+    <!-- Brake Caliper Accent -->
+    <path d="M-12 -22 A 25 25 0 0 1 12 -22" stroke="#FDE047" stroke-width="5" fill="none" stroke-linecap="round" />
+  </g>
+
+  <!-- Ugandan Pseudo Number Plate Card Banner (Bottom Center) -->
+  <g transform="translate(36, 420)">
+    <!-- Number Plate Badge -->
+    <g transform="translate(0, 0)">
+      <rect x="0" y="0" width="112" height="38" rx="6" fill="#FACC15" stroke="#CA8A04" stroke-width="2" />
+      <!-- Black Border Rim -->
+      <rect x="3" y="3" width="106" height="32" rx="4" fill="none" stroke="#000000" stroke-width="1.2" />
+      <text x="56" y="24" text-anchor="middle" font-family="'Courier New', Courier, monospace" font-size="15" font-weight="900" fill="#000000" letter-spacing="1.5">UBS 007R</text>
+    </g>
+
+    <!-- Rates Display -->
+    <g transform="translate(130, 4)">
+      <text x="0" y="14" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="11" font-weight="700" fill="#94A3B8" letter-spacing="0.5">TOWN RUN (DAILY)</text>
+      <text x="0" y="30" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="16" font-weight="900" fill="#F8FAFC">UGX 1,000,000</text>
+    </g>
+
+    <g transform="translate(310, 4)">
+      <text x="0" y="14" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="11" font-weight="700" fill="#94A3B8" letter-spacing="0.5">UPCOUNTRY (DAILY)</text>
+      <text x="0" y="30" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="16" font-weight="900" fill="#FDE047">UGX 1,500,000</text>
+    </g>
+
+    <g transform="translate(510, 8)">
+      <rect x="0" y="0" width="218" height="26" rx="13" fill="#1E293B" stroke="#334155" stroke-width="1" />
+      <circle cx="14" cy="13" r="5" fill="#EAB308" />
+      <text x="26" y="17" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="10.5" font-weight="700" fill="#F1F5F9">VIP Executive Service</text>
+    </g>
+  </g>
+</svg>

@@ -2,8 +2,8 @@
 
 import { Select } from "@peebee/shared/select";
 
-import { CAR_MODEL_CATALOG, type CarCategory, type OwnerDeals } from "@peebee/shared";
-import { Camera, Fuel, X } from "lucide-react";
+import { CAR_MODEL_CATALOG, getCarBodyType, getCarDefaults, isVipRate, type CarCategory, type OwnerDeals } from "@peebee/shared";
+import { Camera, Crown, Fuel, Sparkles, X } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { ApplyCard } from "../../components/ApplyCard";
@@ -34,6 +34,16 @@ export default function VehiclesPage() {
   const [customMake, setCustomMake] = useState("");
   const [model, setModel] = useState("");
   const [modelCatalogId, setModelCatalogId] = useState("");
+  const [bodyTypeFilter, setBodyTypeFilter] = useState("All");
+  const [systemHelperInfo, setSystemHelperInfo] = useState<{
+    model: string;
+    bodyType: string;
+    seatCapacity: string;
+    pseudoPlate: string;
+    townDailyUgx: number;
+    upcountryDailyUgx: number;
+    isVip: boolean;
+  } | null>(null);
   const [year, setYear] = useState("");
   const [colour, setColour] = useState("");
   const [lastServiceDate, setLastServiceDate] = useState("");
@@ -48,6 +58,73 @@ export default function VehiclesPage() {
   const [error, setError] = useState("");
   const [addingTo, setAddingTo] = useState<string | null>(null);
   const addInput = useRef<HTMLInputElement>(null);
+
+  function applyCarProfile(profile: (typeof CAR_MODEL_CATALOG)[number]) {
+    const defaults = getCarDefaults(profile);
+    setModelCatalogId(defaults.modelCatalogId);
+    setModel(defaults.model);
+    setSeatCapacity(defaults.seatCapacity);
+    if (!year || year === "2018") setYear(defaults.year);
+    setServiceClass(defaults.serviceClass);
+    setConditionGrade(defaults.conditionGrade);
+    setFeatures((prev) => Array.from(new Set([...prev, ...defaults.features])));
+    if (!plate) setPlate(defaults.pseudoPlate);
+
+    if (defaults.isVip) {
+      const luxuryCat = categories.find((c) => c.service_group === "luxury" || /luxury/i.test(c.name));
+      if (luxuryCat) setCategoryId(luxuryCat.id);
+    } else {
+      const matchedCat = categories.find(
+        (c) => c.kind === "passenger" && c.service_group !== "luxury" && c.seats && c.seats >= profile.seats
+      ) || categories.find((c) => c.kind === "passenger" && c.service_group !== "luxury");
+      if (matchedCat && !categoryId) setCategoryId(matchedCat.id);
+    }
+
+    setSystemHelperInfo({
+      model: defaults.model,
+      bodyType: defaults.bodyType,
+      seatCapacity: defaults.seatCapacity,
+      pseudoPlate: defaults.pseudoPlate,
+      townDailyUgx: defaults.townDailyUgx,
+      upcountryDailyUgx: defaults.upcountryDailyUgx,
+      isVip: defaults.isVip,
+    });
+  }
+
+  function handleMakeChange(newMake: string) {
+    setMake(newMake);
+    setBodyTypeFilter("All");
+    setModel("");
+    setModelCatalogId("");
+    setSeatCapacity("");
+    setSystemHelperInfo(null);
+  }
+
+  function handleBodyTypeChange(type: string) {
+    setBodyTypeFilter(type);
+    const available = CAR_MODEL_CATALOG.filter(
+      (m) => m.make === make && (type === "All" || getCarBodyType(m) === type)
+    );
+    if (available.length === 1) {
+      applyCarProfile(available[0]);
+    } else if (modelCatalogId && !available.some((m) => m.id === modelCatalogId)) {
+      setModel("");
+      setModelCatalogId("");
+      setSystemHelperInfo(null);
+    }
+  }
+
+  function handleModelSelect(catalogId: string) {
+    const profile = CAR_MODEL_CATALOG.find((m) => m.id === catalogId);
+    if (profile) {
+      setBodyTypeFilter(getCarBodyType(profile));
+      applyCarProfile(profile);
+    } else {
+      setModelCatalogId("");
+      setModel("");
+      setSystemHelperInfo(null);
+    }
+  }
 
   useEffect(() => {
     api.getCarConfig().then((c) => {
@@ -112,7 +189,7 @@ export default function VehiclesPage() {
       setPlate("");
       setMake("");
       setModel("");
-      setCustomMake("");
+      setCustomMake(""); setBodyTypeFilter("All"); setSystemHelperInfo(null);
       setYear(""); setColour(""); setLastServiceDate("");
       setModelCatalogId(""); setServiceClass("convenient"); setAcceptsConvenient(false); setConditionGrade("good"); setSeatCapacity(""); setFeatures([]);
       await refreshMe();
@@ -259,18 +336,88 @@ export default function VehiclesPage() {
         {specialSelected?.service_group === "ambulance" && <p className="rounded-xl bg-red-50 p-3 text-xs text-red-700 dark:bg-red-950/40 dark:text-red-300">Ambulances get emergency requests and are sent at once. Peebee checks the vehicle, its medical equipment and the crew&apos;s qualifications before it can take any. Add clear photos and keep your documents ready.</p>}
         <input required value={plate} onChange={(e) => setPlate(e.target.value)} placeholder="Number plate" className={field} />
         <div className="grid grid-cols-2 gap-3">
-          <Select required value={make} onValueChange={(value) => { setMake(value); setModel(""); setModelCatalogId(""); setSeatCapacity(""); }} className={field} aria-label="Vehicle make">
+          <Select required value={make} onValueChange={handleMakeChange} className={field} aria-label="Vehicle make">
             <option value="">Choose make…</option>
             {[...new Set(CAR_MODEL_CATALOG.map((m) => m.make))].sort().map((name) => <option key={name} value={name}>{name}</option>)}
             <option value="Other">Other / not listed</option>
           </Select>
           {make && make !== "Other" ? (
-            <Select required value={modelCatalogId} onValueChange={(value) => { setModelCatalogId(value); const profile = CAR_MODEL_CATALOG.find((m) => m.id === value); setModel(profile ? `${profile.model}${profile.variant ? ` ${profile.variant}` : ""}` : ""); if (profile) setSeatCapacity(String(profile.seats)); }} className={field} aria-label="Vehicle model">
+            <Select required value={modelCatalogId} onValueChange={handleModelSelect} className={field} aria-label="Vehicle model">
               <option value="">Choose model…</option>
-              {CAR_MODEL_CATALOG.filter((m) => m.make === make).map((m) => <option key={m.id} value={m.id}>{m.model}{m.variant ? ` · ${m.variant}` : ""}</option>)}
+              {CAR_MODEL_CATALOG.filter((m) => m.make === make && (bodyTypeFilter === "All" || getCarBodyType(m) === bodyTypeFilter)).map((m) => {
+                const isVip = m.isVip ?? isVipRate(m.townDailyUgx ?? m.standardDailyUgx);
+                return (
+                  <option key={m.id} value={m.id}>
+                    {isVip ? "👑 " : ""}{m.model}{m.variant ? ` · ${m.variant}` : ""} ({getCarBodyType(m)})
+                  </option>
+                );
+              })}
             </Select>
           ) : <div className="space-y-2">{make === "Other" && <input required value={customMake} onChange={(e) => setCustomMake(e.target.value)} placeholder="Enter make name" className={field} />}<input required value={model} onChange={(e) => setModel(e.target.value)} placeholder="Enter model name" className={field} /></div>}
         </div>
+        {make && make !== "Other" && (
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between text-xs text-ink-500">
+              <span>Body type helper</span>
+              {bodyTypeFilter !== "All" && (
+                <button type="button" onClick={() => handleBodyTypeChange("All")} className="text-xs font-semibold text-gold hover:underline">
+                  Show all types
+                </button>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {["All", ...Array.from(new Set(CAR_MODEL_CATALOG.filter((m) => m.make === make).map((m) => getCarBodyType(m))))].map((bt) => (
+                <button
+                  key={bt}
+                  type="button"
+                  onClick={() => handleBodyTypeChange(bt)}
+                  className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition-colors ${
+                    bodyTypeFilter === bt
+                      ? "bg-gold text-ink-gold"
+                      : "bg-[rgb(var(--surface-muted))] text-ink hover:bg-gold/15"
+                  }`}
+                >
+                  {bt === "All" ? "All types" : bt}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        {systemHelperInfo && (
+          <div className={`space-y-2 rounded-xl border p-3 text-xs ${
+            systemHelperInfo.isVip ? "border-gold/40 bg-gold/15 text-ink" : "border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] text-ink"
+          }`}>
+            <div className="flex flex-wrap items-center justify-between gap-1">
+              <div className="flex items-center gap-1.5 font-bold">
+                {systemHelperInfo.isVip ? <Crown className="h-4 w-4 shrink-0 text-gold" /> : <Sparkles className="h-4 w-4 shrink-0 text-gold" />}
+                <span>System Helper: {systemHelperInfo.model}</span>
+              </div>
+              {systemHelperInfo.isVip ? (
+                <span className="rounded-full bg-gold/25 px-2 py-0.5 text-[11px] font-bold text-ink">
+                  👑 VIP Fleet (≥ 500k/day)
+                </span>
+              ) : (
+                <span className="rounded-full bg-gold/10 px-2 py-0.5 text-[11px] font-semibold text-ink-500">
+                  Standard Fleet (&lt; 500k/day)
+                </span>
+              )}
+            </div>
+            <p className="text-ink-500">
+              Body: <strong className="text-ink">{systemHelperInfo.bodyType}</strong> · Seats: <strong className="text-ink">{systemHelperInfo.seatCapacity}</strong> · Suggested Plate: <strong className="font-mono text-ink">{systemHelperInfo.pseudoPlate}</strong>
+            </p>
+            <div className="flex flex-wrap items-center gap-2 font-mono text-[11px]">
+              <span className="rounded bg-black/5 px-2 py-0.5 dark:bg-white/10">
+                Town benchmark: <strong>{systemHelperInfo.townDailyUgx.toLocaleString()} UGX/day</strong>
+              </span>
+              <span className="rounded bg-black/5 px-2 py-0.5 dark:bg-white/10">
+                Upcountry benchmark: <strong>{systemHelperInfo.upcountryDailyUgx.toLocaleString()} UGX/day</strong>
+              </span>
+            </div>
+            <p className="text-[10px] text-ink-500 italic">
+              Category, seats, condition, and features were automatically populated. You can edit any value below.
+            </p>
+          </div>
+        )}
         <div className="grid grid-cols-2 gap-3">
           <Select required value={year} onValueChange={setYear} className={field} aria-label="Vehicle model year"><option value="">Choose model year…</option>{Array.from({ length: new Date().getFullYear() - 1989 }, (_, i) => new Date().getFullYear() - i).map((y) => <option key={y} value={String(y)}>{y}</option>)}</Select>
           <Select value={colour} onValueChange={setColour} className={field} aria-label="Vehicle colour"><option value="">Choose colour…</option>{["White","Black","Silver","Grey","Blue","Red","Green","Brown","Gold","Other"].map((x) => <option key={x}>{x}</option>)}</Select>
