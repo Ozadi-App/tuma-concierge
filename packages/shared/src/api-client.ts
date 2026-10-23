@@ -75,6 +75,16 @@ import type {
   CustomerWalletsResponse,
   DeliverySettings,
   MarketplaceSettings,
+  StoreCollection,
+  StoreDiscount,
+  StoreOutletInventoryRow,
+  StoreDraftOrderItem,
+  StoreDraftOrder,
+  StorePosSaleItem,
+  StorePosSale,
+  StoreStockTransfer,
+  StoreCustomerLoyalty,
+  StoreEliteAnalytics,
   GuestSettings,
   GuestConfig,
   GuestCheckoutInput,
@@ -1993,10 +2003,36 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
       if (lat != null && !isNaN(lat)) params.set("lat", String(lat));
       if (lng != null && !isNaN(lng)) params.set("lng", String(lng));
       const q = params.toString() ? `?${params.toString()}` : "";
-      return request<{ store: any }>(`/v1/marketplace/stores/${id}${q}`);
+      return request<{
+        store: any;
+        collections?: StoreCollection[];
+        discounts?: StoreDiscount[];
+        outlets?: Array<{ id: string; name: string; code: string; address: string | null; lat?: number | null; lng?: number | null; status: string }>;
+        channels?: {
+          customerAppUrl: string;
+          dedicatedStorefrontUrl: string;
+          customDomainUrl: string | null;
+        };
+      }>(`/v1/marketplace/stores/${encodeURIComponent(id)}${q}`);
+    },
+    async submitStoreB2bInquiry(
+      storeIdOrSlug: string,
+      input: {
+        customer_name: string;
+        customer_phone: string;
+        customer_company?: string;
+        payment_terms?: "immediate" | "net_7" | "net_14" | "net_30";
+        notes?: string;
+        items: StoreDraftOrderItem[];
+      },
+    ) {
+      return request<{ ok: true; id: string; total: number }>(`/v1/marketplace/stores/${encodeURIComponent(storeIdOrSlug)}/b2b-inquiry`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      });
     },
     async getMarketplaceStoreProducts(id: string) {
-      return request<{ products: any[] }>(`/v1/marketplace/stores/${id}/products`);
+      return request<{ products: any[] }>(`/v1/marketplace/stores/${encodeURIComponent(id)}/products`);
     },
     async getMarketplaceProduct(id: string) {
       return request<{ product: any; store?: any }>(`/v1/marketplace/products/${id}`);
@@ -2029,6 +2065,8 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
       relayMeetStageId?: string;
       /** A long trip: by matatu relay (default when offered) or one rider all the way. */
       deliveryMode?: "rider" | "relay";
+      promoCode?: string;
+      salesChannel?: "customer_app" | "dedicated_storefront";
     }) {
       return request<{ ok: boolean; orders: OrderRow[]; order: OrderRow }>("/v1/marketplace/checkout", {
         method: "POST",
@@ -2043,9 +2081,23 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
       relayLastMile?: "door" | "collect" | "meet";
       relayMeetStageId?: string;
       deliveryMode?: "rider" | "relay";
+      promoCode?: string;
+      salesChannel?: "customer_app" | "dedicated_storefront";
     }) {
       return request<{
         itemsTotal: number;
+        rawItemsTotal?: number;
+        discountAmount?: number;
+        appliedDiscount?: {
+          id: string;
+          storeId: string;
+          code: string;
+          title: string;
+          kind: "percent" | "fixed" | "free_delivery" | "bogo";
+          discountAmount: number;
+          freeDelivery: boolean;
+        } | null;
+        loyaltyCashbackUgx?: number;
         deliveryFee: number;
         total: number;
         /** How this quote delivers; when a relay is offered the customer chooses (relay by default). */
@@ -2205,6 +2257,146 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
       return request<{ ok: boolean }>("/v1/merchants/me/store/live/end", {
         method: "POST",
       });
+    },
+    async upgradeMerchantStoreTier(input: { tier: "pro_store" | "pro_live" | "elite"; billingCycle?: "monthly" | "yearly" }) {
+      return request<{ ok: boolean; tier: string; expiresAt: string; amountPaid: number; store: any }>("/v1/merchants/me/store/tier", {
+        method: "POST",
+        body: JSON.stringify(input),
+      });
+    },
+    async getMerchantCollections() {
+      return request<{ collections: StoreCollection[] }>("/v1/merchants/me/collections");
+    },
+    async createMerchantCollection(input: {
+      title: string;
+      description?: string;
+      kind?: "manual" | "smart";
+      rule_field?: "category" | "price_lte" | "price_gte" | "badge" | "in_stock" | null;
+      rule_value?: string | null;
+      pinned?: boolean;
+    }) {
+      return request<{ ok: boolean; id: string }>("/v1/merchants/me/collections", {
+        method: "POST",
+        body: JSON.stringify(input),
+      });
+    },
+    async deleteMerchantCollection(id: string) {
+      return request<{ ok: boolean }>(`/v1/merchants/me/collections/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      });
+    },
+    async getMerchantDiscounts() {
+      return request<{ discounts: StoreDiscount[] }>("/v1/merchants/me/discounts");
+    },
+    async createMerchantDiscount(input: {
+      code: string;
+      title: string;
+      kind: "percent" | "fixed" | "free_delivery" | "bogo";
+      value?: number;
+      min_order_amount?: number;
+      max_uses?: number | null;
+      is_automatic?: boolean;
+    }) {
+      return request<{ ok: boolean; id: string }>("/v1/merchants/me/discounts", {
+        method: "POST",
+        body: JSON.stringify(input),
+      });
+    },
+    async deleteMerchantDiscount(id: string) {
+      return request<{ ok: boolean }>(`/v1/merchants/me/discounts/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      });
+    },
+    async getMerchantOutletInventory() {
+      return request<{ outlets: Array<{ id: string; name: string; code: string; address: string | null; status: string }>; inventory: StoreOutletInventoryRow[] }>("/v1/merchants/me/outlet-inventory");
+    },
+    async updateMerchantOutletInventory(input: {
+      productId: string;
+      outletId: string;
+      quantity: number;
+      lowStockThreshold?: number;
+    }) {
+      return request<{ ok: boolean; totalQuantity: number }>("/v1/merchants/me/outlet-inventory", {
+        method: "PUT",
+        body: JSON.stringify(input),
+      });
+    },
+    async getMerchantDraftOrders() {
+      return request<{ draftOrders: StoreDraftOrder[] }>("/v1/merchants/me/draft-orders");
+    },
+    async createMerchantDraftOrder(input: {
+      customer_name: string;
+      customer_phone?: string;
+      customer_company?: string;
+      items: StoreDraftOrderItem[];
+      discount_amount?: number;
+      payment_terms?: "immediate" | "net_7" | "net_14" | "net_30";
+      notes?: string;
+    }) {
+      return request<{ ok: boolean; id: string; total: number }>("/v1/merchants/me/draft-orders", {
+        method: "POST",
+        body: JSON.stringify(input),
+      });
+    },
+    async getMerchantEliteAnalytics() {
+      return request<{ analytics: StoreEliteAnalytics }>("/v1/merchants/me/elite-analytics");
+    },
+    async getMerchantPosSales() {
+      return request<{ sales: StorePosSale[] }>("/v1/merchants/me/pos-sales");
+    },
+    async createMerchantPosSale(input: {
+      outlet_id?: string | null;
+      customer_phone?: string;
+      customer_name?: string;
+      items: StorePosSaleItem[];
+      discount_amount?: number;
+      redeem_loyalty_ugx?: number;
+      payment_method: "peebee_code" | "momo" | "cash";
+    }) {
+      return request<{
+        ok: boolean;
+        saleId: string;
+        receiptCode: string;
+        total: number;
+        loyaltyRedeemedUgx: number;
+        loyaltyEarnedUgx: number;
+        loyaltyBalanceAfterUgx: number;
+      }>("/v1/merchants/me/pos-sales", {
+        method: "POST",
+        body: JSON.stringify(input),
+      });
+    },
+    async getMerchantStockTransfers() {
+      return request<{ transfers: StoreStockTransfer[] }>("/v1/merchants/me/stock-transfers");
+    },
+    async createMerchantStockTransfer(input: {
+      productId: string;
+      fromOutletId: string;
+      toOutletId: string;
+      quantity: number;
+      note?: string;
+    }) {
+      return request<{
+        ok: boolean;
+        transferId: string;
+        fromQuantityAfter: number;
+        toQuantityAfter: number;
+      }>("/v1/merchants/me/stock-transfers", {
+        method: "POST",
+        body: JSON.stringify(input),
+      });
+    },
+    async getMerchantCrmCustomers() {
+      return request<{
+        customers: StoreCustomerLoyalty[];
+        summary: {
+          totalCustomers: number;
+          vipCount: number;
+          repeatCount: number;
+          b2bCount: number;
+          totalLoyaltyBalanceUgx: number;
+        };
+      }>("/v1/merchants/me/crm-customers");
     },
 
     // Peebee Car — customer

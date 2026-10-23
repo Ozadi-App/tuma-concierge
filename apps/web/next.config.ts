@@ -6,6 +6,23 @@ const nextConfig: NextConfig = {
   images: {
     unoptimized: true,
   },
+  async rewrites() {
+    return [
+      // Dedicated Merchant Storefront: https://[store-name].peebee.online -> /site/[store-name]
+      // Excludes reserved Peebee platform subdomains (www, app, customer, rider, merchant, admin, api, etc.)
+      {
+        source: "/",
+        has: [
+          {
+            type: "host",
+            value:
+              "(?<store>(?!www$|app$|customer$|rider$|merchant$|admin$|api$|food$|gas$|pharmacy$|partner$|sales$|work$|learn$|tv$|preview$)[a-z0-9-]+)\\.peebee\\.online",
+          },
+        ],
+        destination: "/site/:store",
+      },
+    ];
+  },
   async headers() {
     return securityHeaderRules({
       apiUrl: process.env.NEXT_PUBLIC_API_URL,

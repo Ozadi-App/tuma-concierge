@@ -401,7 +401,7 @@ const DEFAULTS = {
   guest_notify_email: "0",
   guest_notify_whatsapp: "0",
   guest_whatsapp_template: "",
-  /** Peebee Marketplace: Groceries & Stores, Live Commerce, Pro Paywalls, Social Ads */
+  /** Peebee Marketplace: Groceries & Stores, Live Commerce, Pro Paywalls, Social Ads & Elite (Shopify Plus level) */
   marketplace_enabled: "1",
   marketplace_live_enabled: "1",
   marketplace_commission_percent: "10",
@@ -414,6 +414,23 @@ const DEFAULTS = {
   marketplace_min_order_amount: "5000",
   marketplace_live_max_duration_mins: "180",
   marketplace_delivery_base_fee: "3000",
+  marketplace_elite_enabled: "1",
+  marketplace_elite_price_ugx: "150000",
+  marketplace_elite_commission_percent: "5",
+  marketplace_pro_max_products: "50",
+  marketplace_elite_max_products: "5000",
+  marketplace_pro_max_collections: "3",
+  marketplace_elite_max_collections: "100",
+  marketplace_pro_max_discounts: "2",
+  marketplace_elite_max_discounts: "200",
+  marketplace_elite_b2b_enabled: "1",
+  marketplace_elite_multi_outlet_inventory_enabled: "1",
+  marketplace_elite_custom_domain_enabled: "1",
+  marketplace_elite_loyalty_enabled: "1",
+  marketplace_elite_max_loyalty_cashback_percent: "15",
+  marketplace_elite_pos_enabled: "1",
+  marketplace_elite_stock_transfers_enabled: "1",
+  marketplace_elite_crm_enabled: "1",
   /** Peebee Learn Studio: schools, classes, courses and lessons made by educators */
   learn_enabled: "1",
   learn_streams: "sprouts,foundations,academy,compass,skills",
@@ -1736,6 +1753,24 @@ export type MarketplaceSettings = {
   deliveryBaseFeeUgx: number;
   /** A cart left this many hours is set aside as an earlier cart when the customer starts a new one. */
   cartExpiryHours: number;
+  /** Tier 3: Merchant Advanced Marketplace (Elite — Shopify / Shopify Pro level) */
+  eliteEnabled: boolean;
+  elitePriceUgx: number;
+  eliteCommissionPercent: number;
+  proMaxProducts: number;
+  eliteMaxProducts: number;
+  proMaxCollections: number;
+  eliteMaxCollections: number;
+  proMaxDiscounts: number;
+  eliteMaxDiscounts: number;
+  eliteB2bEnabled: boolean;
+  eliteMultiOutletInventoryEnabled: boolean;
+  eliteCustomDomainEnabled: boolean;
+  eliteLoyaltyEnabled: boolean;
+  eliteMaxLoyaltyCashbackPercent: number;
+  elitePosEnabled: boolean;
+  eliteStockTransfersEnabled: boolean;
+  eliteCrmEnabled: boolean;
 };
 
 export async function getMarketplaceSettings(): Promise<MarketplaceSettings> {
@@ -1753,6 +1788,23 @@ export async function getMarketplaceSettings(): Promise<MarketplaceSettings> {
     liveDurationStr,
     deliveryBaseFeeStr,
     cartExpiryStr,
+    eliteEnabledStr,
+    elitePriceStr,
+    eliteCommissionStr,
+    proMaxProductsStr,
+    eliteMaxProductsStr,
+    proMaxCollectionsStr,
+    eliteMaxCollectionsStr,
+    proMaxDiscountsStr,
+    eliteMaxDiscountsStr,
+    eliteB2bStr,
+    eliteMultiOutletStr,
+    eliteCustomDomainStr,
+    eliteLoyaltyStr,
+    eliteMaxCashbackStr,
+    elitePosStr,
+    eliteTransfersStr,
+    eliteCrmStr,
   ] = await Promise.all([
     getSetting("marketplace_enabled"),
     getSetting("marketplace_live_enabled"),
@@ -1767,6 +1819,23 @@ export async function getMarketplaceSettings(): Promise<MarketplaceSettings> {
     getSetting("marketplace_live_max_duration_mins"),
     getSetting("marketplace_delivery_base_fee"),
     getSetting("cart_expiry_hours"),
+    getSetting("marketplace_elite_enabled"),
+    getSetting("marketplace_elite_price_ugx"),
+    getSetting("marketplace_elite_commission_percent"),
+    getSetting("marketplace_pro_max_products"),
+    getSetting("marketplace_elite_max_products"),
+    getSetting("marketplace_pro_max_collections"),
+    getSetting("marketplace_elite_max_collections"),
+    getSetting("marketplace_pro_max_discounts"),
+    getSetting("marketplace_elite_max_discounts"),
+    getSetting("marketplace_elite_b2b_enabled"),
+    getSetting("marketplace_elite_multi_outlet_inventory_enabled"),
+    getSetting("marketplace_elite_custom_domain_enabled"),
+    getSetting("marketplace_elite_loyalty_enabled"),
+    getSetting("marketplace_elite_max_loyalty_cashback_percent"),
+    getSetting("marketplace_elite_pos_enabled"),
+    getSetting("marketplace_elite_stock_transfers_enabled"),
+    getSetting("marketplace_elite_crm_enabled"),
   ]);
 
   return {
@@ -1783,6 +1852,23 @@ export async function getMarketplaceSettings(): Promise<MarketplaceSettings> {
     liveMaxDurationMins: Math.max(15, Number(liveDurationStr) || 180),
     deliveryBaseFeeUgx: Math.max(0, Number(deliveryBaseFeeStr) || 3000),
     cartExpiryHours: Math.max(1, Math.min(720, Number(cartExpiryStr) || 12)),
+    eliteEnabled: eliteEnabledStr !== "0",
+    elitePriceUgx: Math.max(0, Number(elitePriceStr) || 150000),
+    eliteCommissionPercent: Math.max(0, Math.min(100, Number(eliteCommissionStr ?? 5))),
+    proMaxProducts: Math.max(1, Number(proMaxProductsStr) || 50),
+    eliteMaxProducts: Math.max(10, Number(eliteMaxProductsStr) || 5000),
+    proMaxCollections: Math.max(1, Number(proMaxCollectionsStr) || 3),
+    eliteMaxCollections: Math.max(1, Number(eliteMaxCollectionsStr) || 100),
+    proMaxDiscounts: Math.max(0, Number(proMaxDiscountsStr) || 2),
+    eliteMaxDiscounts: Math.max(1, Number(eliteMaxDiscountsStr) || 200),
+    eliteB2bEnabled: eliteB2bStr !== "0",
+    eliteMultiOutletInventoryEnabled: eliteMultiOutletStr !== "0",
+    eliteCustomDomainEnabled: eliteCustomDomainStr !== "0",
+    eliteLoyaltyEnabled: eliteLoyaltyStr !== "0",
+    eliteMaxLoyaltyCashbackPercent: Math.max(0, Math.min(50, Number(eliteMaxCashbackStr) || 15)),
+    elitePosEnabled: elitePosStr !== "0",
+    eliteStockTransfersEnabled: eliteTransfersStr !== "0",
+    eliteCrmEnabled: eliteCrmStr !== "0",
   };
 }
 
@@ -1801,6 +1887,23 @@ export async function setMarketplaceSettings(next: Partial<MarketplaceSettings>)
   if (next.liveMaxDurationMins != null) writes.push(setSetting("marketplace_live_max_duration_mins", String(Math.max(15, Math.round(next.liveMaxDurationMins)))));
   if (next.deliveryBaseFeeUgx != null) writes.push(setSetting("marketplace_delivery_base_fee", String(Math.max(0, Math.round(next.deliveryBaseFeeUgx)))));
   if (next.cartExpiryHours != null) writes.push(setSetting("cart_expiry_hours", String(Math.max(1, Math.min(720, Math.round(next.cartExpiryHours))))));
+  if (next.eliteEnabled != null) writes.push(setSetting("marketplace_elite_enabled", next.eliteEnabled ? "1" : "0"));
+  if (next.elitePriceUgx != null) writes.push(setSetting("marketplace_elite_price_ugx", String(Math.max(0, Math.round(next.elitePriceUgx)))));
+  if (next.eliteCommissionPercent != null) writes.push(setSetting("marketplace_elite_commission_percent", String(Math.max(0, Math.min(100, next.eliteCommissionPercent)))));
+  if (next.proMaxProducts != null) writes.push(setSetting("marketplace_pro_max_products", String(Math.max(1, Math.round(next.proMaxProducts)))));
+  if (next.eliteMaxProducts != null) writes.push(setSetting("marketplace_elite_max_products", String(Math.max(10, Math.round(next.eliteMaxProducts)))));
+  if (next.proMaxCollections != null) writes.push(setSetting("marketplace_pro_max_collections", String(Math.max(1, Math.round(next.proMaxCollections)))));
+  if (next.eliteMaxCollections != null) writes.push(setSetting("marketplace_elite_max_collections", String(Math.max(1, Math.round(next.eliteMaxCollections)))));
+  if (next.proMaxDiscounts != null) writes.push(setSetting("marketplace_pro_max_discounts", String(Math.max(0, Math.round(next.proMaxDiscounts)))));
+  if (next.eliteMaxDiscounts != null) writes.push(setSetting("marketplace_elite_max_discounts", String(Math.max(1, Math.round(next.eliteMaxDiscounts)))));
+  if (next.eliteB2bEnabled != null) writes.push(setSetting("marketplace_elite_b2b_enabled", next.eliteB2bEnabled ? "1" : "0"));
+  if (next.eliteMultiOutletInventoryEnabled != null) writes.push(setSetting("marketplace_elite_multi_outlet_inventory_enabled", next.eliteMultiOutletInventoryEnabled ? "1" : "0"));
+  if (next.eliteCustomDomainEnabled != null) writes.push(setSetting("marketplace_elite_custom_domain_enabled", next.eliteCustomDomainEnabled ? "1" : "0"));
+  if (next.eliteLoyaltyEnabled != null) writes.push(setSetting("marketplace_elite_loyalty_enabled", next.eliteLoyaltyEnabled ? "1" : "0"));
+  if (next.eliteMaxLoyaltyCashbackPercent != null) writes.push(setSetting("marketplace_elite_max_loyalty_cashback_percent", String(Math.max(0, Math.min(50, next.eliteMaxLoyaltyCashbackPercent)))));
+  if (next.elitePosEnabled != null) writes.push(setSetting("marketplace_elite_pos_enabled", next.elitePosEnabled ? "1" : "0"));
+  if (next.eliteStockTransfersEnabled != null) writes.push(setSetting("marketplace_elite_stock_transfers_enabled", next.eliteStockTransfersEnabled ? "1" : "0"));
+  if (next.eliteCrmEnabled != null) writes.push(setSetting("marketplace_elite_crm_enabled", next.eliteCrmEnabled ? "1" : "0"));
   await Promise.all(writes);
 }
 

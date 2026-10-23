@@ -1,22 +1,37 @@
 "use client";
 
 import { Select } from "@peebee/shared/select";
-import type { MarketplaceSettings } from "@peebee/shared";
+import type {
+  MarketplaceSettings,
+  StoreCollection,
+  StoreCustomerLoyalty,
+  StoreDiscount,
+  StoreDraftOrder,
+  StoreEliteAnalytics,
+  StoreOutletInventoryRow,
+  StorePosSale,
+  StoreStockTransfer,
+} from "@peebee/shared";
 import {
   AlertCircle,
+  BarChart3,
+  Briefcase,
+  Building2,
   Camera,
   Check,
   ChevronRight,
+  Crown,
   Eye,
+  FileText,
   Flame,
+  Gift,
   Globe,
   Heart,
   Layers,
   LayoutGrid,
   Megaphone,
   Package,
-  PackagePlus,
-  Play,
+  Palette,
   Plus,
   Radio,
   Search,
@@ -26,11 +41,11 @@ import {
   SlidersHorizontal,
   Sparkles,
   Store as StoreIcon,
+  Tag,
   Trash2,
   TrendingUp,
   Tv,
   Users,
-  Video,
   X,
   Zap,
 } from "lucide-react";
@@ -55,6 +70,21 @@ interface ProStore {
   address?: string | null;
   min_order_amount?: number;
   pro_tier?: string;
+  elite_tier?: number;
+  custom_domain?: string | null;
+  theme_layout?: "grid" | "editorial" | "compact";
+  theme_accent?: "gold" | "ink" | "cream";
+  hero_headline?: string | null;
+  hero_subheadline?: string | null;
+  hero_cta_text?: string | null;
+  seo_title?: string | null;
+  seo_description?: string | null;
+  meta_pixel_id?: string | null;
+  tiktok_pixel_id?: string | null;
+  loyalty_enabled?: number;
+  loyalty_cashback_percent?: number;
+  b2b_wholesale_enabled?: number;
+  b2b_min_order_amount?: number;
   is_live?: number;
   live_channel_title?: string | null;
   live_stream_url?: string | null;
@@ -78,6 +108,7 @@ interface StoreProduct {
   description: string | null;
   price: number;
   compare_at_price: number | null;
+  cost_price?: number | null;
   inventory_quantity: number;
   category_name?: string | null;
   badge?: string | null;
@@ -108,7 +139,7 @@ interface AdCampaign {
   created_at: string;
 }
 
-const ugx = (val: number) => `UGX ${Number(val).toLocaleString()}`;
+const ugx = (val: number) => `UGX ${Number(val || 0).toLocaleString()}`;
 
 export default function MerchantProStorePage() {
   const { merchant } = useAuth();
@@ -119,7 +150,94 @@ export default function MerchantProStorePage() {
   const [settings, setSettings] = useState<MarketplaceSettings | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [activeTab, setActiveTab] = useState<"catalog" | "live" | "ads" | "settings">("catalog");
+  const [activeTab, setActiveTab] = useState<"catalog" | "live" | "ads" | "elite" | "settings">("catalog");
+
+  // Elite OS sub-navigation
+  const [eliteSection, setEliteSection] = useState<
+    "overview" | "pos" | "theme" | "collections" | "discounts" | "inventory" | "b2b" | "crm"
+  >("overview");
+  const [upgradingTier, setUpgradingTier] = useState(false);
+
+  // Elite data states
+  const [analytics, setAnalytics] = useState<StoreEliteAnalytics | null>(null);
+  const [collections, setCollections] = useState<StoreCollection[]>([]);
+  const [discounts, setDiscounts] = useState<StoreDiscount[]>([]);
+  const [outlets, setOutlets] = useState<Array<{ id: string; name: string; code: string; address: string | null; status: string }>>([]);
+  const [outletInventory, setOutletInventory] = useState<StoreOutletInventoryRow[]>([]);
+  const [draftOrders, setDraftOrders] = useState<StoreDraftOrder[]>([]);
+  const [posSales, setPosSales] = useState<StorePosSale[]>([]);
+  const [stockTransfers, setStockTransfers] = useState<StoreStockTransfer[]>([]);
+  const [crmCustomers, setCrmCustomers] = useState<StoreCustomerLoyalty[]>([]);
+  const [crmSummary, setCrmSummary] = useState<{
+    totalCustomers: number;
+    vipCount: number;
+    repeatCount: number;
+    b2bCount: number;
+    totalLoyaltyBalanceUgx: number;
+  }>({ totalCustomers: 0, vipCount: 0, repeatCount: 0, b2bCount: 0, totalLoyaltyBalanceUgx: 0 });
+
+  // Elite Theme & Brand Builder state
+  const [customDomain, setCustomDomain] = useState("");
+  const [themeLayout, setThemeLayout] = useState<"grid" | "editorial" | "compact">("grid");
+  const [themeAccent, setThemeAccent] = useState<"gold" | "ink" | "cream">("gold");
+  const [heroHeadline, setHeroHeadline] = useState("");
+  const [heroSubheadline, setHeroSubheadline] = useState("");
+  const [heroCtaText, setHeroCtaText] = useState("Shop Now");
+  const [metaPixelId, setMetaPixelId] = useState("");
+  const [tiktokPixelId, setTiktokPixelId] = useState("");
+  const [loyaltyEnabled, setLoyaltyEnabled] = useState(false);
+  const [loyaltyCashback, setLoyaltyCashback] = useState("5");
+  const [savingTheme, setSavingTheme] = useState(false);
+
+  // Elite Collections form state
+  const [colTitle, setColTitle] = useState("");
+  const [colKind, setColKind] = useState<"smart" | "manual">("smart");
+  const [colRuleField, setColRuleField] = useState<"category" | "price_lte" | "price_gte" | "badge" | "in_stock">("price_lte");
+  const [colRuleValue, setColRuleValue] = useState("50000");
+  const [savingCol, setSavingCol] = useState(false);
+
+  // Elite Discounts form state
+  const [discCode, setDiscCode] = useState("");
+  const [discTitle, setDiscTitle] = useState("");
+  const [discKind, setDiscKind] = useState<"percent" | "fixed" | "free_delivery" | "bogo">("percent");
+  const [discValue, setDiscValue] = useState("15");
+  const [discMinOrder, setDiscMinOrder] = useState("20000");
+  const [discAuto, setDiscAuto] = useState(false);
+  const [savingDisc, setSavingDisc] = useState(false);
+
+  // Elite Multi-Outlet Inventory & Branch Transfer form state
+  const [selectedInvOutlet, setSelectedInvOutlet] = useState("");
+  const [selectedInvProduct, setSelectedInvProduct] = useState("");
+  const [invQuantity, setInvQuantity] = useState("25");
+  const [savingInv, setSavingInv] = useState(false);
+  const [transferProductId, setTransferProductId] = useState("");
+  const [transferFromOutletId, setTransferFromOutletId] = useState("");
+  const [transferToOutletId, setTransferToOutletId] = useState("");
+  const [transferQty, setTransferQty] = useState("5");
+  const [transferNote, setTransferNote] = useState("");
+  const [savingTransfer, setSavingTransfer] = useState(false);
+
+  // Elite Omnichannel POS Register form state
+  const [posOutletId, setPosOutletId] = useState("");
+  const [posProductId, setPosProductId] = useState("");
+  const [posQty, setPosQty] = useState("1");
+  const [posCustomerPhone, setPosCustomerPhone] = useState("");
+  const [posCustomerName, setPosCustomerName] = useState("");
+  const [posDiscountUgx, setPosDiscountUgx] = useState("0");
+  const [posRedeemLoyaltyUgx, setPosRedeemLoyaltyUgx] = useState("0");
+  const [posPaymentMethod, setPosPaymentMethod] = useState<"peebee_code" | "momo" | "cash">("peebee_code");
+  const [savingPosSale, setSavingPosSale] = useState(false);
+
+  // Elite B2B Draft Order form state
+  const [b2bCustomerName, setB2bCustomerName] = useState("");
+  const [b2bCompany, setB2bCompany] = useState("");
+  const [b2bPhone, setB2bPhone] = useState("");
+  const [b2bProductId, setB2bProductId] = useState("");
+  const [b2bQty, setB2bQty] = useState("10");
+  const [b2bUnitPrice, setB2bUnitPrice] = useState("");
+  const [b2bDiscountUgx, setB2bDiscountUgx] = useState("0");
+  const [b2bTerms, setB2bTerms] = useState<"immediate" | "net_7" | "net_14" | "net_30">("net_14");
+  const [savingDraft, setSavingDraft] = useState(false);
 
   // Onboarding wizard state (if no store yet)
   const [wizardName, setWizardName] = useState("");
@@ -133,6 +251,7 @@ export default function MerchantProStorePage() {
   const [productDesc, setProductDesc] = useState("");
   const [productPrice, setProductPrice] = useState("");
   const [productComparePrice, setProductComparePrice] = useState("");
+  const [productCostPrice, setProductCostPrice] = useState("");
   const [productStock, setProductStock] = useState("50");
   const [productCategory, setProductCategory] = useState("General");
   const [productBadge, setProductBadge] = useState("");
@@ -183,22 +302,343 @@ export default function MerchantProStorePage() {
       }
 
       if (storeRes?.store) {
-        setStore(storeRes.store);
-        setIsLiveActive(Boolean(storeRes.store.is_live));
-        if (storeRes.store.live_channel_title) {
-          setLiveTitle(storeRes.store.live_channel_title);
-        }
-        if (storeRes.store.live_stream_url) {
-          setLiveStreamUrl(storeRes.store.live_stream_url);
-        }
+        const s: ProStore = storeRes.store;
+        setStore(s);
+        setIsLiveActive(Boolean(s.is_live));
+        if (s.live_channel_title) setLiveTitle(s.live_channel_title);
+        if (s.live_stream_url) setLiveStreamUrl(s.live_stream_url);
+        if (s.custom_domain) setCustomDomain(s.custom_domain);
+        if (s.theme_layout) setThemeLayout(s.theme_layout);
+        if (s.theme_accent) setThemeAccent(s.theme_accent);
+        if (s.hero_headline) setHeroHeadline(s.hero_headline);
+        if (s.hero_subheadline) setHeroSubheadline(s.hero_subheadline);
+        if (s.hero_cta_text) setHeroCtaText(s.hero_cta_text);
+        if (s.meta_pixel_id) setMetaPixelId(s.meta_pixel_id);
+        if (s.tiktok_pixel_id) setTiktokPixelId(s.tiktok_pixel_id);
+        setLoyaltyEnabled(Boolean(s.loyalty_enabled));
+        if (s.loyalty_cashback_percent != null) setLoyaltyCashback(String(s.loyalty_cashback_percent));
 
-        const prodRes = await api.getMerchantProProducts().catch(() => ({ products: [] }));
-        setProducts(prodRes.products || []);
+        const [prodRes, colRes, discRes, invRes, drfRes, anaRes, posRes, trfRes, crmRes] = await Promise.all([
+          api.getMerchantProProducts().catch(() => ({ products: [] })),
+          api.getMerchantCollections().catch(() => ({ collections: [] })),
+          api.getMerchantDiscounts().catch(() => ({ discounts: [] })),
+          api.getMerchantOutletInventory().catch(() => ({ outlets: [], inventory: [] })),
+          api.getMerchantDraftOrders().catch(() => ({ draftOrders: [] })),
+          api.getMerchantEliteAnalytics().catch(() => ({ analytics: null })),
+          api.getMerchantPosSales().catch(() => ({ sales: [] })),
+          api.getMerchantStockTransfers().catch(() => ({ transfers: [] })),
+          api.getMerchantCrmCustomers().catch(() => ({
+            customers: [],
+            summary: { totalCustomers: 0, vipCount: 0, repeatCount: 0, b2bCount: 0, totalLoyaltyBalanceUgx: 0 },
+          })),
+        ]);
+        const loadedProducts = prodRes.products || [];
+        setProducts(loadedProducts);
+        setCollections(colRes.collections || []);
+        setDiscounts(discRes.discounts || []);
+        setOutlets(invRes.outlets || []);
+        setOutletInventory(invRes.inventory || []);
+        setDraftOrders(drfRes.draftOrders || []);
+        setPosSales(posRes.sales || []);
+        setStockTransfers(trfRes.transfers || []);
+        setCrmCustomers(crmRes.customers || []);
+        if (crmRes.summary) setCrmSummary(crmRes.summary);
+        if (anaRes.analytics) setAnalytics(anaRes.analytics);
+
+        if (invRes.outlets?.[0] && !selectedInvOutlet) {
+          setSelectedInvOutlet(invRes.outlets[0].id);
+          setPosOutletId(invRes.outlets[0].id);
+          setTransferFromOutletId(invRes.outlets[0].id);
+          if (invRes.outlets[1]) setTransferToOutletId(invRes.outlets[1].id);
+        }
+        if (loadedProducts[0] && !selectedInvProduct) {
+          setSelectedInvProduct(loadedProducts[0].id);
+          setPosProductId(loadedProducts[0].id);
+          setTransferProductId(loadedProducts[0].id);
+          setB2bProductId(loadedProducts[0].id);
+          setB2bUnitPrice(String(Math.round(loadedProducts[0].price * 0.85)));
+        }
       }
     } catch (err) {
       setError(errorMessage(err));
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function refreshEliteData() {
+    const [colRes, discRes, invRes, drfRes, anaRes, posRes, trfRes, crmRes] = await Promise.all([
+      api.getMerchantCollections().catch(() => ({ collections: [] })),
+      api.getMerchantDiscounts().catch(() => ({ discounts: [] })),
+      api.getMerchantOutletInventory().catch(() => ({ outlets: [], inventory: [] })),
+      api.getMerchantDraftOrders().catch(() => ({ draftOrders: [] })),
+      api.getMerchantEliteAnalytics().catch(() => ({ analytics: null })),
+      api.getMerchantPosSales().catch(() => ({ sales: [] })),
+      api.getMerchantStockTransfers().catch(() => ({ transfers: [] })),
+      api.getMerchantCrmCustomers().catch(() => ({
+        customers: [],
+        summary: { totalCustomers: 0, vipCount: 0, repeatCount: 0, b2bCount: 0, totalLoyaltyBalanceUgx: 0 },
+      })),
+    ]);
+    setCollections(colRes.collections || []);
+    setDiscounts(discRes.discounts || []);
+    setOutlets(invRes.outlets || []);
+    setOutletInventory(invRes.inventory || []);
+    setDraftOrders(drfRes.draftOrders || []);
+    setPosSales(posRes.sales || []);
+    setStockTransfers(trfRes.transfers || []);
+    setCrmCustomers(crmRes.customers || []);
+    if (crmRes.summary) setCrmSummary(crmRes.summary);
+    if (anaRes.analytics) setAnalytics(anaRes.analytics);
+  }
+
+  async function handleUpgradeTier(tier: "pro_store" | "pro_live" | "elite") {
+    if (!store) return;
+    setUpgradingTier(true);
+    setError("");
+    try {
+      const res = await api.upgradeMerchantStoreTier({ tier, billingCycle: "monthly" });
+      setStore(res.store);
+      if (tier === "elite") {
+        setActiveTab("elite");
+        setNotice("👑 Upgraded to Merchant Elite (Shopify Plus OS)! Custom themes, Smart Collections, B2B Wholesale & Multi-Outlet Inventory are now unlocked.");
+      } else {
+        setNotice(`✅ Switched to ${tier === "pro_live" ? "Merchant Marketplace (Pro Live)" : "Merchant Marketplace (Pro)"}!`);
+      }
+      await refreshEliteData();
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setUpgradingTier(false);
+    }
+  }
+
+  async function handleSaveTheme() {
+    if (!store) return;
+    setSavingTheme(true);
+    setError("");
+    try {
+      const res = await api.updateMerchantProStore({
+        custom_domain: customDomain.trim() || undefined,
+        theme_layout: themeLayout,
+        theme_accent: themeAccent,
+        hero_headline: heroHeadline.trim() || undefined,
+        hero_subheadline: heroSubheadline.trim() || undefined,
+        hero_cta_text: heroCtaText.trim() || undefined,
+        meta_pixel_id: metaPixelId.trim() || undefined,
+        tiktok_pixel_id: tiktokPixelId.trim() || undefined,
+        loyalty_enabled: loyaltyEnabled,
+        loyalty_cashback_percent: Number(loyaltyCashback) || 0,
+      });
+      setStore(res.store);
+      setNotice("🎨 Online Store 2.0 Theme, Custom Domain & VIP Loyalty settings saved!");
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setSavingTheme(false);
+    }
+  }
+
+  async function handleCreateCollection() {
+    if (!colTitle.trim()) {
+      setError("Enter a collection title.");
+      return;
+    }
+    setSavingCol(true);
+    setError("");
+    try {
+      await api.createMerchantCollection({
+        title: colTitle.trim(),
+        kind: colKind,
+        rule_field: colKind === "smart" ? colRuleField : null,
+        rule_value: colKind === "smart" ? colRuleValue : null,
+        pinned: true,
+      });
+      setColTitle("");
+      await refreshEliteData();
+      setNotice("📚 Smart Collection created and pinned to your storefront!");
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setSavingCol(false);
+    }
+  }
+
+  async function handleDeleteCollection(id: string) {
+    try {
+      await api.deleteMerchantCollection(id);
+      await refreshEliteData();
+    } catch (err) {
+      setError(errorMessage(err));
+    }
+  }
+
+  async function handleCreateDiscount() {
+    if (!discCode.trim() || !discTitle.trim()) {
+      setError("Enter a promo code and campaign title.");
+      return;
+    }
+    setSavingDisc(true);
+    setError("");
+    try {
+      await api.createMerchantDiscount({
+        code: discCode.trim().toUpperCase(),
+        title: discTitle.trim(),
+        kind: discKind,
+        value: discKind === "free_delivery" ? 0 : Number(discValue) || 10,
+        min_order_amount: Number(discMinOrder) || 0,
+        is_automatic: discAuto,
+      });
+      setDiscCode("");
+      setDiscTitle("");
+      await refreshEliteData();
+      setNotice("🏷️ Promo code & discount rule activated!");
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setSavingDisc(false);
+    }
+  }
+
+  async function handleDeleteDiscount(id: string) {
+    try {
+      await api.deleteMerchantDiscount(id);
+      await refreshEliteData();
+    } catch (err) {
+      setError(errorMessage(err));
+    }
+  }
+
+  async function handleSaveOutletInventory() {
+    if (!selectedInvOutlet || !selectedInvProduct) {
+      setError("Select both a branch outlet and a product.");
+      return;
+    }
+    setSavingInv(true);
+    setError("");
+    try {
+      const res = await api.updateMerchantOutletInventory({
+        outletId: selectedInvOutlet,
+        productId: selectedInvProduct,
+        quantity: Number(invQuantity) || 0,
+        lowStockThreshold: 5,
+      });
+      const prodRes = await api.getMerchantProProducts().catch(() => ({ products: [] }));
+      setProducts(prodRes.products || []);
+      await refreshEliteData();
+      setNotice(`📦 Branch inventory updated! Total synced product stock: ${res.totalQuantity} units.`);
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setSavingInv(false);
+    }
+  }
+
+  async function handleCreatePosSale() {
+    const prod = products.find((p) => p.id === posProductId) || products[0];
+    if (!prod) {
+      setError("Add a product to your catalog before ringing a POS sale.");
+      return;
+    }
+    setSavingPosSale(true);
+    setError("");
+    try {
+      const qty = Math.max(1, Number(posQty) || 1);
+      const res = await api.createMerchantPosSale({
+        outlet_id: posOutletId || null,
+        customer_phone: posCustomerPhone.trim() || undefined,
+        customer_name: posCustomerName.trim() || undefined,
+        items: [
+          {
+            productId: prod.id,
+            title: prod.title,
+            unitPrice: prod.price,
+            quantity: qty,
+          },
+        ],
+        discount_amount: Number(posDiscountUgx) || 0,
+        redeem_loyalty_ugx: Number(posRedeemLoyaltyUgx) || 0,
+        payment_method: posPaymentMethod,
+      });
+      const prodRes = await api.getMerchantProProducts().catch(() => ({ products: [] }));
+      setProducts(prodRes.products || []);
+      await refreshEliteData();
+      setPosRedeemLoyaltyUgx("0");
+      setPosDiscountUgx("0");
+      setNotice(
+        `🧾 POS Receipt ${res.receiptCode} completed (${ugx(res.total)})! Inventory auto-synced${
+          res.loyaltyEarnedUgx > 0 ? ` · +${ugx(res.loyaltyEarnedUgx)} VIP points credited` : ""
+        }.`
+      );
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setSavingPosSale(false);
+    }
+  }
+
+  async function handleCreateStockTransfer() {
+    if (!transferProductId || !transferFromOutletId || !transferToOutletId) {
+      setError("Select product, source branch, and destination branch.");
+      return;
+    }
+    setSavingTransfer(true);
+    setError("");
+    try {
+      const res = await api.createMerchantStockTransfer({
+        productId: transferProductId,
+        fromOutletId: transferFromOutletId,
+        toOutletId: transferToOutletId,
+        quantity: Math.max(1, Number(transferQty) || 1),
+        note: transferNote.trim() || undefined,
+      });
+      setTransferNote("");
+      await refreshEliteData();
+      setNotice(
+        `🔄 Stock transfer completed! Source branch now has ${res.fromQuantityAfter} units; destination branch has ${res.toQuantityAfter} units.`
+      );
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setSavingTransfer(false);
+    }
+  }
+
+  async function handleCreateDraftOrder() {
+    const prod = products.find((p) => p.id === b2bProductId) || products[0];
+    if (!b2bCustomerName.trim() || !prod) {
+      setError("Enter B2B buyer name and select a product.");
+      return;
+    }
+    setSavingDraft(true);
+    setError("");
+    try {
+      const unitPrice = Number(b2bUnitPrice) || prod.price;
+      const qty = Math.max(1, Number(b2bQty) || 1);
+      const res = await api.createMerchantDraftOrder({
+        customer_name: b2bCustomerName.trim(),
+        customer_company: b2bCompany.trim() || undefined,
+        customer_phone: b2bPhone.trim() || undefined,
+        items: [
+          {
+            productId: prod.id,
+            title: prod.title,
+            unitPrice,
+            quantity: qty,
+          },
+        ],
+        discount_amount: Number(b2bDiscountUgx) || 0,
+        payment_terms: b2bTerms,
+      });
+      setB2bCustomerName("");
+      setB2bCompany("");
+      setB2bPhone("");
+      await refreshEliteData();
+      setNotice(`🤝 B2B Wholesale Invoice created (${ugx(res.total)}) — 1-Tap Payment Link ready to share!`);
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setSavingDraft(false);
     }
   }
 
@@ -235,6 +675,7 @@ export default function MerchantProStorePage() {
       const res = await api.triggerMerchantProStarterPack();
       const prodRes = await api.getMerchantProProducts().catch(() => ({ products: [] }));
       setProducts(prodRes.products || []);
+      await refreshEliteData();
       setNotice(`✅ Loaded ${res.addedCount} starter pack items! Your store is now ready for customers.`);
     } catch (err) {
       setError(errorMessage(err));
@@ -272,6 +713,7 @@ export default function MerchantProStorePage() {
         description: productDesc.trim() || undefined,
         price: Number(productPrice),
         compare_at_price: productComparePrice ? Number(productComparePrice) : undefined,
+        cost_price: productCostPrice ? Number(productCostPrice) : undefined,
         inventory_quantity: Number(productStock) || 50,
         category_name: productCategory.trim() || "General",
         badge: productBadge.trim() || undefined,
@@ -282,6 +724,7 @@ export default function MerchantProStorePage() {
 
       const prodRes = await api.getMerchantProProducts().catch(() => ({ products: [] }));
       setProducts(prodRes.products || []);
+      await refreshEliteData();
       setShowAddProduct(false);
       resetProductForm();
       setNotice(`✅ "${productTitle.trim()}" added to your catalog!`);
@@ -297,6 +740,7 @@ export default function MerchantProStorePage() {
     setProductDesc("");
     setProductPrice("");
     setProductComparePrice("");
+    setProductCostPrice("");
     setProductStock("50");
     setProductCategory("General");
     setProductBadge("");
@@ -321,7 +765,6 @@ export default function MerchantProStorePage() {
       setIsLiveActive(true);
       setShowLiveStudio(true);
       setNotice("🔴 You are now LIVE! Shoppers are receiving live stream notifications.");
-      // Seed welcome chat
       setChats([
         {
           id: "welcome-1",
@@ -403,7 +846,7 @@ export default function MerchantProStorePage() {
       <div className="flex min-h-[60vh] items-center justify-center p-4">
         <div className="flex flex-col items-center gap-3">
           <div className="h-9 w-9 animate-spin rounded-full border-3 border-gold border-t-transparent" />
-          <p className="text-sm font-semibold text-ink-500">Loading your Pro Store Studio…</p>
+          <p className="text-sm font-semibold text-ink-500">Loading your Store Studio…</p>
         </div>
       </div>
     );
@@ -411,6 +854,8 @@ export default function MerchantProStorePage() {
 
   const isProFree = settings?.proPricingMode !== "paid";
   const proStorePrice = settings?.proStorePriceUgx ?? 35000;
+  const elitePrice = settings?.elitePriceUgx ?? 150000;
+  const isElite = Boolean(store?.elite_tier) || store?.pro_tier === "elite" || isProFree;
 
   // 1. Initial State: No store created yet -> Chap Chap 2-Minute Onboarding Wizard
   if (!store) {
@@ -422,20 +867,20 @@ export default function MerchantProStorePage() {
             <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-gold/20 text-gold">
               <Sparkles className="h-4.5 w-4.5" />
             </span>
-            <span className="text-xs font-bold tracking-wider text-gold uppercase">Peebee Pro Engine</span>
+            <span className="text-xs font-bold tracking-wider text-gold uppercase">Peebee Commerce Ladder</span>
           </div>
 
           <h1 className="mt-3 font-serif text-2xl font-black text-white sm:text-3xl">
             Power of Shopify. Simplicity of Snake Game.
           </h1>
           <p className="mt-2 text-sm text-neutral-300">
-            Launch your full online supermarket or boutique store in under 2 minutes. Tap below to start "Chap Chap".
+            Upgrade from basic Merchant Code payments to a full Marketplace Store (Pro) or Shopify Plus Commerce OS (Elite).
           </p>
 
           <div className="mt-4 flex flex-wrap gap-2 text-xs font-semibold text-neutral-400">
-            <span className="rounded-full bg-white/10 px-3 py-1">⚡ 1-Click Starter Packs</span>
-            <span className="rounded-full bg-white/10 px-3 py-1">🔴 TikTok Live Selling</span>
-            <span className="rounded-full bg-white/10 px-3 py-1">📢 WhatsApp & Meta Ads</span>
+            <span className="rounded-full bg-white/10 px-3 py-1">1. Merchant Code (Free)</span>
+            <span className="rounded-full bg-gold/20 text-gold px-3 py-1">2. Marketplace (Pro)</span>
+            <span className="rounded-full bg-gold text-ink-gold font-bold px-3 py-1">3. Advanced OS (Elite)</span>
           </div>
         </div>
 
@@ -472,9 +917,6 @@ export default function MerchantProStorePage() {
               <option value="groceries">🥦 Groceries & Fresh Produce</option>
               <option value="stores">👗 Stores, Boutique & Retail</option>
             </Select>
-            <p className="mt-1 text-[11px] text-ink-500">
-              * Note: Pharmacies are managed via specialized NDA medical verification.
-            </p>
           </div>
 
           <div>
@@ -500,7 +942,7 @@ export default function MerchantProStorePage() {
     );
   }
 
-  // 2. Active Pro Store Dashboard
+  // 2. Active Pro & Elite Store Dashboard
   return (
     <div className="mx-auto max-w-2xl space-y-5 px-4 pb-24 pt-4">
       {/* Top Banner / Store Header */}
@@ -511,14 +953,19 @@ export default function MerchantProStorePage() {
               {store.category === "groceries" ? "🥦" : "🛍️"}
             </div>
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <h1 className="font-serif text-xl font-black text-ink">{store.name}</h1>
                 <span className="rounded-full bg-green-500/15 px-2.5 py-0.5 text-[10px] font-bold text-green-600 dark:text-green-400">
                   {store.status === "active" ? "OPEN" : "CLOSED"}
                 </span>
+                {isElite && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-gold px-2.5 py-0.5 text-[10px] font-black text-ink-gold">
+                    <Crown className="h-3 w-3" /> ELITE OS
+                  </span>
+                )}
               </div>
               <p className="text-xs text-ink-500 font-medium">
-                peebee.online/{store.category}/{store.slug}
+                {store.custom_domain ? store.custom_domain : `peebee.online/${store.category}/${store.slug}`}
               </p>
             </div>
           </div>
@@ -532,53 +979,114 @@ export default function MerchantProStorePage() {
           </button>
         </div>
 
-        {/* Snake-Game 4-Step Interactive Progression Bar */}
-        <div className="mt-5 rounded-2xl bg-[rgb(var(--surface-muted))] p-3.5">
-          <div className="flex items-center justify-between text-xs">
-            <span className="font-bold text-ink flex items-center gap-1.5">
-              <Zap className="h-3.5 w-3.5 text-gold" />
-              <span>Launch Readiness (Snake Progress)</span>
-            </span>
-            <span className="font-mono font-bold text-gold">
-              {products.length > 0 ? "100% Launch Ready" : "50% Step 2 Next"}
-            </span>
-          </div>
+        {/* 3-Tier Merchant Upgrade Ladder (Free Code -> Pro Marketplace -> Elite Shopify Plus) */}
+        <div className="mt-4 grid grid-cols-3 gap-2">
+          <Link
+            href="/outlets"
+            className="rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] p-2.5 text-left transition hover:border-gold/40"
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold uppercase text-ink-500">Tier 1 · Free</span>
+              <Check className="h-3.5 w-3.5 text-green-600" />
+            </div>
+            <p className="mt-0.5 text-xs font-extrabold text-ink">Merchant Code</p>
+            <p className="text-[10px] text-ink-500 truncate">QR & Rider Payments</p>
+          </Link>
 
-          {/* Snake track */}
-          <div className="mt-2.5 grid grid-cols-4 gap-1.5">
-            <div className="h-2 rounded-full bg-gold transition-all" title="Step 1: Identity" />
-            <div
-              className={`h-2 rounded-full transition-all ${products.length > 0 ? "bg-gold" : "bg-gold/40 animate-pulse"}`}
-              title="Step 2: Catalog"
-            />
-            <div
-              className={`h-2 rounded-full transition-all ${products.length > 0 ? "bg-gold" : "bg-neutral-300 dark:bg-neutral-700"}`}
-              title="Step 3: Delivery Rules"
-            />
-            <div
-              className={`h-2 rounded-full transition-all ${isLiveActive ? "bg-red-500" : "bg-neutral-300 dark:bg-neutral-700"}`}
-              title="Step 4: Go Live"
-            />
-          </div>
+          <button
+            type="button"
+            disabled={upgradingTier}
+            onClick={() => handleUpgradeTier("pro_live")}
+            className={`rounded-2xl border p-2.5 text-left transition ${
+              !isElite
+                ? "border-gold bg-gold/15 text-ink"
+                : "border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] text-ink"
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold uppercase text-gold">Tier 2 · Pro</span>
+              <Check className="h-3.5 w-3.5 text-gold" />
+            </div>
+            <p className="mt-0.5 text-xs font-extrabold text-ink">Marketplace</p>
+            <p className="text-[10px] text-ink-500 truncate">
+              {isProFree ? "Free Launch" : `${ugx(proStorePrice)}/mo`} · {settings?.commissionPercent ?? 10}% fee
+            </p>
+          </button>
 
-          <div className="mt-2 flex items-center justify-between text-[10px] font-semibold text-ink-500">
-            <span className="text-gold">1. Identity</span>
-            <span className={products.length > 0 ? "text-gold" : "text-ink"}>2. Products ({products.length})</span>
-            <span>3. Delivery</span>
-            <span>4. Live Sell</span>
-          </div>
+          <button
+            type="button"
+            disabled={upgradingTier}
+            onClick={() => {
+              if (isElite) {
+                setActiveTab("elite");
+              } else {
+                handleUpgradeTier("elite");
+              }
+            }}
+            className={`rounded-2xl border p-2.5 text-left transition ${
+              isElite
+                ? "border-gold bg-gold text-ink-gold shadow-sm"
+                : "border-gold/40 bg-gold/10 text-ink hover:bg-gold/20"
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-black uppercase flex items-center gap-1">
+                <Crown className="h-3 w-3" /> Tier 3 · Elite
+              </span>
+              {isElite && <Check className="h-3.5 w-3.5" />}
+            </div>
+            <p className="mt-0.5 text-xs font-black">Advanced OS</p>
+            <p className={`text-[10px] truncate ${isElite ? "text-ink-gold/80 font-semibold" : "text-ink-500"}`}>
+              {isProFree ? "Unlocked" : `${ugx(elitePrice)}/mo`} · {settings?.eliteCommissionPercent ?? 5}% fee
+            </p>
+          </button>
         </div>
 
-        {/* Pricing / Paywall Badge */}
-        <div className="mt-3 flex items-center justify-between rounded-xl bg-gold/10 px-3 py-2 text-xs font-semibold text-ink-gold">
-          <span className="flex items-center gap-1.5">
-            <Sparkles className="h-3.5 w-3.5 text-gold" />
-            <span>
-              {isProFree
-                ? "✨ Platform Launch Promo: All Pro Store & Live features unlocked (Free)"
-                : `Pro Subscription Active · ${ugx(proStorePrice)}/mo`}
-            </span>
-          </span>
+        {/* Dual-Channel Auto-Sync Status: Peebee Customer App vs Dedicated Storefront */}
+        <div className="mt-3 grid grid-cols-1 gap-2 border-t border-[var(--border-faint)] pt-3 sm:grid-cols-2">
+          <div className="flex items-center justify-between gap-2 rounded-2xl bg-[rgb(var(--surface-muted))] px-3 py-2">
+            <div className="min-w-0">
+              <span className="block text-[10px] font-black uppercase text-ink-500">
+                Channel 1 · Peebee Customer App
+              </span>
+              <span className="block truncate font-mono text-xs font-bold text-ink">
+                app.peebee.online/store/{store.slug}
+              </span>
+              <span className="block text-[10px] text-ink-500">
+                Peebee UI &amp; branding · Auto-syncs catalog &amp; stock
+              </span>
+            </div>
+            <a
+              href={`https://app.peebee.online/store/${store.slug}`}
+              target="_blank"
+              rel="noreferrer"
+              className="shrink-0 rounded-full bg-[rgb(var(--surface-card))] px-2.5 py-1 text-[10px] font-bold text-ink border border-[var(--border-faint)]"
+            >
+              Open App ↗
+            </a>
+          </div>
+
+          <div className="flex items-center justify-between gap-2 rounded-2xl border border-gold/40 bg-gold/10 px-3 py-2">
+            <div className="min-w-0">
+              <span className="block text-[10px] font-black uppercase text-gold">
+                Channel 2 · Dedicated Storefront
+              </span>
+              <span className="block truncate font-mono text-xs font-black text-ink">
+                {store.custom_domain || `${store.slug}.peebee.online`}
+              </span>
+              <span className="block text-[10px] text-ink-500">
+                Custom Store 2.0 theme, branding, collections &amp; B2B
+              </span>
+            </div>
+            <a
+              href={`https://${store.custom_domain || `${store.slug}.peebee.online`}`}
+              target="_blank"
+              rel="noreferrer"
+              className="shrink-0 rounded-full bg-gold px-2.5 py-1 text-[10px] font-black text-ink-gold"
+            >
+              Visit Site ↗
+            </a>
+          </div>
         </div>
       </div>
 
@@ -601,46 +1109,58 @@ export default function MerchantProStorePage() {
       )}
 
       {/* Main Tabs Navigation */}
-      <div className="flex items-center gap-1.5 rounded-2xl bg-[rgb(var(--surface-muted))] p-1">
+      <div className="flex items-center gap-1 overflow-x-auto rounded-2xl bg-[rgb(var(--surface-muted))] p-1">
         <button
           onClick={() => setActiveTab("catalog")}
-          className={`flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-xs font-bold transition ${
+          className={`flex-1 flex items-center justify-center gap-1.5 rounded-xl px-2.5 py-2.5 text-xs font-bold transition whitespace-nowrap ${
             activeTab === "catalog"
               ? "bg-[rgb(var(--surface-card))] text-ink shadow-sm"
               : "text-ink-500 hover:text-ink"
           }`}
         >
           <Package className="h-3.5 w-3.5" />
-          <span>Products ({products.length})</span>
+          <span>Catalog ({products.length})</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab("elite")}
+          className={`flex-1 flex items-center justify-center gap-1.5 rounded-xl px-2.5 py-2.5 text-xs font-bold transition whitespace-nowrap ${
+            activeTab === "elite"
+              ? "bg-gold text-ink-gold shadow-sm"
+              : "text-gold hover:bg-gold/10"
+          }`}
+        >
+          <Crown className="h-3.5 w-3.5" />
+          <span>Elite OS</span>
         </button>
 
         <button
           onClick={() => setActiveTab("live")}
-          className={`flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-xs font-bold transition ${
+          className={`flex-1 flex items-center justify-center gap-1.5 rounded-xl px-2.5 py-2.5 text-xs font-bold transition whitespace-nowrap ${
             activeTab === "live"
               ? "bg-[rgb(var(--surface-card))] text-ink shadow-sm"
               : "text-ink-500 hover:text-ink"
           }`}
         >
           <Tv className="h-3.5 w-3.5 text-red-500" />
-          <span>TikTok Live</span>
+          <span>Live</span>
         </button>
 
         <button
           onClick={() => setActiveTab("ads")}
-          className={`flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-xs font-bold transition ${
+          className={`flex-1 flex items-center justify-center gap-1.5 rounded-xl px-2.5 py-2.5 text-xs font-bold transition whitespace-nowrap ${
             activeTab === "ads"
               ? "bg-[rgb(var(--surface-card))] text-ink shadow-sm"
               : "text-ink-500 hover:text-ink"
           }`}
         >
           <Megaphone className="h-3.5 w-3.5 text-gold" />
-          <span>1-Click Ads</span>
+          <span>Ads</span>
         </button>
 
         <button
           onClick={() => setActiveTab("settings")}
-          className={`flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-xs font-bold transition ${
+          className={`flex-1 flex items-center justify-center gap-1.5 rounded-xl px-2.5 py-2.5 text-xs font-bold transition whitespace-nowrap ${
             activeTab === "settings"
               ? "bg-[rgb(var(--surface-card))] text-ink shadow-sm"
               : "text-ink-500 hover:text-ink"
@@ -650,6 +1170,1131 @@ export default function MerchantProStorePage() {
           <span>Settings</span>
         </button>
       </div>
+
+      {/* TAB: ELITE OS (Shopify & Shopify Plus Advanced Layer) */}
+      {activeTab === "elite" && (
+        <div className="space-y-4">
+          {!isElite && (
+            <div className="rounded-[24px] border border-gold bg-gradient-to-br from-black-900 via-neutral-900 to-black-900 p-5 text-white shadow-lg space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-gold/20 px-3 py-1 text-xs font-bold text-gold">
+                  <Crown className="h-3.5 w-3.5" /> Tier 3 Upgrade · Shopify Plus Power
+                </span>
+                <span className="font-mono text-sm font-black text-gold">{ugx(elitePrice)}/mo</span>
+              </div>
+              <h3 className="font-serif text-xl font-black">Upgrade to Merchant Advanced Marketplace (Elite)</h3>
+              <p className="text-xs text-neutral-300">
+                Unlock lower platform commissions ({settings?.eliteCommissionPercent ?? 5}% instead of{" "}
+                {settings?.commissionPercent ?? 10}%), up to {settings?.eliteMaxProducts ?? 5000} products, Online Store 2.0
+                custom themes & domains, Smart Collections, Promo/BOGO codes, Multi-Outlet stock matrix, and B2B Wholesale
+                Draft Orders.
+              </p>
+              <button
+                type="button"
+                disabled={upgradingTier}
+                onClick={() => handleUpgradeTier("elite")}
+                className="w-full rounded-full bg-gold py-3 text-xs font-black text-ink-gold shadow-md transition active:scale-98"
+              >
+                {upgradingTier ? "Activating Elite OS…" : `Upgrade to Merchant Elite (${ugx(elitePrice)}/mo) →`}
+              </button>
+            </div>
+          )}
+
+          {/* Elite Sub-Navigation Pills */}
+          <div className="flex gap-1.5 overflow-x-auto pb-1">
+            {[
+              { id: "overview", label: "P&L Analytics", icon: BarChart3 },
+              { id: "pos", label: `POS Register (${posSales.length})`, icon: ShoppingBag },
+              { id: "theme", label: "Store 2.0 Theme", icon: Palette },
+              { id: "collections", label: `Collections (${collections.length})`, icon: Layers },
+              { id: "discounts", label: `Promos (${discounts.length})`, icon: Tag },
+              { id: "inventory", label: "Multi-Outlet & Transfers", icon: Building2 },
+              { id: "b2b", label: `B2B Quotes (${draftOrders.length})`, icon: Briefcase },
+              { id: "crm", label: `VIP CRM (${crmCustomers.length})`, icon: Users },
+            ].map((item) => {
+              const Icon = item.icon;
+              const active = eliteSection === item.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setEliteSection(item.id as typeof eliteSection)}
+                  className={`flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-bold whitespace-nowrap transition ${
+                    active
+                      ? "bg-gold text-ink-gold shadow-xs"
+                      : "bg-[rgb(var(--surface-card))] border border-[var(--border-faint)] text-ink-500 hover:text-ink"
+                  }`}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                  <span>{item.label}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* ELITE SECTION 1: EXECUTIVE P&L & MARGIN ANALYTICS */}
+          {eliteSection === "overview" && (
+            <div className="space-y-4">
+              <div className="rounded-[24px] border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-5 shadow-sm space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-bold text-base text-ink flex items-center gap-2">
+                      <BarChart3 className="h-4.5 w-4.5 text-gold" />
+                      <span>Executive Profit & Margin OS</span>
+                    </h3>
+                    <p className="text-xs text-ink-500">
+                      Real-time net margin after Cost of Goods Sold (COGS) and {settings?.eliteCommissionPercent ?? 5}% Elite fee
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-gold/15 px-3 py-1 text-xs font-black text-gold">
+                    {analytics?.netMarginPercent ?? 28}% Net Margin
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                  <div className="rounded-2xl bg-[rgb(var(--surface-muted))] p-3">
+                    <span className="text-[10px] font-bold uppercase text-ink-500">Gross Merchandise</span>
+                    <p className="mt-1 font-mono text-sm font-black text-ink">{ugx(analytics?.grossRevenueUgx ?? 0)}</p>
+                  </div>
+                  <div className="rounded-2xl bg-[rgb(var(--surface-muted))] p-3">
+                    <span className="text-[10px] font-bold uppercase text-ink-500">Est. COGS</span>
+                    <p className="mt-1 font-mono text-sm font-bold text-ink-500">{ugx(analytics?.estimatedCogsUgx ?? 0)}</p>
+                  </div>
+                  <div className="rounded-2xl bg-[rgb(var(--surface-muted))] p-3">
+                    <span className="text-[10px] font-bold uppercase text-ink-500">Take-Rate Fee</span>
+                    <p className="mt-1 font-mono text-sm font-bold text-ink-500">{ugx(analytics?.platformCommissionUgx ?? 0)}</p>
+                  </div>
+                  <div className="rounded-2xl bg-gold/15 p-3">
+                    <span className="text-[10px] font-bold uppercase text-gold">Net Profit</span>
+                    <p className="mt-1 font-mono text-sm font-black text-ink">{ugx(analytics?.netMarginUgx ?? 0)}</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 sm:grid-cols-6 gap-2.5 border-t border-[var(--border-faint)] pt-3 text-center">
+                  <div>
+                    <p className="text-lg font-black text-ink">{analytics?.totalStockUnits ?? 0}</p>
+                    <p className="text-[10px] font-semibold text-ink-500">Total Stock Units</p>
+                  </div>
+                  <div>
+                    <p className="text-lg font-black text-gold">{analytics?.lowStockCount ?? 0}</p>
+                    <p className="text-[10px] font-semibold text-ink-500">Low-Stock Alerts</p>
+                  </div>
+                  <div>
+                    <p className="font-mono text-xs font-black text-ink mt-1">{ugx(analytics?.b2bPipelineUgx ?? 0)}</p>
+                    <p className="text-[10px] font-semibold text-ink-500">B2B Quote Pipeline</p>
+                  </div>
+                  <div>
+                    <p className="font-mono text-xs font-black text-gold mt-1">{ugx(analytics?.posRevenueUgx ?? 0)}</p>
+                    <p className="text-[10px] font-semibold text-ink-500">Walk-In POS ({analytics?.posSalesCount ?? 0})</p>
+                  </div>
+                  <div>
+                    <p className="text-lg font-black text-ink">{analytics?.vipCustomersCount ?? crmSummary.vipCount}</p>
+                    <p className="text-[10px] font-semibold text-ink-500">VIP & B2B Buyers</p>
+                  </div>
+                  <div>
+                    <p className="font-mono text-xs font-black text-ink mt-1">{ugx(analytics?.loyaltyBalanceLiabilityUgx ?? crmSummary.totalLoyaltyBalanceUgx)}</p>
+                    <p className="text-[10px] font-semibold text-ink-500">VIP Points Balance</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ELITE SECTION 1B: OMNICHANNEL IN-STORE POS REGISTER */}
+          {eliteSection === "pos" && (
+            <div className="space-y-4">
+              <div className="rounded-[24px] border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-5 shadow-sm space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-bold text-base text-ink">Omnichannel In-Store POS Register</h3>
+                    <p className="text-xs text-ink-500">
+                      Ring walk-in sales via Peebee Code, Mobile Money, or Cash — auto-deducts branch inventory and credits VIP loyalty points
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-gold/15 px-3 py-1 text-[10px] font-black uppercase text-gold">
+                    Live Stock Sync
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                  <div>
+                    <label className="text-xs font-semibold text-ink-500">Checkout Branch</label>
+                    <Select
+                      aria-label="POS Checkout Branch"
+                      value={posOutletId}
+                      onValueChange={(val) => setPosOutletId(val)}
+                      className="mt-1 w-full rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] px-3 py-2.5 text-xs text-ink"
+                    >
+                      <option value="">Main Store Inventory</option>
+                      {outlets.map((o) => (
+                        <option key={o.id} value={o.id}>
+                          {o.name} ({o.code})
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-semibold text-ink-500">Product Item</label>
+                    <Select
+                      aria-label="POS Product Item"
+                      value={posProductId}
+                      onValueChange={(val) => setPosProductId(val)}
+                      className="mt-1 w-full rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] px-3 py-2.5 text-xs text-ink"
+                    >
+                      {products.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.title} ({ugx(p.price)} · {p.inventory_quantity} left)
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-semibold text-ink-500">Quantity</label>
+                    <input
+                      type="number"
+                      min={1}
+                      value={posQty}
+                      onChange={(e) => setPosQty(e.target.value)}
+                      className="mt-1 w-full rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] px-3 py-2.5 text-xs text-ink"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <div>
+                    <label className="text-xs font-semibold text-ink-500">Customer Phone (for VIP Loyalty)</label>
+                    <input
+                      type="text"
+                      value={posCustomerPhone}
+                      onChange={(e) => setPosCustomerPhone(e.target.value)}
+                      placeholder="e.g. +256 772 123456"
+                      className="mt-1 w-full rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] px-3 py-2.5 text-xs text-ink"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-ink-500">Customer Name (Optional)</label>
+                    <input
+                      type="text"
+                      value={posCustomerName}
+                      onChange={(e) => setPosCustomerName(e.target.value)}
+                      placeholder="e.g. Grace Nakato"
+                      className="mt-1 w-full rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] px-3 py-2.5 text-xs text-ink"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                  <div>
+                    <label className="text-xs font-semibold text-ink-500">Payment Tender</label>
+                    <Select
+                      aria-label="POS Payment Tender"
+                      value={posPaymentMethod}
+                      onValueChange={(val) => setPosPaymentMethod(val as typeof posPaymentMethod)}
+                      className="mt-1 w-full rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] px-3 py-2.5 text-xs text-ink"
+                    >
+                      <option value="peebee_code">⚡ Peebee Merchant Code</option>
+                      <option value="momo">📱 Mobile Money</option>
+                      <option value="cash">💵 Cash at Counter</option>
+                    </Select>
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-ink-500">Counter Discount (UGX)</label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={posDiscountUgx}
+                      onChange={(e) => setPosDiscountUgx(e.target.value)}
+                      className="mt-1 w-full rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] px-3 py-2.5 text-xs text-ink"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-ink-500">Redeem Loyalty Points (UGX)</label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={posRedeemLoyaltyUgx}
+                      onChange={(e) => setPosRedeemLoyaltyUgx(e.target.value)}
+                      className="mt-1 w-full rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] px-3 py-2.5 text-xs text-ink"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleCreatePosSale}
+                  disabled={savingPosSale || products.length === 0}
+                  className="w-full rounded-full bg-gold py-3 text-xs font-bold text-ink-gold shadow transition active:scale-98 disabled:opacity-50"
+                >
+                  {savingPosSale ? "Processing POS Checkout…" : "Complete Walk-In POS Sale & Sync Stock →"}
+                </button>
+              </div>
+
+              {posSales.length > 0 && (
+                <div className="rounded-[24px] border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-5 shadow-sm space-y-2.5">
+                  <h4 className="text-xs font-bold uppercase text-ink-500">Recent Walk-In POS Receipts</h4>
+                  {posSales.map((s) => (
+                    <div
+                      key={s.id}
+                      className="flex items-center justify-between rounded-2xl bg-[rgb(var(--surface-muted))] p-3 text-xs"
+                    >
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="rounded-lg bg-gold/20 px-2 py-0.5 font-mono text-[10px] font-black text-gold">
+                            {s.receipt_code}
+                          </span>
+                          <span className="font-bold text-ink">
+                            {s.customer_name || s.customer_phone || "Walk-In Shopper"}
+                          </span>
+                        </div>
+                        <p className="mt-0.5 text-[10px] text-ink-500">
+                          {s.outlet_name || "Main Store"} · {s.payment_method.replace("_", " ").toUpperCase()}
+                          {s.loyalty_earned_ugx > 0 ? ` · +${ugx(s.loyalty_earned_ugx)} VIP earned` : ""}
+                          {s.loyalty_redeemed_ugx > 0 ? ` · -${ugx(s.loyalty_redeemed_ugx)} redeemed` : ""}
+                        </p>
+                      </div>
+                      <span className="font-mono font-black text-ink">{ugx(s.total_amount)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ELITE SECTION 2: ONLINE STORE 2.0 THEME, CUSTOM DOMAIN & PIXELS */}
+          {eliteSection === "theme" && (
+            <div className="rounded-[24px] border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-5 shadow-sm space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-bold text-base text-ink">Online Store 2.0 Theme & Custom Domain</h3>
+                  <p className="text-xs text-ink-500">
+                    Customize standalone storefront layout, hero banner, loyalty cashback, and tracking pixels
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPreviewScreen("storefront");
+                    setShowStorefrontPreview(true);
+                  }}
+                  className="flex items-center gap-1.5 rounded-full bg-gold/15 px-3 py-1.5 text-xs font-bold text-gold"
+                >
+                  <Eye className="h-3.5 w-3.5" /> Preview
+                </button>
+              </div>
+
+              <div className="space-y-3">
+                <div className="rounded-2xl border border-gold/30 bg-gold/10 p-3 text-xs">
+                  <p className="font-bold text-ink">
+                    Dedicated Storefront Subdomain: <span className="font-mono text-gold">https://{store.slug}.peebee.online</span>
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-ink-500">
+                    Your custom Store 2.0 theme, brand accent, hero banner, and smart collections power your standalone{" "}
+                    <span className="font-mono font-semibold">{store.slug}.peebee.online</span> site. The Peebee Customer App
+                    maintains its unified Peebee UI while auto-syncing your products, inventory, and promotions in real time.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-ink-500">Optional Custom Domain Override (CNAME to {store.slug}.peebee.online)</label>
+                  <input
+                    type="text"
+                    value={customDomain}
+                    onChange={(e) => setCustomDomain(e.target.value)}
+                    placeholder="e.g. shop.mybrand.ug"
+                    className="mt-1 w-full rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] px-3.5 py-2.5 text-sm text-ink"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-semibold text-ink-500">Storefront Layout</label>
+                    <Select
+                      aria-label="Storefront Layout"
+                      value={themeLayout}
+                      onValueChange={(val) => setThemeLayout(val as "grid" | "editorial" | "compact")}
+                      className="mt-1 w-full rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] px-3.5 py-2.5 text-sm text-ink"
+                    >
+                      <option value="grid">2-Column Modern Grid</option>
+                      <option value="editorial">Editorial Lookbook (Fashion)</option>
+                      <option value="compact">Rapid Aisle List (Supermarket)</option>
+                    </Select>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-semibold text-ink-500">Brand Accent Token</label>
+                    <Select
+                      aria-label="Brand Accent Token"
+                      value={themeAccent}
+                      onValueChange={(val) => setThemeAccent(val as "gold" | "ink" | "cream")}
+                      className="mt-1 w-full rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] px-3.5 py-2.5 text-sm text-ink"
+                    >
+                      <option value="gold">Peebee Gold</option>
+                      <option value="ink">Obsidian Ink</option>
+                      <option value="cream">Warm Cream</option>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-semibold text-ink-500">Hero Banner Headline</label>
+                    <input
+                      type="text"
+                      value={heroHeadline}
+                      onChange={(e) => setHeroHeadline(e.target.value)}
+                      placeholder="e.g. New Season Collection"
+                      className="mt-1 w-full rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] px-3.5 py-2.5 text-sm text-ink"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-ink-500">Hero Subtitle</label>
+                    <input
+                      type="text"
+                      value={heroSubheadline}
+                      onChange={(e) => setHeroSubheadline(e.target.value)}
+                      placeholder="e.g. Same-day Kampala delivery on all orders"
+                      className="mt-1 w-full rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] px-3.5 py-2.5 text-sm text-ink"
+                    />
+                  </div>
+                </div>
+
+                {/* VIP Loyalty Cashback */}
+                <div className="rounded-2xl bg-[rgb(var(--surface-muted))] p-3.5 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="block text-xs font-bold text-ink flex items-center gap-1.5">
+                        <Gift className="h-3.5 w-3.5 text-gold" /> Store VIP Loyalty Points & Cashback
+                      </span>
+                      <span className="text-[10px] text-ink-500">
+                        Automatically reward repeat shoppers with store credit (Max{" "}
+                        {settings?.eliteMaxLoyaltyCashbackPercent ?? 15}%)
+                      </span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={loyaltyEnabled}
+                      onChange={(e) => setLoyaltyEnabled(e.target.checked)}
+                      className="h-4 w-4 accent-gold"
+                    />
+                  </div>
+                  {loyaltyEnabled && (
+                    <div>
+                      <label className="text-[11px] font-semibold text-ink-500">Cashback Reward (%)</label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={settings?.eliteMaxLoyaltyCashbackPercent ?? 15}
+                        value={loyaltyCashback}
+                        onChange={(e) => setLoyaltyCashback(e.target.value)}
+                        className="mt-1 w-full rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] px-3 py-2 text-xs text-ink"
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {/* Retargeting Pixels */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-semibold text-ink-500">Meta / Instagram Pixel ID</label>
+                    <input
+                      type="text"
+                      value={metaPixelId}
+                      onChange={(e) => setMetaPixelId(e.target.value)}
+                      placeholder="e.g. 1092837465"
+                      className="mt-1 w-full rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] px-3.5 py-2.5 text-xs text-ink"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-ink-500">TikTok Pixel ID</label>
+                    <input
+                      type="text"
+                      value={tiktokPixelId}
+                      onChange={(e) => setTiktokPixelId(e.target.value)}
+                      placeholder="e.g. C9A8B7D6E5"
+                      className="mt-1 w-full rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] px-3.5 py-2.5 text-xs text-ink"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleSaveTheme}
+                  disabled={savingTheme}
+                  className="w-full rounded-full bg-gold py-3 text-xs font-bold text-ink-gold shadow transition active:scale-98 disabled:opacity-50"
+                >
+                  {savingTheme ? "Saving Storefront 2.0…" : "Save Theme, Domain & Loyalty Settings"}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ELITE SECTION 3: SMART & MANUAL COLLECTIONS */}
+          {eliteSection === "collections" && (
+            <div className="space-y-4">
+              <div className="rounded-[24px] border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-5 shadow-sm space-y-3">
+                <h3 className="font-bold text-base text-ink">Smart Automated Collections</h3>
+                <p className="text-xs text-ink-500">
+                  Group products automatically by price cap, category, badge, or stock level (Shopify Smart Collections)
+                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-semibold text-ink-500">Collection Title</label>
+                    <input
+                      type="text"
+                      value={colTitle}
+                      onChange={(e) => setColTitle(e.target.value)}
+                      placeholder="e.g. Under UGX 50,000 Deals"
+                      className="mt-1 w-full rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] px-3.5 py-2.5 text-sm text-ink"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-ink-500">Collection Type</label>
+                    <Select
+                      aria-label="Collection Type"
+                      value={colKind}
+                      onValueChange={(val) => setColKind(val as "smart" | "manual")}
+                      className="mt-1 w-full rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] px-3.5 py-2.5 text-sm text-ink"
+                    >
+                      <option value="smart">⚡ Smart Rule-Based</option>
+                      <option value="manual">📌 Manual Curated</option>
+                    </Select>
+                  </div>
+                </div>
+
+                {colKind === "smart" && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-semibold text-ink-500">Auto-Match Condition</label>
+                      <Select
+                        aria-label="Auto-Match Condition"
+                        value={colRuleField}
+                        onValueChange={(val) => setColRuleField(val as typeof colRuleField)}
+                        className="mt-1 w-full rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] px-3.5 py-2.5 text-sm text-ink"
+                      >
+                        <option value="price_lte">Price ≤ (UGX)</option>
+                        <option value="price_gte">Price ≥ (UGX)</option>
+                        <option value="category">Category matches</option>
+                        <option value="badge">Badge matches</option>
+                        <option value="in_stock">Currently in stock</option>
+                      </Select>
+                    </div>
+                    {colRuleField !== "in_stock" && (
+                      <div>
+                        <label className="text-xs font-semibold text-ink-500">Target Value</label>
+                        <input
+                          type="text"
+                          value={colRuleValue}
+                          onChange={(e) => setColRuleValue(e.target.value)}
+                          placeholder="50000 or Organic"
+                          className="mt-1 w-full rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] px-3.5 py-2.5 text-sm text-ink"
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={handleCreateCollection}
+                  disabled={savingCol || !colTitle.trim()}
+                  className="w-full rounded-full bg-gold py-3 text-xs font-bold text-ink-gold shadow transition active:scale-98 disabled:opacity-50"
+                >
+                  {savingCol ? "Creating Collection…" : "+ Create Smart Collection"}
+                </button>
+              </div>
+
+              {collections.length > 0 && (
+                <div className="rounded-[24px] border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-5 shadow-sm space-y-2.5">
+                  <h4 className="text-xs font-bold uppercase text-ink-500">Active Storefront Collections</h4>
+                  {collections.map((c) => (
+                    <div
+                      key={c.id}
+                      className="flex items-center justify-between rounded-2xl bg-[rgb(var(--surface-muted))] p-3 text-xs"
+                    >
+                      <div>
+                        <span className="font-bold text-ink">{c.title}</span>
+                        <p className="text-[10px] text-ink-500">
+                          {c.kind === "smart" ? `Smart Rule: ${c.rule_field} ${c.rule_value || ""}` : "Manual"} ·{" "}
+                          <strong className="text-gold">{c.matching_products_count ?? 0} products matched</strong>
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteCollection(c.id)}
+                        className="text-red-500 hover:text-red-700 p-1"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ELITE SECTION 4: PROMOTIONS, COUPON CODES & BOGO ENGINE */}
+          {eliteSection === "discounts" && (
+            <div className="space-y-4">
+              <div className="rounded-[24px] border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-5 shadow-sm space-y-3">
+                <h3 className="font-bold text-base text-ink">Promotions, Coupon Codes & BOGO Engine</h3>
+                <p className="text-xs text-ink-500">
+                  Create checkout discount codes, automatic cart spend rewards, or merchant-subsidized free delivery
+                </p>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-semibold text-ink-500">Promo Code</label>
+                    <input
+                      type="text"
+                      value={discCode}
+                      onChange={(e) => setDiscCode(e.target.value.toUpperCase())}
+                      placeholder="e.g. KAMPALA20"
+                      className="mt-1 w-full rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] px-3.5 py-2.5 font-mono text-sm font-bold text-ink uppercase"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-ink-500">Campaign Title</label>
+                    <input
+                      type="text"
+                      value={discTitle}
+                      onChange={(e) => setDiscTitle(e.target.value)}
+                      placeholder="e.g. Weekend Flash Sale"
+                      className="mt-1 w-full rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] px-3.5 py-2.5 text-sm text-ink"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2.5">
+                  <div>
+                    <label className="text-xs font-semibold text-ink-500">Discount Type</label>
+                    <Select
+                      aria-label="Discount Type"
+                      value={discKind}
+                      onValueChange={(val) => setDiscKind(val as typeof discKind)}
+                      className="mt-1 w-full rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] px-3 py-2.5 text-xs text-ink"
+                    >
+                      <option value="percent">% Percentage Off</option>
+                      <option value="fixed">Fixed UGX Off</option>
+                      <option value="free_delivery">Free Delivery</option>
+                      <option value="bogo">Buy 1 Get 1 (BOGO)</option>
+                    </Select>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-semibold text-ink-500">
+                      {discKind === "percent" ? "Percent (%)" : "Value (UGX)"}
+                    </label>
+                    <input
+                      type="number"
+                      disabled={discKind === "free_delivery"}
+                      value={discKind === "free_delivery" ? 0 : discValue}
+                      onChange={(e) => setDiscValue(e.target.value)}
+                      className="mt-1 w-full rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] px-3 py-2.5 text-xs text-ink"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-semibold text-ink-500">Min Spend (UGX)</label>
+                    <input
+                      type="number"
+                      value={discMinOrder}
+                      onChange={(e) => setDiscMinOrder(e.target.value)}
+                      className="mt-1 w-full rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] px-3 py-2.5 text-xs text-ink"
+                    />
+                  </div>
+                </div>
+
+                <label className="flex items-center gap-2 text-xs text-ink cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={discAuto}
+                    onChange={(e) => setDiscAuto(e.target.checked)}
+                    className="h-4 w-4 accent-gold"
+                  />
+                  <span>Apply automatically at checkout when minimum cart spend is reached</span>
+                </label>
+
+                <button
+                  type="button"
+                  onClick={handleCreateDiscount}
+                  disabled={savingDisc || !discCode.trim() || !discTitle.trim()}
+                  className="w-full rounded-full bg-gold py-3 text-xs font-bold text-ink-gold shadow transition active:scale-98 disabled:opacity-50"
+                >
+                  {savingDisc ? "Saving Promo…" : "+ Launch Discount Campaign"}
+                </button>
+              </div>
+
+              {discounts.length > 0 && (
+                <div className="rounded-[24px] border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-5 shadow-sm space-y-2.5">
+                  <h4 className="text-xs font-bold uppercase text-ink-500">Active Promotions</h4>
+                  {discounts.map((d) => (
+                    <div
+                      key={d.id}
+                      className="flex items-center justify-between rounded-2xl bg-[rgb(var(--surface-muted))] p-3 text-xs"
+                    >
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="rounded-lg bg-gold px-2 py-0.5 font-mono text-[11px] font-black text-ink-gold">
+                            {d.code}
+                          </span>
+                          <span className="font-bold text-ink">{d.title}</span>
+                        </div>
+                        <p className="mt-1 text-[10px] text-ink-500">
+                          {d.kind === "percent"
+                            ? `${d.value}% OFF`
+                            : d.kind === "fixed"
+                              ? `${ugx(d.value)} OFF`
+                              : d.kind === "free_delivery"
+                                ? "Free Delivery"
+                                : "BOGO Offer"}{" "}
+                          · Min order {ugx(d.min_order_amount)} {d.is_automatic ? "· Auto-applied" : ""}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteDiscount(d.id)}
+                        className="text-red-500 hover:text-red-700 p-1"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ELITE SECTION 5: MULTI-OUTLET INVENTORY MATRIX */}
+          {eliteSection === "inventory" && (
+            <div className="space-y-4">
+              <div className="rounded-[24px] border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-5 shadow-sm space-y-3">
+                <h3 className="font-bold text-base text-ink">Multi-Outlet Branch Stock Matrix</h3>
+                <p className="text-xs text-ink-500">
+                  Assign stock quantities per physical branch (`merchant_outlets`) for intelligent nearest-branch boda
+                  and matatu dispatch
+                </p>
+
+                {outlets.length === 0 ? (
+                  <div className="rounded-2xl bg-[rgb(var(--surface-muted))] p-4 text-xs text-ink-500">
+                    No physical outlets found.{" "}
+                    <Link href="/outlets" className="font-bold text-gold underline">
+                      Create an outlet branch
+                    </Link>{" "}
+                    to track multi-location inventory.
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                      <div>
+                        <label className="text-xs font-semibold text-ink-500">Physical Branch</label>
+                        <Select
+                          aria-label="Physical Branch"
+                          value={selectedInvOutlet}
+                          onValueChange={(val) => setSelectedInvOutlet(val)}
+                          className="mt-1 w-full rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] px-3 py-2.5 text-xs text-ink"
+                        >
+                          {outlets.map((o) => (
+                            <option key={o.id} value={o.id}>
+                              {o.name} ({o.code})
+                            </option>
+                          ))}
+                        </Select>
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-semibold text-ink-500">Product SKU</label>
+                        <Select
+                          aria-label="Product SKU"
+                          value={selectedInvProduct}
+                          onValueChange={(val) => setSelectedInvProduct(val)}
+                          className="mt-1 w-full rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] px-3 py-2.5 text-xs text-ink"
+                        >
+                          {products.map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.title}
+                            </option>
+                          ))}
+                        </Select>
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-semibold text-ink-500">Branch Qty</label>
+                        <input
+                          type="number"
+                          min={0}
+                          value={invQuantity}
+                          onChange={(e) => setInvQuantity(e.target.value)}
+                          className="mt-1 w-full rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] px-3 py-2.5 text-xs text-ink"
+                        />
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleSaveOutletInventory}
+                      disabled={savingInv || !selectedInvOutlet || !selectedInvProduct}
+                      className="w-full rounded-full bg-gold py-3 text-xs font-bold text-ink-gold shadow transition active:scale-98 disabled:opacity-50"
+                    >
+                      {savingInv ? "Syncing Branch Stock…" : "Update Branch Stock & Sync Catalog Total"}
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {outlets.length >= 2 && (
+                <div className="rounded-[24px] border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-5 shadow-sm space-y-3">
+                  <h4 className="text-sm font-bold text-ink">Branch-to-Branch Stock Transfer</h4>
+                  <p className="text-xs text-ink-500">
+                    Move units between physical outlets with an auditable stock ledger
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5">
+                    <div>
+                      <label className="text-xs font-semibold text-ink-500">Product</label>
+                      <Select
+                        aria-label="Transfer Product"
+                        value={transferProductId}
+                        onValueChange={(val) => setTransferProductId(val)}
+                        className="mt-1 w-full rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] px-3 py-2.5 text-xs text-ink"
+                      >
+                        {products.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.title}
+                          </option>
+                        ))}
+                      </Select>
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-ink-500">From Branch</label>
+                      <Select
+                        aria-label="Transfer From Branch"
+                        value={transferFromOutletId}
+                        onValueChange={(val) => setTransferFromOutletId(val)}
+                        className="mt-1 w-full rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] px-3 py-2.5 text-xs text-ink"
+                      >
+                        {outlets.map((o) => (
+                          <option key={o.id} value={o.id}>
+                            {o.name}
+                          </option>
+                        ))}
+                      </Select>
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-ink-500">To Branch</label>
+                      <Select
+                        aria-label="Transfer To Branch"
+                        value={transferToOutletId}
+                        onValueChange={(val) => setTransferToOutletId(val)}
+                        className="mt-1 w-full rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] px-3 py-2.5 text-xs text-ink"
+                      >
+                        {outlets.map((o) => (
+                          <option key={o.id} value={o.id}>
+                            {o.name}
+                          </option>
+                        ))}
+                      </Select>
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-ink-500">Transfer Qty</label>
+                      <input
+                        type="number"
+                        min={1}
+                        value={transferQty}
+                        onChange={(e) => setTransferQty(e.target.value)}
+                        className="mt-1 w-full rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] px-3 py-2.5 text-xs text-ink"
+                      />
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleCreateStockTransfer}
+                    disabled={savingTransfer || transferFromOutletId === transferToOutletId}
+                    className="w-full rounded-full bg-gold py-2.5 text-xs font-bold text-ink-gold shadow transition active:scale-98 disabled:opacity-50"
+                  >
+                    {savingTransfer ? "Moving Stock…" : "Transfer Stock Between Branches →"}
+                  </button>
+                </div>
+              )}
+
+              {outletInventory.length > 0 && (
+                <div className="rounded-[24px] border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-5 shadow-sm space-y-2.5">
+                  <h4 className="text-xs font-bold uppercase text-ink-500">Live Stock by Branch</h4>
+                  {outletInventory.map((row, idx) => (
+                    <div
+                      key={row.id || idx}
+                      className="flex items-center justify-between rounded-2xl bg-[rgb(var(--surface-muted))] p-3 text-xs"
+                    >
+                      <div>
+                        <span className="font-bold text-ink">{row.product_title || "Product"}</span>
+                        <p className="text-[10px] text-ink-500">Branch: {row.outlet_name}</p>
+                      </div>
+                      <span
+                        className={`rounded-full px-2.5 py-1 font-mono text-xs font-black ${
+                          row.quantity <= row.low_stock_threshold
+                            ? "bg-red-500/15 text-red-600"
+                            : "bg-gold/15 text-gold"
+                        }`}
+                      >
+                        {row.quantity} units
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {stockTransfers.length > 0 && (
+                <div className="rounded-[24px] border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-5 shadow-sm space-y-2.5">
+                  <h4 className="text-xs font-bold uppercase text-ink-500">Branch Transfer Audit Log</h4>
+                  {stockTransfers.map((trf) => (
+                    <div
+                      key={trf.id}
+                      className="flex items-center justify-between rounded-2xl bg-[rgb(var(--surface-muted))] p-3 text-xs"
+                    >
+                      <div>
+                        <span className="font-bold text-ink">{trf.product_title || "Product"}</span>
+                        <p className="text-[10px] text-ink-500">
+                          {trf.from_outlet_name || trf.from_outlet_id} → {trf.to_outlet_name || trf.to_outlet_id}
+                        </p>
+                      </div>
+                      <span className="rounded-full bg-gold/15 px-2.5 py-1 font-mono text-xs font-black text-gold">
+                        {trf.quantity} moved
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ELITE SECTION 6: B2B WHOLESALE & DRAFT ORDERS */}
+          {eliteSection === "b2b" && (
+            <div className="space-y-4">
+              <div className="rounded-[24px] border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-5 shadow-sm space-y-3">
+                <h3 className="font-bold text-base text-ink">B2B Wholesale & Draft Orders (Shopify Plus)</h3>
+                <p className="text-xs text-ink-500">
+                  Create custom wholesale quotes with negotiated unit pricing, Net-7/14/30 credit terms, and 1-tap
+                  WhatsApp payment links
+                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                  <div>
+                    <label className="text-xs font-semibold text-ink-500">Buyer Contact Name</label>
+                    <input
+                      type="text"
+                      value={b2bCustomerName}
+                      onChange={(e) => setB2bCustomerName(e.target.value)}
+                      placeholder="e.g. Sarah Namubiru"
+                      className="mt-1 w-full rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] px-3 py-2.5 text-xs text-ink"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-ink-500">Business / Kiosk Name</label>
+                    <input
+                      type="text"
+                      value={b2bCompany}
+                      onChange={(e) => setB2bCompany(e.target.value)}
+                      placeholder="e.g. Ntinda Mini Mart"
+                      className="mt-1 w-full rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] px-3 py-2.5 text-xs text-ink"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-ink-500">WhatsApp / Phone</label>
+                    <input
+                      type="text"
+                      value={b2bPhone}
+                      onChange={(e) => setB2bPhone(e.target.value)}
+                      placeholder="+256 772..."
+                      className="mt-1 w-full rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] px-3 py-2.5 text-xs text-ink"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                  <div>
+                    <label className="text-xs font-semibold text-ink-500">Product</label>
+                    <Select
+                      aria-label="B2B Product"
+                      value={b2bProductId}
+                      onValueChange={(val) => {
+                        setB2bProductId(val);
+                        const found = products.find((p) => p.id === val);
+                        if (found) setB2bUnitPrice(String(Math.round(found.price * 0.85)));
+                      }}
+                      className="mt-1 w-full rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] px-3 py-2.5 text-xs text-ink"
+                    >
+                      {products.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.title} (Retail {ugx(p.price)})
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-ink-500">Wholesale Unit Price (UGX)</label>
+                    <input
+                      type="number"
+                      value={b2bUnitPrice}
+                      onChange={(e) => setB2bUnitPrice(e.target.value)}
+                      className="mt-1 w-full rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] px-3 py-2.5 text-xs text-ink"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-ink-500">Case / Carton Quantity</label>
+                    <input
+                      type="number"
+                      min={1}
+                      value={b2bQty}
+                      onChange={(e) => setB2bQty(e.target.value)}
+                      className="mt-1 w-full rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] px-3 py-2.5 text-xs text-ink"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div>
+                    <label className="text-xs font-semibold text-ink-500">Payment Terms</label>
+                    <Select
+                      aria-label="Payment Terms"
+                      value={b2bTerms}
+                      onValueChange={(val) => setB2bTerms(val as typeof b2bTerms)}
+                      className="mt-1 w-full rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] px-3 py-2.5 text-xs text-ink"
+                    >
+                      <option value="immediate">Due on Receipt (1-Tap Escrow)</option>
+                      <option value="net_7">Net 7 Days Credit</option>
+                      <option value="net_14">Net 14 Days Credit</option>
+                      <option value="net_30">Net 30 Days Credit</option>
+                    </Select>
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-ink-500">Extra Invoice Discount (UGX)</label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={b2bDiscountUgx}
+                      onChange={(e) => setB2bDiscountUgx(e.target.value)}
+                      className="mt-1 w-full rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] px-3 py-2.5 text-xs text-ink"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleCreateDraftOrder}
+                  disabled={savingDraft || !b2bCustomerName.trim() || products.length === 0}
+                  className="w-full rounded-full bg-gold py-3 text-xs font-bold text-ink-gold shadow transition active:scale-98 disabled:opacity-50"
+                >
+                  {savingDraft ? "Generating B2B Invoice…" : "Create Wholesale Draft Order & Payment Link →"}
+                </button>
+              </div>
+
+              {draftOrders.length > 0 && (
+                <div className="rounded-[24px] border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-5 shadow-sm space-y-2.5">
+                  <h4 className="text-xs font-bold uppercase text-ink-500">B2B Wholesale Quotes & Invoices</h4>
+                  {draftOrders.map((drf) => (
+                    <div
+                      key={drf.id}
+                      className="flex items-center justify-between rounded-2xl bg-[rgb(var(--surface-muted))] p-3 text-xs"
+                    >
+                      <div>
+                        <span className="font-bold text-ink">
+                          {drf.customer_company ? `${drf.customer_company} (${drf.customer_name})` : drf.customer_name}
+                        </span>
+                        <p className="text-[10px] text-ink-500">
+                          {drf.payment_terms.replace("_", " ").toUpperCase()} · {drf.items?.length || 1} line item(s)
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <span className="block font-mono font-black text-gold">{ugx(drf.total_amount)}</span>
+                        <span className="text-[10px] font-bold uppercase text-green-600">{drf.status}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ELITE SECTION 7: VIP CUSTOMER CRM & LOYALTY LEDGER */}
+          {eliteSection === "crm" && (
+            <div className="space-y-4">
+              <div className="rounded-[24px] border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-5 shadow-sm space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-bold text-base text-ink">VIP Customer CRM & Loyalty Cashback Ledger</h3>
+                    <p className="text-xs text-ink-500">
+                      Unified buyer segments across Dedicated Storefront, Peebee App Marketplace, and Walk-In POS
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-gold/15 px-3 py-1 text-xs font-black text-gold">
+                    {crmSummary.totalCustomers} Buyers
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2.5">
+                  <div className="rounded-2xl bg-[rgb(var(--surface-muted))] p-3">
+                    <span className="text-[10px] font-bold uppercase text-gold">VIP Tier Buyers</span>
+                    <p className="mt-1 text-lg font-black text-ink">{crmSummary.vipCount}</p>
+                  </div>
+                  <div className="rounded-2xl bg-[rgb(var(--surface-muted))] p-3">
+                    <span className="text-[10px] font-bold uppercase text-ink-500">Repeat Buyers</span>
+                    <p className="mt-1 text-lg font-black text-ink">{crmSummary.repeatCount}</p>
+                  </div>
+                  <div className="rounded-2xl bg-[rgb(var(--surface-muted))] p-3">
+                    <span className="text-[10px] font-bold uppercase text-ink-500">Points Available</span>
+                    <p className="mt-1 font-mono text-sm font-black text-gold">
+                      {ugx(crmSummary.totalLoyaltyBalanceUgx)}
+                    </p>
+                  </div>
+                </div>
+
+                {crmCustomers.length === 0 ? (
+                  <div className="rounded-2xl bg-[rgb(var(--surface-muted))] p-4 text-xs text-ink-500">
+                    Customer profiles and VIP loyalty points populate automatically as shoppers purchase on your
+                    Dedicated Storefront, the Peebee App, or your Walk-In POS Register.
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {crmCustomers.map((cust) => (
+                      <div
+                        key={cust.id}
+                        className="flex items-center justify-between rounded-2xl bg-[rgb(var(--surface-muted))] p-3 text-xs"
+                      >
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-ink">
+                              {cust.customer_name || cust.customer_phone}
+                            </span>
+                            <span
+                              className={`rounded-full px-2 py-0.5 text-[10px] font-black uppercase ${
+                                cust.tier === "vip" || cust.tier === "b2b"
+                                  ? "bg-gold text-ink-gold"
+                                  : "bg-[rgb(var(--surface-card))] text-ink-500"
+                              }`}
+                            >
+                              {cust.tier}
+                            </span>
+                          </div>
+                          <p className="mt-0.5 text-[10px] text-ink-500">
+                            {cust.customer_phone} · {cust.orders_count} order(s) · Total spent {ugx(cust.total_spent_ugx)}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <span className="block font-mono font-black text-gold">
+                            {ugx(cust.points_balance_ugx)}
+                          </span>
+                          <span className="text-[10px] text-ink-500">Loyalty credit</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* TAB 1: PRODUCT CATALOG */}
       {activeTab === "catalog" && (
@@ -863,9 +2508,6 @@ export default function MerchantProStorePage() {
                       placeholder="https://commondatastorage.googleapis.com/... or Leave blank for Camera"
                       className="mt-1 w-full rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] px-3.5 py-3 text-sm text-ink placeholder:text-ink-500/50 focus:border-gold focus:outline-none"
                     />
-                    <p className="mt-1 text-[11px] text-ink-500">
-                      Supports direct camera streaming or pre-recorded MP4 restreaming as live.
-                    </p>
                   </div>
 
                   <div>
@@ -894,10 +2536,8 @@ export default function MerchantProStorePage() {
                   </button>
                 </div>
               ) : (
-                /* Interactive Live Studio Player Simulator */
                 <div className="space-y-3">
                   <div className="relative aspect-[9/16] w-full max-w-sm mx-auto overflow-hidden rounded-[24px] bg-black shadow-2xl">
-                    {/* Simulated video or video tag */}
                     {liveStreamUrl ? (
                       <video
                         src={liveStreamUrl}
@@ -917,7 +2557,6 @@ export default function MerchantProStorePage() {
                       </div>
                     )}
 
-                    {/* Overlay: Live Badge & Audience */}
                     <div className="absolute top-4 left-4 flex items-center gap-2">
                       <span className="flex items-center gap-1 rounded-full bg-red-600 px-2.5 py-1 text-[10px] font-black text-white uppercase tracking-wider">
                         <Radio className="h-3 w-3" /> LIVE
@@ -927,7 +2566,6 @@ export default function MerchantProStorePage() {
                       </span>
                     </div>
 
-                    {/* Overlay: End button */}
                     <div className="absolute top-4 right-4">
                       <button
                         onClick={handleEndLiveSession}
@@ -937,7 +2575,6 @@ export default function MerchantProStorePage() {
                       </button>
                     </div>
 
-                    {/* Pinned Product Card on Video Screen */}
                     {pinnedProductId && (
                       <div className="absolute bottom-20 inset-x-3 rounded-2xl bg-black/75 p-2.5 backdrop-blur-md border border-gold/40 flex items-center justify-between gap-3 text-white">
                         <div className="flex items-center gap-2.5 min-w-0">
@@ -960,7 +2597,6 @@ export default function MerchantProStorePage() {
                       </div>
                     )}
 
-                    {/* Chat Stream overlay */}
                     <div className="absolute bottom-4 inset-x-3 flex items-center gap-2">
                       <input
                         type="text"
@@ -984,7 +2620,6 @@ export default function MerchantProStorePage() {
                       </button>
                     </div>
 
-                    {/* Floating Hearts Reaction Animation */}
                     {liveHearts.map((id) => (
                       <div
                         key={id}
@@ -993,29 +2628,6 @@ export default function MerchantProStorePage() {
                         ❤️
                       </div>
                     ))}
-                  </div>
-
-                  {/* Pin different product controls */}
-                  <div className="pt-2">
-                    <label className="text-xs font-semibold text-ink-500">Switch Pinned Product Live:</label>
-                    <div className="mt-1 flex flex-wrap gap-1.5">
-                      {products.map((p) => (
-                        <button
-                          key={p.id}
-                          onClick={() => {
-                            setPinnedProductId(p.id);
-                            setNotice(`📌 Pinned "${p.title}" on live stream!`);
-                          }}
-                          className={`rounded-full px-3 py-1 text-xs font-bold transition ${
-                            pinnedProductId === p.id
-                              ? "bg-gold text-ink-gold"
-                              : "bg-[rgb(var(--surface-muted))] text-ink-500 hover:text-ink"
-                          }`}
-                        >
-                          {p.title} ({ugx(p.price)})
-                        </button>
-                      ))}
-                    </div>
                   </div>
                 </div>
               )}
@@ -1136,7 +2748,6 @@ export default function MerchantProStorePage() {
                 </Select>
               </div>
 
-              {/* Estimate box */}
               <div className="rounded-2xl bg-[rgb(var(--surface-muted))] p-3 text-xs space-y-1">
                 <div className="flex justify-between">
                   <span className="text-ink-500">Total Campaign Spend:</span>
@@ -1160,7 +2771,6 @@ export default function MerchantProStorePage() {
             </div>
           </div>
 
-          {/* Active Campaigns list */}
           {adCampaigns.length > 0 && (
             <div className="rounded-[24px] border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-5 shadow-sm space-y-3">
               <h4 className="font-bold text-sm text-ink">Active Social Campaigns</h4>
@@ -1262,7 +2872,7 @@ export default function MerchantProStorePage() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-3 gap-2.5">
                 <div>
                   <label className="text-xs font-semibold text-ink-500">Selling Price (UGX)</label>
                   <input
@@ -1270,18 +2880,29 @@ export default function MerchantProStorePage() {
                     value={productPrice}
                     onChange={(e) => setProductPrice(e.target.value)}
                     placeholder="8000"
-                    className="mt-1 w-full rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] px-3.5 py-2.5 text-sm text-ink focus:border-gold focus:outline-none"
+                    className="mt-1 w-full rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] px-3 py-2.5 text-sm text-ink focus:border-gold focus:outline-none"
                   />
                 </div>
 
                 <div>
-                  <label className="text-xs font-semibold text-ink-500">Compare Price (Strike-through)</label>
+                  <label className="text-xs font-semibold text-ink-500">Compare Price</label>
                   <input
                     type="number"
                     value={productComparePrice}
                     onChange={(e) => setProductComparePrice(e.target.value)}
                     placeholder="10000"
-                    className="mt-1 w-full rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] px-3.5 py-2.5 text-sm text-ink focus:border-gold focus:outline-none"
+                    className="mt-1 w-full rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] px-3 py-2.5 text-sm text-ink focus:border-gold focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-ink-500">Cost Price (COGS)</label>
+                  <input
+                    type="number"
+                    value={productCostPrice}
+                    onChange={(e) => setProductCostPrice(e.target.value)}
+                    placeholder="5500"
+                    className="mt-1 w-full rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] px-3 py-2.5 text-sm text-ink focus:border-gold focus:outline-none"
                   />
                 </div>
               </div>
@@ -1390,18 +3011,19 @@ export default function MerchantProStorePage() {
         </div>
       )}
 
-      {/* STOREFRONT PREVIEW MODAL (Mirroring Inspiration UI 3-screens) */}
+      {/* STOREFRONT PREVIEW MODAL */}
       {showStorefrontPreview && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-3 backdrop-blur-sm overflow-y-auto">
           <div className="w-full max-w-md rounded-[32px] border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-4 shadow-2xl space-y-3 my-4">
-            {/* Top Bar with Screen Switcher */}
             <div className="flex items-center justify-between border-b border-[var(--border-faint)] pb-2.5">
               <div>
                 <h3 className="font-bold text-sm text-ink flex items-center gap-1.5">
                   <Eye className="h-4 w-4 text-gold" />
-                  <span>Customer View Preview</span>
+                  <span>Customer View Preview ({themeLayout.toUpperCase()})</span>
                 </h3>
-                <p className="text-[10px] text-ink-500">Live mobile storefront rendering</p>
+                <p className="text-[10px] text-ink-500">
+                  {customDomain ? customDomain : `peebee.online/${store.category}/${store.slug}`}
+                </p>
               </div>
 
               <button
@@ -1413,7 +3035,6 @@ export default function MerchantProStorePage() {
               </button>
             </div>
 
-            {/* Screen Selector Pills */}
             <div className="grid grid-cols-3 gap-1.5 rounded-2xl bg-[rgb(var(--surface-muted))] p-1 text-[11px] font-bold">
               <button
                 type="button"
@@ -1450,11 +3071,9 @@ export default function MerchantProStorePage() {
               </button>
             </div>
 
-            {/* Simulated Phone Viewport */}
             <div className="rounded-[32px] border-2 border-neutral-700 bg-[rgb(var(--color-bg))] p-3.5 space-y-3 max-h-[580px] overflow-y-auto no-scrollbar shadow-inner text-ink">
               {previewScreen === "storefront" && (
                 <div className="space-y-3">
-                  {/* Screen 1 Header */}
                   <div className="flex items-center justify-between">
                     <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[rgb(var(--surface-muted))] text-ink">
                       <LayoutGrid className="h-4.5 w-4.5" />
@@ -1470,7 +3089,13 @@ export default function MerchantProStorePage() {
                     </div>
                   </div>
 
-                  {/* Search + Filter */}
+                  {loyaltyEnabled && (
+                    <div className="rounded-xl bg-gold/15 px-3 py-1.5 text-[10px] font-bold text-gold flex items-center justify-between">
+                      <span>🎁 VIP Loyalty Active: Earn {loyaltyCashback}% cashback points</span>
+                      <span>ELITE</span>
+                    </div>
+                  )}
+
                   <div className="flex items-center gap-2">
                     <div className="field-box flex-1 flex items-center rounded-xl px-3 py-2 text-xs">
                       <Search className="h-3.5 w-3.5 text-ink-500 mr-2 shrink-0" />
@@ -1481,7 +3106,6 @@ export default function MerchantProStorePage() {
                     </div>
                   </div>
 
-                  {/* Big Sale Hero Promo Banner */}
                   <div className="relative overflow-hidden rounded-[24px] border border-gold/30 bg-gradient-to-r from-gold/20 via-gold/10 to-[rgb(var(--surface-card))] p-3">
                     <div className="flex items-center gap-2.5">
                       <div className="h-16 w-16 rounded-xl bg-neutral-900 overflow-hidden shrink-0">
@@ -1493,26 +3117,32 @@ export default function MerchantProStorePage() {
                       </div>
                       <div className="min-w-0 flex-1">
                         <span className="rounded-full bg-gold/30 px-2 py-0.5 text-[8px] font-black uppercase text-gold">
-                          Big Sale
+                          {heroCtaText || "Featured"}
                         </span>
                         <h5 className="text-xs font-bold text-ink truncate mt-0.5">
-                          {products[0]?.title || "Store Collection"}
+                          {heroHeadline || products[0]?.title || "Store Collection"}
                         </h5>
-                        <p className="text-[9px] text-ink-500 line-clamp-1">Up to 40% OFF trending products</p>
+                        <p className="text-[9px] text-ink-500 line-clamp-1">
+                          {heroSubheadline || "Up to 40% OFF trending products"}
+                        </p>
                       </div>
                     </div>
                   </div>
 
-                  {/* Filter Pills */}
                   <div className="flex gap-1.5 overflow-x-auto text-[10px] font-bold">
                     <span className="rounded-full bg-gold px-3 py-1 text-ink-gold">All</span>
+                    {collections.map((c) => (
+                      <span
+                        key={c.id}
+                        className="rounded-full bg-[rgb(var(--surface-muted))] px-3 py-1 text-ink whitespace-nowrap"
+                      >
+                        {c.title}
+                      </span>
+                    ))}
                     <span className="rounded-full bg-[rgb(var(--surface-muted))] px-3 py-1 text-ink-500">Popular</span>
-                    <span className="rounded-full bg-[rgb(var(--surface-muted))] px-3 py-1 text-ink-500">Recent</span>
-                    <span className="rounded-full bg-[rgb(var(--surface-muted))] px-3 py-1 text-ink-500">Recommended</span>
                   </div>
 
-                  {/* 2-Column Product Grid */}
-                  <div className="grid grid-cols-2 gap-2 pt-1">
+                  <div className={themeLayout === "compact" ? "space-y-2 pt-1" : "grid grid-cols-2 gap-2 pt-1"}>
                     {(products.length > 0 ? products.slice(0, 4) : [1, 2]).map((item, idx) => {
                       const prod = typeof item === "object" ? item : null;
                       return (
@@ -1546,7 +3176,6 @@ export default function MerchantProStorePage() {
 
               {previewScreen === "product" && (
                 <div className="space-y-3">
-                  {/* Hero Curved Photo */}
                   <div className="relative h-48 w-full rounded-b-[28px] bg-neutral-900 overflow-hidden -mx-3.5 -mt-3.5 mb-2">
                     {products[0]?.image_url ? (
                       <img src={products[0].image_url || undefined} alt="" className="h-full w-full object-cover" />
@@ -1556,12 +3185,8 @@ export default function MerchantProStorePage() {
                     <div className="absolute top-3 left-3 h-8 w-8 rounded-full bg-black/40 backdrop-blur-xs flex items-center justify-center text-white">
                       <ChevronRight className="h-4 w-4 rotate-180" />
                     </div>
-                    <div className="absolute top-3 right-3 h-8 w-8 rounded-full bg-black/40 backdrop-blur-xs flex items-center justify-center text-white">
-                      <Heart className="h-4 w-4 fill-current text-red-500" />
-                    </div>
                   </div>
 
-                  {/* Title & Price */}
                   <div className="flex items-start justify-between">
                     <div>
                       <h4 className="text-sm font-extrabold text-ink">{products[0]?.title || "Designer Item"}</h4>
@@ -1574,7 +3199,6 @@ export default function MerchantProStorePage() {
                     {products[0]?.description || "Soft comfortable fabric with elegant tailoring and versatile styling."}
                   </p>
 
-                  {/* Size Chips */}
                   <div className="space-y-1">
                     <span className="text-[10px] font-bold uppercase text-ink">Size</span>
                     <div className="flex gap-1.5">
@@ -1593,7 +3217,6 @@ export default function MerchantProStorePage() {
                     </div>
                   </div>
 
-                  {/* Sticky Action Button */}
                   <div className="flex items-center gap-2 pt-2 border-t border-[var(--border-faint)]">
                     <button
                       type="button"
@@ -1618,7 +3241,6 @@ export default function MerchantProStorePage() {
                     </div>
                   </div>
 
-                  {/* Items */}
                   <div className="space-y-2">
                     {[1, 2].map((i) => (
                       <div
@@ -1648,7 +3270,13 @@ export default function MerchantProStorePage() {
                     ))}
                   </div>
 
-                  {/* Total & Pay Now */}
+                  {discounts.length > 0 && (
+                    <div className="rounded-xl bg-gold/15 px-3 py-1.5 text-[10px] font-bold text-gold flex items-center justify-between">
+                      <span>🏷️ Promo applied: {discounts[0].code}</span>
+                      <span>{discounts[0].title}</span>
+                    </div>
+                  )}
+
                   <div className="pt-2 border-t border-[var(--border-faint)] flex items-center justify-between">
                     <div>
                       <span className="text-[9px] font-bold uppercase text-ink-500 block">Total</span>

@@ -1,7 +1,7 @@
 "use client";
 
 import { hasPermission, type MarketplaceSettings } from "@peebee/shared";
-import { AlertCircle, CheckCircle2, Flame, Radio, ShoppingBag, Sparkles, Store, Tv, Video } from "lucide-react";
+import { AlertCircle, CheckCircle2, Crown, Flame, Layers, Radio, ShoppingBag, Sparkles, Store, Tv, Video } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { SettingsPageShell } from "../../../components/SettingsPageShell";
 import { api, errorMessage } from "../../../lib/api";
@@ -30,6 +30,25 @@ export default function MarketplaceSettingsPage() {
   const [adFeePercent, setAdFeePercent] = useState(5);
   const [cartExpiryHours, setCartExpiryHours] = useState(12);
 
+  // Tier 3: Merchant Elite (Shopify / Shopify Plus level) state
+  const [eliteEnabled, setEliteEnabled] = useState(true);
+  const [elitePriceUgx, setElitePriceUgx] = useState(150000);
+  const [eliteCommissionPercent, setEliteCommissionPercent] = useState(5);
+  const [proMaxProducts, setProMaxProducts] = useState(50);
+  const [eliteMaxProducts, setEliteMaxProducts] = useState(5000);
+  const [proMaxCollections, setProMaxCollections] = useState(3);
+  const [eliteMaxCollections, setEliteMaxCollections] = useState(100);
+  const [proMaxDiscounts, setProMaxDiscounts] = useState(2);
+  const [eliteMaxDiscounts, setEliteMaxDiscounts] = useState(200);
+  const [eliteB2bEnabled, setEliteB2bEnabled] = useState(true);
+  const [eliteMultiOutletInventoryEnabled, setEliteMultiOutletInventoryEnabled] = useState(true);
+  const [eliteCustomDomainEnabled, setEliteCustomDomainEnabled] = useState(true);
+  const [eliteLoyaltyEnabled, setEliteLoyaltyEnabled] = useState(true);
+  const [eliteMaxLoyaltyCashbackPercent, setEliteMaxLoyaltyCashbackPercent] = useState(15);
+  const [elitePosEnabled, setElitePosEnabled] = useState(true);
+  const [eliteStockTransfersEnabled, setEliteStockTransfersEnabled] = useState(true);
+  const [eliteCrmEnabled, setEliteCrmEnabled] = useState(true);
+
   const load = useCallback(async () => {
     const res = await api.adminGetMarketplaceSettings();
     const m = res.marketplace;
@@ -46,6 +65,23 @@ export default function MarketplaceSettingsPage() {
     setAdMinBudgetUgx(m.adMinBudgetUgx);
     setAdFeePercent(m.adFeePercent);
     setCartExpiryHours(m.cartExpiryHours ?? 12);
+    setEliteEnabled(m.eliteEnabled ?? true);
+    setElitePriceUgx(m.elitePriceUgx ?? 150000);
+    setEliteCommissionPercent(m.eliteCommissionPercent ?? 5);
+    setProMaxProducts(m.proMaxProducts ?? 50);
+    setEliteMaxProducts(m.eliteMaxProducts ?? 5000);
+    setProMaxCollections(m.proMaxCollections ?? 3);
+    setEliteMaxCollections(m.eliteMaxCollections ?? 100);
+    setProMaxDiscounts(m.proMaxDiscounts ?? 2);
+    setEliteMaxDiscounts(m.eliteMaxDiscounts ?? 200);
+    setEliteB2bEnabled(m.eliteB2bEnabled ?? true);
+    setEliteMultiOutletInventoryEnabled(m.eliteMultiOutletInventoryEnabled ?? true);
+    setEliteCustomDomainEnabled(m.eliteCustomDomainEnabled ?? true);
+    setEliteLoyaltyEnabled(m.eliteLoyaltyEnabled ?? true);
+    setEliteMaxLoyaltyCashbackPercent(m.eliteMaxLoyaltyCashbackPercent ?? 15);
+    setElitePosEnabled(m.elitePosEnabled ?? true);
+    setEliteStockTransfersEnabled(m.eliteStockTransfersEnabled ?? true);
+    setEliteCrmEnabled(m.eliteCrmEnabled ?? true);
   }, []);
 
   useEffect(() => {
@@ -81,6 +117,23 @@ export default function MarketplaceSettingsPage() {
         adMinBudgetUgx,
         adFeePercent,
         cartExpiryHours,
+        eliteEnabled,
+        elitePriceUgx,
+        eliteCommissionPercent,
+        proMaxProducts,
+        eliteMaxProducts,
+        proMaxCollections,
+        eliteMaxCollections,
+        proMaxDiscounts,
+        eliteMaxDiscounts,
+        eliteB2bEnabled,
+        eliteMultiOutletInventoryEnabled,
+        eliteCustomDomainEnabled,
+        eliteLoyaltyEnabled,
+        eliteMaxLoyaltyCashbackPercent,
+        elitePosEnabled,
+        eliteStockTransfersEnabled,
+        eliteCrmEnabled,
       };
 
       await api.adminUpdateMarketplaceSettings(payload);
@@ -94,7 +147,7 @@ export default function MarketplaceSettingsPage() {
   }
 
   return (
-    <SettingsPageShell title="Marketplace & Pro Stores" loading={loading}>
+    <SettingsPageShell title="Marketplace, Pro & Elite Stores" loading={loading}>
       <form onSubmit={handleSave} className="space-y-6 pb-12">
         {error && (
           <div className="flex items-center gap-3 rounded-2xl bg-red-50 p-4 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">
@@ -106,7 +159,7 @@ export default function MarketplaceSettingsPage() {
         {saved && (
           <div className="flex items-center gap-3 rounded-2xl bg-green/10 p-4 text-sm font-semibold text-green">
             <CheckCircle2 className="h-5 w-5 shrink-0" />
-            <p>Marketplace and Pro Live settings successfully saved.</p>
+            <p>Marketplace, Pro & Elite settings successfully saved.</p>
           </div>
         )}
 
@@ -165,7 +218,7 @@ export default function MarketplaceSettingsPage() {
           </div>
         </section>
 
-        {/* Pro Monetization & Paywall Gate */}
+        {/* Pro & Elite Monetization & Paywall Gate */}
         <section className="rounded-[24px] border border-gold/30 bg-[rgb(var(--surface-card))] p-5 shadow-sm space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -173,8 +226,8 @@ export default function MarketplaceSettingsPage() {
                 <Sparkles className="h-5 w-5" />
               </div>
               <div>
-                <h2 className="text-base font-bold text-ink">Merchant Pro Paywall</h2>
-                <p className="text-xs text-ink-500">Control whether Pro features are free or require subscription</p>
+                <h2 className="text-base font-bold text-ink">Merchant Tier Paywall (Free / Pro / Elite)</h2>
+                <p className="text-xs text-ink-500">Control whether Pro & Elite features are free or require subscription</p>
               </div>
             </div>
 
@@ -209,13 +262,12 @@ export default function MarketplaceSettingsPage() {
             <div className="rounded-2xl bg-gold/10 p-4 text-xs text-ink space-y-1">
               <p className="font-bold text-gold">Promotional Launch Mode Active</p>
               <p className="text-ink-500">
-                All merchants currently enjoy unlimited Pro features (Storefronts, Product Variants & TikTok Live
-                Selling) for free without paying a subscription.
+                All merchants currently enjoy Pro Store, Live Selling, and Elite Shopify Plus features for free without paying a subscription.
               </p>
             </div>
           ) : (
             <div className="space-y-4 pt-2">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
                 <div className="field-box flex flex-col p-3 rounded-2xl bg-[rgb(var(--surface-muted))]">
                   <label className="text-xs font-bold text-ink-500 mb-1">Pro Store Monthly (UGX)</label>
                   <input
@@ -226,7 +278,7 @@ export default function MarketplaceSettingsPage() {
                     onChange={(e) => setProStorePriceUgx(Number(e.target.value))}
                     className="w-full bg-transparent font-bold text-ink outline-none text-base"
                   />
-                  <span className="text-[10px] text-ink-500 mt-1">Unlimited catalog & variants</span>
+                  <span className="text-[10px] text-ink-500 mt-1">Marketplace catalog & variants</span>
                 </div>
 
                 <div className="field-box flex flex-col p-3 rounded-2xl bg-[rgb(var(--surface-muted))]">
@@ -240,6 +292,19 @@ export default function MarketplaceSettingsPage() {
                     className="w-full bg-transparent font-bold text-ink outline-none text-base"
                   />
                   <span className="text-[10px] text-ink-500 mt-1">TikTok Live & in-stream checkout</span>
+                </div>
+
+                <div className="field-box flex flex-col p-3 rounded-2xl bg-[rgb(var(--surface-muted))]">
+                  <label className="text-xs font-bold text-ink-500 mb-1">Elite Monthly (UGX)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    step={5000}
+                    value={elitePriceUgx}
+                    onChange={(e) => setElitePriceUgx(Number(e.target.value))}
+                    className="w-full bg-transparent font-bold text-ink outline-none text-base"
+                  />
+                  <span className="text-[10px] text-ink-500 mt-1">Shopify Plus OS, B2B & Multi-Outlet</span>
                 </div>
 
                 <div className="field-box flex flex-col p-3 rounded-2xl bg-[rgb(var(--surface-muted))]">
@@ -259,6 +324,286 @@ export default function MarketplaceSettingsPage() {
           )}
         </section>
 
+        {/* Tier 3: Merchant Advanced Marketplace (Elite — Shopify Plus level) */}
+        <section className="rounded-[24px] border border-gold/40 bg-[rgb(var(--surface-card))] p-5 shadow-sm space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gold/15 text-gold">
+                <Crown className="h-5 w-5" />
+              </div>
+              <div>
+                <h2 className="text-base font-bold text-ink">Tier 3: Merchant Advanced Marketplace (Elite)</h2>
+                <p className="text-xs text-ink-500">Shopify & Shopify Pro capabilities, quotas, and module switches</p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              disabled={!canManage}
+              onClick={() => setEliteEnabled(!eliteEnabled)}
+              className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${
+                eliteEnabled ? "bg-gold" : "bg-neutral-300 dark:bg-neutral-700"
+              }`}
+            >
+              <span
+                className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                  eliteEnabled ? "translate-x-5" : "translate-x-0"
+                }`}
+              />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 border-t border-[var(--border-faint)] pt-4">
+            <div className="field-box flex flex-col p-3 rounded-2xl bg-[rgb(var(--surface-muted))]">
+              <label className="text-xs font-bold text-ink-500 mb-1">Elite Commission Rate (%)</label>
+              <input
+                type="number"
+                min={0}
+                max={50}
+                value={eliteCommissionPercent}
+                onChange={(e) => setEliteCommissionPercent(Number(e.target.value))}
+                className="w-full bg-transparent font-bold text-ink outline-none text-base"
+              />
+              <span className="text-[10px] text-ink-500 mt-1">Lower take-rate for Elite subscribers</span>
+            </div>
+
+            <div className="field-box flex flex-col p-3 rounded-2xl bg-[rgb(var(--surface-muted))]">
+              <label className="text-xs font-bold text-ink-500 mb-1">Pro vs Elite Max Products</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min={1}
+                  value={proMaxProducts}
+                  onChange={(e) => setProMaxProducts(Number(e.target.value))}
+                  aria-label="Pro Max Products"
+                  className="w-1/2 bg-transparent font-bold text-ink outline-none text-base"
+                />
+                <span className="text-xs text-ink-500">/</span>
+                <input
+                  type="number"
+                  min={10}
+                  value={eliteMaxProducts}
+                  onChange={(e) => setEliteMaxProducts(Number(e.target.value))}
+                  aria-label="Elite Max Products"
+                  className="w-1/2 bg-transparent font-bold text-gold outline-none text-base"
+                />
+              </div>
+              <span className="text-[10px] text-ink-500 mt-1">Pro limit / Elite limit</span>
+            </div>
+
+            <div className="field-box flex flex-col p-3 rounded-2xl bg-[rgb(var(--surface-muted))]">
+              <label className="text-xs font-bold text-ink-500 mb-1">Pro vs Elite Max Collections</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min={1}
+                  value={proMaxCollections}
+                  onChange={(e) => setProMaxCollections(Number(e.target.value))}
+                  aria-label="Pro Max Collections"
+                  className="w-1/2 bg-transparent font-bold text-ink outline-none text-base"
+                />
+                <span className="text-xs text-ink-500">/</span>
+                <input
+                  type="number"
+                  min={1}
+                  value={eliteMaxCollections}
+                  onChange={(e) => setEliteMaxCollections(Number(e.target.value))}
+                  aria-label="Elite Max Collections"
+                  className="w-1/2 bg-transparent font-bold text-gold outline-none text-base"
+                />
+              </div>
+              <span className="text-[10px] text-ink-500 mt-1">Smart & manual collections cap</span>
+            </div>
+
+            <div className="field-box flex flex-col p-3 rounded-2xl bg-[rgb(var(--surface-muted))]">
+              <label className="text-xs font-bold text-ink-500 mb-1">Pro vs Elite Max Discounts</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min={0}
+                  value={proMaxDiscounts}
+                  onChange={(e) => setProMaxDiscounts(Number(e.target.value))}
+                  aria-label="Pro Max Discounts"
+                  className="w-1/2 bg-transparent font-bold text-ink outline-none text-base"
+                />
+                <span className="text-xs text-ink-500">/</span>
+                <input
+                  type="number"
+                  min={1}
+                  value={eliteMaxDiscounts}
+                  onChange={(e) => setEliteMaxDiscounts(Number(e.target.value))}
+                  aria-label="Elite Max Discounts"
+                  className="w-1/2 bg-transparent font-bold text-gold outline-none text-base"
+                />
+              </div>
+              <span className="text-[10px] text-ink-500 mt-1">Active coupon & BOGO campaigns</span>
+            </div>
+
+            <div className="field-box flex flex-col p-3 rounded-2xl bg-[rgb(var(--surface-muted))]">
+              <label className="text-xs font-bold text-ink-500 mb-1">Max Loyalty Cashback (%)</label>
+              <input
+                type="number"
+                min={0}
+                max={50}
+                value={eliteMaxLoyaltyCashbackPercent}
+                onChange={(e) => setEliteMaxLoyaltyCashbackPercent(Number(e.target.value))}
+                className="w-full bg-transparent font-bold text-ink outline-none text-base"
+              />
+              <span className="text-[10px] text-ink-500 mt-1">Ceiling on store VIP points reward</span>
+            </div>
+          </div>
+
+          {/* Elite Module Switches */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 border-t border-[var(--border-faint)] pt-4">
+            <div className="flex items-center justify-between rounded-2xl bg-[rgb(var(--surface-muted))] p-3">
+              <div>
+                <span className="block text-xs font-bold text-ink">Custom Domains & Theme Builder</span>
+                <span className="text-[10px] text-ink-500">Standalone storefront URLs & Online Store 2.0 layouts</span>
+              </div>
+              <button
+                type="button"
+                disabled={!canManage}
+                onClick={() => setEliteCustomDomainEnabled(!eliteCustomDomainEnabled)}
+                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${
+                  eliteCustomDomainEnabled ? "bg-gold" : "bg-neutral-300 dark:bg-neutral-700"
+                }`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${
+                    eliteCustomDomainEnabled ? "translate-x-5" : "translate-x-0"
+                  }`}
+                />
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between rounded-2xl bg-[rgb(var(--surface-muted))] p-3">
+              <div>
+                <span className="block text-xs font-bold text-ink">Multi-Outlet Inventory Matrix</span>
+                <span className="text-[10px] text-ink-500">Per-branch stock tracking across merchant_outlets</span>
+              </div>
+              <button
+                type="button"
+                disabled={!canManage}
+                onClick={() => setEliteMultiOutletInventoryEnabled(!eliteMultiOutletInventoryEnabled)}
+                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${
+                  eliteMultiOutletInventoryEnabled ? "bg-gold" : "bg-neutral-300 dark:bg-neutral-700"
+                }`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${
+                    eliteMultiOutletInventoryEnabled ? "translate-x-5" : "translate-x-0"
+                  }`}
+                />
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between rounded-2xl bg-[rgb(var(--surface-muted))] p-3">
+              <div>
+                <span className="block text-xs font-bold text-ink">B2B Wholesale & Draft Orders</span>
+                <span className="text-[10px] text-ink-500">Custom quotes, Net-7/14/30 terms & 1-tap WhatsApp invoices</span>
+              </div>
+              <button
+                type="button"
+                disabled={!canManage}
+                onClick={() => setEliteB2bEnabled(!eliteB2bEnabled)}
+                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${
+                  eliteB2bEnabled ? "bg-gold" : "bg-neutral-300 dark:bg-neutral-700"
+                }`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${
+                    eliteB2bEnabled ? "translate-x-5" : "translate-x-0"
+                  }`}
+                />
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between rounded-2xl bg-[rgb(var(--surface-muted))] p-3">
+              <div>
+                <span className="block text-xs font-bold text-ink">VIP Customer Loyalty Cashback</span>
+                <span className="text-[10px] text-ink-500">Allow Elite stores to reward repeat buyers with store points</span>
+              </div>
+              <button
+                type="button"
+                disabled={!canManage}
+                onClick={() => setEliteLoyaltyEnabled(!eliteLoyaltyEnabled)}
+                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${
+                  eliteLoyaltyEnabled ? "bg-gold" : "bg-neutral-300 dark:bg-neutral-700"
+                }`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${
+                    eliteLoyaltyEnabled ? "translate-x-5" : "translate-x-0"
+                  }`}
+                />
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between rounded-2xl bg-[rgb(var(--surface-muted))] p-3">
+              <div>
+                <span className="block text-xs font-bold text-ink">Omnichannel POS Register</span>
+                <span className="text-[10px] text-ink-500">Walk-in cashier checkout synced with outlet inventory</span>
+              </div>
+              <button
+                type="button"
+                disabled={!canManage}
+                onClick={() => setElitePosEnabled(!elitePosEnabled)}
+                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${
+                  elitePosEnabled ? "bg-gold" : "bg-neutral-300 dark:bg-neutral-700"
+                }`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${
+                    elitePosEnabled ? "translate-x-5" : "translate-x-0"
+                  }`}
+                />
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between rounded-2xl bg-[rgb(var(--surface-muted))] p-3">
+              <div>
+                <span className="block text-xs font-bold text-ink">Branch-to-Branch Stock Transfers</span>
+                <span className="text-[10px] text-ink-500">Move inventory between merchant_outlets with audit trail</span>
+              </div>
+              <button
+                type="button"
+                disabled={!canManage}
+                onClick={() => setEliteStockTransfersEnabled(!eliteStockTransfersEnabled)}
+                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${
+                  eliteStockTransfersEnabled ? "bg-gold" : "bg-neutral-300 dark:bg-neutral-700"
+                }`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${
+                    eliteStockTransfersEnabled ? "translate-x-5" : "translate-x-0"
+                  }`}
+                />
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between rounded-2xl bg-[rgb(var(--surface-muted))] p-3">
+              <div>
+                <span className="block text-xs font-bold text-ink">VIP Customer CRM & Segments</span>
+                <span className="text-[10px] text-ink-500">Customer directory, VIP/Repeat segments & loyalty ledger</span>
+              </div>
+              <button
+                type="button"
+                disabled={!canManage}
+                onClick={() => setEliteCrmEnabled(!eliteCrmEnabled)}
+                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${
+                  eliteCrmEnabled ? "bg-gold" : "bg-neutral-300 dark:bg-neutral-700"
+                }`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${
+                    eliteCrmEnabled ? "translate-x-5" : "translate-x-0"
+                  }`}
+                />
+              </button>
+            </div>
+          </div>
+        </section>
+
         {/* Commissions & Delivery Rules */}
         <section className="rounded-[24px] border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-5 shadow-sm space-y-4">
           <div className="flex items-center gap-3">
@@ -273,7 +618,7 @@ export default function MarketplaceSettingsPage() {
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
             <div className="field-box flex flex-col p-3 rounded-2xl bg-[rgb(var(--surface-muted))]">
-              <label className="text-xs font-bold text-ink-500 mb-1">Platform Commission (%)</label>
+              <label className="text-xs font-bold text-ink-500 mb-1">Standard Pro Commission (%)</label>
               <input
                 type="number"
                 min={0}
@@ -282,7 +627,7 @@ export default function MarketplaceSettingsPage() {
                 onChange={(e) => setCommissionPercent(Number(e.target.value))}
                 className="w-full bg-transparent font-bold text-ink outline-none text-base"
               />
-              <span className="text-[10px] text-ink-500 mt-1">Share deducted from orders</span>
+              <span className="text-[10px] text-ink-500 mt-1">Share deducted from Pro orders</span>
             </div>
 
             <div className="field-box flex flex-col p-3 rounded-2xl bg-[rgb(var(--surface-muted))]">
