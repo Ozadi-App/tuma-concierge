@@ -4,10 +4,13 @@ import { Select } from "@peebee/shared/select";
 import type {
   MarketplaceSettings,
   StoreCollection,
+  StoreCustomerLoyalty,
   StoreDiscount,
   StoreDraftOrder,
   StoreEliteAnalytics,
   StoreOutletInventoryRow,
+  StorePosSale,
+  StoreStockTransfer,
 } from "@peebee/shared";
 import {
   AlertCircle,
@@ -151,7 +154,7 @@ export default function MerchantProStorePage() {
 
   // Elite OS sub-navigation
   const [eliteSection, setEliteSection] = useState<
-    "overview" | "theme" | "collections" | "discounts" | "inventory" | "b2b"
+    "overview" | "pos" | "theme" | "collections" | "discounts" | "inventory" | "b2b" | "crm"
   >("overview");
   const [upgradingTier, setUpgradingTier] = useState(false);
 
@@ -162,6 +165,16 @@ export default function MerchantProStorePage() {
   const [outlets, setOutlets] = useState<Array<{ id: string; name: string; code: string; address: string | null; status: string }>>([]);
   const [outletInventory, setOutletInventory] = useState<StoreOutletInventoryRow[]>([]);
   const [draftOrders, setDraftOrders] = useState<StoreDraftOrder[]>([]);
+  const [posSales, setPosSales] = useState<StorePosSale[]>([]);
+  const [stockTransfers, setStockTransfers] = useState<StoreStockTransfer[]>([]);
+  const [crmCustomers, setCrmCustomers] = useState<StoreCustomerLoyalty[]>([]);
+  const [crmSummary, setCrmSummary] = useState<{
+    totalCustomers: number;
+    vipCount: number;
+    repeatCount: number;
+    b2bCount: number;
+    totalLoyaltyBalanceUgx: number;
+  }>({ totalCustomers: 0, vipCount: 0, repeatCount: 0, b2bCount: 0, totalLoyaltyBalanceUgx: 0 });
 
   // Elite Theme & Brand Builder state
   const [customDomain, setCustomDomain] = useState("");
@@ -192,11 +205,28 @@ export default function MerchantProStorePage() {
   const [discAuto, setDiscAuto] = useState(false);
   const [savingDisc, setSavingDisc] = useState(false);
 
-  // Elite Multi-Outlet Inventory form state
+  // Elite Multi-Outlet Inventory & Branch Transfer form state
   const [selectedInvOutlet, setSelectedInvOutlet] = useState("");
   const [selectedInvProduct, setSelectedInvProduct] = useState("");
   const [invQuantity, setInvQuantity] = useState("25");
   const [savingInv, setSavingInv] = useState(false);
+  const [transferProductId, setTransferProductId] = useState("");
+  const [transferFromOutletId, setTransferFromOutletId] = useState("");
+  const [transferToOutletId, setTransferToOutletId] = useState("");
+  const [transferQty, setTransferQty] = useState("5");
+  const [transferNote, setTransferNote] = useState("");
+  const [savingTransfer, setSavingTransfer] = useState(false);
+
+  // Elite Omnichannel POS Register form state
+  const [posOutletId, setPosOutletId] = useState("");
+  const [posProductId, setPosProductId] = useState("");
+  const [posQty, setPosQty] = useState("1");
+  const [posCustomerPhone, setPosCustomerPhone] = useState("");
+  const [posCustomerName, setPosCustomerName] = useState("");
+  const [posDiscountUgx, setPosDiscountUgx] = useState("0");
+  const [posRedeemLoyaltyUgx, setPosRedeemLoyaltyUgx] = useState("0");
+  const [posPaymentMethod, setPosPaymentMethod] = useState<"peebee_code" | "momo" | "cash">("peebee_code");
+  const [savingPosSale, setSavingPosSale] = useState(false);
 
   // Elite B2B Draft Order form state
   const [b2bCustomerName, setB2bCustomerName] = useState("");
@@ -288,13 +318,19 @@ export default function MerchantProStorePage() {
         setLoyaltyEnabled(Boolean(s.loyalty_enabled));
         if (s.loyalty_cashback_percent != null) setLoyaltyCashback(String(s.loyalty_cashback_percent));
 
-        const [prodRes, colRes, discRes, invRes, drfRes, anaRes] = await Promise.all([
+        const [prodRes, colRes, discRes, invRes, drfRes, anaRes, posRes, trfRes, crmRes] = await Promise.all([
           api.getMerchantProProducts().catch(() => ({ products: [] })),
           api.getMerchantCollections().catch(() => ({ collections: [] })),
           api.getMerchantDiscounts().catch(() => ({ discounts: [] })),
           api.getMerchantOutletInventory().catch(() => ({ outlets: [], inventory: [] })),
           api.getMerchantDraftOrders().catch(() => ({ draftOrders: [] })),
           api.getMerchantEliteAnalytics().catch(() => ({ analytics: null })),
+          api.getMerchantPosSales().catch(() => ({ sales: [] })),
+          api.getMerchantStockTransfers().catch(() => ({ transfers: [] })),
+          api.getMerchantCrmCustomers().catch(() => ({
+            customers: [],
+            summary: { totalCustomers: 0, vipCount: 0, repeatCount: 0, b2bCount: 0, totalLoyaltyBalanceUgx: 0 },
+          })),
         ]);
         const loadedProducts = prodRes.products || [];
         setProducts(loadedProducts);
@@ -303,13 +339,22 @@ export default function MerchantProStorePage() {
         setOutlets(invRes.outlets || []);
         setOutletInventory(invRes.inventory || []);
         setDraftOrders(drfRes.draftOrders || []);
+        setPosSales(posRes.sales || []);
+        setStockTransfers(trfRes.transfers || []);
+        setCrmCustomers(crmRes.customers || []);
+        if (crmRes.summary) setCrmSummary(crmRes.summary);
         if (anaRes.analytics) setAnalytics(anaRes.analytics);
 
         if (invRes.outlets?.[0] && !selectedInvOutlet) {
           setSelectedInvOutlet(invRes.outlets[0].id);
+          setPosOutletId(invRes.outlets[0].id);
+          setTransferFromOutletId(invRes.outlets[0].id);
+          if (invRes.outlets[1]) setTransferToOutletId(invRes.outlets[1].id);
         }
         if (loadedProducts[0] && !selectedInvProduct) {
           setSelectedInvProduct(loadedProducts[0].id);
+          setPosProductId(loadedProducts[0].id);
+          setTransferProductId(loadedProducts[0].id);
           setB2bProductId(loadedProducts[0].id);
           setB2bUnitPrice(String(Math.round(loadedProducts[0].price * 0.85)));
         }
@@ -322,18 +367,28 @@ export default function MerchantProStorePage() {
   }
 
   async function refreshEliteData() {
-    const [colRes, discRes, invRes, drfRes, anaRes] = await Promise.all([
+    const [colRes, discRes, invRes, drfRes, anaRes, posRes, trfRes, crmRes] = await Promise.all([
       api.getMerchantCollections().catch(() => ({ collections: [] })),
       api.getMerchantDiscounts().catch(() => ({ discounts: [] })),
       api.getMerchantOutletInventory().catch(() => ({ outlets: [], inventory: [] })),
       api.getMerchantDraftOrders().catch(() => ({ draftOrders: [] })),
       api.getMerchantEliteAnalytics().catch(() => ({ analytics: null })),
+      api.getMerchantPosSales().catch(() => ({ sales: [] })),
+      api.getMerchantStockTransfers().catch(() => ({ transfers: [] })),
+      api.getMerchantCrmCustomers().catch(() => ({
+        customers: [],
+        summary: { totalCustomers: 0, vipCount: 0, repeatCount: 0, b2bCount: 0, totalLoyaltyBalanceUgx: 0 },
+      })),
     ]);
     setCollections(colRes.collections || []);
     setDiscounts(discRes.discounts || []);
     setOutlets(invRes.outlets || []);
     setOutletInventory(invRes.inventory || []);
     setDraftOrders(drfRes.draftOrders || []);
+    setPosSales(posRes.sales || []);
+    setStockTransfers(trfRes.transfers || []);
+    setCrmCustomers(crmRes.customers || []);
+    if (crmRes.summary) setCrmSummary(crmRes.summary);
     if (anaRes.analytics) setAnalytics(anaRes.analytics);
   }
 
@@ -476,6 +531,76 @@ export default function MerchantProStorePage() {
       setError(errorMessage(err));
     } finally {
       setSavingInv(false);
+    }
+  }
+
+  async function handleCreatePosSale() {
+    const prod = products.find((p) => p.id === posProductId) || products[0];
+    if (!prod) {
+      setError("Add a product to your catalog before ringing a POS sale.");
+      return;
+    }
+    setSavingPosSale(true);
+    setError("");
+    try {
+      const qty = Math.max(1, Number(posQty) || 1);
+      const res = await api.createMerchantPosSale({
+        outlet_id: posOutletId || null,
+        customer_phone: posCustomerPhone.trim() || undefined,
+        customer_name: posCustomerName.trim() || undefined,
+        items: [
+          {
+            productId: prod.id,
+            title: prod.title,
+            unitPrice: prod.price,
+            quantity: qty,
+          },
+        ],
+        discount_amount: Number(posDiscountUgx) || 0,
+        redeem_loyalty_ugx: Number(posRedeemLoyaltyUgx) || 0,
+        payment_method: posPaymentMethod,
+      });
+      const prodRes = await api.getMerchantProProducts().catch(() => ({ products: [] }));
+      setProducts(prodRes.products || []);
+      await refreshEliteData();
+      setPosRedeemLoyaltyUgx("0");
+      setPosDiscountUgx("0");
+      setNotice(
+        `🧾 POS Receipt ${res.receiptCode} completed (${ugx(res.total)})! Inventory auto-synced${
+          res.loyaltyEarnedUgx > 0 ? ` · +${ugx(res.loyaltyEarnedUgx)} VIP points credited` : ""
+        }.`
+      );
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setSavingPosSale(false);
+    }
+  }
+
+  async function handleCreateStockTransfer() {
+    if (!transferProductId || !transferFromOutletId || !transferToOutletId) {
+      setError("Select product, source branch, and destination branch.");
+      return;
+    }
+    setSavingTransfer(true);
+    setError("");
+    try {
+      const res = await api.createMerchantStockTransfer({
+        productId: transferProductId,
+        fromOutletId: transferFromOutletId,
+        toOutletId: transferToOutletId,
+        quantity: Math.max(1, Number(transferQty) || 1),
+        note: transferNote.trim() || undefined,
+      });
+      setTransferNote("");
+      await refreshEliteData();
+      setNotice(
+        `🔄 Stock transfer completed! Source branch now has ${res.fromQuantityAfter} units; destination branch has ${res.toQuantityAfter} units.`
+      );
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setSavingTransfer(false);
     }
   }
 
@@ -1079,11 +1204,13 @@ export default function MerchantProStorePage() {
           <div className="flex gap-1.5 overflow-x-auto pb-1">
             {[
               { id: "overview", label: "P&L Analytics", icon: BarChart3 },
+              { id: "pos", label: `POS Register (${posSales.length})`, icon: ShoppingBag },
               { id: "theme", label: "Store 2.0 Theme", icon: Palette },
               { id: "collections", label: `Collections (${collections.length})`, icon: Layers },
               { id: "discounts", label: `Promos (${discounts.length})`, icon: Tag },
-              { id: "inventory", label: "Multi-Outlet Stock", icon: Building2 },
+              { id: "inventory", label: "Multi-Outlet & Transfers", icon: Building2 },
               { id: "b2b", label: `B2B Quotes (${draftOrders.length})`, icon: Briefcase },
+              { id: "crm", label: `VIP CRM (${crmCustomers.length})`, icon: Users },
             ].map((item) => {
               const Icon = item.icon;
               const active = eliteSection === item.id;
@@ -1143,7 +1270,7 @@ export default function MerchantProStorePage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-3 gap-2.5 border-t border-[var(--border-faint)] pt-3 text-center">
+                <div className="grid grid-cols-3 sm:grid-cols-6 gap-2.5 border-t border-[var(--border-faint)] pt-3 text-center">
                   <div>
                     <p className="text-lg font-black text-ink">{analytics?.totalStockUnits ?? 0}</p>
                     <p className="text-[10px] font-semibold text-ink-500">Total Stock Units</p>
@@ -1153,11 +1280,185 @@ export default function MerchantProStorePage() {
                     <p className="text-[10px] font-semibold text-ink-500">Low-Stock Alerts</p>
                   </div>
                   <div>
-                    <p className="font-mono text-sm font-black text-ink mt-1">{ugx(analytics?.b2bPipelineUgx ?? 0)}</p>
+                    <p className="font-mono text-xs font-black text-ink mt-1">{ugx(analytics?.b2bPipelineUgx ?? 0)}</p>
                     <p className="text-[10px] font-semibold text-ink-500">B2B Quote Pipeline</p>
+                  </div>
+                  <div>
+                    <p className="font-mono text-xs font-black text-gold mt-1">{ugx(analytics?.posRevenueUgx ?? 0)}</p>
+                    <p className="text-[10px] font-semibold text-ink-500">Walk-In POS ({analytics?.posSalesCount ?? 0})</p>
+                  </div>
+                  <div>
+                    <p className="text-lg font-black text-ink">{analytics?.vipCustomersCount ?? crmSummary.vipCount}</p>
+                    <p className="text-[10px] font-semibold text-ink-500">VIP & B2B Buyers</p>
+                  </div>
+                  <div>
+                    <p className="font-mono text-xs font-black text-ink mt-1">{ugx(analytics?.loyaltyBalanceLiabilityUgx ?? crmSummary.totalLoyaltyBalanceUgx)}</p>
+                    <p className="text-[10px] font-semibold text-ink-500">VIP Points Balance</p>
                   </div>
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* ELITE SECTION 1B: OMNICHANNEL IN-STORE POS REGISTER */}
+          {eliteSection === "pos" && (
+            <div className="space-y-4">
+              <div className="rounded-[24px] border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-5 shadow-sm space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-bold text-base text-ink">Omnichannel In-Store POS Register</h3>
+                    <p className="text-xs text-ink-500">
+                      Ring walk-in sales via Peebee Code, Mobile Money, or Cash — auto-deducts branch inventory and credits VIP loyalty points
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-gold/15 px-3 py-1 text-[10px] font-black uppercase text-gold">
+                    Live Stock Sync
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                  <div>
+                    <label className="text-xs font-semibold text-ink-500">Checkout Branch</label>
+                    <Select
+                      aria-label="POS Checkout Branch"
+                      value={posOutletId}
+                      onValueChange={(val) => setPosOutletId(val)}
+                      className="mt-1 w-full rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] px-3 py-2.5 text-xs text-ink"
+                    >
+                      <option value="">Main Store Inventory</option>
+                      {outlets.map((o) => (
+                        <option key={o.id} value={o.id}>
+                          {o.name} ({o.code})
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-semibold text-ink-500">Product Item</label>
+                    <Select
+                      aria-label="POS Product Item"
+                      value={posProductId}
+                      onValueChange={(val) => setPosProductId(val)}
+                      className="mt-1 w-full rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] px-3 py-2.5 text-xs text-ink"
+                    >
+                      {products.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.title} ({ugx(p.price)} · {p.inventory_quantity} left)
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-semibold text-ink-500">Quantity</label>
+                    <input
+                      type="number"
+                      min={1}
+                      value={posQty}
+                      onChange={(e) => setPosQty(e.target.value)}
+                      className="mt-1 w-full rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] px-3 py-2.5 text-xs text-ink"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <div>
+                    <label className="text-xs font-semibold text-ink-500">Customer Phone (for VIP Loyalty)</label>
+                    <input
+                      type="text"
+                      value={posCustomerPhone}
+                      onChange={(e) => setPosCustomerPhone(e.target.value)}
+                      placeholder="e.g. +256 772 123456"
+                      className="mt-1 w-full rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] px-3 py-2.5 text-xs text-ink"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-ink-500">Customer Name (Optional)</label>
+                    <input
+                      type="text"
+                      value={posCustomerName}
+                      onChange={(e) => setPosCustomerName(e.target.value)}
+                      placeholder="e.g. Grace Nakato"
+                      className="mt-1 w-full rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] px-3 py-2.5 text-xs text-ink"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                  <div>
+                    <label className="text-xs font-semibold text-ink-500">Payment Tender</label>
+                    <Select
+                      aria-label="POS Payment Tender"
+                      value={posPaymentMethod}
+                      onValueChange={(val) => setPosPaymentMethod(val as typeof posPaymentMethod)}
+                      className="mt-1 w-full rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] px-3 py-2.5 text-xs text-ink"
+                    >
+                      <option value="peebee_code">⚡ Peebee Merchant Code</option>
+                      <option value="momo">📱 Mobile Money</option>
+                      <option value="cash">💵 Cash at Counter</option>
+                    </Select>
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-ink-500">Counter Discount (UGX)</label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={posDiscountUgx}
+                      onChange={(e) => setPosDiscountUgx(e.target.value)}
+                      className="mt-1 w-full rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] px-3 py-2.5 text-xs text-ink"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-ink-500">Redeem Loyalty Points (UGX)</label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={posRedeemLoyaltyUgx}
+                      onChange={(e) => setPosRedeemLoyaltyUgx(e.target.value)}
+                      className="mt-1 w-full rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] px-3 py-2.5 text-xs text-ink"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleCreatePosSale}
+                  disabled={savingPosSale || products.length === 0}
+                  className="w-full rounded-full bg-gold py-3 text-xs font-bold text-ink-gold shadow transition active:scale-98 disabled:opacity-50"
+                >
+                  {savingPosSale ? "Processing POS Checkout…" : "Complete Walk-In POS Sale & Sync Stock →"}
+                </button>
+              </div>
+
+              {posSales.length > 0 && (
+                <div className="rounded-[24px] border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-5 shadow-sm space-y-2.5">
+                  <h4 className="text-xs font-bold uppercase text-ink-500">Recent Walk-In POS Receipts</h4>
+                  {posSales.map((s) => (
+                    <div
+                      key={s.id}
+                      className="flex items-center justify-between rounded-2xl bg-[rgb(var(--surface-muted))] p-3 text-xs"
+                    >
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="rounded-lg bg-gold/20 px-2 py-0.5 font-mono text-[10px] font-black text-gold">
+                            {s.receipt_code}
+                          </span>
+                          <span className="font-bold text-ink">
+                            {s.customer_name || s.customer_phone || "Walk-In Shopper"}
+                          </span>
+                        </div>
+                        <p className="mt-0.5 text-[10px] text-ink-500">
+                          {s.outlet_name || "Main Store"} · {s.payment_method.replace("_", " ").toUpperCase()}
+                          {s.loyalty_earned_ugx > 0 ? ` · +${ugx(s.loyalty_earned_ugx)} VIP earned` : ""}
+                          {s.loyalty_redeemed_ugx > 0 ? ` · -${ugx(s.loyalty_redeemed_ugx)} redeemed` : ""}
+                        </p>
+                      </div>
+                      <span className="font-mono font-black text-ink">{ugx(s.total_amount)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -1643,6 +1944,80 @@ export default function MerchantProStorePage() {
                 )}
               </div>
 
+              {outlets.length >= 2 && (
+                <div className="rounded-[24px] border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-5 shadow-sm space-y-3">
+                  <h4 className="text-sm font-bold text-ink">Branch-to-Branch Stock Transfer</h4>
+                  <p className="text-xs text-ink-500">
+                    Move units between physical outlets with an auditable stock ledger
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5">
+                    <div>
+                      <label className="text-xs font-semibold text-ink-500">Product</label>
+                      <Select
+                        aria-label="Transfer Product"
+                        value={transferProductId}
+                        onValueChange={(val) => setTransferProductId(val)}
+                        className="mt-1 w-full rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] px-3 py-2.5 text-xs text-ink"
+                      >
+                        {products.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.title}
+                          </option>
+                        ))}
+                      </Select>
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-ink-500">From Branch</label>
+                      <Select
+                        aria-label="Transfer From Branch"
+                        value={transferFromOutletId}
+                        onValueChange={(val) => setTransferFromOutletId(val)}
+                        className="mt-1 w-full rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] px-3 py-2.5 text-xs text-ink"
+                      >
+                        {outlets.map((o) => (
+                          <option key={o.id} value={o.id}>
+                            {o.name}
+                          </option>
+                        ))}
+                      </Select>
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-ink-500">To Branch</label>
+                      <Select
+                        aria-label="Transfer To Branch"
+                        value={transferToOutletId}
+                        onValueChange={(val) => setTransferToOutletId(val)}
+                        className="mt-1 w-full rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] px-3 py-2.5 text-xs text-ink"
+                      >
+                        {outlets.map((o) => (
+                          <option key={o.id} value={o.id}>
+                            {o.name}
+                          </option>
+                        ))}
+                      </Select>
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-ink-500">Transfer Qty</label>
+                      <input
+                        type="number"
+                        min={1}
+                        value={transferQty}
+                        onChange={(e) => setTransferQty(e.target.value)}
+                        className="mt-1 w-full rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] px-3 py-2.5 text-xs text-ink"
+                      />
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleCreateStockTransfer}
+                    disabled={savingTransfer || transferFromOutletId === transferToOutletId}
+                    className="w-full rounded-full bg-gold py-2.5 text-xs font-bold text-ink-gold shadow transition active:scale-98 disabled:opacity-50"
+                  >
+                    {savingTransfer ? "Moving Stock…" : "Transfer Stock Between Branches →"}
+                  </button>
+                </div>
+              )}
+
               {outletInventory.length > 0 && (
                 <div className="rounded-[24px] border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-5 shadow-sm space-y-2.5">
                   <h4 className="text-xs font-bold uppercase text-ink-500">Live Stock by Branch</h4>
@@ -1663,6 +2038,28 @@ export default function MerchantProStorePage() {
                         }`}
                       >
                         {row.quantity} units
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {stockTransfers.length > 0 && (
+                <div className="rounded-[24px] border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-5 shadow-sm space-y-2.5">
+                  <h4 className="text-xs font-bold uppercase text-ink-500">Branch Transfer Audit Log</h4>
+                  {stockTransfers.map((trf) => (
+                    <div
+                      key={trf.id}
+                      className="flex items-center justify-between rounded-2xl bg-[rgb(var(--surface-muted))] p-3 text-xs"
+                    >
+                      <div>
+                        <span className="font-bold text-ink">{trf.product_title || "Product"}</span>
+                        <p className="text-[10px] text-ink-500">
+                          {trf.from_outlet_name || trf.from_outlet_id} → {trf.to_outlet_name || trf.to_outlet_id}
+                        </p>
+                      </div>
+                      <span className="rounded-full bg-gold/15 px-2.5 py-1 font-mono text-xs font-black text-gold">
+                        {trf.quantity} moved
                       </span>
                     </div>
                   ))}
@@ -1816,6 +2213,84 @@ export default function MerchantProStorePage() {
                   ))}
                 </div>
               )}
+            </div>
+          )}
+
+          {/* ELITE SECTION 7: VIP CUSTOMER CRM & LOYALTY LEDGER */}
+          {eliteSection === "crm" && (
+            <div className="space-y-4">
+              <div className="rounded-[24px] border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-5 shadow-sm space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-bold text-base text-ink">VIP Customer CRM & Loyalty Cashback Ledger</h3>
+                    <p className="text-xs text-ink-500">
+                      Unified buyer segments across Dedicated Storefront, Peebee App Marketplace, and Walk-In POS
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-gold/15 px-3 py-1 text-xs font-black text-gold">
+                    {crmSummary.totalCustomers} Buyers
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2.5">
+                  <div className="rounded-2xl bg-[rgb(var(--surface-muted))] p-3">
+                    <span className="text-[10px] font-bold uppercase text-gold">VIP Tier Buyers</span>
+                    <p className="mt-1 text-lg font-black text-ink">{crmSummary.vipCount}</p>
+                  </div>
+                  <div className="rounded-2xl bg-[rgb(var(--surface-muted))] p-3">
+                    <span className="text-[10px] font-bold uppercase text-ink-500">Repeat Buyers</span>
+                    <p className="mt-1 text-lg font-black text-ink">{crmSummary.repeatCount}</p>
+                  </div>
+                  <div className="rounded-2xl bg-[rgb(var(--surface-muted))] p-3">
+                    <span className="text-[10px] font-bold uppercase text-ink-500">Points Available</span>
+                    <p className="mt-1 font-mono text-sm font-black text-gold">
+                      {ugx(crmSummary.totalLoyaltyBalanceUgx)}
+                    </p>
+                  </div>
+                </div>
+
+                {crmCustomers.length === 0 ? (
+                  <div className="rounded-2xl bg-[rgb(var(--surface-muted))] p-4 text-xs text-ink-500">
+                    Customer profiles and VIP loyalty points populate automatically as shoppers purchase on your
+                    Dedicated Storefront, the Peebee App, or your Walk-In POS Register.
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {crmCustomers.map((cust) => (
+                      <div
+                        key={cust.id}
+                        className="flex items-center justify-between rounded-2xl bg-[rgb(var(--surface-muted))] p-3 text-xs"
+                      >
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-ink">
+                              {cust.customer_name || cust.customer_phone}
+                            </span>
+                            <span
+                              className={`rounded-full px-2 py-0.5 text-[10px] font-black uppercase ${
+                                cust.tier === "vip" || cust.tier === "b2b"
+                                  ? "bg-gold text-ink-gold"
+                                  : "bg-[rgb(var(--surface-card))] text-ink-500"
+                              }`}
+                            >
+                              {cust.tier}
+                            </span>
+                          </div>
+                          <p className="mt-0.5 text-[10px] text-ink-500">
+                            {cust.customer_phone} · {cust.orders_count} order(s) · Total spent {ugx(cust.total_spent_ugx)}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <span className="block font-mono font-black text-gold">
+                            {ugx(cust.points_balance_ugx)}
+                          </span>
+                          <span className="text-[10px] text-ink-500">Loyalty credit</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>

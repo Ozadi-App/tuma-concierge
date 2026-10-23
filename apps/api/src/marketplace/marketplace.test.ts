@@ -531,6 +531,81 @@ test("merchant elite tier: upgrades to elite, manages Store 2.0 theme, smart col
     assert.equal(quoteData.itemsTotal, 144000);
     assert.equal(quoteData.appliedDiscount.code, "KAMPALA20");
     assert.equal(quoteData.loyaltyCashbackUgx, 7200);
+
+    // 13. Branch-to-Branch Stock Transfer (Acacia 14 -> 10, Arena 8 -> 12)
+    const transferRes = await req("/merchants/me/stock-transfers", "POST", {
+      productId: prodBody.productId,
+      fromOutletId: "out_acacia",
+      toOutletId: "out_arena",
+      quantity: 4,
+      note: "Weekend restock for Arena Mall",
+    });
+    assert.equal(transferRes.status, 201);
+    const transferData = (await transferRes.json()) as any;
+    assert.equal(transferData.fromQuantityAfter, 10);
+    assert.equal(transferData.toQuantityAfter, 12);
+
+    const transferListRes = await req("/merchants/me/stock-transfers");
+    assert.equal(transferListRes.status, 200);
+    const transferList = (await transferListRes.json()) as any;
+    assert.equal(transferList.transfers.length, 1);
+    assert.equal(transferList.transfers[0].quantity, 4);
+
+    // 14. Omnichannel Walk-In POS Register Sale (deducts stock + credits 5% VIP loyalty points)
+    const posSale1Res = await req("/merchants/me/pos-sales", "POST", {
+      outlet_id: "out_acacia",
+      customer_phone: "+256777000111",
+      customer_name: "Grace Nakato",
+      payment_method: "peebee_code",
+      items: [
+        {
+          productId: prodBody.productId,
+          title: "Silk Evening Blazer",
+          unitPrice: 180000,
+          quantity: 2,
+        },
+      ],
+    });
+    assert.equal(posSale1Res.status, 201);
+    const posSale1 = (await posSale1Res.json()) as any;
+    assert.equal(posSale1.total, 360000);
+    assert.equal(posSale1.loyaltyEarnedUgx, 18000); // 5% of 360,000
+    assert.equal(posSale1.loyaltyBalanceAfterUgx, 18000);
+    assert.ok(String(posSale1.receiptCode).startsWith("POS-"));
+
+    // Second POS sale for same VIP shopper redeeming 8,000 UGX of loyalty points
+    const posSale2Res = await req("/merchants/me/pos-sales", "POST", {
+      outlet_id: "out_acacia",
+      customer_phone: "+256777000111",
+      customer_name: "Grace Nakato",
+      payment_method: "momo",
+      redeem_loyalty_ugx: 8000,
+      items: [
+        {
+          productId: prodBody.productId,
+          title: "Silk Evening Blazer",
+          unitPrice: 180000,
+          quantity: 1,
+        },
+      ],
+    });
+    assert.equal(posSale2Res.status, 201);
+    const posSale2 = (await posSale2Res.json()) as any;
+    assert.equal(posSale2.loyaltyRedeemedUgx, 8000);
+    assert.equal(posSale2.total, 172000);
+    assert.equal(posSale2.loyaltyEarnedUgx, 8600); // 5% of 172,000
+    assert.equal(posSale2.loyaltyBalanceAfterUgx, 18600); // 18,000 - 8,000 + 8,600
+
+    // 15. Verify VIP Customer CRM & Loyalty Directory
+    const crmRes = await req("/merchants/me/crm-customers");
+    assert.equal(crmRes.status, 200);
+    const crmData = (await crmRes.json()) as any;
+    assert.equal(crmData.summary.totalCustomers, 1);
+    assert.equal(crmData.summary.vipCount, 1);
+    assert.equal(crmData.customers[0].tier, "vip");
+    assert.equal(crmData.customers[0].orders_count, 2);
+    assert.equal(crmData.customers[0].total_spent_ugx, 532000);
+    assert.equal(crmData.customers[0].points_balance_ugx, 18600);
   } finally {
     process.env.JWT_SECRET = previousSecret;
     client.close();

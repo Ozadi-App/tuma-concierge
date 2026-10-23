@@ -45,6 +45,9 @@ export default function MarketplaceSettingsPage() {
   const [eliteCustomDomainEnabled, setEliteCustomDomainEnabled] = useState(true);
   const [eliteLoyaltyEnabled, setEliteLoyaltyEnabled] = useState(true);
   const [eliteMaxLoyaltyCashbackPercent, setEliteMaxLoyaltyCashbackPercent] = useState(15);
+  const [elitePosEnabled, setElitePosEnabled] = useState(true);
+  const [eliteStockTransfersEnabled, setEliteStockTransfersEnabled] = useState(true);
+  const [eliteCrmEnabled, setEliteCrmEnabled] = useState(true);
 
   const load = useCallback(async () => {
     const res = await api.adminGetMarketplaceSettings();
@@ -76,6 +79,9 @@ export default function MarketplaceSettingsPage() {
     setEliteCustomDomainEnabled(m.eliteCustomDomainEnabled ?? true);
     setEliteLoyaltyEnabled(m.eliteLoyaltyEnabled ?? true);
     setEliteMaxLoyaltyCashbackPercent(m.eliteMaxLoyaltyCashbackPercent ?? 15);
+    setElitePosEnabled(m.elitePosEnabled ?? true);
+    setEliteStockTransfersEnabled(m.eliteStockTransfersEnabled ?? true);
+    setEliteCrmEnabled(m.eliteCrmEnabled ?? true);
   }, []);
 
   useEffect(() => {
@@ -125,6 +131,9 @@ export default function MarketplaceSettingsPage() {
         eliteCustomDomainEnabled,
         eliteLoyaltyEnabled,
         eliteMaxLoyaltyCashbackPercent,
+        elitePosEnabled,
+        eliteStockTransfersEnabled,
+        eliteCrmEnabled,
       };
 
       await api.adminUpdateMarketplaceSettings(payload);
@@ -525,6 +534,69 @@ export default function MarketplaceSettingsPage() {
                 <span
                   className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${
                     eliteLoyaltyEnabled ? "translate-x-5" : "translate-x-0"
+                  }`}
+                />
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between rounded-2xl bg-[rgb(var(--surface-muted))] p-3">
+              <div>
+                <span className="block text-xs font-bold text-ink">Omnichannel POS Register</span>
+                <span className="text-[10px] text-ink-500">Walk-in cashier checkout synced with outlet inventory</span>
+              </div>
+              <button
+                type="button"
+                disabled={!canManage}
+                onClick={() => setElitePosEnabled(!elitePosEnabled)}
+                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${
+                  elitePosEnabled ? "bg-gold" : "bg-neutral-300 dark:bg-neutral-700"
+                }`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${
+                    elitePosEnabled ? "translate-x-5" : "translate-x-0"
+                  }`}
+                />
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between rounded-2xl bg-[rgb(var(--surface-muted))] p-3">
+              <div>
+                <span className="block text-xs font-bold text-ink">Branch-to-Branch Stock Transfers</span>
+                <span className="text-[10px] text-ink-500">Move inventory between merchant_outlets with audit trail</span>
+              </div>
+              <button
+                type="button"
+                disabled={!canManage}
+                onClick={() => setEliteStockTransfersEnabled(!eliteStockTransfersEnabled)}
+                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${
+                  eliteStockTransfersEnabled ? "bg-gold" : "bg-neutral-300 dark:bg-neutral-700"
+                }`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${
+                    eliteStockTransfersEnabled ? "translate-x-5" : "translate-x-0"
+                  }`}
+                />
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between rounded-2xl bg-[rgb(var(--surface-muted))] p-3">
+              <div>
+                <span className="block text-xs font-bold text-ink">VIP Customer CRM & Segments</span>
+                <span className="text-[10px] text-ink-500">Customer directory, VIP/Repeat segments & loyalty ledger</span>
+              </div>
+              <button
+                type="button"
+                disabled={!canManage}
+                onClick={() => setEliteCrmEnabled(!eliteCrmEnabled)}
+                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${
+                  eliteCrmEnabled ? "bg-gold" : "bg-neutral-300 dark:bg-neutral-700"
+                }`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${
+                    eliteCrmEnabled ? "translate-x-5" : "translate-x-0"
                   }`}
                 />
               </button>

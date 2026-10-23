@@ -2135,9 +2135,40 @@ marketplaceRoutes.get("/merchants/me/elite-analytics", requireAuth, async (c) =>
     b2bPipelineUgx = Number((drfRes.rows[0] as Row)?.total || 0);
   }
 
+  let posSalesCount = 0;
+  let posRevenueUgx = 0;
+  if (await hasTable("store_pos_sales")) {
+    const posRes = await db.execute({
+      sql: "SELECT COUNT(*) AS n, COALESCE(SUM(total_amount), 0) AS total FROM store_pos_sales WHERE store_id = ?",
+      args: [String(store.id)],
+    });
+    posSalesCount = Number((posRes.rows[0] as Row)?.n || 0);
+    posRevenueUgx = Number((posRes.rows[0] as Row)?.total || 0);
+  }
+
+  let vipCustomersCount = 0;
+  let loyaltyBalanceLiabilityUgx = 0;
+  if (await hasTable("store_customer_loyalty")) {
+    const crmRes = await db.execute({
+      sql: "SELECT COALESCE(SUM(CASE WHEN tier IN ('vip', 'b2b') THEN 1 ELSE 0 END), 0) AS vips, COALESCE(SUM(points_balance_ugx), 0) AS liability FROM store_customer_loyalty WHERE store_id = ?",
+      args: [String(store.id)],
+    });
+    vipCustomersCount = Number((crmRes.rows[0] as Row)?.vips || 0);
+    loyaltyBalanceLiabilityUgx = Number((crmRes.rows[0] as Row)?.liability || 0);
+  }
+
+  let stockTransfersCount = 0;
+  if (await hasTable("store_stock_transfers")) {
+    const trfRes = await db.execute({
+      sql: "SELECT COUNT(*) AS n FROM store_stock_transfers WHERE store_id = ? AND status = 'completed'",
+      args: [String(store.id)],
+    });
+    stockTransfersCount = Number((trfRes.rows[0] as Row)?.n || 0);
+  }
+
   return c.json({
     analytics: {
-      grossRevenueUgx,
+      grossRevenueUgx: grossRevenueUgx + posRevenueUgx,
       estimatedCogsUgx,
       platformCommissionUgx,
       netMarginUgx,
@@ -2149,6 +2180,396 @@ marketplaceRoutes.get("/merchants/me/elite-analytics", requireAuth, async (c) =>
       activeDiscountsCount,
       openDraftOrdersCount,
       b2bPipelineUgx,
+      posSalesCount,
+      posRevenueUgx,
+      vipCustomersCount,
+      loyaltyBalanceLiabilityUgx,
+      stockTransfersCount,
+    },
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 7f. Omnichannel In-Store POS Register (Walk-in Cashier Checkout + Inventory Sync)
+// ---------------------------------------------------------------------------
+marketplaceRoutes.get("/merchants/me/pos-sales", requireAuth, async (c) => {
+  const user = c.get("user");
+  const memberRes = await db.execute({
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    args: [user.sub],
+  });
+  const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
+  if (!merchantId) return c.json({ error: "no_merchant_membership" }, 403);
+
+  const store = await getMerchantStore(merchantId);
+  if (!store || !(await hasTable("store_pos_sales"))) return c.json({ sales: [] });
+
+  const res = await db.execute({
+    sql: `SELECT s.*, o.name AS outlet_name
+          FROM store_pos_sales s
+          LEFT JOIN merchant_outlets o ON o.id = s.outlet_id
+          WHERE s.store_id = ?
+          ORDER BY s.created_at DESC LIMIT 100`,
+    args: [String(store.id)],
+  });
+
+  const sales = (res.rows as Row[]).map((r) => {
+    let items: any[] = [];
+    try {
+      items = JSON.parse(String(r.items_json || "[]"));
+    } catch {
+      items = [];
+    }
+    return { ...r, items };
+  });
+
+  return c.json({ sales });
+});
+
+const posSaleSchema = z.object({
+  outlet_id: z.string().nullable().optional(),
+  customer_phone: z.string().max(30).optional(),
+  customer_name: z.string().max(120).optional(),
+  items: z
+    .array(
+      z.object({
+        productId: z.string().min(1),
+        title: z.string().min(1),
+        unitPrice: z.number().int().nonnegative(),
+        quantity: z.number().int().positive(),
+      }),
+    )
+    .min(1),
+  discount_amount: z.number().int().nonnegative().default(0),
+  redeem_loyalty_ugx: z.number().int().nonnegative().default(0),
+  payment_method: z.enum(["peebee_code", "momo", "cash"]).default("peebee_code"),
+});
+
+marketplaceRoutes.post("/merchants/me/pos-sales", requireAuth, async (c) => {
+  const user = c.get("user");
+  const memberRes = await db.execute({
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    args: [user.sub],
+  });
+  const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
+  if (!merchantId) return c.json({ error: "no_merchant_membership" }, 403);
+
+  const store = await getMerchantStore(merchantId);
+  if (!store) return c.json({ error: "no_store" }, 404);
+  if (!(await hasTable("store_pos_sales"))) {
+    return c.json({ error: "migration_pending", message: "POS sales table migration is pending." }, 503);
+  }
+
+  const settings = await getMarketplaceSettings();
+  if (!settings.elitePosEnabled) {
+    return c.json({ error: "pos_disabled", message: "Omnichannel POS Register is currently disabled by platform admin." }, 403);
+  }
+
+  const parsed = posSaleSchema.safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) return c.json({ error: "invalid_body", issues: parsed.error.issues }, 400);
+
+  const subtotal = parsed.data.items.reduce((sum, it) => sum + it.unitPrice * it.quantity, 0);
+  const discount = Math.min(subtotal, parsed.data.discount_amount);
+  const afterDiscount = Math.max(0, subtotal - discount);
+
+  const cleanPhone = parsed.data.customer_phone?.trim() || "";
+  const cleanName = parsed.data.customer_name?.trim() || null;
+
+  let loyaltyRedeemedUgx = 0;
+  let loyaltyEarnedUgx = 0;
+  let loyaltyBalanceAfterUgx = 0;
+
+  if (cleanPhone && (await hasTable("store_customer_loyalty"))) {
+    const existingRes = await db.execute({
+      sql: "SELECT * FROM store_customer_loyalty WHERE store_id = ? AND customer_phone = ? LIMIT 1",
+      args: [String(store.id), cleanPhone],
+    });
+    const existing = existingRes.rows[0] as Row | undefined;
+    const currentPoints = Number(existing?.points_balance_ugx || 0);
+
+    if (parsed.data.redeem_loyalty_ugx > 0 && currentPoints > 0) {
+      loyaltyRedeemedUgx = Math.min(parsed.data.redeem_loyalty_ugx, currentPoints, afterDiscount);
+    }
+
+    const finalTotal = Math.max(0, afterDiscount - loyaltyRedeemedUgx);
+    if (settings.eliteLoyaltyEnabled && Number(store.loyalty_enabled || 0) === 1 && finalTotal > 0) {
+      const pct = Math.min(Number(store.loyalty_cashback_percent || 0), settings.eliteMaxLoyaltyCashbackPercent);
+      if (pct > 0) {
+        loyaltyEarnedUgx = Math.round((finalTotal * pct) / 100);
+      }
+    }
+
+    loyaltyBalanceAfterUgx = Math.max(0, currentPoints - loyaltyRedeemedUgx + loyaltyEarnedUgx);
+    const nextOrdersCount = Number(existing?.orders_count || 0) + 1;
+    const nextTotalSpent = Number(existing?.total_spent_ugx || 0) + finalTotal;
+    const nextTier =
+      existing?.tier === "b2b"
+        ? "b2b"
+        : nextTotalSpent >= 200_000 || nextOrdersCount >= 5
+          ? "vip"
+          : nextOrdersCount >= 2
+            ? "repeat"
+            : "standard";
+
+    await db.execute({
+      sql: `INSERT INTO store_customer_loyalty (
+              id, store_id, customer_phone, customer_name, points_balance_ugx,
+              total_earned_ugx, total_redeemed_ugx, orders_count, total_spent_ugx,
+              tier, last_order_at, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+            ON CONFLICT(store_id, customer_phone) DO UPDATE SET
+              customer_name = COALESCE(excluded.customer_name, store_customer_loyalty.customer_name),
+              points_balance_ugx = ?,
+              total_earned_ugx = store_customer_loyalty.total_earned_ugx + ?,
+              total_redeemed_ugx = store_customer_loyalty.total_redeemed_ugx + ?,
+              orders_count = ?,
+              total_spent_ugx = ?,
+              tier = ?,
+              last_order_at = datetime('now')`,
+      args: [
+        newId("crm"),
+        String(store.id),
+        cleanPhone,
+        cleanName,
+        loyaltyBalanceAfterUgx,
+        loyaltyEarnedUgx,
+        loyaltyRedeemedUgx,
+        nextOrdersCount,
+        nextTotalSpent,
+        nextTier,
+        loyaltyBalanceAfterUgx,
+        loyaltyEarnedUgx,
+        loyaltyRedeemedUgx,
+        nextOrdersCount,
+        nextTotalSpent,
+        nextTier,
+      ],
+    });
+  }
+
+  const totalAmount = Math.max(0, afterDiscount - loyaltyRedeemedUgx);
+  const saleId = newId("pos");
+  const receiptCode = `POS-${saleId.slice(-6).toUpperCase()}`;
+
+  await db.execute({
+    sql: `INSERT INTO store_pos_sales (
+            id, store_id, outlet_id, cashier_user_id, customer_phone, customer_name,
+            items_json, subtotal_amount, discount_amount, loyalty_redeemed_ugx,
+            loyalty_earned_ugx, total_amount, payment_method, receipt_code
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    args: [
+      saleId,
+      String(store.id),
+      parsed.data.outlet_id || null,
+      user.sub,
+      cleanPhone || null,
+      cleanName,
+      JSON.stringify(parsed.data.items),
+      subtotal,
+      discount,
+      loyaltyRedeemedUgx,
+      loyaltyEarnedUgx,
+      totalAmount,
+      parsed.data.payment_method,
+      receiptCode,
+    ],
+  });
+
+  // Deduct stock from outlet inventory (if outlet_id selected) and master product inventory
+  const hasOutletInv = await hasTable("store_outlet_inventory");
+  for (const item of parsed.data.items) {
+    if (parsed.data.outlet_id && hasOutletInv) {
+      await db.execute({
+        sql: `UPDATE store_outlet_inventory
+              SET quantity = MAX(0, quantity - ?), updated_at = datetime('now')
+              WHERE store_id = ? AND product_id = ? AND outlet_id = ?`,
+        args: [item.quantity, String(store.id), item.productId, parsed.data.outlet_id],
+      });
+    }
+    await db.execute({
+      sql: `UPDATE store_products
+            SET inventory_quantity = MAX(0, inventory_quantity - ?), updated_at = datetime('now')
+            WHERE id = ? AND store_id = ?`,
+      args: [item.quantity, item.productId, String(store.id)],
+    });
+  }
+
+  return c.json(
+    {
+      ok: true,
+      saleId,
+      receiptCode,
+      total: totalAmount,
+      loyaltyRedeemedUgx,
+      loyaltyEarnedUgx,
+      loyaltyBalanceAfterUgx,
+    },
+    201,
+  );
+});
+
+// ---------------------------------------------------------------------------
+// 7g. Branch-to-Branch Stock Transfers (Multi-Outlet Inventory Movement)
+// ---------------------------------------------------------------------------
+marketplaceRoutes.get("/merchants/me/stock-transfers", requireAuth, async (c) => {
+  const user = c.get("user");
+  const memberRes = await db.execute({
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    args: [user.sub],
+  });
+  const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
+  if (!merchantId) return c.json({ error: "no_merchant_membership" }, 403);
+
+  const store = await getMerchantStore(merchantId);
+  if (!store || !(await hasTable("store_stock_transfers"))) return c.json({ transfers: [] });
+
+  const res = await db.execute({
+    sql: `SELECT t.*, p.title AS product_title, fo.name AS from_outlet_name, to_o.name AS to_outlet_name
+          FROM store_stock_transfers t
+          LEFT JOIN store_products p ON p.id = t.product_id
+          LEFT JOIN merchant_outlets fo ON fo.id = t.from_outlet_id
+          LEFT JOIN merchant_outlets to_o ON to_o.id = t.to_outlet_id
+          WHERE t.store_id = ?
+          ORDER BY t.created_at DESC LIMIT 100`,
+    args: [String(store.id)],
+  });
+
+  return c.json({ transfers: res.rows });
+});
+
+const stockTransferSchema = z.object({
+  productId: z.string().min(1),
+  fromOutletId: z.string().min(1),
+  toOutletId: z.string().min(1),
+  quantity: z.number().int().positive(),
+  note: z.string().max(240).optional(),
+});
+
+marketplaceRoutes.post("/merchants/me/stock-transfers", requireAuth, async (c) => {
+  const user = c.get("user");
+  const memberRes = await db.execute({
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    args: [user.sub],
+  });
+  const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
+  if (!merchantId) return c.json({ error: "no_merchant_membership" }, 403);
+
+  const store = await getMerchantStore(merchantId);
+  if (!store) return c.json({ error: "no_store" }, 404);
+  if (!(await hasTable("store_stock_transfers")) || !(await hasTable("store_outlet_inventory"))) {
+    return c.json({ error: "migration_pending", message: "Stock transfers migration is pending." }, 503);
+  }
+
+  const settings = await getMarketplaceSettings();
+  if (!settings.eliteStockTransfersEnabled) {
+    return c.json({ error: "stock_transfers_disabled", message: "Branch-to-branch stock transfers are currently disabled by platform admin." }, 403);
+  }
+
+  const parsed = stockTransferSchema.safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) return c.json({ error: "invalid_body", issues: parsed.error.issues }, 400);
+  if (parsed.data.fromOutletId === parsed.data.toOutletId) {
+    return c.json({ error: "same_outlet", message: "Source and destination outlets must be different." }, 400);
+  }
+
+  const fromRes = await db.execute({
+    sql: "SELECT quantity FROM store_outlet_inventory WHERE store_id = ? AND product_id = ? AND outlet_id = ? LIMIT 1",
+    args: [String(store.id), parsed.data.productId, parsed.data.fromOutletId],
+  });
+  const fromQty = Number((fromRes.rows[0] as Row | undefined)?.quantity ?? 0);
+  if (fromQty < parsed.data.quantity) {
+    return c.json({
+      error: "insufficient_outlet_stock",
+      message: `Source outlet only has ${fromQty} unit(s) available to transfer.`,
+    }, 409);
+  }
+
+  const fromQuantityAfter = fromQty - parsed.data.quantity;
+  await db.execute({
+    sql: "UPDATE store_outlet_inventory SET quantity = ?, updated_at = datetime('now') WHERE store_id = ? AND product_id = ? AND outlet_id = ?",
+    args: [fromQuantityAfter, String(store.id), parsed.data.productId, parsed.data.fromOutletId],
+  });
+
+  await db.execute({
+    sql: `INSERT INTO store_outlet_inventory (id, store_id, product_id, outlet_id, quantity, low_stock_threshold, updated_at)
+          VALUES (?, ?, ?, ?, ?, 5, datetime('now'))
+          ON CONFLICT(product_id, outlet_id) DO UPDATE SET
+            quantity = store_outlet_inventory.quantity + excluded.quantity,
+            updated_at = datetime('now')`,
+    args: [newId("inv"), String(store.id), parsed.data.productId, parsed.data.toOutletId, parsed.data.quantity],
+  });
+
+  const toRes = await db.execute({
+    sql: "SELECT quantity FROM store_outlet_inventory WHERE store_id = ? AND product_id = ? AND outlet_id = ? LIMIT 1",
+    args: [String(store.id), parsed.data.productId, parsed.data.toOutletId],
+  });
+  const toQuantityAfter = Number((toRes.rows[0] as Row | undefined)?.quantity ?? parsed.data.quantity);
+
+  const transferId = newId("trf");
+  await db.execute({
+    sql: `INSERT INTO store_stock_transfers (
+            id, store_id, product_id, from_outlet_id, to_outlet_id, quantity, note, status, created_by
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, 'completed', ?)`,
+    args: [
+      transferId,
+      String(store.id),
+      parsed.data.productId,
+      parsed.data.fromOutletId,
+      parsed.data.toOutletId,
+      parsed.data.quantity,
+      parsed.data.note?.trim() || null,
+      user.sub,
+    ],
+  });
+
+  return c.json(
+    {
+      ok: true,
+      transferId,
+      fromQuantityAfter,
+      toQuantityAfter,
+    },
+    201,
+  );
+});
+
+// ---------------------------------------------------------------------------
+// 7h. VIP Customer CRM & Loyalty Cashback Directory
+// ---------------------------------------------------------------------------
+marketplaceRoutes.get("/merchants/me/crm-customers", requireAuth, async (c) => {
+  const user = c.get("user");
+  const memberRes = await db.execute({
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    args: [user.sub],
+  });
+  const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
+  if (!merchantId) return c.json({ error: "no_merchant_membership" }, 403);
+
+  const store = await getMerchantStore(merchantId);
+  if (!store || !(await hasTable("store_customer_loyalty"))) {
+    return c.json({
+      customers: [],
+      summary: { totalCustomers: 0, vipCount: 0, repeatCount: 0, b2bCount: 0, totalLoyaltyBalanceUgx: 0 },
+    });
+  }
+
+  const res = await db.execute({
+    sql: "SELECT * FROM store_customer_loyalty WHERE store_id = ? ORDER BY total_spent_ugx DESC, last_order_at DESC LIMIT 200",
+    args: [String(store.id)],
+  });
+  const customers = res.rows as Row[];
+  const vipCount = customers.filter((r) => r.tier === "vip").length;
+  const repeatCount = customers.filter((r) => r.tier === "repeat").length;
+  const b2bCount = customers.filter((r) => r.tier === "b2b").length;
+  const totalLoyaltyBalanceUgx = customers.reduce((sum, r) => sum + Number(r.points_balance_ugx || 0), 0);
+
+  return c.json({
+    customers,
+    summary: {
+      totalCustomers: customers.length,
+      vipCount,
+      repeatCount,
+      b2bCount,
+      totalLoyaltyBalanceUgx,
     },
   });
 });
@@ -2780,6 +3201,64 @@ marketplaceRoutes.post("/marketplace/checkout", requireAuth, async (c) => {
       });
     }
     createdOrders.push({ id: orderId });
+
+    // Credit store VIP loyalty ledger for online orders if store has loyalty enabled
+    if (await hasTable("store_customer_loyalty")) {
+      try {
+        const custRes = await db.execute({
+          sql: "SELECT name, phone FROM users WHERE id = ? LIMIT 1",
+          args: [user.sub],
+        });
+        const cust = custRes.rows[0] as Row | undefined;
+        const custPhone = String(cust?.phone || user.sub);
+        const custName = cust?.name ? String(cust.name) : null;
+        const mktSettings = await getMarketplaceSettings();
+        let earnedUgx = 0;
+        if (mktSettings.eliteLoyaltyEnabled && (await hasColumn("stores", "loyalty_enabled"))) {
+          const stRes = await db.execute({
+            sql: "SELECT loyalty_enabled, loyalty_cashback_percent FROM stores WHERE id = ? LIMIT 1",
+            args: [stop.storeId],
+          });
+          const st = stRes.rows[0] as Row | undefined;
+          if (st && Number(st.loyalty_enabled) === 1) {
+            const pct = Math.min(Number(st.loyalty_cashback_percent || 0), mktSettings.eliteMaxLoyaltyCashbackPercent);
+            if (pct > 0) earnedUgx = Math.round((stop.itemsTotal * pct) / 100);
+          }
+        }
+        await db.execute({
+          sql: `INSERT INTO store_customer_loyalty (
+                  id, store_id, customer_phone, customer_name, points_balance_ugx,
+                  total_earned_ugx, total_redeemed_ugx, orders_count, total_spent_ugx,
+                  tier, last_order_at, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, 0, 1, ?, ?, datetime('now'), datetime('now'))
+                ON CONFLICT(store_id, customer_phone) DO UPDATE SET
+                  customer_name = COALESCE(excluded.customer_name, store_customer_loyalty.customer_name),
+                  points_balance_ugx = store_customer_loyalty.points_balance_ugx + excluded.points_balance_ugx,
+                  total_earned_ugx = store_customer_loyalty.total_earned_ugx + excluded.total_earned_ugx,
+                  orders_count = store_customer_loyalty.orders_count + 1,
+                  total_spent_ugx = store_customer_loyalty.total_spent_ugx + excluded.total_spent_ugx,
+                  tier = CASE
+                    WHEN store_customer_loyalty.tier = 'b2b' THEN 'b2b'
+                    WHEN (store_customer_loyalty.total_spent_ugx + excluded.total_spent_ugx) >= 200000 OR (store_customer_loyalty.orders_count + 1) >= 5 THEN 'vip'
+                    WHEN (store_customer_loyalty.orders_count + 1) >= 2 THEN 'repeat'
+                    ELSE 'standard'
+                  END,
+                  last_order_at = datetime('now')`,
+          args: [
+            newId("crm"),
+            stop.storeId,
+            custPhone,
+            custName,
+            earnedUgx,
+            earnedUgx,
+            stop.itemsTotal,
+            stop.itemsTotal >= 200000 ? "vip" : "standard",
+          ],
+        });
+      } catch {
+        // Non-blocking loyalty ledger update
+      }
+    }
   }
 
   // Several stores in one bag are one delivery: one rider collects from every

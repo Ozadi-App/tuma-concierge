@@ -496,6 +496,9 @@ const updateSchema = z.object({
       eliteCustomDomainEnabled: z.boolean(),
       eliteLoyaltyEnabled: z.boolean(),
       eliteMaxLoyaltyCashbackPercent: z.number().min(0).max(50),
+      elitePosEnabled: z.boolean(),
+      eliteStockTransfersEnabled: z.boolean(),
+      eliteCrmEnabled: z.boolean(),
     })
     .partial()
     .optional(),
@@ -1262,6 +1265,9 @@ const patchMarketplaceSettingsSchema = z
     eliteCustomDomainEnabled: z.boolean(),
     eliteLoyaltyEnabled: z.boolean(),
     eliteMaxLoyaltyCashbackPercent: z.number().min(0).max(50),
+    elitePosEnabled: z.boolean(),
+    eliteStockTransfersEnabled: z.boolean(),
+    eliteCrmEnabled: z.boolean(),
   })
   .partial();
 

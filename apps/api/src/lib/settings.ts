@@ -428,6 +428,9 @@ const DEFAULTS = {
   marketplace_elite_custom_domain_enabled: "1",
   marketplace_elite_loyalty_enabled: "1",
   marketplace_elite_max_loyalty_cashback_percent: "15",
+  marketplace_elite_pos_enabled: "1",
+  marketplace_elite_stock_transfers_enabled: "1",
+  marketplace_elite_crm_enabled: "1",
   /** Peebee Learn Studio: schools, classes, courses and lessons made by educators */
   learn_enabled: "1",
   learn_streams: "sprouts,foundations,academy,compass,skills",
@@ -1765,6 +1768,9 @@ export type MarketplaceSettings = {
   eliteCustomDomainEnabled: boolean;
   eliteLoyaltyEnabled: boolean;
   eliteMaxLoyaltyCashbackPercent: number;
+  elitePosEnabled: boolean;
+  eliteStockTransfersEnabled: boolean;
+  eliteCrmEnabled: boolean;
 };
 
 export async function getMarketplaceSettings(): Promise<MarketplaceSettings> {
@@ -1796,6 +1802,9 @@ export async function getMarketplaceSettings(): Promise<MarketplaceSettings> {
     eliteCustomDomainStr,
     eliteLoyaltyStr,
     eliteMaxCashbackStr,
+    elitePosStr,
+    eliteTransfersStr,
+    eliteCrmStr,
   ] = await Promise.all([
     getSetting("marketplace_enabled"),
     getSetting("marketplace_live_enabled"),
@@ -1824,6 +1833,9 @@ export async function getMarketplaceSettings(): Promise<MarketplaceSettings> {
     getSetting("marketplace_elite_custom_domain_enabled"),
     getSetting("marketplace_elite_loyalty_enabled"),
     getSetting("marketplace_elite_max_loyalty_cashback_percent"),
+    getSetting("marketplace_elite_pos_enabled"),
+    getSetting("marketplace_elite_stock_transfers_enabled"),
+    getSetting("marketplace_elite_crm_enabled"),
   ]);
 
   return {
@@ -1854,6 +1866,9 @@ export async function getMarketplaceSettings(): Promise<MarketplaceSettings> {
     eliteCustomDomainEnabled: eliteCustomDomainStr !== "0",
     eliteLoyaltyEnabled: eliteLoyaltyStr !== "0",
     eliteMaxLoyaltyCashbackPercent: Math.max(0, Math.min(50, Number(eliteMaxCashbackStr) || 15)),
+    elitePosEnabled: elitePosStr !== "0",
+    eliteStockTransfersEnabled: eliteTransfersStr !== "0",
+    eliteCrmEnabled: eliteCrmStr !== "0",
   };
 }
 
@@ -1886,6 +1901,9 @@ export async function setMarketplaceSettings(next: Partial<MarketplaceSettings>)
   if (next.eliteCustomDomainEnabled != null) writes.push(setSetting("marketplace_elite_custom_domain_enabled", next.eliteCustomDomainEnabled ? "1" : "0"));
   if (next.eliteLoyaltyEnabled != null) writes.push(setSetting("marketplace_elite_loyalty_enabled", next.eliteLoyaltyEnabled ? "1" : "0"));
   if (next.eliteMaxLoyaltyCashbackPercent != null) writes.push(setSetting("marketplace_elite_max_loyalty_cashback_percent", String(Math.max(0, Math.min(50, next.eliteMaxLoyaltyCashbackPercent)))));
+  if (next.elitePosEnabled != null) writes.push(setSetting("marketplace_elite_pos_enabled", next.elitePosEnabled ? "1" : "0"));
+  if (next.eliteStockTransfersEnabled != null) writes.push(setSetting("marketplace_elite_stock_transfers_enabled", next.eliteStockTransfersEnabled ? "1" : "0"));
+  if (next.eliteCrmEnabled != null) writes.push(setSetting("marketplace_elite_crm_enabled", next.eliteCrmEnabled ? "1" : "0"));
   await Promise.all(writes);
 }
 

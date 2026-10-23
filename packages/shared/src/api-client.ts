@@ -80,6 +80,10 @@ import type {
   StoreOutletInventoryRow,
   StoreDraftOrderItem,
   StoreDraftOrder,
+  StorePosSaleItem,
+  StorePosSale,
+  StoreStockTransfer,
+  StoreCustomerLoyalty,
   StoreEliteAnalytics,
   GuestSettings,
   GuestConfig,
@@ -2336,6 +2340,63 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
     },
     async getMerchantEliteAnalytics() {
       return request<{ analytics: StoreEliteAnalytics }>("/v1/merchants/me/elite-analytics");
+    },
+    async getMerchantPosSales() {
+      return request<{ sales: StorePosSale[] }>("/v1/merchants/me/pos-sales");
+    },
+    async createMerchantPosSale(input: {
+      outlet_id?: string | null;
+      customer_phone?: string;
+      customer_name?: string;
+      items: StorePosSaleItem[];
+      discount_amount?: number;
+      redeem_loyalty_ugx?: number;
+      payment_method: "peebee_code" | "momo" | "cash";
+    }) {
+      return request<{
+        ok: boolean;
+        saleId: string;
+        receiptCode: string;
+        total: number;
+        loyaltyRedeemedUgx: number;
+        loyaltyEarnedUgx: number;
+        loyaltyBalanceAfterUgx: number;
+      }>("/v1/merchants/me/pos-sales", {
+        method: "POST",
+        body: JSON.stringify(input),
+      });
+    },
+    async getMerchantStockTransfers() {
+      return request<{ transfers: StoreStockTransfer[] }>("/v1/merchants/me/stock-transfers");
+    },
+    async createMerchantStockTransfer(input: {
+      productId: string;
+      fromOutletId: string;
+      toOutletId: string;
+      quantity: number;
+      note?: string;
+    }) {
+      return request<{
+        ok: boolean;
+        transferId: string;
+        fromQuantityAfter: number;
+        toQuantityAfter: number;
+      }>("/v1/merchants/me/stock-transfers", {
+        method: "POST",
+        body: JSON.stringify(input),
+      });
+    },
+    async getMerchantCrmCustomers() {
+      return request<{
+        customers: StoreCustomerLoyalty[];
+        summary: {
+          totalCustomers: number;
+          vipCount: number;
+          repeatCount: number;
+          b2bCount: number;
+          totalLoyaltyBalanceUgx: number;
+        };
+      }>("/v1/merchants/me/crm-customers");
     },
 
     // Peebee Car — customer
