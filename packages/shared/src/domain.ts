@@ -390,6 +390,104 @@ export type MarketplaceSettings = {
   deliveryBaseFeeUgx: number;
   /** A cart left this many hours is set aside as an earlier (retrievable) cart when a new one starts. */
   cartExpiryHours?: number;
+  /** Tier 3: Merchant Advanced Marketplace (Elite — Shopify / Shopify Pro level) */
+  eliteEnabled?: boolean;
+  elitePriceUgx?: number;
+  eliteCommissionPercent?: number;
+  proMaxProducts?: number;
+  eliteMaxProducts?: number;
+  proMaxCollections?: number;
+  eliteMaxCollections?: number;
+  proMaxDiscounts?: number;
+  eliteMaxDiscounts?: number;
+  eliteB2bEnabled?: boolean;
+  eliteMultiOutletInventoryEnabled?: boolean;
+  eliteCustomDomainEnabled?: boolean;
+  eliteLoyaltyEnabled?: boolean;
+  eliteMaxLoyaltyCashbackPercent?: number;
+};
+
+export type StoreCollection = {
+  id: string;
+  store_id: string;
+  title: string;
+  slug: string;
+  description: string | null;
+  kind: "manual" | "smart";
+  rule_field: "category" | "price_lte" | "price_gte" | "badge" | "in_stock" | null;
+  rule_value: string | null;
+  pinned: number;
+  sort_order: number;
+  status: "active" | "draft" | "archived";
+  matching_products_count?: number;
+  created_at: string;
+};
+
+export type StoreDiscount = {
+  id: string;
+  store_id: string;
+  code: string;
+  title: string;
+  kind: "percent" | "fixed" | "free_delivery" | "bogo";
+  value: number;
+  min_order_amount: number;
+  max_uses: number | null;
+  uses_count: number;
+  is_automatic: number;
+  starts_at: string;
+  expires_at: string | null;
+  status: "active" | "paused" | "expired";
+  created_at: string;
+};
+
+export type StoreOutletInventoryRow = {
+  id?: string;
+  store_id: string;
+  product_id: string;
+  product_title?: string;
+  outlet_id: string;
+  outlet_name?: string;
+  quantity: number;
+  low_stock_threshold: number;
+  updated_at?: string;
+};
+
+export type StoreDraftOrderItem = {
+  productId: string;
+  title: string;
+  unitPrice: number;
+  quantity: number;
+};
+
+export type StoreDraftOrder = {
+  id: string;
+  store_id: string;
+  customer_name: string;
+  customer_phone: string | null;
+  customer_company: string | null;
+  items: StoreDraftOrderItem[];
+  subtotal_amount: number;
+  discount_amount: number;
+  total_amount: number;
+  payment_terms: "immediate" | "net_7" | "net_14" | "net_30";
+  notes: string | null;
+  status: "open" | "sent" | "paid" | "canceled";
+  created_at: string;
+};
+
+export type StoreEliteAnalytics = {
+  grossRevenueUgx: number;
+  estimatedCogsUgx: number;
+  platformCommissionUgx: number;
+  netMarginUgx: number;
+  netMarginPercent: number;
+  totalProducts: number;
+  totalStockUnits: number;
+  lowStockCount: number;
+  activeCollectionsCount: number;
+  activeDiscountsCount: number;
+  openDraftOrdersCount: number;
+  b2bPipelineUgx: number;
 };
 
 /** Admin-tunable delivery pricing/matching numbers (packages/shared/src/api-client.ts: getSettings/adminUpdateSettings). */

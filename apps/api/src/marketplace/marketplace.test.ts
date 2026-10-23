@@ -300,3 +300,182 @@ test("marketplace checkout: a long delivery from one store is relayed by matatu"
     client.close();
   }
 });
+
+test("merchant elite tier: upgrades to elite, manages Store 2.0 theme, smart collections, discounts, multi-outlet stock, B2B draft orders, and P&L analytics", async () => {
+  resetSchemaCache();
+  const client = createClient({ url: "file::memory:" });
+  const migrations = join(process.cwd(), "src/db/migrations");
+  for (const file of readdirSync(migrations).filter((f) => f.endsWith(".sql")).sort()) {
+    for (const sql of splitSqlStatements(readFileSync(join(migrations, file), "utf8"))) await client.execute(sql);
+  }
+  bindDatabase(client);
+  const previousSecret = process.env.JWT_SECRET;
+  process.env.JWT_SECRET = "marketplace-elite-tests-only";
+  try {
+    await client.execute("INSERT INTO users (id, phone, name, password_hash, role, status) VALUES ('merch_elite_1', '+256700999888', 'Kampala Boutique Owner', 'hash', 'customer', 'active')");
+    await client.execute("INSERT INTO merchants (id, legal_name, display_name, business_kind, status, environment) VALUES ('m_elite_1', 'Kampala Boutique Ltd', 'Kampala Boutique', 'business', 'active', 'sandbox')");
+    await client.execute("INSERT INTO merchant_members (merchant_id, user_id, role, status) VALUES ('m_elite_1', 'merch_elite_1', 'owner', 'active')");
+    const catRow = await client.execute("SELECT id FROM merchant_categories LIMIT 1");
+    const catId = String(catRow.rows[0]?.id ?? "cat_retail");
+    await client.execute({
+      sql: "INSERT INTO merchant_outlets (id, merchant_id, category_id, name, code, address, status) VALUES ('out_acacia', 'm_elite_1', ?, 'Acacia Mall Flagship', 'PEEBEE-9988-01', 'Acacia Avenue', 'active'), ('out_arena', 'm_elite_1', ?, 'Arena Mall Branch', 'PEEBEE-9988-02', 'Nsambya', 'active')",
+      args: [catId, catId],
+    });
+
+    const merchantToken = await signToken({ sub: "merch_elite_1", role: "customer" });
+    const req = (path: string, method = "GET", body?: object) =>
+      app.request(`/v1${path}`, {
+        method,
+        headers: {
+          Authorization: `Bearer ${merchantToken}`,
+          ...(body ? { "Content-Type": "application/json" } : {}),
+        },
+        ...(body ? { body: JSON.stringify(body) } : {}),
+      });
+
+    // 1. Tier 1: Merchant Code only (no online store yet)
+    const getStoreRes = await req("/merchants/me/store");
+    assert.equal(getStoreRes.status, 200);
+    const initialStoreData = (await getStoreRes.json()) as any;
+    assert.equal(initialStoreData.store, null);
+    assert.ok(initialStoreData.settings);
+    assert.equal(initialStoreData.settings.eliteEnabled, true);
+
+    // 1b. Tier 2: Launch Marketplace Store (Pro)
+    const createStoreRes = await req("/merchants/me/store", "POST", {
+      name: "Kampala Boutique",
+      category: "stores",
+      sub_category: "fashion",
+      address: "Acacia Mall, Kololo",
+    });
+    assert.equal(createStoreRes.status, 200);
+    const createdStoreData = (await createStoreRes.json()) as any;
+    assert.ok(createdStoreData.store);
+    assert.equal(createdStoreData.store.pro_tier, "pro_live");
+
+    // 2. Tier 3: Upgrade store to Advanced Marketplace (Elite)
+    const upgradeRes = await req("/merchants/me/store/tier", "POST", { tier: "elite", billingCycle: "monthly" });
+    assert.equal(upgradeRes.status, 200);
+    const upgradeData = (await upgradeRes.json()) as any;
+    assert.equal(upgradeData.ok, true);
+    assert.equal(upgradeData.tier, "elite");
+    assert.equal(upgradeData.store.pro_tier, "elite");
+    assert.equal(Number(upgradeData.store.elite_tier), 1);
+
+    // 3. Customize Store 2.0 theme, custom domain, loyalty, and B2B wholesale
+    const updateStoreRes = await req("/merchants/me/store", "PUT", {
+      name: "Kampala Boutique Elite",
+      theme_layout: "editorial",
+      theme_accent: "gold",
+      custom_domain: "shop.kampalaboutique.ug",
+      hero_headline: "New Resort Collection",
+      hero_subheadline: "Same-hour boda delivery across Kampala",
+      hero_cta_text: "Shop Runway",
+      loyalty_enabled: true,
+      loyalty_cashback_percent: 5,
+      b2b_wholesale_enabled: true,
+      b2b_min_order_amount: 500000,
+    });
+    assert.equal(updateStoreRes.status, 200);
+    const updatedStore = ((await updateStoreRes.json()) as any).store;
+    assert.equal(updatedStore.pro_tier, "elite");
+    assert.equal(updatedStore.theme_layout, "editorial");
+    assert.equal(updatedStore.custom_domain, "shop.kampalaboutique.ug");
+    assert.equal(Number(updatedStore.loyalty_enabled), 1);
+    assert.equal(Number(updatedStore.loyalty_cashback_percent), 5);
+    assert.equal(Number(updatedStore.b2b_wholesale_enabled), 1);
+
+    // 4. Create a product with COGS
+    const prodRes = await req("/merchants/me/products", "POST", {
+      title: "Silk Evening Blazer",
+      price: 180000,
+      compare_at_price: 220000,
+      cost_price: 95000,
+      inventory_quantity: 10,
+      category_name: "Fashion",
+      badge: "VIP",
+    });
+    assert.equal(prodRes.status, 200);
+    const prodBody = (await prodRes.json()) as any;
+    assert.ok(prodBody.productId);
+
+    // 5. Create a Smart Collection matching category Fashion
+    const colRes = await req("/merchants/me/collections", "POST", {
+      title: "VIP Fashion Edit",
+      kind: "smart",
+      rule_field: "category",
+      rule_value: "Fashion",
+      pinned: true,
+    });
+    assert.equal(colRes.status, 201);
+    const colListRes = await req("/merchants/me/collections");
+    const colList = (await colListRes.json()) as any;
+    assert.equal(colList.collections.length, 1);
+    assert.equal(colList.collections[0].matching_products_count, 1);
+
+    // 6. Create an Elite Discount Code
+    const discRes = await req("/merchants/me/discounts", "POST", {
+      code: "KAMPALA20",
+      title: "20% Off VIP Launch",
+      kind: "percent",
+      value: 20,
+      min_order_amount: 100000,
+      is_automatic: false,
+    });
+    assert.equal(discRes.status, 201);
+    const discListRes = await req("/merchants/me/discounts");
+    const discList = (await discListRes.json()) as any;
+    assert.equal(discList.discounts.length, 1);
+    assert.equal(discList.discounts[0].code, "KAMPALA20");
+
+    // 7. Update Multi-Outlet Inventory across Acacia & Arena branches and verify total syncs
+    const invUpdateRes = await req("/merchants/me/outlet-inventory", "PUT", {
+      productId: prodBody.productId,
+      outletId: "out_acacia",
+      quantity: 14,
+      lowStockThreshold: 3,
+    });
+    assert.equal(invUpdateRes.status, 200);
+    const invUpdateRes2 = await req("/merchants/me/outlet-inventory", "PUT", {
+      productId: prodBody.productId,
+      outletId: "out_arena",
+      quantity: 8,
+      lowStockThreshold: 3,
+    });
+    assert.equal(invUpdateRes2.status, 200);
+    assert.equal(((await invUpdateRes2.json()) as any).totalQuantity, 22);
+
+    // 8. Create a B2B Wholesale Draft Order
+    const b2bRes = await req("/merchants/me/draft-orders", "POST", {
+      customer_name: "Serena Boutique Partner",
+      customer_phone: "+256772123456",
+      customer_company: "Serena Retail Group",
+      payment_terms: "net_14",
+      discount_amount: 50000,
+      items: [
+        {
+          productId: prodBody.productId,
+          title: "Silk Evening Blazer",
+          unitPrice: 150000,
+          quantity: 5,
+        },
+      ],
+    });
+    assert.equal(b2bRes.status, 201);
+    const draftBody = (await b2bRes.json()) as any;
+    assert.equal(draftBody.total, 700000);
+
+    // 9. Verify Executive P&L Analytics
+    const analyticsRes = await req("/merchants/me/elite-analytics");
+    assert.equal(analyticsRes.status, 200);
+    const analytics = ((await analyticsRes.json()) as any).analytics;
+    assert.equal(analytics.b2bPipelineUgx, 700000);
+    assert.equal(analytics.openDraftOrdersCount, 1);
+    assert.equal(analytics.activeDiscountsCount, 1);
+    assert.equal(analytics.activeCollectionsCount, 1);
+  } finally {
+    process.env.JWT_SECRET = previousSecret;
+    client.close();
+  }
+});
+

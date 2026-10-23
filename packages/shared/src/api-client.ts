@@ -75,6 +75,12 @@ import type {
   CustomerWalletsResponse,
   DeliverySettings,
   MarketplaceSettings,
+  StoreCollection,
+  StoreDiscount,
+  StoreOutletInventoryRow,
+  StoreDraftOrderItem,
+  StoreDraftOrder,
+  StoreEliteAnalytics,
   GuestSettings,
   GuestConfig,
   GuestCheckoutInput,
@@ -2205,6 +2211,89 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
       return request<{ ok: boolean }>("/v1/merchants/me/store/live/end", {
         method: "POST",
       });
+    },
+    async upgradeMerchantStoreTier(input: { tier: "pro_store" | "pro_live" | "elite"; billingCycle?: "monthly" | "yearly" }) {
+      return request<{ ok: boolean; tier: string; expiresAt: string; amountPaid: number; store: any }>("/v1/merchants/me/store/tier", {
+        method: "POST",
+        body: JSON.stringify(input),
+      });
+    },
+    async getMerchantCollections() {
+      return request<{ collections: StoreCollection[] }>("/v1/merchants/me/collections");
+    },
+    async createMerchantCollection(input: {
+      title: string;
+      description?: string;
+      kind?: "manual" | "smart";
+      rule_field?: "category" | "price_lte" | "price_gte" | "badge" | "in_stock" | null;
+      rule_value?: string | null;
+      pinned?: boolean;
+    }) {
+      return request<{ ok: boolean; id: string }>("/v1/merchants/me/collections", {
+        method: "POST",
+        body: JSON.stringify(input),
+      });
+    },
+    async deleteMerchantCollection(id: string) {
+      return request<{ ok: boolean }>(`/v1/merchants/me/collections/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      });
+    },
+    async getMerchantDiscounts() {
+      return request<{ discounts: StoreDiscount[] }>("/v1/merchants/me/discounts");
+    },
+    async createMerchantDiscount(input: {
+      code: string;
+      title: string;
+      kind: "percent" | "fixed" | "free_delivery" | "bogo";
+      value?: number;
+      min_order_amount?: number;
+      max_uses?: number | null;
+      is_automatic?: boolean;
+    }) {
+      return request<{ ok: boolean; id: string }>("/v1/merchants/me/discounts", {
+        method: "POST",
+        body: JSON.stringify(input),
+      });
+    },
+    async deleteMerchantDiscount(id: string) {
+      return request<{ ok: boolean }>(`/v1/merchants/me/discounts/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      });
+    },
+    async getMerchantOutletInventory() {
+      return request<{ outlets: Array<{ id: string; name: string; code: string; address: string | null; status: string }>; inventory: StoreOutletInventoryRow[] }>("/v1/merchants/me/outlet-inventory");
+    },
+    async updateMerchantOutletInventory(input: {
+      productId: string;
+      outletId: string;
+      quantity: number;
+      lowStockThreshold?: number;
+    }) {
+      return request<{ ok: boolean; totalQuantity: number }>("/v1/merchants/me/outlet-inventory", {
+        method: "PUT",
+        body: JSON.stringify(input),
+      });
+    },
+    async getMerchantDraftOrders() {
+      return request<{ draftOrders: StoreDraftOrder[] }>("/v1/merchants/me/draft-orders");
+    },
+    async createMerchantDraftOrder(input: {
+      customer_name: string;
+      customer_phone?: string;
+      customer_company?: string;
+      items: StoreDraftOrderItem[];
+      discount_amount?: number;
+      payment_terms?: "immediate" | "net_7" | "net_14" | "net_30";
+      notes?: string;
+    }) {
+      return request<{ ok: boolean; id: string; total: number }>("/v1/merchants/me/draft-orders", {
+        method: "POST",
+        body: JSON.stringify(input),
+      });
+    },
+    async getMerchantEliteAnalytics() {
+      return request<{ analytics: StoreEliteAnalytics }>("/v1/merchants/me/elite-analytics");
     },
 
     // Peebee Car — customer

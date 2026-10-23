@@ -1,7 +1,7 @@
 "use client";
 
 import type { MerchantBalance, MerchantPaymentSummary } from "@peebee/shared";
-import { AlertCircle, ArrowDownToLine, Building2, ChevronRight, CreditCard, ShieldCheck, Truck } from "lucide-react";
+import { AlertCircle, ArrowDownToLine, Building2, ChevronRight, Crown, CreditCard, ShieldCheck, Store, Truck } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api, errorMessage } from "../lib/api";
@@ -35,6 +35,30 @@ export default function DashboardPage() {
     {merchant.environment === "sandbox" && <section className="rounded-xl border border-sky-300 bg-sky-50 p-3 text-xs text-sky-900 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-100"><strong>Safe test mode.</strong> Payments and withdrawals behave like live transactions, including pending and failed states, but no real money moves.</section>}
     {merchant.member_role !== "cashier" ? <section className="rounded-[24px] border border-white/10 bg-black-900 p-5 text-white shadow-lg dark:bg-black-900"><p className="text-xs text-white/70">Available to settle</p><p className="mt-2 text-3xl font-black">{ugx(balance?.available ?? 0)}</p><div className="mt-4 flex gap-5 text-xs text-white/75"><span>Held {ugx(balance?.held ?? 0)}</span><span>Settling {ugx(balance?.settling ?? 0)}</span></div><Link href="/wallet" className="mt-5 flex min-h-11 items-center justify-center gap-2 rounded-full bg-gold font-bold text-ink-gold"><ArrowDownToLine className="h-4 w-4"/>Withdraw or schedule</Link></section> : <section className="rounded-[24px] border border-white/10 bg-black-900 p-5 text-white dark:bg-black-900"><p className="text-xs text-white/70">Cashier workspace</p><p className="mt-2 text-xl font-black">Confirm payments for your assigned outlet</p><p className="mt-2 text-xs text-white/70">Business-wide balances and settlements are limited to finance roles.</p></section>}
     {pending.length > 0 && <Link href="/payments" className="home-card flex items-center gap-3"><span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gold/15 text-gold"><ShieldCheck/></span><span className="flex-1"><span className="block font-bold">{pending.length} payment{pending.length === 1 ? "" : "s"} to confirm</span><span className="text-xs text-ink-500">Check goods and exact amounts before accepting.</span></span><ChevronRight className="h-5 w-5 text-ink-500"/></Link>}
+    <Link href="/store" className="home-card block space-y-3 border border-gold/30">
+      <div className="flex items-center gap-3">
+        <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gold/15 text-gold"><Crown className="h-5 w-5" /></span>
+        <span className="flex-1">
+          <span className="block font-bold">Store &amp; Commerce OS</span>
+          <span className="text-xs text-ink-500">Upgrade from Merchant Code → Marketplace (Pro) → Advanced OS (Elite)</span>
+        </span>
+        <ChevronRight className="h-5 w-5 text-ink-500" />
+      </div>
+      <div className="grid grid-cols-3 gap-2 pt-1 text-[11px]">
+        <div className="rounded-xl bg-surface-muted p-2">
+          <p className="font-bold text-ink-500">1. Code (Free)</p>
+          <p className="text-[10px] text-ink-400">QR &amp; outlet pay</p>
+        </div>
+        <div className="rounded-xl bg-surface-muted p-2">
+          <p className="font-bold text-ink">2. Pro Store</p>
+          <p className="text-[10px] text-ink-500">Catalog &amp; Live</p>
+        </div>
+        <div className="rounded-xl border border-gold/40 bg-gold/15 p-2">
+          <p className="font-black text-ink">3. Elite OS</p>
+          <p className="text-[10px] text-ink-600">Shopify Pro suite</p>
+        </div>
+      </div>
+    </Link>
     <div className="grid grid-cols-2 gap-3">
       <Link href="/payments" className="home-card !p-4"><CreditCard className="h-5 w-5 text-gold"/><p className="mt-3 text-sm font-bold">Payments</p><p className="text-xs text-ink-500">Confirm and dispute</p></Link>
       <Link href="/outlets" className="home-card !p-4"><Building2 className="h-5 w-5 text-gold"/><p className="mt-3 text-sm font-bold">Outlets</p><p className="text-xs text-ink-500">Codes and locations</p></Link>
