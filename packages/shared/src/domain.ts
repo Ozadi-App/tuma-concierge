@@ -408,6 +408,9 @@ export type MarketplaceSettings = {
   elitePosEnabled?: boolean;
   eliteStockTransfersEnabled?: boolean;
   eliteCrmEnabled?: boolean;
+  elitePurchaseOrdersEnabled?: boolean;
+  eliteBundlesEnabled?: boolean;
+  eliteWinbackEnabled?: boolean;
 };
 
 export type StoreCollection = {
@@ -533,6 +536,72 @@ export type StoreCustomerLoyalty = {
   created_at: string;
 };
 
+export type StoreSupplier = {
+  id: string;
+  store_id: string;
+  name: string;
+  contact_person: string | null;
+  phone: string | null;
+  email: string | null;
+  address: string | null;
+  created_at: string;
+};
+
+export type StorePurchaseOrderItem = {
+  productId: string;
+  title: string;
+  quantity: number;
+  unitCost: number;
+};
+
+export type StorePurchaseOrder = {
+  id: string;
+  store_id: string;
+  supplier_id: string | null;
+  supplier_name?: string | null;
+  outlet_id: string | null;
+  outlet_name?: string | null;
+  po_number: string;
+  items: StorePurchaseOrderItem[];
+  total_cost_ugx: number;
+  status: "draft" | "ordered" | "received" | "cancelled";
+  ordered_at: string | null;
+  received_at: string | null;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+};
+
+export type StoreBundleItem = {
+  productId: string;
+  title: string;
+  quantity: number;
+};
+
+export type StoreBundle = {
+  id: string;
+  store_id: string;
+  title: string;
+  description: string | null;
+  price: number;
+  compare_at_price: number | null;
+  items: StoreBundleItem[];
+  status: "active" | "draft" | "archived";
+  created_at: string;
+};
+
+export type StoreWinbackCampaign = {
+  id: string;
+  store_id: string;
+  customer_phone: string;
+  customer_name: string | null;
+  discount_code: string | null;
+  channel: "whatsapp" | "sms" | "push";
+  message: string;
+  status: "draft" | "sent" | "converted";
+  sent_at: string;
+};
+
 export type StoreEliteAnalytics = {
   grossRevenueUgx: number;
   estimatedCogsUgx: number;
@@ -551,6 +620,9 @@ export type StoreEliteAnalytics = {
   vipCustomersCount?: number;
   loyaltyBalanceLiabilityUgx?: number;
   stockTransfersCount?: number;
+  purchaseOrdersCount?: number;
+  bundlesCount?: number;
+  winbackCount?: number;
 };
 
 /** Admin-tunable delivery pricing/matching numbers (packages/shared/src/api-client.ts: getSettings/adminUpdateSettings). */

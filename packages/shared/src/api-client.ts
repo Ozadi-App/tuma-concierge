@@ -84,6 +84,12 @@ import type {
   StorePosSale,
   StoreStockTransfer,
   StoreCustomerLoyalty,
+  StoreSupplier,
+  StorePurchaseOrderItem,
+  StorePurchaseOrder,
+  StoreBundleItem,
+  StoreBundle,
+  StoreWinbackCampaign,
   StoreEliteAnalytics,
   GuestSettings,
   GuestConfig,
@@ -2397,6 +2403,82 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
           totalLoyaltyBalanceUgx: number;
         };
       }>("/v1/merchants/me/crm-customers");
+    },
+    async getMerchantSuppliers() {
+      return request<{ suppliers: StoreSupplier[] }>("/v1/merchants/me/suppliers");
+    },
+    async createMerchantSupplier(input: {
+      name: string;
+      contact_person?: string;
+      phone?: string;
+      email?: string;
+      address?: string;
+    }) {
+      return request<{ ok: boolean; id: string }>("/v1/merchants/me/suppliers", {
+        method: "POST",
+        body: JSON.stringify(input),
+      });
+    },
+    async getMerchantPurchaseOrders() {
+      return request<{ purchaseOrders: StorePurchaseOrder[] }>("/v1/merchants/me/purchase-orders");
+    },
+    async createMerchantPurchaseOrder(input: {
+      supplier_id?: string | null;
+      outlet_id?: string | null;
+      items: StorePurchaseOrderItem[];
+      notes?: string;
+    }) {
+      return request<{ ok: boolean; id: string; poNumber: string; totalCost: number }>("/v1/merchants/me/purchase-orders", {
+        method: "POST",
+        body: JSON.stringify(input),
+      });
+    },
+    async receiveMerchantPurchaseOrder(id: string, outlet_id?: string | null) {
+      return request<{ ok: boolean; poId: string; status: "received"; itemsReceivedCount: number }>(
+        `/v1/merchants/me/purchase-orders/${encodeURIComponent(id)}/receive`,
+        {
+          method: "POST",
+          body: JSON.stringify({ outlet_id }),
+        }
+      );
+    },
+    async getMerchantBundles() {
+      return request<{ bundles: StoreBundle[] }>("/v1/merchants/me/bundles");
+    },
+    async createMerchantBundle(input: {
+      title: string;
+      description?: string;
+      price: number;
+      compare_at_price?: number;
+      items: StoreBundleItem[];
+    }) {
+      return request<{ ok: boolean; id: string }>("/v1/merchants/me/bundles", {
+        method: "POST",
+        body: JSON.stringify(input),
+      });
+    },
+    async deleteMerchantBundle(id: string) {
+      return request<{ ok: boolean }>(`/v1/merchants/me/bundles/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      });
+    },
+    async getMerchantWinbackCampaigns() {
+      return request<{
+        campaigns: StoreWinbackCampaign[];
+        inactiveCustomers: StoreCustomerLoyalty[];
+      }>("/v1/merchants/me/winback-campaigns");
+    },
+    async sendMerchantWinbackCampaign(input: {
+      customer_phone: string;
+      customer_name?: string;
+      discount_code?: string;
+      channel?: "whatsapp" | "sms" | "push";
+      message: string;
+    }) {
+      return request<{ ok: boolean; campaignId: string; whatsappUrl: string }>("/v1/merchants/me/winback-campaigns", {
+        method: "POST",
+        body: JSON.stringify(input),
+      });
     },
 
     // Peebee Car — customer

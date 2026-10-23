@@ -431,6 +431,9 @@ const DEFAULTS = {
   marketplace_elite_pos_enabled: "1",
   marketplace_elite_stock_transfers_enabled: "1",
   marketplace_elite_crm_enabled: "1",
+  marketplace_elite_purchase_orders_enabled: "1",
+  marketplace_elite_bundles_enabled: "1",
+  marketplace_elite_winback_enabled: "1",
   /** Peebee Learn Studio: schools, classes, courses and lessons made by educators */
   learn_enabled: "1",
   learn_streams: "sprouts,foundations,academy,compass,skills",
@@ -1771,6 +1774,9 @@ export type MarketplaceSettings = {
   elitePosEnabled: boolean;
   eliteStockTransfersEnabled: boolean;
   eliteCrmEnabled: boolean;
+  elitePurchaseOrdersEnabled: boolean;
+  eliteBundlesEnabled: boolean;
+  eliteWinbackEnabled: boolean;
 };
 
 export async function getMarketplaceSettings(): Promise<MarketplaceSettings> {
@@ -1805,6 +1811,9 @@ export async function getMarketplaceSettings(): Promise<MarketplaceSettings> {
     elitePosStr,
     eliteTransfersStr,
     eliteCrmStr,
+    elitePosOrdersStr,
+    eliteBundlesStr,
+    eliteWinbackStr,
   ] = await Promise.all([
     getSetting("marketplace_enabled"),
     getSetting("marketplace_live_enabled"),
@@ -1836,6 +1845,9 @@ export async function getMarketplaceSettings(): Promise<MarketplaceSettings> {
     getSetting("marketplace_elite_pos_enabled"),
     getSetting("marketplace_elite_stock_transfers_enabled"),
     getSetting("marketplace_elite_crm_enabled"),
+    getSetting("marketplace_elite_purchase_orders_enabled"),
+    getSetting("marketplace_elite_bundles_enabled"),
+    getSetting("marketplace_elite_winback_enabled"),
   ]);
 
   return {
@@ -1869,6 +1881,9 @@ export async function getMarketplaceSettings(): Promise<MarketplaceSettings> {
     elitePosEnabled: elitePosStr !== "0",
     eliteStockTransfersEnabled: eliteTransfersStr !== "0",
     eliteCrmEnabled: eliteCrmStr !== "0",
+    elitePurchaseOrdersEnabled: elitePosOrdersStr !== "0",
+    eliteBundlesEnabled: eliteBundlesStr !== "0",
+    eliteWinbackEnabled: eliteWinbackStr !== "0",
   };
 }
 
@@ -1904,6 +1919,9 @@ export async function setMarketplaceSettings(next: Partial<MarketplaceSettings>)
   if (next.elitePosEnabled != null) writes.push(setSetting("marketplace_elite_pos_enabled", next.elitePosEnabled ? "1" : "0"));
   if (next.eliteStockTransfersEnabled != null) writes.push(setSetting("marketplace_elite_stock_transfers_enabled", next.eliteStockTransfersEnabled ? "1" : "0"));
   if (next.eliteCrmEnabled != null) writes.push(setSetting("marketplace_elite_crm_enabled", next.eliteCrmEnabled ? "1" : "0"));
+  if (next.elitePurchaseOrdersEnabled != null) writes.push(setSetting("marketplace_elite_purchase_orders_enabled", next.elitePurchaseOrdersEnabled ? "1" : "0"));
+  if (next.eliteBundlesEnabled != null) writes.push(setSetting("marketplace_elite_bundles_enabled", next.eliteBundlesEnabled ? "1" : "0"));
+  if (next.eliteWinbackEnabled != null) writes.push(setSetting("marketplace_elite_winback_enabled", next.eliteWinbackEnabled ? "1" : "0"));
   await Promise.all(writes);
 }
 

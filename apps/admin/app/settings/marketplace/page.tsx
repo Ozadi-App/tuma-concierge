@@ -48,6 +48,9 @@ export default function MarketplaceSettingsPage() {
   const [elitePosEnabled, setElitePosEnabled] = useState(true);
   const [eliteStockTransfersEnabled, setEliteStockTransfersEnabled] = useState(true);
   const [eliteCrmEnabled, setEliteCrmEnabled] = useState(true);
+  const [elitePurchaseOrdersEnabled, setElitePurchaseOrdersEnabled] = useState(true);
+  const [eliteBundlesEnabled, setEliteBundlesEnabled] = useState(true);
+  const [eliteWinbackEnabled, setEliteWinbackEnabled] = useState(true);
 
   const load = useCallback(async () => {
     const res = await api.adminGetMarketplaceSettings();
@@ -82,6 +85,9 @@ export default function MarketplaceSettingsPage() {
     setElitePosEnabled(m.elitePosEnabled ?? true);
     setEliteStockTransfersEnabled(m.eliteStockTransfersEnabled ?? true);
     setEliteCrmEnabled(m.eliteCrmEnabled ?? true);
+    setElitePurchaseOrdersEnabled(m.elitePurchaseOrdersEnabled ?? true);
+    setEliteBundlesEnabled(m.eliteBundlesEnabled ?? true);
+    setEliteWinbackEnabled(m.eliteWinbackEnabled ?? true);
   }, []);
 
   useEffect(() => {
@@ -134,6 +140,9 @@ export default function MarketplaceSettingsPage() {
         elitePosEnabled,
         eliteStockTransfersEnabled,
         eliteCrmEnabled,
+        elitePurchaseOrdersEnabled,
+        eliteBundlesEnabled,
+        eliteWinbackEnabled,
       };
 
       await api.adminUpdateMarketplaceSettings(payload);
@@ -597,6 +606,69 @@ export default function MarketplaceSettingsPage() {
                 <span
                   className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${
                     eliteCrmEnabled ? "translate-x-5" : "translate-x-0"
+                  }`}
+                />
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between rounded-2xl bg-[rgb(var(--surface-muted))] p-3">
+              <div>
+                <span className="block text-xs font-bold text-ink">Supplier Purchase Orders & Receiving</span>
+                <span className="text-[10px] text-ink-500">Supplier POs, 1-tap stock receiving into branch inventory</span>
+              </div>
+              <button
+                type="button"
+                disabled={!canManage}
+                onClick={() => setElitePurchaseOrdersEnabled(!elitePurchaseOrdersEnabled)}
+                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${
+                  elitePurchaseOrdersEnabled ? "bg-gold" : "bg-neutral-300 dark:bg-neutral-700"
+                }`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${
+                    elitePurchaseOrdersEnabled ? "translate-x-5" : "translate-x-0"
+                  }`}
+                />
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between rounded-2xl bg-[rgb(var(--surface-muted))] p-3">
+              <div>
+                <span className="block text-xs font-bold text-ink">Product Bundles & Hampers</span>
+                <span className="text-[10px] text-ink-500">Bundled gift hampers & kits with automatic component stock deduction</span>
+              </div>
+              <button
+                type="button"
+                disabled={!canManage}
+                onClick={() => setEliteBundlesEnabled(!eliteBundlesEnabled)}
+                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${
+                  eliteBundlesEnabled ? "bg-gold" : "bg-neutral-300 dark:bg-neutral-700"
+                }`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${
+                    eliteBundlesEnabled ? "translate-x-5" : "translate-x-0"
+                  }`}
+                />
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between rounded-2xl bg-[rgb(var(--surface-muted))] p-3">
+              <div>
+                <span className="block text-xs font-bold text-ink">Abandoned Cart & Win-Back Automation</span>
+                <span className="text-[10px] text-ink-500">1-click WhatsApp win-back campaigns with attached promo codes</span>
+              </div>
+              <button
+                type="button"
+                disabled={!canManage}
+                onClick={() => setEliteWinbackEnabled(!eliteWinbackEnabled)}
+                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${
+                  eliteWinbackEnabled ? "bg-gold" : "bg-neutral-300 dark:bg-neutral-700"
+                }`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${
+                    eliteWinbackEnabled ? "translate-x-5" : "translate-x-0"
                   }`}
                 />
               </button>
