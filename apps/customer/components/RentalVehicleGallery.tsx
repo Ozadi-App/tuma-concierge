@@ -4,10 +4,11 @@ import { useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Images, X } from "lucide-react";
 import { api } from "../lib/api";
 
-export function RentalVehicleGallery({ vehicleId, photoIds, name }: {
+export function RentalVehicleGallery({ vehicleId, photoIds, name, fallbackImage }: {
   vehicleId: string;
   photoIds: string[];
   name: string;
+  fallbackImage?: string | null;
 }) {
   const [photos, setPhotos] = useState<Array<{ id: string; url: string }>>([]);
   const [active, setActive] = useState(0);
@@ -20,23 +21,38 @@ export function RentalVehicleGallery({ vehicleId, photoIds, name }: {
   useEffect(() => {
     let disposed = false;
     const urls: string[] = [];
-    Promise.all((photoKey ? photoKey.split("\u0000") : []).map(async (id) => {
+    const validIds = photoKey ? photoKey.split("\u0000").filter(Boolean) : [];
+
+    if (validIds.length === 0) {
+      if (fallbackImage) setPhotos([{ id: "fallback", url: fallbackImage }]);
+      else setPhotos([]);
+      return;
+    }
+
+    Promise.all(validIds.map(async (id) => {
+      if (id.startsWith("/") || id.startsWith("http")) {
+        return { id, url: id };
+      }
       try {
         const blob = await api.carVehiclePhotoBlob(vehicleId, id);
         const url = URL.createObjectURL(blob);
         urls.push(url);
         return { id, url };
       } catch {
-        return null;
+        return fallbackImage ? { id: "fallback", url: fallbackImage } : null;
       }
     })).then((loaded) => {
-      if (!disposed) setPhotos(loaded.filter((photo): photo is { id: string; url: string } => photo !== null));
+      const valid = loaded.filter((photo): photo is { id: string; url: string } => photo !== null);
+      if (!disposed) {
+        setPhotos(valid.length > 0 ? valid : fallbackImage ? [{ id: "fallback", url: fallbackImage }] : []);
+      }
     });
+
     return () => {
       disposed = true;
       urls.forEach((url) => URL.revokeObjectURL(url));
     };
-  }, [photoKey, vehicleId]);
+  }, [photoKey, vehicleId, fallbackImage]);
 
   useEffect(() => {
     if (!open) return;
@@ -103,7 +119,6 @@ export function RentalVehicleGallery({ vehicleId, photoIds, name }: {
           </button>)}
         </div>}
       </figure>
-      {photos.length > 1 && <button type="button" onClick={(event) => { event.stopPropagation(); move(1); }} aria-label="Next photo" className="absolute right-3 top-1/2 z-10 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-white/10"><ChevronRight className="h-6 w-6" /></button>}
     </div>}
   </>;
 }

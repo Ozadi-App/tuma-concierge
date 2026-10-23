@@ -2605,6 +2605,14 @@ export type RentalVehicle = {
   features?: string[];
   photos?: string[];
   lastServiceDate?: string | null;
+  plate?: string | null;
+  modelNumber?: string | null;
+  isVip?: boolean;
+  townDailyUgx?: number | null;
+  upcountryDailyUgx?: number | null;
+  image?: string | null;
+  bodyType?: string | null;
+  driverPolicy?: "self_drive" | "with_driver_only";
 };
 
 export type RentalInspectionSlot = "front" | "rear" | "left" | "right" | "interior" | "odometer" | "fuel" | "damage_extra";
@@ -2716,6 +2724,12 @@ export type CarpoolTrip = {
   departAt: string;
   seatsLeft: number;
   seatPrice: number;
+  plate?: string | null;
+  modelNumber?: string | null;
+  isVip?: boolean;
+  image?: string | null;
+  townDailyUgx?: number | null;
+  upcountryDailyUgx?: number | null;
 };
 
 export type CarpoolPublishInput = {
@@ -2728,6 +2742,12 @@ export type CarpoolPublishInput = {
   departAt: string;
   seats: number;
   seatPrice: number;
+  plate?: string | null;
+  modelNumber?: string | null;
+  isVip?: boolean;
+  image?: string | null;
+  townDailyUgx?: number | null;
+  upcountryDailyUgx?: number | null;
   repeatWeeks?: number;
 };
 
