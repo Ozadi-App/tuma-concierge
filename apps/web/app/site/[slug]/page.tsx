@@ -35,6 +35,21 @@ const CUSTOMER_APP_URL = process.env.NEXT_PUBLIC_CUSTOMER_APP_URL ?? "https://ap
 
 const ugx = (n: number) => `UGX ${Math.round(Number(n) || 0).toLocaleString()}`;
 
+interface StoreBundleItem {
+  productId: string;
+  title: string;
+  quantity: number;
+}
+
+interface StoreBundle {
+  id: string;
+  title: string;
+  description: string | null;
+  price: number;
+  compare_at_price?: number | null;
+  items: StoreBundleItem[];
+}
+
 interface StoreCollection {
   id: string;
   title: string;
@@ -142,6 +157,7 @@ export default function DedicatedStorefrontPage({ overrideSlug }: { overrideSlug
   const [collections, setCollections] = useState<StoreCollection[]>([]);
   const [discounts, setDiscounts] = useState<StoreDiscount[]>([]);
   const [outlets, setOutlets] = useState<StoreOutlet[]>([]);
+  const [bundles, setBundles] = useState<StoreBundle[]>([]);
 
   const [activeCollectionId, setActiveCollectionId] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -182,6 +198,7 @@ export default function DedicatedStorefrontPage({ overrideSlug }: { overrideSlug
         setCollections(storeRes.collections ?? []);
         setDiscounts(storeRes.discounts ?? []);
         setOutlets(storeRes.outlets ?? []);
+        setBundles(storeRes.bundles ?? []);
         const loadedProducts: StoreProduct[] = prodRes?.products ?? [];
         setProducts(loadedProducts);
 
@@ -702,6 +719,74 @@ export default function DedicatedStorefrontPage({ overrideSlug }: { overrideSlug
 
         {activeCollection?.description && (
           <p className="text-xs font-semibold text-ink-500">{activeCollection.description}</p>
+        )}
+
+        {/* Bundles & Gift Hampers */}
+        {bundles.length > 0 && (
+          <section className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-black text-ink">Bundles & Gift Hampers</h2>
+                <p className="text-xs text-ink-500">Curated combo kits and value packs</p>
+              </div>
+              <span className="rounded-full bg-gold/15 px-3 py-1 text-xs font-bold text-gold">Package Deals</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+              {bundles.map((bundle) => {
+                const savings = bundle.compare_at_price && bundle.compare_at_price > bundle.price ? bundle.compare_at_price - bundle.price : 0;
+                return (
+                  <div
+                    key={bundle.id}
+                    className="flex flex-col justify-between rounded-3xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-5 shadow-sm space-y-4"
+                  >
+                    <div>
+                      <div className="flex items-center justify-between gap-2">
+                        <h3 className="font-bold text-base text-ink">{bundle.title}</h3>
+                        {savings > 0 && (
+                          <span className="rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-[10px] font-black text-emerald-600">
+                            Save {ugx(savings)}
+                          </span>
+                        )}
+                      </div>
+                      {bundle.description && <p className="mt-1 text-xs text-ink-500">{bundle.description}</p>}
+                      <div className="mt-3 flex items-center gap-2">
+                        <span className="font-mono font-black text-base text-gold">{ugx(bundle.price)}</span>
+                        {bundle.compare_at_price && (
+                          <span className="font-mono text-xs text-ink-400 line-through">{ugx(bundle.compare_at_price)}</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="border-t border-[var(--border-faint)] pt-3 text-xs text-ink-500 space-y-2">
+                      <span className="block text-[11px] font-bold">Includes:</span>
+                      <ul className="space-y-1">
+                        {bundle.items?.map((it: any, i: number) => (
+                          <li key={i} className="flex items-center gap-1.5 text-xs text-ink">
+                            <span className="h-1.5 w-1.5 rounded-full bg-gold" />
+                            <span>{it.quantity}x {it.title}</span>
+                          </li>
+                        ))}
+                      </ul>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          addToBag({
+                            id: bundle.id,
+                            name: bundle.title,
+                            price: bundle.price,
+                            image_url: null,
+                            quantity: 1,
+                          } as any);
+                        }}
+                        className="w-full mt-2 rounded-2xl bg-gold py-2.5 text-xs font-bold text-ink-gold shadow transition active:scale-95"
+                      >
+                        Add Bundle to Bag
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
         )}
 
         {/* Product Catalog Layout: Editorial vs Compact vs Standard Grid */}

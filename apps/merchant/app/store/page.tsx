@@ -11,6 +11,12 @@ import type {
   StoreOutletInventoryRow,
   StorePosSale,
   StoreStockTransfer,
+  StoreSupplier,
+  StorePurchaseOrder,
+  StorePurchaseOrderItem,
+  StoreBundle,
+  StoreBundleItem,
+  StoreWinbackCampaign,
 } from "@peebee/shared";
 import {
   AlertCircle,
@@ -44,6 +50,7 @@ import {
   Tag,
   Trash2,
   TrendingUp,
+  Truck,
   Tv,
   Users,
   X,
@@ -154,7 +161,7 @@ export default function MerchantProStorePage() {
 
   // Elite OS sub-navigation
   const [eliteSection, setEliteSection] = useState<
-    "overview" | "pos" | "theme" | "collections" | "discounts" | "inventory" | "b2b" | "crm"
+    "overview" | "pos" | "theme" | "collections" | "discounts" | "inventory" | "b2b" | "crm" | "po" | "bundles" | "winback"
   >("overview");
   const [upgradingTier, setUpgradingTier] = useState(false);
 
@@ -168,6 +175,48 @@ export default function MerchantProStorePage() {
   const [posSales, setPosSales] = useState<StorePosSale[]>([]);
   const [stockTransfers, setStockTransfers] = useState<StoreStockTransfer[]>([]);
   const [crmCustomers, setCrmCustomers] = useState<StoreCustomerLoyalty[]>([]);
+
+  // Phase 4 states: Suppliers, POs, Bundles, Win-Back
+  const [suppliers, setSuppliers] = useState<StoreSupplier[]>([]);
+  const [purchaseOrders, setPurchaseOrders] = useState<StorePurchaseOrder[]>([]);
+  const [bundles, setBundles] = useState<StoreBundle[]>([]);
+  const [winbackCampaigns, setWinbackCampaigns] = useState<StoreWinbackCampaign[]>([]);
+  const [inactiveCustomers, setInactiveCustomers] = useState<StoreCustomerLoyalty[]>([]);
+
+  // New PO form
+  const [showNewPo, setShowNewPo] = useState(false);
+  const [poSupplierId, setPoSupplierId] = useState("");
+  const [poOutletId, setPoOutletId] = useState("");
+  const [poItems, setPoItems] = useState<StorePurchaseOrderItem[]>([]);
+  const [poNotes, setPoNotes] = useState("");
+  const [poSubmitting, setPoSubmitting] = useState(false);
+  const [receivingPoId, setReceivingPoId] = useState<string | null>(null);
+
+  // New Supplier form
+  const [showNewSupplier, setShowNewSupplier] = useState(false);
+  const [supName, setSupName] = useState("");
+  const [supContact, setSupContact] = useState("");
+  const [supPhone, setSupPhone] = useState("");
+  const [supEmail, setSupEmail] = useState("");
+  const [supAddress, setSupAddress] = useState("");
+  const [supSubmitting, setSupSubmitting] = useState(false);
+
+  // New Bundle form
+  const [showNewBundle, setShowNewBundle] = useState(false);
+  const [bundleTitle, setBundleTitle] = useState("");
+  const [bundleDesc, setBundleDesc] = useState("");
+  const [bundlePrice, setBundlePrice] = useState("");
+  const [bundleCompareAt, setBundleCompareAt] = useState("");
+  const [bundleItems, setBundleItems] = useState<StoreBundleItem[]>([]);
+  const [bundleSubmitting, setBundleSubmitting] = useState(false);
+
+  // Win-back form
+  const [winbackPhone, setWinbackPhone] = useState("");
+  const [winbackName, setWinbackName] = useState("");
+  const [winbackDiscount, setWinbackDiscount] = useState("WELCOME10");
+  const [winbackMessage, setWinbackMessage] = useState("");
+  const [winbackSubmitting, setWinbackSubmitting] = useState(false);
+  const [winbackResultUrl, setWinbackResultUrl] = useState("");
   const [crmSummary, setCrmSummary] = useState<{
     totalCustomers: number;
     vipCount: number;
@@ -1211,6 +1260,9 @@ export default function MerchantProStorePage() {
               { id: "inventory", label: "Multi-Outlet & Transfers", icon: Building2 },
               { id: "b2b", label: `B2B Quotes (${draftOrders.length})`, icon: Briefcase },
               { id: "crm", label: `VIP CRM (${crmCustomers.length})`, icon: Users },
+              { id: "po", label: `Supplier POs (${purchaseOrders.length})`, icon: Truck },
+              { id: "bundles", label: `Bundles & Kits (${bundles.length})`, icon: Package },
+              { id: "winback", label: `Win-Back (${winbackCampaigns.length})`, icon: Send },
             ].map((item) => {
               const Icon = item.icon;
               const active = eliteSection === item.id;
@@ -2288,6 +2340,920 @@ export default function MerchantProStorePage() {
                         </div>
                       </div>
                     ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* SECTION 9: PURCHASE ORDERS & STOCK RECEIVING */}
+          {eliteSection === "po" && (
+            <div className="space-y-4">
+              {/* Header & Quick Restock Suggestions */}
+              <div className="rounded-[24px] border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-5 shadow-sm space-y-4">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div>
+                    <h3 className="font-bold text-base text-ink">Supplier POs & 1-Tap Stock Receiving</h3>
+                    <p className="text-xs text-ink-500">
+                      Procure inventory from wholesalers, restock low items, and receive shipments directly into branch outlets.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowNewSupplier(!showNewSupplier)}
+                      className="rounded-full border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] px-3.5 py-2 text-xs font-bold text-ink transition active:scale-95"
+                    >
+                      {showNewSupplier ? "Cancel" : "+ Add Supplier"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowNewPo(!showNewPo);
+                        if (!showNewPo && poItems.length === 0 && products.length > 0) {
+                          setPoItems([{ productId: products[0].id, title: products[0].title, quantity: 10, unitCost: Math.round(products[0].price * 0.7) }]);
+                        }
+                      }}
+                      className="flex items-center gap-1.5 rounded-full bg-gold px-4 py-2 text-xs font-bold text-ink-gold shadow transition active:scale-95"
+                    >
+                      <Plus className="h-4 w-4" />
+                      <span>Create PO</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Low Stock Warning Banner */}
+                {products.filter((p) => p.inventory_quantity <= 5).length > 0 && (
+                  <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-3.5 flex items-center justify-between flex-wrap gap-2 text-xs">
+                    <div className="flex items-center gap-2 text-amber-700 dark:text-amber-300">
+                      <AlertCircle className="h-4 w-4 shrink-0" />
+                      <span>
+                        <strong>{products.filter((p) => p.inventory_quantity <= 5).length} product(s)</strong> are low on stock (5 or fewer units remaining).
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const lowItems = products
+                          .filter((p) => p.inventory_quantity <= 5)
+                          .map((p) => ({ productId: p.id, title: p.title, quantity: 20, unitCost: Math.round(p.price * 0.7) }));
+                        setPoItems(lowItems);
+                        setShowNewPo(true);
+                      }}
+                      className="rounded-full bg-amber-600 px-3 py-1 font-bold text-white shadow-sm transition active:scale-95"
+                    >
+                      1-Tap Restock All Low Items
+                    </button>
+                  </div>
+                )}
+
+                {/* Add Supplier Form */}
+                {showNewSupplier && (
+                  <form
+                    onSubmit={async (e) => {
+                      e.preventDefault();
+                      if (!supName.trim()) return;
+                      setSupSubmitting(true);
+                      try {
+                        const res = await api.createMerchantSupplier({
+                          name: supName.trim(),
+                          contact_person: supContact.trim() || undefined,
+                          phone: supPhone.trim() || undefined,
+                          email: supEmail.trim() || undefined,
+                          address: supAddress.trim() || undefined,
+                        });
+                        if (res.ok) {
+                          setNotice("Supplier added successfully.");
+                          setShowNewSupplier(false);
+                          setSupName("");
+                          setSupContact("");
+                          setSupPhone("");
+                          setSupEmail("");
+                          setSupAddress("");
+                          const sRes = await api.getMerchantSuppliers();
+                          setSuppliers(sRes.suppliers || []);
+                        }
+                      } catch (err) {
+                        setNotice("Failed: " + errorMessage(err));
+                      } finally {
+                        setSupSubmitting(false);
+                      }
+                    }}
+                    className="rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] p-4 space-y-3"
+                  >
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-ink-500">Register New Wholesaler / Supplier</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[11px] font-bold text-ink-500 mb-1">Company / Supplier Name *</label>
+                        <input
+                          type="text"
+                          required
+                          value={supName}
+                          onChange={(e) => setSupName(e.target.value)}
+                          placeholder="e.g. Mukwano Industries Ltd"
+                          className="w-full rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] px-3 py-2 text-xs text-ink placeholder:text-ink-300"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-ink-500 mb-1">Contact Person</label>
+                        <input
+                          type="text"
+                          value={supContact}
+                          onChange={(e) => setSupContact(e.target.value)}
+                          placeholder="e.g. Sarah Namubiru"
+                          className="w-full rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] px-3 py-2 text-xs text-ink placeholder:text-ink-300"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-ink-500 mb-1">Phone Number</label>
+                        <input
+                          type="text"
+                          value={supPhone}
+                          onChange={(e) => setSupPhone(e.target.value)}
+                          placeholder="e.g. 0772 123 456"
+                          className="w-full rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] px-3 py-2 text-xs text-ink placeholder:text-ink-300"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-ink-500 mb-1">Address / Warehouse</label>
+                        <input
+                          type="text"
+                          value={supAddress}
+                          onChange={(e) => setSupAddress(e.target.value)}
+                          placeholder="e.g. 6th Street Industrial Area"
+                          className="w-full rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] px-3 py-2 text-xs text-ink placeholder:text-ink-300"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex justify-end gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setShowNewSupplier(false)}
+                        className="rounded-xl border border-[var(--border-faint)] px-3 py-1.5 text-xs text-ink-500"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={supSubmitting}
+                        className="rounded-xl bg-gold px-4 py-1.5 text-xs font-bold text-ink-gold disabled:opacity-50"
+                      >
+                        {supSubmitting ? "Saving..." : "Save Supplier"}
+                      </button>
+                    </div>
+                  </form>
+                )}
+
+                {/* Create PO Form */}
+                {showNewPo && (
+                  <form
+                    onSubmit={async (e) => {
+                      e.preventDefault();
+                      if (poItems.length === 0) {
+                        setNotice("Add at least one item to the PO.");
+                        return;
+                      }
+                      setPoSubmitting(true);
+                      try {
+                        const res = await api.createMerchantPurchaseOrder({
+                          supplier_id: poSupplierId || undefined,
+                          outlet_id: poOutletId || undefined,
+                          items: poItems,
+                          notes: poNotes.trim() || undefined,
+                        });
+                        if (res.ok) {
+                          setNotice(`Purchase Order ${res.poNumber} created successfully.`);
+                          setShowNewPo(false);
+                          setPoItems([]);
+                          setPoNotes("");
+                          const poRes = await api.getMerchantPurchaseOrders();
+                          setPurchaseOrders(poRes.purchaseOrders || []);
+                        }
+                      } catch (err) {
+                        setNotice("Failed: " + errorMessage(err));
+                      } finally {
+                        setPoSubmitting(false);
+                      }
+                    }}
+                    className="rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] p-4 space-y-3"
+                  >
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-ink-500">Draft Purchase Order</h4>
+                      <span className="text-xs font-mono font-bold text-gold">
+                        Total: {ugx(poItems.reduce((sum, it) => sum + (it.quantity || 1) * (it.unitCost || 0), 0))}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[11px] font-bold text-ink-500 mb-1">Select Supplier</label>
+                        <select
+                          value={poSupplierId}
+                          onChange={(e) => setPoSupplierId(e.target.value)}
+                          className="w-full rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] px-3 py-2 text-xs text-ink"
+                        >
+                          <option value="">Direct Wholesaler / Unlisted</option>
+                          {suppliers.map((s) => (
+                            <option key={s.id} value={s.id}>
+                              {s.name} {s.contact_person ? `(${s.contact_person})` : ""}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-bold text-ink-500 mb-1">Destination Receiving Outlet</label>
+                        <select
+                          value={poOutletId}
+                          onChange={(e) => setPoOutletId(e.target.value)}
+                          className="w-full rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] px-3 py-2 text-xs text-ink"
+                        >
+                          <option value="">Master Central Warehouse</option>
+                          {outlets.map((o) => (
+                            <option key={o.id} value={o.id}>
+                              {o.name} ({o.address || "Branch"})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* PO Items */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[11px] font-bold text-ink-500">Order Items</label>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (products.length > 0) {
+                              setPoItems([...poItems, { productId: products[0].id, title: products[0].title, quantity: 10, unitCost: Math.round(products[0].price * 0.7) }]);
+                            }
+                          }}
+                          className="text-[11px] font-bold text-gold hover:underline"
+                        >
+                          + Add Item Row
+                        </button>
+                      </div>
+
+                      {poItems.map((it, idx) => (
+                        <div key={idx} className="flex items-center gap-2 bg-[rgb(var(--surface-card))] p-2 rounded-xl text-xs">
+                          <select
+                            value={it.productId}
+                            onChange={(e) => {
+                              const found = products.find((p) => p.id === e.target.value);
+                              const updated = [...poItems];
+                              updated[idx] = {
+                                ...updated[idx],
+                                productId: e.target.value,
+                                title: found?.title || "Product",
+                                unitCost: found ? Math.round(found.price * 0.7) : updated[idx].unitCost,
+                              };
+                              setPoItems(updated);
+                            }}
+                            className="flex-1 rounded-lg border border-[var(--border-faint)] bg-transparent px-2 py-1 text-xs text-ink"
+                          >
+                            {products.map((p) => (
+                              <option key={p.id} value={p.id}>
+                                {p.title} (Stock: {p.inventory_quantity})
+                              </option>
+                            ))}
+                          </select>
+
+                          <div className="flex items-center gap-1">
+                            <span className="text-[10px] text-ink-500">Qty:</span>
+                            <input
+                              type="number"
+                              min="1"
+                              value={it.quantity}
+                              onChange={(e) => {
+                                const updated = [...poItems];
+                                updated[idx].quantity = Math.max(1, parseInt(e.target.value, 10) || 1);
+                                setPoItems(updated);
+                              }}
+                              className="w-16 rounded-lg border border-[var(--border-faint)] bg-transparent px-2 py-1 text-xs text-ink"
+                            />
+                          </div>
+
+                          <div className="flex items-center gap-1">
+                            <span className="text-[10px] text-ink-500">Unit UGX:</span>
+                            <input
+                              type="number"
+                              min="0"
+                              value={it.unitCost}
+                              onChange={(e) => {
+                                const updated = [...poItems];
+                                updated[idx].unitCost = Math.max(0, parseInt(e.target.value, 10) || 0);
+                                setPoItems(updated);
+                              }}
+                              className="w-24 rounded-lg border border-[var(--border-faint)] bg-transparent px-2 py-1 text-xs text-ink"
+                            />
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPoItems(poItems.filter((_, i) => i !== idx));
+                            }}
+                            className="p-1 text-red-500 hover:opacity-75"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-ink-500 mb-1">Notes / Terms</label>
+                      <input
+                        type="text"
+                        value={poNotes}
+                        onChange={(e) => setPoNotes(e.target.value)}
+                        placeholder="e.g. Payment on delivery via Mobile Money, expected Tuesday morning"
+                        className="w-full rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] px-3 py-2 text-xs text-ink placeholder:text-ink-300"
+                      />
+                    </div>
+
+                    <div className="flex justify-end gap-2 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => setShowNewPo(false)}
+                        className="rounded-xl border border-[var(--border-faint)] px-3 py-1.5 text-xs text-ink-500"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={poSubmitting}
+                        className="rounded-xl bg-gold px-4 py-1.5 text-xs font-bold text-ink-gold disabled:opacity-50"
+                      >
+                        {poSubmitting ? "Generating..." : "Generate Purchase Order"}
+                      </button>
+                    </div>
+                  </form>
+                )}
+
+                {/* PO List */}
+                {purchaseOrders.length === 0 ? (
+                  <div className="rounded-2xl bg-[rgb(var(--surface-muted))] p-4 text-xs text-ink-500">
+                    No purchase orders logged yet. Tap <strong>"Create PO"</strong> above or use <strong>"1-Tap Restock"</strong> to generate supply orders with automatic stock receiving.
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {purchaseOrders.map((po) => (
+                      <div
+                        key={po.id}
+                        className="rounded-2xl bg-[rgb(var(--surface-muted))] p-4 space-y-3"
+                      >
+                        <div className="flex items-center justify-between flex-wrap gap-2">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono font-bold text-sm text-ink">{po.po_number}</span>
+                            <span
+                              className={`rounded-full px-2.5 py-0.5 text-[10px] font-black uppercase ${
+                                po.status === "received"
+                                  ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+                                  : "bg-amber-500/15 text-amber-600 dark:text-amber-400"
+                              }`}
+                            >
+                              {po.status}
+                            </span>
+                            {po.supplier_name && (
+                              <span className="text-xs text-ink-500">from {po.supplier_name}</span>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-3">
+                            <span className="font-mono font-black text-sm text-gold">
+                              {ugx(po.total_cost_ugx)}
+                            </span>
+
+                            {po.status !== "received" && (
+                              <button
+                                type="button"
+                                disabled={receivingPoId === po.id}
+                                onClick={async () => {
+                                  setReceivingPoId(po.id);
+                                  try {
+                                    const res = await api.receiveMerchantPurchaseOrder(po.id);
+                                    if (res.ok) {
+                                      setNotice(`PO ${po.po_number} received: ${res.itemsReceivedCount} product(s) added to stock.`);
+                                      const poRes = await api.getMerchantPurchaseOrders();
+                                      setPurchaseOrders(poRes.purchaseOrders || []);
+                                      api.getMerchantProProducts().then((res) => setProducts(res.products || [])).catch(() => {});
+                                    }
+                                  } catch (err) {
+                                    setNotice("Receiving failed: " + errorMessage(err));
+                                  } finally {
+                                    setReceivingPoId(null);
+                                  }
+                                }}
+                                className="flex items-center gap-1.5 rounded-full bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white shadow transition active:scale-95 disabled:opacity-50"
+                              >
+                                <Check className="h-3.5 w-3.5" />
+                                <span>{receivingPoId === po.id ? "Receiving..." : "1-Tap Receive Stock"}</span>
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Items preview */}
+                        <div className="flex items-center gap-2 flex-wrap text-[11px] text-ink-500 border-t border-[var(--border-faint)] pt-2">
+                          <span>Items ({po.items?.length || 0}):</span>
+                          {po.items?.map((it, i) => (
+                            <span key={i} className="rounded-md bg-[rgb(var(--surface-card))] px-2 py-0.5 text-ink">
+                              {it.quantity}x {it.title} ({ugx(it.unitCost)})
+                            </span>
+                          ))}
+                          {po.outlet_name && (
+                            <span className="ml-auto text-[10px] text-ink-500">
+                              Receiving to: <strong>{po.outlet_name}</strong>
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* SECTION 10: PRODUCT BUNDLES & KITS */}
+          {eliteSection === "bundles" && (
+            <div className="space-y-4">
+              <div className="rounded-[24px] border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-5 shadow-sm space-y-4">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div>
+                    <h3 className="font-bold text-base text-ink">Product Bundles, Kits & Hampers</h3>
+                    <p className="text-xs text-ink-500">
+                      Offer package deals, gift baskets, and starter kits with bundle discount pricing.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowNewBundle(!showNewBundle);
+                      if (!showNewBundle && bundleItems.length === 0 && products.length >= 2) {
+                        setBundleItems([
+                          { productId: products[0].id, title: products[0].title, quantity: 1 },
+                          { productId: products[1].id, title: products[1].title, quantity: 1 },
+                        ]);
+                        setBundlePrice(String(Math.round((products[0].price + products[1].price) * 0.85)));
+                        setBundleCompareAt(String(products[0].price + products[1].price));
+                      }
+                    }}
+                    className="flex items-center gap-1.5 rounded-full bg-gold px-4 py-2 text-xs font-bold text-ink-gold shadow transition active:scale-95"
+                  >
+                    <Plus className="h-4 w-4" />
+                    <span>Create Bundle</span>
+                  </button>
+                </div>
+
+                {/* Create Bundle Form */}
+                {showNewBundle && (
+                  <form
+                    onSubmit={async (e) => {
+                      e.preventDefault();
+                      if (!bundleTitle.trim()) return;
+                      if (bundleItems.length === 0) {
+                        setNotice("Add at least one item to bundle.");
+                        return;
+                      }
+                      setBundleSubmitting(true);
+                      try {
+                        const res = await api.createMerchantBundle({
+                          title: bundleTitle.trim(),
+                          description: bundleDesc.trim() || undefined,
+                          price: Math.max(0, parseInt(bundlePrice, 10) || 0),
+                          compare_at_price: bundleCompareAt ? parseInt(bundleCompareAt, 10) : undefined,
+                          items: bundleItems,
+                        });
+                        if (res.ok) {
+                          setNotice("Bundle created successfully.");
+                          setShowNewBundle(false);
+                          setBundleTitle("");
+                          setBundleDesc("");
+                          setBundlePrice("");
+                          setBundleCompareAt("");
+                          setBundleItems([]);
+                          const bRes = await api.getMerchantBundles();
+                          setBundles(bRes.bundles || []);
+                        }
+                      } catch (err) {
+                        setNotice("Failed: " + errorMessage(err));
+                      } finally {
+                        setBundleSubmitting(false);
+                      }
+                    }}
+                    className="rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] p-4 space-y-3"
+                  >
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-ink-500">Configure Product Bundle / Hamper</h4>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[11px] font-bold text-ink-500 mb-1">Bundle Title *</label>
+                        <input
+                          type="text"
+                          required
+                          value={bundleTitle}
+                          onChange={(e) => setBundleTitle(e.target.value)}
+                          placeholder="e.g. Weekend Family BBQ Combo"
+                          className="w-full rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] px-3 py-2 text-xs text-ink placeholder:text-ink-300"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-[11px] font-bold text-ink-500 mb-1">Bundle Price (UGX) *</label>
+                          <input
+                            type="number"
+                            required
+                            min="0"
+                            value={bundlePrice}
+                            onChange={(e) => setBundlePrice(e.target.value)}
+                            placeholder="e.g. 45000"
+                            className="w-full rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] px-3 py-2 text-xs text-ink"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-bold text-ink-500 mb-1">Original Price (UGX)</label>
+                          <input
+                            type="number"
+                            min="0"
+                            value={bundleCompareAt}
+                            onChange={(e) => setBundleCompareAt(e.target.value)}
+                            placeholder="e.g. 55000"
+                            className="w-full rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] px-3 py-2 text-xs text-ink"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-ink-500 mb-1">Description</label>
+                      <input
+                        type="text"
+                        value={bundleDesc}
+                        onChange={(e) => setBundleDesc(e.target.value)}
+                        placeholder="e.g. Complete barbecue kit with beef, sausages, burger buns and barbecue sauce."
+                        className="w-full rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] px-3 py-2 text-xs text-ink placeholder:text-ink-300"
+                      />
+                    </div>
+
+                    {/* Bundle Component Items */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[11px] font-bold text-ink-500">Component Products</label>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (products.length > 0) {
+                              setBundleItems([...bundleItems, { productId: products[0].id, title: products[0].title, quantity: 1 }]);
+                            }
+                          }}
+                          className="text-[11px] font-bold text-gold hover:underline"
+                        >
+                          + Add Component
+                        </button>
+                      </div>
+
+                      {bundleItems.map((it, idx) => (
+                        <div key={idx} className="flex items-center gap-2 bg-[rgb(var(--surface-card))] p-2 rounded-xl text-xs">
+                          <select
+                            value={it.productId}
+                            onChange={(e) => {
+                              const found = products.find((p) => p.id === e.target.value);
+                              const updated = [...bundleItems];
+                              updated[idx] = {
+                                ...updated[idx],
+                                productId: e.target.value,
+                                title: found?.title || "Product",
+                              };
+                              setBundleItems(updated);
+                            }}
+                            className="flex-1 rounded-lg border border-[var(--border-faint)] bg-transparent px-2 py-1 text-xs text-ink"
+                          >
+                            {products.map((p) => (
+                              <option key={p.id} value={p.id}>
+                                {p.title} ({ugx(p.price)})
+                              </option>
+                            ))}
+                          </select>
+
+                          <div className="flex items-center gap-1">
+                            <span className="text-[10px] text-ink-500">Qty:</span>
+                            <input
+                              type="number"
+                              min="1"
+                              value={it.quantity}
+                              onChange={(e) => {
+                                const updated = [...bundleItems];
+                                updated[idx].quantity = Math.max(1, parseInt(e.target.value, 10) || 1);
+                                setBundleItems(updated);
+                              }}
+                              className="w-16 rounded-lg border border-[var(--border-faint)] bg-transparent px-2 py-1 text-xs text-ink"
+                            />
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setBundleItems(bundleItems.filter((_, i) => i !== idx));
+                            }}
+                            className="p-1 text-red-500 hover:opacity-75"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="flex justify-end gap-2 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => setShowNewBundle(false)}
+                        className="rounded-xl border border-[var(--border-faint)] px-3 py-1.5 text-xs text-ink-500"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={bundleSubmitting}
+                        className="rounded-xl bg-gold px-4 py-1.5 text-xs font-bold text-ink-gold disabled:opacity-50"
+                      >
+                        {bundleSubmitting ? "Saving..." : "Save Bundle"}
+                      </button>
+                    </div>
+                  </form>
+                )}
+
+                {/* Bundles List */}
+                {bundles.length === 0 ? (
+                  <div className="rounded-2xl bg-[rgb(var(--surface-muted))] p-4 text-xs text-ink-500">
+                    No product bundles created yet. Combine high-velocity products into gift boxes and kits to boost Average Order Value (AOV).
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {bundles.map((b) => {
+                      const savings = b.compare_at_price && b.compare_at_price > b.price ? b.compare_at_price - b.price : 0;
+                      return (
+                        <div
+                          key={b.id}
+                          className="rounded-2xl bg-[rgb(var(--surface-muted))] p-4 flex flex-col justify-between space-y-3"
+                        >
+                          <div>
+                            <div className="flex items-center justify-between">
+                              <h4 className="font-bold text-sm text-ink">{b.title}</h4>
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  try {
+                                    await api.deleteMerchantBundle(b.id);
+                                    setNotice("Bundle removed.");
+                                    const bRes = await api.getMerchantBundles();
+                                    setBundles(bRes.bundles || []);
+                                  } catch (err) {
+                                    setNotice("Delete failed: " + errorMessage(err));
+                                  }
+                                }}
+                                className="text-red-500 hover:opacity-75 p-1"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </div>
+                            {b.description && (
+                              <p className="mt-1 text-xs text-ink-500 line-clamp-2">{b.description}</p>
+                            )}
+                            <div className="mt-2 flex items-center gap-2">
+                              <span className="font-mono font-black text-sm text-gold">{ugx(b.price)}</span>
+                              {b.compare_at_price && (
+                                <span className="font-mono text-xs text-ink-400 line-through">
+                                  {ugx(b.compare_at_price)}
+                                </span>
+                              )}
+                              {savings > 0 && (
+                                <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-black text-emerald-600">
+                                  Save {ugx(savings)}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="border-t border-[var(--border-faint)] pt-2 text-[11px] text-ink-500 space-y-1">
+                            <span className="block font-bold">Includes ({b.items?.length || 0}):</span>
+                            <div className="flex flex-wrap gap-1">
+                              {b.items?.map((it, i) => (
+                                <span key={i} className="rounded bg-[rgb(var(--surface-card))] px-2 py-0.5 text-ink">
+                                  {it.quantity}x {it.title}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* SECTION 11: WIN-BACK CAMPAIGNS */}
+          {eliteSection === "winback" && (
+            <div className="space-y-4">
+              <div className="rounded-[24px] border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-5 shadow-sm space-y-4">
+                <div>
+                  <h3 className="font-bold text-base text-ink">Customer Win-Back & Abandoned Cart Recovery</h3>
+                  <p className="text-xs text-ink-500">
+                    Re-engage shoppers who have not purchased recently or abandoned their bags with 1-tap WhatsApp promotions.
+                  </p>
+                </div>
+
+                {/* Quick WhatsApp Campaign Sender Form */}
+                <form
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    if (!winbackPhone.trim()) return;
+                    setWinbackSubmitting(true);
+                    try {
+                      const res = await api.sendMerchantWinbackCampaign({
+                        customer_phone: winbackPhone.trim(),
+                        customer_name: winbackName.trim() || undefined,
+                        discount_code: winbackDiscount.trim() || undefined,
+                        channel: "whatsapp",
+                        message: winbackMessage.trim(),
+                      });
+                      if (res.ok) {
+                        setNotice("Campaign logged! Opening WhatsApp...");
+                        setWinbackResultUrl(res.whatsappUrl);
+                        window.open(res.whatsappUrl, "_blank");
+                        const cRes = await api.getMerchantWinbackCampaigns();
+                        setWinbackCampaigns(cRes.campaigns || []);
+                      }
+                    } catch (err) {
+                      setNotice("Failed: " + errorMessage(err));
+                    } finally {
+                      setWinbackSubmitting(false);
+                    }
+                  }}
+                  className="rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] p-4 space-y-3"
+                >
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-ink-500">Send WhatsApp Promotional Offer</h4>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-bold text-ink-500 mb-1">Customer Phone *</label>
+                      <input
+                        type="text"
+                        required
+                        value={winbackPhone}
+                        onChange={(e) => setWinbackPhone(e.target.value)}
+                        placeholder="e.g. 0772 123 456"
+                        className="w-full rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] px-3 py-2 text-xs text-ink placeholder:text-ink-300"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-ink-500 mb-1">Customer Name</label>
+                      <input
+                        type="text"
+                        value={winbackName}
+                        onChange={(e) => setWinbackName(e.target.value)}
+                        placeholder="e.g. Christine"
+                        className="w-full rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] px-3 py-2 text-xs text-ink placeholder:text-ink-300"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-ink-500 mb-1">Promo Code</label>
+                      <input
+                        type="text"
+                        value={winbackDiscount}
+                        onChange={(e) => setWinbackDiscount(e.target.value)}
+                        placeholder="e.g. WELCOME10"
+                        className="w-full rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] px-3 py-2 text-xs text-ink placeholder:text-ink-300"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-[11px] font-bold text-ink-500">Personalized Message</label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const storeName = store?.name || "our store";
+                          const link = `https://${store?.slug || 'shop'}.peebee.online` || "https://peebee.online";
+                          setWinbackMessage(
+                            `Hello ${winbackName || "there"}! We miss you at ${storeName}. Use coupon ${winbackDiscount || "VIP10"} for special discounts on your next order today at ${link}`
+                          );
+                        }}
+                        className="text-[11px] font-bold text-gold hover:underline"
+                      >
+                        Auto-generate Message
+                      </button>
+                    </div>
+                    <textarea
+                      rows={2}
+                      required
+                      value={winbackMessage}
+                      onChange={(e) => setWinbackMessage(e.target.value)}
+                      placeholder="Enter WhatsApp message text..."
+                      className="w-full rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-3 text-xs text-ink placeholder:text-ink-300"
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between pt-1">
+                    {winbackResultUrl ? (
+                      <a
+                        href={winbackResultUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-xs font-bold text-emerald-600 hover:underline flex items-center gap-1"
+                      >
+                        <span>✓ WhatsApp Chat Ready (Click to reopen)</span>
+                      </a>
+                    ) : <div />}
+
+                    <button
+                      type="submit"
+                      disabled={winbackSubmitting}
+                      className="flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white shadow transition active:scale-95 disabled:opacity-50"
+                    >
+                      <Send className="h-3.5 w-3.5" />
+                      <span>{winbackSubmitting ? "Generating..." : "Launch WhatsApp Offer"}</span>
+                    </button>
+                  </div>
+                </form>
+
+                {/* Inactive & VIP Customers List for 1-Tap Win-Back */}
+                <div className="space-y-2">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-ink-500">
+                    Inactive & Repeat Buyers Ready for Re-Engagement ({inactiveCustomers.length})
+                  </h4>
+
+                  {inactiveCustomers.length === 0 ? (
+                    <div className="rounded-2xl bg-[rgb(var(--surface-muted))] p-4 text-xs text-ink-500">
+                      No inactive buyers found. As shoppers complete orders, those who haven't ordered recently will automatically appear here.
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {inactiveCustomers.map((cust) => (
+                        <div
+                          key={cust.id}
+                          className="flex items-center justify-between rounded-2xl bg-[rgb(var(--surface-muted))] p-3 text-xs flex-wrap gap-2"
+                        >
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-ink">{cust.customer_name || cust.customer_phone}</span>
+                              <span className="rounded-full bg-gold/15 px-2 py-0.5 text-[10px] font-black uppercase text-gold">
+                                {cust.tier}
+                              </span>
+                            </div>
+                            <p className="mt-0.5 text-[10px] text-ink-500">
+                              {cust.customer_phone} · {cust.orders_count} orders · Spent {ugx(cust.total_spent_ugx)}
+                            </p>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setWinbackPhone(cust.customer_phone);
+                              setWinbackName(cust.customer_name || "");
+                              const storeName = store?.name || "our store";
+                              const link = `https://${store?.slug || 'shop'}.peebee.online` || "https://peebee.online";
+                              setWinbackMessage(
+                                `Hello ${cust.customer_name || "friend"}! We miss you at ${storeName}. We loaded ${ugx(cust.points_balance_ugx)} in loyalty points on your account! Use code ${winbackDiscount} on your next order today: ${link}`
+                              );
+                            }}
+                            className="rounded-full bg-[rgb(var(--surface-card))] border border-[var(--border-faint)] px-3 py-1.5 text-xs font-bold text-ink transition hover:border-gold active:scale-95"
+                          >
+                            Select for Win-Back
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Campaign History Log */}
+                {winbackCampaigns.length > 0 && (
+                  <div className="space-y-2 border-t border-[var(--border-faint)] pt-3">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-ink-500">Recent Campaign Log</h4>
+                    <div className="space-y-2">
+                      {winbackCampaigns.map((camp) => (
+                        <div
+                          key={camp.id}
+                          className="flex items-center justify-between rounded-xl bg-[rgb(var(--surface-muted))] p-2.5 text-xs"
+                        >
+                          <div>
+                            <span className="font-bold text-ink">{camp.customer_name || camp.customer_phone}</span>
+                            <span className="ml-2 text-[10px] text-ink-500">({camp.channel})</span>
+                            <p className="text-[10px] text-ink-500 line-clamp-1">{camp.message}</p>
+                          </div>
+                          <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold text-emerald-600">
+                            {camp.status}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>

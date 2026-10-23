@@ -2575,6 +2575,428 @@ marketplaceRoutes.get("/merchants/me/crm-customers", requireAuth, async (c) => {
 });
 
 // ---------------------------------------------------------------------------
+// Merchant Elite Phase 4: Suppliers, Purchase Orders, Bundles & Win-Back
+// ---------------------------------------------------------------------------
+
+marketplaceRoutes.get("/merchants/me/suppliers", requireAuth, async (c) => {
+  const user = c.get("user");
+  const memberRes = await db.execute({
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    args: [user.sub],
+  });
+  const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
+  if (!merchantId) return c.json({ error: "no_merchant_membership" }, 403);
+
+  const store = await getMerchantStore(merchantId);
+  if (!store || !(await hasTable("store_suppliers"))) {
+    return c.json({ suppliers: [] });
+  }
+
+  const res = await db.execute({
+    sql: "SELECT * FROM store_suppliers WHERE store_id = ? ORDER BY name ASC",
+    args: [String(store.id)],
+  });
+
+  return c.json({ suppliers: res.rows });
+});
+
+marketplaceRoutes.post("/merchants/me/suppliers", requireAuth, async (c) => {
+  const user = c.get("user");
+  const memberRes = await db.execute({
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    args: [user.sub],
+  });
+  const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
+  if (!merchantId) return c.json({ error: "no_merchant_membership" }, 403);
+
+  const store = await getMerchantStore(merchantId);
+  if (!store || !(await hasTable("store_suppliers"))) {
+    return c.json({ error: "suppliers_table_not_available" }, 400);
+  }
+
+  const body = await c.req.json().catch(() => ({}));
+  const name = String(body.name || "").trim();
+  if (!name) return c.json({ error: "name_required" }, 400);
+
+  const id = "sup_" + crypto.randomUUID().slice(0, 12);
+  await db.execute({
+    sql: `INSERT INTO store_suppliers (id, store_id, name, contact_person, phone, email, address)
+          VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    args: [
+      id,
+      String(store.id),
+      name,
+      body.contact_person ? String(body.contact_person).trim() : null,
+      body.phone ? String(body.phone).trim() : null,
+      body.email ? String(body.email).trim() : null,
+      body.address ? String(body.address).trim() : null,
+    ],
+  });
+
+  return c.json({ ok: true, id });
+});
+
+marketplaceRoutes.get("/merchants/me/purchase-orders", requireAuth, async (c) => {
+  const user = c.get("user");
+  const memberRes = await db.execute({
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    args: [user.sub],
+  });
+  const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
+  if (!merchantId) return c.json({ error: "no_merchant_membership" }, 403);
+
+  const store = await getMerchantStore(merchantId);
+  if (!store || !(await hasTable("store_purchase_orders"))) {
+    return c.json({ purchaseOrders: [] });
+  }
+
+  const res = await db.execute({
+    sql: `SELECT po.*, s.name as supplier_name, o.name as outlet_name
+          FROM store_purchase_orders po
+          LEFT JOIN store_suppliers s ON po.supplier_id = s.id
+          LEFT JOIN merchant_outlets o ON po.outlet_id = o.id
+          WHERE po.store_id = ?
+          ORDER BY po.created_at DESC
+          LIMIT 100`,
+    args: [String(store.id)],
+  });
+
+  const purchaseOrders = res.rows.map((row) => {
+    let items = [];
+    try {
+      items = JSON.parse(String(row.items_json || "[]"));
+    } catch {
+      items = [];
+    }
+    return {
+      ...row,
+      items,
+    };
+  });
+
+  return c.json({ purchaseOrders });
+});
+
+marketplaceRoutes.post("/merchants/me/purchase-orders", requireAuth, async (c) => {
+  const user = c.get("user");
+  const memberRes = await db.execute({
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    args: [user.sub],
+  });
+  const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
+  if (!merchantId) return c.json({ error: "no_merchant_membership" }, 403);
+
+  const store = await getMerchantStore(merchantId);
+  if (!store || !(await hasTable("store_purchase_orders"))) {
+    return c.json({ error: "purchase_orders_not_available" }, 400);
+  }
+
+  const settings = await getMarketplaceSettings();
+  if (settings.elitePurchaseOrdersEnabled === false) {
+    return c.json({ error: "purchase_orders_disabled_by_admin" }, 403);
+  }
+
+  const body = await c.req.json().catch(() => ({}));
+  const rawItems = Array.isArray(body.items) ? body.items : [];
+  if (rawItems.length === 0) return c.json({ error: "items_required" }, 400);
+
+  const items = rawItems.map((it: any) => ({
+    productId: String(it.productId || it.id || ""),
+    title: String(it.title || it.name || "Item"),
+    quantity: Math.max(1, parseInt(String(it.quantity || "1"), 10)),
+    unitCost: Math.max(0, parseInt(String(it.unitCost || it.cost || "0"), 10)),
+  }));
+
+  const totalCost = items.reduce((sum: number, it: any) => sum + it.quantity * it.unitCost, 0);
+  const id = "po_" + crypto.randomUUID().slice(0, 12);
+  const poNumber = "PO-" + Math.floor(100000 + Math.random() * 900000);
+
+  await db.execute({
+    sql: `INSERT INTO store_purchase_orders
+          (id, store_id, supplier_id, outlet_id, po_number, items_json, total_cost_ugx, status, notes, created_by)
+          VALUES (?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?)`,
+    args: [
+      id,
+      String(store.id),
+      body.supplier_id ? String(body.supplier_id) : null,
+      body.outlet_id ? String(body.outlet_id) : null,
+      poNumber,
+      JSON.stringify(items),
+      totalCost,
+      body.notes ? String(body.notes).trim() : null,
+      user.sub,
+    ],
+  });
+
+  return c.json({ ok: true, id, poNumber, totalCost });
+});
+
+marketplaceRoutes.post("/merchants/me/purchase-orders/:id/receive", requireAuth, async (c) => {
+  const user = c.get("user");
+  const memberRes = await db.execute({
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    args: [user.sub],
+  });
+  const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
+  if (!merchantId) return c.json({ error: "no_merchant_membership" }, 403);
+
+  const store = await getMerchantStore(merchantId);
+  if (!store || !(await hasTable("store_purchase_orders"))) {
+    return c.json({ error: "purchase_orders_not_available" }, 400);
+  }
+
+  const id = c.req.param("id")!;
+  const poRes = await db.execute({
+    sql: "SELECT * FROM store_purchase_orders WHERE id = ? AND store_id = ? LIMIT 1",
+    args: [id, String(store.id)],
+  });
+  const po = poRes.rows[0] as Row | undefined;
+  if (!po) return c.json({ error: "purchase_order_not_found" }, 404);
+
+  if (po.status === "received") {
+    return c.json({ ok: true, poId: id, status: "received", itemsReceivedCount: 0, message: "already_received" });
+  }
+
+  const body = await c.req.json().catch(() => ({}));
+  const targetOutletId = (body.outlet_id as string | undefined) || (po.outlet_id as string | undefined) || null;
+
+  let items = [];
+  try {
+    items = JSON.parse(String(po.items_json || "[]"));
+  } catch {
+    items = [];
+  }
+
+  // Stock receiving into outlet inventory and master product stock
+  for (const item of items) {
+    const qty = Math.max(1, parseInt(String(item.quantity || "1"), 10));
+    if (targetOutletId && (await hasTable("store_outlet_inventory"))) {
+      const existing = await db.execute({
+        sql: "SELECT id, quantity FROM store_outlet_inventory WHERE store_id = ? AND outlet_id = ? AND product_id = ? LIMIT 1",
+        args: [String(store.id), String(targetOutletId), String(item.productId)],
+      });
+      if (existing.rows.length > 0) {
+        await db.execute({
+          sql: "UPDATE store_outlet_inventory SET quantity = quantity + ? WHERE id = ?",
+          args: [qty, String((existing.rows[0] as Row).id)],
+        });
+      } else {
+        const invId = "inv_" + crypto.randomUUID().slice(0, 12);
+        await db.execute({
+          sql: "INSERT INTO store_outlet_inventory (id, store_id, outlet_id, product_id, quantity) VALUES (?, ?, ?, ?, ?)",
+          args: [invId, String(store.id), String(targetOutletId || ''), String(item.productId), qty],
+        });
+      }
+    }
+
+    // Update master catalog product quantity
+    if (item.productId) {
+      await db.execute({
+        sql: "UPDATE store_products SET inventory_quantity = inventory_quantity + ? WHERE id = ? AND store_id = ?",
+        args: [qty, String(item.productId), String(store.id)],
+      });
+    }
+  }
+
+  await db.execute({
+    sql: "UPDATE store_purchase_orders SET status = 'received', received_at = datetime('now') WHERE id = ?",
+    args: [id],
+  });
+
+  return c.json({ ok: true, poId: id, status: "received", itemsReceivedCount: items.length });
+});
+
+marketplaceRoutes.get("/merchants/me/bundles", requireAuth, async (c) => {
+  const user = c.get("user");
+  const memberRes = await db.execute({
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    args: [user.sub],
+  });
+  const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
+  if (!merchantId) return c.json({ error: "no_merchant_membership" }, 403);
+
+  const store = await getMerchantStore(merchantId);
+  if (!store || !(await hasTable("store_bundles"))) {
+    return c.json({ bundles: [] });
+  }
+
+  const res = await db.execute({
+    sql: "SELECT * FROM store_bundles WHERE store_id = ? ORDER BY created_at DESC",
+    args: [String(store.id)],
+  });
+
+  const bundles = res.rows.map((row) => {
+    let items = [];
+    try {
+      items = JSON.parse(String(row.items_json || "[]"));
+    } catch {
+      items = [];
+    }
+    return {
+      ...row,
+      items,
+    };
+  });
+
+  return c.json({ bundles });
+});
+
+marketplaceRoutes.post("/merchants/me/bundles", requireAuth, async (c) => {
+  const user = c.get("user");
+  const memberRes = await db.execute({
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    args: [user.sub],
+  });
+  const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
+  if (!merchantId) return c.json({ error: "no_merchant_membership" }, 403);
+
+  const store = await getMerchantStore(merchantId);
+  if (!store || !(await hasTable("store_bundles"))) {
+    return c.json({ error: "bundles_not_available" }, 400);
+  }
+
+  const settings = await getMarketplaceSettings();
+  if (settings.eliteBundlesEnabled === false) {
+    return c.json({ error: "bundles_disabled_by_admin" }, 403);
+  }
+
+  const body = await c.req.json().catch(() => ({}));
+  const title = String(body.title || "").trim();
+  if (!title) return c.json({ error: "title_required" }, 400);
+
+  const price = Math.max(0, parseInt(String(body.price || "0"), 10));
+  const compareAtPrice = body.compare_at_price ? Math.max(0, parseInt(String(body.compare_at_price), 10)) : null;
+  const rawItems = Array.isArray(body.items) ? body.items : [];
+
+  const items = rawItems.map((it: any) => ({
+    productId: String(it.productId || it.id || ""),
+    title: String(it.title || it.name || "Item"),
+    quantity: Math.max(1, parseInt(String(it.quantity || "1"), 10)),
+  }));
+
+  const id = "bnd_" + crypto.randomUUID().slice(0, 12);
+  await db.execute({
+    sql: `INSERT INTO store_bundles (id, store_id, title, description, price, compare_at_price, items_json, status)
+          VALUES (?, ?, ?, ?, ?, ?, ?, 'active')`,
+    args: [
+      id,
+      String(store.id),
+      title,
+      body.description ? String(body.description).trim() : null,
+      price,
+      compareAtPrice,
+      JSON.stringify(items),
+    ],
+  });
+
+  return c.json({ ok: true, id });
+});
+
+marketplaceRoutes.delete("/merchants/me/bundles/:id", requireAuth, async (c) => {
+  const user = c.get("user");
+  const memberRes = await db.execute({
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    args: [user.sub],
+  });
+  const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
+  if (!merchantId) return c.json({ error: "no_merchant_membership" }, 403);
+
+  const store = await getMerchantStore(merchantId);
+  if (!store || !(await hasTable("store_bundles"))) {
+    return c.json({ error: "bundles_not_available" }, 400);
+  }
+
+  const id = c.req.param("id")!;
+  await db.execute({
+    sql: "DELETE FROM store_bundles WHERE id = ? AND store_id = ?",
+    args: [id, String(store.id)],
+  });
+
+  return c.json({ ok: true });
+});
+
+marketplaceRoutes.get("/merchants/me/winback-campaigns", requireAuth, async (c) => {
+  const user = c.get("user");
+  const memberRes = await db.execute({
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    args: [user.sub],
+  });
+  const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
+  if (!merchantId) return c.json({ error: "no_merchant_membership" }, 403);
+
+  const store = await getMerchantStore(merchantId);
+  if (!store || !(await hasTable("store_winback_campaigns"))) {
+    return c.json({ campaigns: [], inactiveCustomers: [] });
+  }
+
+  const campaignsRes = await db.execute({
+    sql: "SELECT * FROM store_winback_campaigns WHERE store_id = ? ORDER BY sent_at DESC LIMIT 50",
+    args: [String(store.id)],
+  });
+
+  let inactiveCustomers: Row[] = [];
+  if (await hasTable("store_customer_loyalty")) {
+    const custRes = await db.execute({
+      sql: `SELECT * FROM store_customer_loyalty
+            WHERE store_id = ? AND (last_order_at < datetime('now', '-7 days') OR orders_count >= 1)
+            ORDER BY total_spent_ugx DESC
+            LIMIT 50`,
+      args: [String(store.id)],
+    });
+    inactiveCustomers = custRes.rows as Row[];
+  }
+
+  return c.json({ campaigns: campaignsRes.rows, inactiveCustomers });
+});
+
+marketplaceRoutes.post("/merchants/me/winback-campaigns", requireAuth, async (c) => {
+  const user = c.get("user");
+  const memberRes = await db.execute({
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    args: [user.sub],
+  });
+  const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
+  if (!merchantId) return c.json({ error: "no_merchant_membership" }, 403);
+
+  const store = await getMerchantStore(merchantId);
+  if (!store || !(await hasTable("store_winback_campaigns"))) {
+    return c.json({ error: "winback_not_available" }, 400);
+  }
+
+  const settings = await getMarketplaceSettings();
+  if (settings.eliteWinbackEnabled === false) {
+    return c.json({ error: "winback_disabled_by_admin" }, 403);
+  }
+
+  const body = await c.req.json().catch(() => ({}));
+  const phone = String(body.customer_phone || "").replace(/[^0-9]/g, "");
+  if (!phone) return c.json({ error: "phone_required" }, 400);
+
+  const message = String(body.message || "").trim();
+  if (!message) return c.json({ error: "message_required" }, 400);
+
+  const id = "wb_" + crypto.randomUUID().slice(0, 12);
+  const cleanPhone = phone.startsWith("0") ? "256" + phone.slice(1) : phone;
+  const whatsappUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
+
+  await db.execute({
+    sql: `INSERT INTO store_winback_campaigns (id, store_id, customer_phone, customer_name, discount_code, channel, message, status)
+          VALUES (?, ?, ?, ?, ?, ?, ?, 'sent')`,
+    args: [
+      id,
+      String(store.id),
+      phone,
+      body.customer_name ? String(body.customer_name).trim() : null,
+      body.discount_code ? String(body.discount_code).trim() : null,
+      body.channel === "sms" ? "sms" : body.channel === "push" ? "push" : "whatsapp",
+      message,
+    ],
+  });
+
+  return c.json({ ok: true, campaignId: id, whatsappUrl });
+});
+
+// ---------------------------------------------------------------------------
 // Customer Public Marketplace Endpoints
 // ---------------------------------------------------------------------------
 
@@ -2628,7 +3050,7 @@ marketplaceRoutes.get("/marketplace/stores", async (c) => {
 });
 
 marketplaceRoutes.get("/marketplace/stores/:id", async (c) => {
-  const id = c.req.param("id");
+  const id = c.req.param("id")!;
   const latParam = c.req.query("lat");
   const lngParam = c.req.query("lng");
   const userLat = latParam != null && latParam !== "" ? parseFloat(latParam) : null;
@@ -2688,6 +3110,19 @@ marketplaceRoutes.get("/marketplace/stores/:id", async (c) => {
     discounts = discRes.rows as Row[];
   }
 
+  let bundles: any[] = [];
+  if (await hasTable("store_bundles")) {
+    const bunRes = await db.execute({
+      sql: "SELECT id, title, description, price, compare_at_price, items_json FROM store_bundles WHERE store_id = ? AND status = 'active' ORDER BY created_at DESC",
+      args: [storeId],
+    });
+    bundles = bunRes.rows.map((r) => {
+      let items = [];
+      try { items = JSON.parse(String(r.items_json || "[]")); } catch {}
+      return { ...r, items };
+    });
+  }
+
   let outlets: Row[] = [];
   if (store.merchant_id && (await hasTable("merchant_outlets"))) {
     const outRes = await db.execute({
@@ -2701,6 +3136,7 @@ marketplaceRoutes.get("/marketplace/stores/:id", async (c) => {
     store,
     collections,
     discounts,
+    bundles,
     outlets,
     channels: {
       customerAppUrl: `https://app.peebee.online/store/${slug}`,
@@ -2728,7 +3164,7 @@ const publicB2bInquirySchema = z.object({
 });
 
 marketplaceRoutes.post("/marketplace/stores/:id/b2b-inquiry", async (c) => {
-  const id = c.req.param("id");
+  const id = c.req.param("id")!;
   if (!(await hasTable("store_draft_orders"))) {
     return c.json({ error: "migration_pending", message: "B2B draft orders migration is pending." }, 503);
   }
@@ -2784,7 +3220,7 @@ marketplaceRoutes.post("/marketplace/stores/:id/b2b-inquiry", async (c) => {
 });
 
 marketplaceRoutes.get("/marketplace/stores/:id/products", async (c) => {
-  const id = c.req.param("id");
+  const id = c.req.param("id")!;
   const storeRes = await db.execute({
     sql: "SELECT id FROM stores WHERE id = ? OR slug = ?",
     args: [id, id],
@@ -2825,7 +3261,7 @@ marketplaceRoutes.get("/marketplace/stores/:id/products", async (c) => {
 });
 
 marketplaceRoutes.get("/marketplace/products/:id", async (c) => {
-  const id = c.req.param("id");
+  const id = c.req.param("id")!;
 
   // 1. Try database lookup
   const prodRes = await db.execute({

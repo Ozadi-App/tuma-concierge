@@ -606,6 +606,108 @@ test("merchant elite tier: upgrades to elite, manages Store 2.0 theme, smart col
     assert.equal(crmData.customers[0].orders_count, 2);
     assert.equal(crmData.customers[0].total_spent_ugx, 532000);
     assert.equal(crmData.customers[0].points_balance_ugx, 18600);
+
+    // 16. Supplier Directory (Phase 4)
+    const supRes = await req("/merchants/me/suppliers", "POST", {
+      name: "Mukwano Wholesalers Ltd",
+      contact_person: "Patrick Mukwano",
+      phone: "+256772123456",
+      email: "orders@mukwano.ug",
+      address: "Plot 14 6th Street Industrial Area",
+    });
+    assert.equal(supRes.status, 200);
+    const supData = (await supRes.json()) as any;
+    assert.ok(supData.id);
+
+    const supListRes = await req("/merchants/me/suppliers");
+    assert.equal(supListRes.status, 200);
+    const supList = (await supListRes.json()) as any;
+    assert.equal(supList.suppliers.length, 1);
+    assert.equal(supList.suppliers[0].name, "Mukwano Wholesalers Ltd");
+
+    // 17. Draft Purchase Order & 1-Tap Stock Receiving (Phase 4)
+    const poCreateRes = await req("/merchants/me/purchase-orders", "POST", {
+      supplier_id: supData.id,
+      outlet_id: "out_acacia",
+      items: [
+        {
+          productId: prodBody.productId,
+          title: "Silk Evening Blazer",
+          quantity: 25,
+          unitCost: 110000,
+        },
+      ],
+      notes: "Urgent restocking for acacia mall outlet",
+    });
+    assert.equal(poCreateRes.status, 200);
+    const poCreate = (await poCreateRes.json()) as any;
+    assert.equal(poCreate.totalCost, 2750000);
+    assert.ok(String(poCreate.poNumber).startsWith("PO-"));
+
+    // 1-Tap Stock Receiving
+    const poReceiveRes = await req(`/merchants/me/purchase-orders/${poCreate.id}/receive`, "POST", {});
+    assert.equal(poReceiveRes.status, 200);
+    const poReceive = (await poReceiveRes.json()) as any;
+    assert.equal(poReceive.status, "received");
+    assert.equal(poReceive.itemsReceivedCount, 1);
+
+    // Verify outlet inventory was credited with 25 new units
+    const invAfterPoRes = await req("/merchants/me/outlet-inventory?outlet_id=out_acacia");
+    const invAfterPo = (await invAfterPoRes.json()) as any;
+    const acaciaProdInv = invAfterPo.inventory.find((r: any) => r.product_id === prodBody.productId);
+    // Was 12 after transfer - 3 via POS = 9, now + 25 = 34
+    assert.equal(acaciaProdInv.quantity, 32);
+
+    // 18. Product Bundles & Kits (Phase 4)
+    const bundleCreateRes = await req("/merchants/me/bundles", "POST", {
+      title: "VIP Executive Hamper",
+      description: "Silk blazer plus luxury accessories combo",
+      price: 220000,
+      compare_at_price: 260000,
+      items: [
+        {
+          productId: prodBody.productId,
+          title: "Silk Evening Blazer",
+          quantity: 1,
+        },
+      ],
+    });
+    assert.equal(bundleCreateRes.status, 200);
+    const bundleCreate = (await bundleCreateRes.json()) as any;
+    assert.ok(bundleCreate.id);
+
+    const bundleListRes = await req("/merchants/me/bundles");
+    assert.equal(bundleListRes.status, 200);
+    const bundleList = (await bundleListRes.json()) as any;
+    assert.equal(bundleList.bundles.length, 1);
+    assert.equal(bundleList.bundles[0].title, "VIP Executive Hamper");
+    assert.equal(bundleList.bundles[0].price, 220000);
+
+    // Public store returns bundles
+    const publicStoreRes = await req(`/marketplace/stores/${upgradeData.store.id}`);
+    assert.equal(publicStoreRes.status, 200);
+    const publicStoreData = (await publicStoreRes.json()) as any;
+    assert.equal(publicStoreData.bundles.length, 1);
+    assert.equal(publicStoreData.bundles[0].title, "VIP Executive Hamper");
+
+    // 19. Customer Win-Back Campaigns (Phase 4)
+    const winbackRes = await req("/merchants/me/winback-campaigns", "POST", {
+      customer_phone: "+256777000111",
+      customer_name: "Grace Nakato",
+      discount_code: "WELCOMEBACK20",
+      channel: "whatsapp",
+      message: "Hello Grace! We miss you at Elite Boutique. Enjoy 20% off your next order today!",
+    });
+    assert.equal(winbackRes.status, 200);
+    const winbackData = (await winbackRes.json()) as any;
+    assert.ok(winbackData.campaignId);
+    assert.ok(winbackData.whatsappUrl.includes("wa.me/256777000111"));
+
+    const winbackListRes = await req("/merchants/me/winback-campaigns");
+    assert.equal(winbackListRes.status, 200);
+    const winbackList = (await winbackListRes.json()) as any;
+    assert.equal(winbackList.campaigns.length, 1);
+    assert.equal(winbackList.campaigns[0].customer_phone, "256777000111");
   } finally {
     process.env.JWT_SECRET = previousSecret;
     client.close();

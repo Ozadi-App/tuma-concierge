@@ -499,6 +499,9 @@ const updateSchema = z.object({
       elitePosEnabled: z.boolean(),
       eliteStockTransfersEnabled: z.boolean(),
       eliteCrmEnabled: z.boolean(),
+      elitePurchaseOrdersEnabled: z.boolean(),
+      eliteBundlesEnabled: z.boolean(),
+      eliteWinbackEnabled: z.boolean(),
     })
     .partial()
     .optional(),
@@ -1268,6 +1271,9 @@ const patchMarketplaceSettingsSchema = z
     elitePosEnabled: z.boolean(),
     eliteStockTransfersEnabled: z.boolean(),
     eliteCrmEnabled: z.boolean(),
+    elitePurchaseOrdersEnabled: z.boolean(),
+    eliteBundlesEnabled: z.boolean(),
+    eliteWinbackEnabled: z.boolean(),
   })
   .partial();
 
