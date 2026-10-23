@@ -181,7 +181,6 @@ export default function CarpoolPage() {
                 </span>
               )}
 
-              </div>
             </div>
             <div className="flex items-center justify-between gap-3 border-t border-[var(--border-faint)] pt-3">
               <div className="min-w-0">
