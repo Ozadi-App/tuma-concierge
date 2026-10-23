@@ -473,6 +473,64 @@ test("merchant elite tier: upgrades to elite, manages Store 2.0 theme, smart col
     assert.equal(analytics.openDraftOrdersCount, 1);
     assert.equal(analytics.activeDiscountsCount, 1);
     assert.equal(analytics.activeCollectionsCount, 1);
+
+    // 10. Dedicated Storefront auto-sync: resolves by custom_domain and returns dual-channel URLs + collections + discounts + outlets
+    const storefrontRes = await app.request("/v1/marketplace/stores/shop.kampalaboutique.ug");
+    assert.equal(storefrontRes.status, 200);
+    const storefrontData = (await storefrontRes.json()) as any;
+    assert.equal(storefrontData.store.pro_tier, "elite");
+    assert.equal(storefrontData.store.theme_layout, "editorial");
+    assert.equal(storefrontData.channels.dedicatedStorefrontUrl, `https://${updatedStore.slug}.peebee.online`);
+    assert.equal(storefrontData.channels.customerAppUrl, `https://app.peebee.online/store/${updatedStore.slug}`);
+    assert.equal(storefrontData.channels.customDomainUrl, "https://shop.kampalaboutique.ug");
+    assert.equal(storefrontData.collections.length, 1);
+    assert.equal(storefrontData.discounts.length, 1);
+    assert.equal(storefrontData.outlets.length, 2);
+
+    // 11. Public B2B Wholesale Inquiry from Dedicated Storefront ([store-name].peebee.online)
+    const publicB2bRes = await app.request("/v1/marketplace/stores/shop.kampalaboutique.ug/b2b-inquiry", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        customer_name: "Acacia Corporate Buyer",
+        customer_phone: "+256701223344",
+        customer_company: "Acacia Hospitality Ltd",
+        payment_terms: "net_30",
+        items: [
+          {
+            productId: prodBody.productId,
+            title: "Silk Evening Blazer",
+            unitPrice: 180000,
+            quantity: 4,
+          },
+        ],
+      }),
+    });
+    assert.equal(publicB2bRes.status, 201);
+    const publicB2bData = (await publicB2bRes.json()) as any;
+    assert.equal(publicB2bData.total, 720000);
+
+    // 12. Checkout Quote auto-syncs Promo Code (KAMPALA20 = 20% off) + VIP Loyalty Cashback (5%)
+    const quoteRes = await req("/marketplace/checkout/quote", "POST", {
+      items: [
+        {
+          productId: prodBody.productId,
+          storeId: String(updatedStore.id),
+          title: "Silk Evening Blazer",
+          price: 180000,
+          quantity: 1,
+        },
+      ],
+      promoCode: "KAMPALA20",
+      salesChannel: "dedicated_storefront",
+    });
+    assert.equal(quoteRes.status, 200);
+    const quoteData = (await quoteRes.json()) as any;
+    assert.equal(quoteData.rawItemsTotal, 180000);
+    assert.equal(quoteData.discountAmount, 36000);
+    assert.equal(quoteData.itemsTotal, 144000);
+    assert.equal(quoteData.appliedDiscount.code, "KAMPALA20");
+    assert.equal(quoteData.loyaltyCashbackUgx, 7200);
   } finally {
     process.env.JWT_SECRET = previousSecret;
     client.close();

@@ -916,6 +916,53 @@ export default function MerchantProStorePage() {
             </p>
           </button>
         </div>
+
+        {/* Dual-Channel Auto-Sync Status: Peebee Customer App vs Dedicated Storefront */}
+        <div className="mt-3 grid grid-cols-1 gap-2 border-t border-[var(--border-faint)] pt-3 sm:grid-cols-2">
+          <div className="flex items-center justify-between gap-2 rounded-2xl bg-[rgb(var(--surface-muted))] px-3 py-2">
+            <div className="min-w-0">
+              <span className="block text-[10px] font-black uppercase text-ink-500">
+                Channel 1 · Peebee Customer App
+              </span>
+              <span className="block truncate font-mono text-xs font-bold text-ink">
+                app.peebee.online/store/{store.slug}
+              </span>
+              <span className="block text-[10px] text-ink-500">
+                Peebee UI &amp; branding · Auto-syncs catalog &amp; stock
+              </span>
+            </div>
+            <a
+              href={`https://app.peebee.online/store/${store.slug}`}
+              target="_blank"
+              rel="noreferrer"
+              className="shrink-0 rounded-full bg-[rgb(var(--surface-card))] px-2.5 py-1 text-[10px] font-bold text-ink border border-[var(--border-faint)]"
+            >
+              Open App ↗
+            </a>
+          </div>
+
+          <div className="flex items-center justify-between gap-2 rounded-2xl border border-gold/40 bg-gold/10 px-3 py-2">
+            <div className="min-w-0">
+              <span className="block text-[10px] font-black uppercase text-gold">
+                Channel 2 · Dedicated Storefront
+              </span>
+              <span className="block truncate font-mono text-xs font-black text-ink">
+                {store.custom_domain || `${store.slug}.peebee.online`}
+              </span>
+              <span className="block text-[10px] text-ink-500">
+                Custom Store 2.0 theme, branding, collections &amp; B2B
+              </span>
+            </div>
+            <a
+              href={`https://${store.custom_domain || `${store.slug}.peebee.online`}`}
+              target="_blank"
+              rel="noreferrer"
+              className="shrink-0 rounded-full bg-gold px-2.5 py-1 text-[10px] font-black text-ink-gold"
+            >
+              Visit Site ↗
+            </a>
+          </div>
+        </div>
       </div>
 
       {notice && (
@@ -1137,8 +1184,19 @@ export default function MerchantProStorePage() {
               </div>
 
               <div className="space-y-3">
+                <div className="rounded-2xl border border-gold/30 bg-gold/10 p-3 text-xs">
+                  <p className="font-bold text-ink">
+                    Dedicated Storefront Subdomain: <span className="font-mono text-gold">https://{store.slug}.peebee.online</span>
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-ink-500">
+                    Your custom Store 2.0 theme, brand accent, hero banner, and smart collections power your standalone{" "}
+                    <span className="font-mono font-semibold">{store.slug}.peebee.online</span> site. The Peebee Customer App
+                    maintains its unified Peebee UI while auto-syncing your products, inventory, and promotions in real time.
+                  </p>
+                </div>
+
                 <div>
-                  <label className="text-xs font-semibold text-ink-500">Custom Branded Domain</label>
+                  <label className="text-xs font-semibold text-ink-500">Optional Custom Domain Override (CNAME to {store.slug}.peebee.online)</label>
                   <input
                     type="text"
                     value={customDomain}

@@ -1999,10 +1999,36 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
       if (lat != null && !isNaN(lat)) params.set("lat", String(lat));
       if (lng != null && !isNaN(lng)) params.set("lng", String(lng));
       const q = params.toString() ? `?${params.toString()}` : "";
-      return request<{ store: any }>(`/v1/marketplace/stores/${id}${q}`);
+      return request<{
+        store: any;
+        collections?: StoreCollection[];
+        discounts?: StoreDiscount[];
+        outlets?: Array<{ id: string; name: string; code: string; address: string | null; lat?: number | null; lng?: number | null; status: string }>;
+        channels?: {
+          customerAppUrl: string;
+          dedicatedStorefrontUrl: string;
+          customDomainUrl: string | null;
+        };
+      }>(`/v1/marketplace/stores/${encodeURIComponent(id)}${q}`);
+    },
+    async submitStoreB2bInquiry(
+      storeIdOrSlug: string,
+      input: {
+        customer_name: string;
+        customer_phone: string;
+        customer_company?: string;
+        payment_terms?: "immediate" | "net_7" | "net_14" | "net_30";
+        notes?: string;
+        items: StoreDraftOrderItem[];
+      },
+    ) {
+      return request<{ ok: true; id: string; total: number }>(`/v1/marketplace/stores/${encodeURIComponent(storeIdOrSlug)}/b2b-inquiry`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      });
     },
     async getMarketplaceStoreProducts(id: string) {
-      return request<{ products: any[] }>(`/v1/marketplace/stores/${id}/products`);
+      return request<{ products: any[] }>(`/v1/marketplace/stores/${encodeURIComponent(id)}/products`);
     },
     async getMarketplaceProduct(id: string) {
       return request<{ product: any; store?: any }>(`/v1/marketplace/products/${id}`);
@@ -2035,6 +2061,8 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
       relayMeetStageId?: string;
       /** A long trip: by matatu relay (default when offered) or one rider all the way. */
       deliveryMode?: "rider" | "relay";
+      promoCode?: string;
+      salesChannel?: "customer_app" | "dedicated_storefront";
     }) {
       return request<{ ok: boolean; orders: OrderRow[]; order: OrderRow }>("/v1/marketplace/checkout", {
         method: "POST",
@@ -2049,9 +2077,23 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
       relayLastMile?: "door" | "collect" | "meet";
       relayMeetStageId?: string;
       deliveryMode?: "rider" | "relay";
+      promoCode?: string;
+      salesChannel?: "customer_app" | "dedicated_storefront";
     }) {
       return request<{
         itemsTotal: number;
+        rawItemsTotal?: number;
+        discountAmount?: number;
+        appliedDiscount?: {
+          id: string;
+          storeId: string;
+          code: string;
+          title: string;
+          kind: "percent" | "fixed" | "free_delivery" | "bogo";
+          discountAmount: number;
+          freeDelivery: boolean;
+        } | null;
+        loyaltyCashbackUgx?: number;
         deliveryFee: number;
         total: number;
         /** How this quote delivers; when a relay is offered the customer chooses (relay by default). */

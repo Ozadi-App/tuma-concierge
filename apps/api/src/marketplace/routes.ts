@@ -2213,9 +2213,12 @@ marketplaceRoutes.get("/marketplace/stores/:id", async (c) => {
   const userLat = latParam != null && latParam !== "" ? parseFloat(latParam) : null;
   const userLng = lngParam != null && lngParam !== "" ? parseFloat(lngParam) : null;
 
+  const hasCustomDomain = await hasColumn("stores", "custom_domain");
   const res = await db.execute({
-    sql: "SELECT * FROM stores WHERE id = ? OR slug = ?",
-    args: [id, id],
+    sql: hasCustomDomain
+      ? "SELECT * FROM stores WHERE id = ? OR slug = ? OR LOWER(custom_domain) = LOWER(?)"
+      : "SELECT * FROM stores WHERE id = ? OR slug = ?",
+    args: hasCustomDomain ? [id, id, id] : [id, id],
   });
 
   let store = (res.rows[0] as Row | undefined) ?? null;
@@ -2224,6 +2227,17 @@ marketplaceRoutes.get("/marketplace/stores/:id", async (c) => {
   }
 
   if (!store) return c.json({ error: "store_not_found" }, 404);
+
+  if (Number(store.elite_tier || 0) === 1) {
+    store = { ...store, pro_tier: "elite" };
+  }
+
+  const slug = String(store.slug || store.id);
+  store = {
+    ...store,
+    subdomain_url: `https://${slug}.peebee.online`,
+    marketplace_url: `https://app.peebee.online/store/${slug}`,
+  };
 
   if (userLat != null && !isNaN(userLat) && userLng != null && !isNaN(userLng)) {
     const sLat = typeof store.lat === "number" ? store.lat : typeof store.lat === "string" ? parseFloat(store.lat) : null;
@@ -2234,7 +2248,118 @@ marketplaceRoutes.get("/marketplace/stores/:id", async (c) => {
     store = { ...store, distance_km: distanceKm };
   }
 
-  return c.json({ store });
+  const storeId = String(store.id);
+  let collections: Row[] = [];
+  if (await hasTable("store_collections")) {
+    const colRes = await db.execute({
+      sql: "SELECT * FROM store_collections WHERE store_id = ? AND status = 'active' ORDER BY pinned DESC, sort_order, created_at DESC",
+      args: [storeId],
+    });
+    collections = colRes.rows as Row[];
+  }
+
+  let discounts: Row[] = [];
+  if (await hasTable("store_discounts")) {
+    const discRes = await db.execute({
+      sql: "SELECT id, code, title, kind, value, min_order_amount, is_automatic FROM store_discounts WHERE store_id = ? AND status = 'active' ORDER BY is_automatic DESC, created_at DESC",
+      args: [storeId],
+    });
+    discounts = discRes.rows as Row[];
+  }
+
+  let outlets: Row[] = [];
+  if (store.merchant_id && (await hasTable("merchant_outlets"))) {
+    const outRes = await db.execute({
+      sql: "SELECT id, name, code, address, lat, lng, status FROM merchant_outlets WHERE merchant_id = ? AND status = 'active' ORDER BY created_at",
+      args: [String(store.merchant_id)],
+    });
+    outlets = outRes.rows as Row[];
+  }
+
+  return c.json({
+    store,
+    collections,
+    discounts,
+    outlets,
+    channels: {
+      customerAppUrl: `https://app.peebee.online/store/${slug}`,
+      dedicatedStorefrontUrl: `https://${slug}.peebee.online`,
+      customDomainUrl: store.custom_domain ? `https://${String(store.custom_domain)}` : null,
+    },
+  });
+});
+
+// Public B2B Wholesale Inquiry from Dedicated Storefront ([store-name].peebee.online)
+const publicB2bInquirySchema = z.object({
+  customer_name: z.string().min(2).max(120),
+  customer_phone: z.string().min(6).max(30),
+  customer_company: z.string().max(120).optional(),
+  payment_terms: z.enum(["immediate", "net_7", "net_14", "net_30"]).default("net_14"),
+  notes: z.string().max(500).optional(),
+  items: z.array(
+    z.object({
+      productId: z.string(),
+      title: z.string(),
+      unitPrice: z.number().int().nonnegative(),
+      quantity: z.number().int().positive(),
+    })
+  ).min(1),
+});
+
+marketplaceRoutes.post("/marketplace/stores/:id/b2b-inquiry", async (c) => {
+  const id = c.req.param("id");
+  if (!(await hasTable("store_draft_orders"))) {
+    return c.json({ error: "migration_pending", message: "B2B draft orders migration is pending." }, 503);
+  }
+  const settings = await getMarketplaceSettings();
+  if (!settings.eliteB2bEnabled) {
+    return c.json({ error: "b2b_disabled", message: "B2B Wholesale is currently disabled." }, 403);
+  }
+
+  const hasCustomDomain = await hasColumn("stores", "custom_domain");
+  const storeRes = await db.execute({
+    sql: hasCustomDomain
+      ? "SELECT * FROM stores WHERE id = ? OR slug = ? OR LOWER(custom_domain) = LOWER(?)"
+      : "SELECT * FROM stores WHERE id = ? OR slug = ?",
+    args: hasCustomDomain ? [id, id, id] : [id, id],
+  });
+  const store = (storeRes.rows[0] as Row | undefined) ?? null;
+  if (!store) return c.json({ error: "store_not_found" }, 404);
+
+  const parsed = publicB2bInquirySchema.safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) return c.json({ error: "invalid_body", issues: parsed.error.issues }, 400);
+
+  const subtotal = parsed.data.items.reduce((sum, it) => sum + it.unitPrice * it.quantity, 0);
+  const minB2b = Number(store.b2b_min_order_amount || 0);
+  if (minB2b > 0 && subtotal < minB2b) {
+    return c.json({
+      error: "below_b2b_minimum",
+      message: `Minimum wholesale order for ${String(store.name)} is UGX ${minB2b.toLocaleString()}.`,
+    }, 400);
+  }
+
+  const draftId = newId("drf");
+  await db.execute({
+    sql: `INSERT INTO store_draft_orders (
+            id, store_id, customer_name, customer_phone, customer_company,
+            items_json, subtotal_amount, discount_amount, total_amount,
+            payment_terms, notes, status
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, 'open')`,
+    args: [
+      draftId,
+      String(store.id),
+      parsed.data.customer_name.trim(),
+      parsed.data.customer_phone.trim(),
+      parsed.data.customer_company?.trim() || null,
+      JSON.stringify(parsed.data.items),
+      subtotal,
+      subtotal,
+      parsed.data.payment_terms,
+      parsed.data.notes?.trim() || "Submitted via Dedicated Storefront B2B Portal",
+    ],
+  });
+
+  return c.json({ ok: true, id: draftId, total: subtotal }, 201);
 });
 
 marketplaceRoutes.get("/marketplace/stores/:id/products", async (c) => {
@@ -2426,7 +2551,117 @@ const marketplaceCheckoutSchema = z.object({
   relayMeetStageId: z.string().max(80).optional(),
   /** A long trip: by matatu relay (the default when one is offered) or one rider all the way. */
   deliveryMode: z.enum(["rider", "relay"]).optional(),
+  /** Optional promo code synced from Merchant Elite OS to both Customer App and Dedicated Storefront. */
+  promoCode: z.string().max(40).optional(),
+  /** Channel origin: Peebee Customer App vs Dedicated Brand Storefront ([store-name].peebee.online). */
+  salesChannel: z.enum(["customer_app", "dedicated_storefront"]).optional(),
 });
+
+type AppliedDiscountSummary = {
+  id: string;
+  storeId: string;
+  code: string;
+  title: string;
+  kind: "percent" | "fixed" | "free_delivery" | "bogo";
+  discountAmount: number;
+  freeDelivery: boolean;
+};
+
+async function evaluateBagPromosAndLoyalty(
+  stops: DeliveryStop[],
+  promoCode?: string,
+): Promise<{
+  discountAmount: number;
+  appliedDiscount: AppliedDiscountSummary | null;
+  loyaltyCashbackUgx: number;
+  discountByStore: Map<string, number>;
+  freeDeliveryStoreIds: Set<string>;
+}> {
+  const discountByStore = new Map<string, number>();
+  const freeDeliveryStoreIds = new Set<string>();
+  let appliedDiscount: AppliedDiscountSummary | null = null;
+  let loyaltyCashbackUgx = 0;
+
+  const mktSettings = await getMarketplaceSettings();
+  const hasDiscounts = await hasTable("store_discounts");
+  const hasLoyaltyCol = await hasColumn("stores", "loyalty_enabled");
+  const cleanCode = promoCode?.trim().toUpperCase() || "";
+
+  for (const stop of stops) {
+    if (hasDiscounts && !appliedDiscount) {
+      const discRes = await db.execute({
+        sql: cleanCode
+          ? "SELECT * FROM store_discounts WHERE store_id = ? AND status = 'active' AND (UPPER(code) = ? OR is_automatic = 1) ORDER BY CASE WHEN UPPER(code) = ? THEN 0 ELSE 1 END, created_at DESC"
+          : "SELECT * FROM store_discounts WHERE store_id = ? AND status = 'active' AND is_automatic = 1 ORDER BY created_at DESC",
+        args: cleanCode ? [stop.storeId, cleanCode, cleanCode] : [stop.storeId],
+      });
+      for (const d of discRes.rows as Row[]) {
+        const minOrder = Number(d.min_order_amount || 0);
+        const maxUses = d.max_uses != null ? Number(d.max_uses) : null;
+        const usesCount = Number(d.uses_count || 0);
+        if (stop.itemsTotal < minOrder) continue;
+        if (maxUses != null && usesCount >= maxUses) continue;
+
+        const kind = String(d.kind) as AppliedDiscountSummary["kind"];
+        const val = Number(d.value || 0);
+        let amount = 0;
+        let freeDel = false;
+        if (kind === "percent") {
+          amount = Math.min(stop.itemsTotal, Math.round((stop.itemsTotal * Math.min(95, Math.max(0, val))) / 100));
+        } else if (kind === "fixed") {
+          amount = Math.min(stop.itemsTotal, Math.max(0, val));
+        } else if (kind === "bogo") {
+          const totalQty = stop.items.reduce((sum, it) => sum + it.quantity, 0);
+          if (totalQty >= 2) {
+            const cheapestUnit = Math.min(...stop.items.map((it) => it.price));
+            amount = Math.min(stop.itemsTotal, cheapestUnit);
+          } else {
+            continue;
+          }
+        } else if (kind === "free_delivery") {
+          freeDel = true;
+          freeDeliveryStoreIds.add(stop.storeId);
+        }
+
+        if (amount > 0 || freeDel) {
+          discountByStore.set(stop.storeId, amount);
+          appliedDiscount = {
+            id: String(d.id),
+            storeId: stop.storeId,
+            code: String(d.code),
+            title: String(d.title),
+            kind,
+            discountAmount: amount,
+            freeDelivery: freeDel,
+          };
+          break;
+        }
+      }
+    }
+
+    if (mktSettings.eliteLoyaltyEnabled && hasLoyaltyCol) {
+      const storeRes = await db.execute({
+        sql: "SELECT loyalty_enabled, loyalty_cashback_percent FROM stores WHERE id = ?",
+        args: [stop.storeId],
+      });
+      const st = storeRes.rows[0] as Row | undefined;
+      if (st && Number(st.loyalty_enabled || 0) === 1) {
+        const pct = Math.min(mktSettings.eliteMaxLoyaltyCashbackPercent, Math.max(0, Number(st.loyalty_cashback_percent || 0)));
+        const netStoreItems = Math.max(0, stop.itemsTotal - (discountByStore.get(stop.storeId) ?? 0));
+        loyaltyCashbackUgx += Math.round((netStoreItems * pct) / 100);
+      }
+    }
+  }
+
+  const totalItemDiscount = Array.from(discountByStore.values()).reduce((a, b) => a + b, 0);
+  return {
+    discountAmount: totalItemDiscount,
+    appliedDiscount,
+    loyaltyCashbackUgx,
+    discountByStore,
+    freeDeliveryStoreIds,
+  };
+}
 
 // Marketplace Cart Checkout -> Real Orders linked to Boda Delivery System
 marketplaceRoutes.post("/marketplace/checkout", requireAuth, async (c) => {
@@ -2454,6 +2689,20 @@ marketplaceRoutes.post("/marketplace/checkout", requireAuth, async (c) => {
 
   const bag = await planMarketplaceDelivery(d.items, d, environment);
   const stops = bag.stops;
+  const promoEval = await evaluateBagPromosAndLoyalty(stops, d.promoCode);
+  for (const stop of stops) {
+    const itemDisc = promoEval.discountByStore.get(stop.storeId) ?? 0;
+    stop.itemsTotal = Math.max(0, stop.itemsTotal - itemDisc);
+    if (promoEval.freeDeliveryStoreIds.has(stop.storeId)) {
+      stop.deliveryFee = 0;
+    }
+  }
+  if (promoEval.appliedDiscount && (await hasTable("store_discounts"))) {
+    await db.execute({
+      sql: "UPDATE store_discounts SET uses_count = uses_count + 1 WHERE id = ?",
+      args: [promoEval.appliedDiscount.id],
+    });
+  }
   const relay = bag.mode === "relay" ? bag.relay : null;
   if (relay && paymentRail === "float") {
     return c.json({ error: "relay_requires_prepay", message: "Long-distance deliveries are paid in the app, not in cash." }, 409);
@@ -2574,7 +2823,7 @@ marketplaceRoutes.post("/marketplace/checkout", requireAuth, async (c) => {
   return c.json({ ok: true, orders, order: orders[0] }, 201);
 });
 
-const quoteSchema = marketplaceCheckoutSchema.pick({ items: true, destinationLat: true, destinationLng: true, relayLastMile: true, relayMeetStageId: true, deliveryMode: true });
+const quoteSchema = marketplaceCheckoutSchema.pick({ items: true, destinationLat: true, destinationLng: true, relayLastMile: true, relayMeetStageId: true, deliveryMode: true, promoCode: true, salesChannel: true });
 
 /** The exact delivery fee a bag will be charged, split by store. Checkout shows this, never an estimate. */
 marketplaceRoutes.post("/marketplace/checkout/quote", requireAuth, async (c) => {
@@ -2583,10 +2832,22 @@ marketplaceRoutes.post("/marketplace/checkout/quote", requireAuth, async (c) => 
   const bag = await planMarketplaceDelivery(parsed.data.items, parsed.data, await getPlatformEnvironment());
   const { stops, trip } = bag;
   const relayed = bag.relay;
-  const itemsTotal = stops.reduce((sum, stop) => sum + stop.itemsTotal, 0);
+  const promoEval = await evaluateBagPromosAndLoyalty(stops, parsed.data.promoCode);
+  for (const stop of stops) {
+    if (promoEval.freeDeliveryStoreIds.has(stop.storeId)) {
+      stop.deliveryFee = 0;
+    }
+  }
+  const rawItemsTotal = stops.reduce((sum, stop) => sum + stop.itemsTotal, 0);
+  const discountAmount = promoEval.discountAmount;
+  const itemsTotal = Math.max(0, rawItemsTotal - discountAmount);
   const deliveryFee = stops.reduce((sum, stop) => sum + stop.deliveryFee, 0);
   return c.json({
     itemsTotal,
+    rawItemsTotal,
+    discountAmount,
+    appliedDiscount: promoEval.appliedDiscount,
+    loyaltyCashbackUgx: promoEval.loyaltyCashbackUgx,
     deliveryFee,
     total: itemsTotal + deliveryFee,
     /** Which way this quote delivers; the customer can switch when a relay is offered. */
@@ -2660,12 +2921,64 @@ async function planMarketplaceDelivery(
     let lat: number | null = null;
     let lng: number | null = null;
     if (await hasTable("stores")) {
-      const row = (await db.execute({ sql: "SELECT name, address, lat, lng FROM stores WHERE id = ?", args: [storeId] })).rows[0] as Row | undefined;
+      const row = (await db.execute({ sql: "SELECT name, address, lat, lng, merchant_id FROM stores WHERE id = ?", args: [storeId] })).rows[0] as Row | undefined;
       if (row) {
         storeName = String(row.name ?? storeName);
         storeAddress = (row.address as string | null) ?? null;
         lat = (row.lat as number | null) ?? null;
         lng = (row.lng as number | null) ?? null;
+
+        // Multi-Outlet Inventory routing: if the merchant has stocked branches in store_outlet_inventory,
+        // pick the active branch that has the items in stock (nearest to customer when coordinates exist).
+        const mktSettings = await getMarketplaceSettings();
+        if (
+          row.merchant_id &&
+          mktSettings.eliteMultiOutletInventoryEnabled &&
+          (await hasTable("store_outlet_inventory")) &&
+          (await hasTable("merchant_outlets"))
+        ) {
+          const outRes = await db.execute({
+            sql: "SELECT id, name, address, lat, lng FROM merchant_outlets WHERE merchant_id = ? AND status = 'active'",
+            args: [String(row.merchant_id)],
+          });
+          const outlets = outRes.rows as Row[];
+          if (outlets.length > 0) {
+            const invRes = await db.execute({
+              sql: "SELECT outlet_id, product_id, quantity FROM store_outlet_inventory WHERE store_id = ?",
+              args: [storeId],
+            });
+            const invRows = invRes.rows as Row[];
+            if (invRows.length > 0) {
+              const stockedOutlets = outlets.filter((o) =>
+                storeItems.every((it) => {
+                  const match = invRows.find((r) => String(r.outlet_id) === String(o.id) && String(r.product_id) === it.productId);
+                  return match && Number(match.quantity || 0) >= it.quantity;
+                }),
+              );
+              const candidates = stockedOutlets.length > 0 ? stockedOutlets : [];
+              if (candidates.length > 0) {
+                let chosen = candidates[0];
+                if (destination.destinationLat != null && destination.destinationLng != null) {
+                  let bestDist = Infinity;
+                  for (const cand of candidates) {
+                    if (cand.lat != null && cand.lng != null) {
+                      const dKm = haversineKm(destination.destinationLat, destination.destinationLng, Number(cand.lat), Number(cand.lng));
+                      if (dKm < bestDist) {
+                        bestDist = dKm;
+                        chosen = cand;
+                      }
+                    }
+                  }
+                }
+                if (chosen.address) storeAddress = `${String(chosen.name)} · ${String(chosen.address)}`;
+                if (chosen.lat != null && chosen.lng != null) {
+                  lat = Number(chosen.lat);
+                  lng = Number(chosen.lng);
+                }
+              }
+            }
+          }
+        }
       }
     }
     // A demo store saved before it had a map pin still has its pin in the demo catalogue.
