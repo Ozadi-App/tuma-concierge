@@ -2996,6 +2996,162 @@ marketplaceRoutes.post("/merchants/me/winback-campaigns", requireAuth, async (c)
   return c.json({ ok: true, campaignId: id, whatsappUrl });
 });
 
+export const DEFAULT_STOREFRONT_SECTIONS = [
+  { id: "sec_announcement", type: "announcement", title: "Announcement Bar", subtitle: "Top flash deals & delivery updates", enabled: true, order: 1, settings: { showTicker: true } },
+  { id: "sec_hero", type: "hero", title: "Hero Showcase & Story", subtitle: "Primary storefront banner & call to action", enabled: true, order: 2, settings: { showCta: true } },
+  { id: "sec_bundles", type: "bundles", title: "Bundles & Gift Hampers", subtitle: "Curated multi-product kits with package savings", enabled: true, order: 3, settings: { maxItems: 6 } },
+  { id: "sec_collections", type: "featured_collection", title: "Featured Collections", subtitle: "Automated smart categories & featured shelves", enabled: true, order: 4, settings: { layout: "grid" } },
+  { id: "sec_video", type: "video_spotlight", title: "Live Selling & Video Reel", subtitle: "Live video stream or farm harvest demo", enabled: true, order: 5, settings: { autoPlayMuted: false } },
+  { id: "sec_reviews", type: "testimonials", title: "Customer Reviews & Social Proof", subtitle: "Verified buyer feedback and 5-star ratings", enabled: true, order: 6, settings: { showRatings: true } },
+  { id: "sec_badges", type: "trust_badges", title: "Store Guarantees", subtitle: "Speedy boda delivery, freshness guarantee & direct payments", enabled: true, order: 7, settings: { columns: 4 } },
+  { id: "sec_faq", type: "faq", title: "Frequently Asked Questions", subtitle: "Order timing, delivery areas & payment FAQs", enabled: true, order: 8, settings: {} },
+];
+
+marketplaceRoutes.get("/merchants/me/storefront-sections", requireAuth, async (c) => {
+  const user = c.get("user");
+  const memberRes = await db.execute({
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    args: [user.sub],
+  });
+  const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
+  if (!merchantId) return c.json({ error: "no_merchant_membership" }, 403);
+
+  const store = await getMerchantStore(merchantId);
+  if (!store) return c.json({ error: "store_not_found" }, 404);
+
+  let sections = DEFAULT_STOREFRONT_SECTIONS;
+  if (await hasColumn("stores", "theme_sections")) {
+    try {
+      if (store.theme_sections) {
+        const parsed = JSON.parse(String(store.theme_sections));
+        if (Array.isArray(parsed) && parsed.length > 0) sections = parsed;
+      }
+    } catch {}
+  }
+
+  return c.json({ sections });
+});
+
+marketplaceRoutes.put("/merchants/me/storefront-sections", requireAuth, async (c) => {
+  const user = c.get("user");
+  const memberRes = await db.execute({
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    args: [user.sub],
+  });
+  const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
+  if (!merchantId) return c.json({ error: "no_merchant_membership" }, 403);
+
+  const store = await getMerchantStore(merchantId);
+  if (!store) return c.json({ error: "store_not_found" }, 404);
+
+  const settings = await getMarketplaceSettings();
+  if (settings.eliteStorefrontSectionsEnabled === false) {
+    return c.json({ error: "sections_disabled_by_admin", message: "Storefront section customization is disabled." }, 403);
+  }
+
+  const body = await c.req.json().catch(() => ({}));
+  const sections = Array.isArray(body.sections) ? body.sections : [];
+  if (sections.length === 0) {
+    return c.json({ error: "invalid_sections", message: "Sections list cannot be empty." }, 400);
+  }
+
+  if (await hasColumn("stores", "theme_sections")) {
+    await db.execute({
+      sql: "UPDATE stores SET theme_sections = ? WHERE id = ?",
+      args: [JSON.stringify(sections), String(store.id)],
+    });
+  }
+
+  return c.json({ ok: true, sections });
+});
+
+marketplaceRoutes.get("/merchants/me/sms-logs", requireAuth, async (c) => {
+  const user = c.get("user");
+  const memberRes = await db.execute({
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    args: [user.sub],
+  });
+  const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
+  if (!merchantId) return c.json({ error: "no_merchant_membership" }, 403);
+
+  const store = await getMerchantStore(merchantId);
+  if (!store || !(await hasTable("store_sms_logs"))) {
+    return c.json({ logs: [] });
+  }
+
+  const logsRes = await db.execute({
+    sql: "SELECT * FROM store_sms_logs WHERE store_id = ? ORDER BY created_at DESC LIMIT 50",
+    args: [String(store.id)],
+  });
+
+  return c.json({ logs: logsRes.rows });
+});
+
+marketplaceRoutes.post("/merchants/me/send-sms", requireAuth, async (c) => {
+  const user = c.get("user");
+  const memberRes = await db.execute({
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    args: [user.sub],
+  });
+  const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
+  if (!merchantId) return c.json({ error: "no_merchant_membership" }, 403);
+
+  const store = await getMerchantStore(merchantId);
+  if (!store) return c.json({ error: "store_not_found" }, 404);
+
+  const settings = await getMarketplaceSettings();
+  if (settings.eliteSmsAlertsEnabled === false) {
+    return c.json({ error: "sms_disabled_by_admin", message: "Automated SMS alerts are currently disabled by administrator." }, 403);
+  }
+
+  const body = await c.req.json().catch(() => ({}));
+  const rawPhone = String(body.recipient_phone || "").replace(/[^0-9]/g, "");
+  if (!rawPhone || rawPhone.length < 9) {
+    return c.json({ error: "invalid_phone", message: "Valid phone number is required." }, 400);
+  }
+
+  const bodyText = String(body.body || "").trim();
+  if (!bodyText) {
+    return c.json({ error: "body_required", message: "SMS message text cannot be empty." }, 400);
+  }
+
+  const cleanPhone = rawPhone.startsWith("0") ? "256" + rawPhone.slice(1) : rawPhone.startsWith("256") ? rawPhone : "256" + rawPhone;
+  const messageType = ["pos_receipt", "order_confirmation", "dispatch_alert", "abandoned_cart"].includes(body.message_type)
+    ? body.message_type
+    : "pos_receipt";
+
+  const logId = "sms_" + crypto.randomUUID().slice(0, 12);
+  const costUgx = Number(settings.eliteSmsCostPerMessageUgx) || 35;
+  const extId = "SMS-UG-" + Date.now().toString(36).toUpperCase() + "-" + Math.floor(Math.random() * 899 + 100);
+
+  if (await hasTable("store_sms_logs")) {
+    await db.execute({
+      sql: "INSERT INTO store_sms_logs (id, store_id, recipient_phone, recipient_name, message_type, body, status, external_message_id, cost_ugx) VALUES (?, ?, ?, ?, ?, ?, 'delivered', ?, ?)",
+      args: [
+        logId,
+        String(store.id),
+        "+" + cleanPhone,
+        body.recipient_name ? String(body.recipient_name).trim() : null,
+        messageType,
+        bodyText,
+        extId,
+        costUgx,
+      ],
+    });
+  }
+
+  const whatsappShareUrl = "https://wa.me/" + cleanPhone + "?text=" + encodeURIComponent(bodyText);
+
+  return c.json({
+    ok: true,
+    logId,
+    status: "delivered",
+    costUgx,
+    externalMessageId: extId,
+    whatsappShareUrl,
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Customer Public Marketplace Endpoints
 // ---------------------------------------------------------------------------
@@ -3123,6 +3279,16 @@ marketplaceRoutes.get("/marketplace/stores/:id", async (c) => {
     });
   }
 
+  let sections: any[] = DEFAULT_STOREFRONT_SECTIONS;
+  if (await hasColumn("stores", "theme_sections")) {
+    try {
+      if (store.theme_sections) {
+        const parsedSec = JSON.parse(String(store.theme_sections));
+        if (Array.isArray(parsedSec) && parsedSec.length > 0) sections = parsedSec;
+      }
+    } catch {}
+  }
+
   let outlets: Row[] = [];
   if (store.merchant_id && (await hasTable("merchant_outlets"))) {
     const outRes = await db.execute({
@@ -3137,6 +3303,7 @@ marketplaceRoutes.get("/marketplace/stores/:id", async (c) => {
     collections,
     discounts,
     bundles,
+    sections,
     outlets,
     channels: {
       customerAppUrl: `https://app.peebee.online/store/${slug}`,

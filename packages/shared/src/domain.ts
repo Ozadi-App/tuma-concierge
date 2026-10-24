@@ -411,6 +411,10 @@ export type MarketplaceSettings = {
   elitePurchaseOrdersEnabled?: boolean;
   eliteBundlesEnabled?: boolean;
   eliteWinbackEnabled?: boolean;
+  eliteStorefrontSectionsEnabled?: boolean;
+  eliteSmsAlertsEnabled?: boolean;
+  eliteSmsCostPerMessageUgx?: number;
+  smsProvider?: "simulator" | "africas_talking" | "twilio";
 };
 
 export type StoreCollection = {
@@ -587,6 +591,40 @@ export type StoreBundle = {
   compare_at_price: number | null;
   items: StoreBundleItem[];
   status: "active" | "draft" | "archived";
+  created_at: string;
+};
+
+export type StorefrontSectionType =
+  | "announcement"
+  | "hero"
+  | "bundles"
+  | "featured_collection"
+  | "video_spotlight"
+  | "testimonials"
+  | "trust_badges"
+  | "faq"
+  | "contact_strip";
+
+export type StorefrontSection = {
+  id: string;
+  type: StorefrontSectionType;
+  title: string;
+  subtitle?: string;
+  enabled: boolean;
+  order: number;
+  settings?: Record<string, any>;
+};
+
+export type StoreSmsLog = {
+  id: string;
+  store_id: string;
+  recipient_phone: string;
+  recipient_name: string | null;
+  message_type: "pos_receipt" | "order_confirmation" | "dispatch_alert" | "abandoned_cart";
+  body: string;
+  status: "delivered" | "failed" | "simulated";
+  external_message_id?: string | null;
+  cost_ugx: number;
   created_at: string;
 };
 

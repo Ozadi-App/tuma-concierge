@@ -434,6 +434,10 @@ const DEFAULTS = {
   marketplace_elite_purchase_orders_enabled: "1",
   marketplace_elite_bundles_enabled: "1",
   marketplace_elite_winback_enabled: "1",
+  marketplace_elite_storefront_sections_enabled: "1",
+  marketplace_elite_sms_alerts_enabled: "1",
+  marketplace_elite_sms_cost_per_message_ugx: "35",
+  marketplace_sms_provider: "simulator",
   /** Peebee Learn Studio: schools, classes, courses and lessons made by educators */
   learn_enabled: "1",
   learn_streams: "sprouts,foundations,academy,compass,skills",
@@ -1814,6 +1818,10 @@ export async function getMarketplaceSettings(): Promise<MarketplaceSettings> {
     elitePosOrdersStr,
     eliteBundlesStr,
     eliteWinbackStr,
+    eliteStorefrontSectionsStr,
+    eliteSmsAlertsStr,
+    eliteSmsCostStr,
+    smsProviderStr,
   ] = await Promise.all([
     getSetting("marketplace_enabled"),
     getSetting("marketplace_live_enabled"),
@@ -1848,6 +1856,10 @@ export async function getMarketplaceSettings(): Promise<MarketplaceSettings> {
     getSetting("marketplace_elite_purchase_orders_enabled"),
     getSetting("marketplace_elite_bundles_enabled"),
     getSetting("marketplace_elite_winback_enabled"),
+    getSetting("marketplace_elite_storefront_sections_enabled"),
+    getSetting("marketplace_elite_sms_alerts_enabled"),
+    getSetting("marketplace_elite_sms_cost_per_message_ugx"),
+    getSetting("marketplace_sms_provider"),
   ]);
 
   return {
@@ -1884,6 +1896,10 @@ export async function getMarketplaceSettings(): Promise<MarketplaceSettings> {
     elitePurchaseOrdersEnabled: elitePosOrdersStr !== "0",
     eliteBundlesEnabled: eliteBundlesStr !== "0",
     eliteWinbackEnabled: eliteWinbackStr !== "0",
+    eliteStorefrontSectionsEnabled: eliteStorefrontSectionsStr !== "0",
+    eliteSmsAlertsEnabled: eliteSmsAlertsStr !== "0",
+    eliteSmsCostPerMessageUgx: Math.max(0, Number(eliteSmsCostStr) || 35),
+    smsProvider: (smsProviderStr === "africas_talking" || smsProviderStr === "twilio") ? smsProviderStr : "simulator",
   };
 }
 
@@ -1922,6 +1938,10 @@ export async function setMarketplaceSettings(next: Partial<MarketplaceSettings>)
   if (next.elitePurchaseOrdersEnabled != null) writes.push(setSetting("marketplace_elite_purchase_orders_enabled", next.elitePurchaseOrdersEnabled ? "1" : "0"));
   if (next.eliteBundlesEnabled != null) writes.push(setSetting("marketplace_elite_bundles_enabled", next.eliteBundlesEnabled ? "1" : "0"));
   if (next.eliteWinbackEnabled != null) writes.push(setSetting("marketplace_elite_winback_enabled", next.eliteWinbackEnabled ? "1" : "0"));
+  if (next.eliteStorefrontSectionsEnabled != null) writes.push(setSetting("marketplace_elite_storefront_sections_enabled", next.eliteStorefrontSectionsEnabled ? "1" : "0"));
+  if (next.eliteSmsAlertsEnabled != null) writes.push(setSetting("marketplace_elite_sms_alerts_enabled", next.eliteSmsAlertsEnabled ? "1" : "0"));
+  if (next.eliteSmsCostPerMessageUgx != null) writes.push(setSetting("marketplace_elite_sms_cost_per_message_ugx", String(Math.max(0, Math.round(next.eliteSmsCostPerMessageUgx)))));
+  if (next.smsProvider != null) writes.push(setSetting("marketplace_sms_provider", next.smsProvider));
   await Promise.all(writes);
 }
 
