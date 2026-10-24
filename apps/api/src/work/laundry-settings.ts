@@ -28,6 +28,8 @@ export type LaundrySettings = {
   tipMaxUgx: number;
   tipOntimeHours: number;
   /** Peebee's percent of the goods, withheld from the provider's payout. */
+  /** When Peebee's commission is taken: withheld at the provider's payout, or immediately at every checkout. */
+  commissionTiming: "on_payout" | "at_checkout";
   providerCommissionPercent: number;
   customerFeeEnabled: boolean;
   customerFeeType: "flat" | "percent";
@@ -49,7 +51,7 @@ export async function getLaundrySettings(): Promise<LaundrySettings> {
     "laundry_offer_min_percent", "laundry_offer_max_percent", "laundry_offer_step_ugx",
     "laundry_ride_payer_pickup", "laundry_ride_payer_delivery", "laundry_ride_split_customer_percent", "laundry_ride_fee_ugx",
     "laundry_overage_ugx_per_lb", "laundry_tip_free_enabled", "laundry_tip_conditional_enabled", "laundry_tip_max_ugx", "laundry_tip_ontime_hours",
-    "laundry_provider_commission_percent", "laundry_customer_fee_enabled", "laundry_customer_fee_type", "laundry_customer_fee_value", "laundry_customer_fee_max_share_percent",
+    "laundry_commission_timing", "laundry_provider_commission_percent", "laundry_customer_fee_enabled", "laundry_customer_fee_type", "laundry_customer_fee_value", "laundry_customer_fee_max_share_percent",
   ] as const;
   const v = Object.fromEntries(await Promise.all(keys.map(async (k) => [k, await getSetting(k)]))) as Record<(typeof keys)[number], string>;
   const minPercent = int(v.laundry_offer_min_percent, 80, 1, 100);
@@ -68,6 +70,7 @@ export async function getLaundrySettings(): Promise<LaundrySettings> {
     tipConditionalEnabled: v.laundry_tip_conditional_enabled !== "0",
     tipMaxUgx: int(v.laundry_tip_max_ugx, 50_000, 0, 10_000_000),
     tipOntimeHours: int(v.laundry_tip_ontime_hours, 48, 1, 24 * 30),
+    commissionTiming: v.laundry_commission_timing === "at_checkout" ? "at_checkout" : "on_payout",
     providerCommissionPercent: int(v.laundry_provider_commission_percent, 15, 0, 60),
     customerFeeEnabled: v.laundry_customer_fee_enabled === "1",
     customerFeeType: v.laundry_customer_fee_type === "percent" ? "percent" : "flat",
@@ -95,6 +98,7 @@ export async function setLaundrySettings(next: Partial<Omit<LaundrySettings, "pr
   if (next.tipConditionalEnabled != null) put("laundry_tip_conditional_enabled", next.tipConditionalEnabled ? "1" : "0");
   if (next.tipMaxUgx != null) put("laundry_tip_max_ugx", String(next.tipMaxUgx));
   if (next.tipOntimeHours != null) put("laundry_tip_ontime_hours", String(next.tipOntimeHours));
+  if (next.commissionTiming) put("laundry_commission_timing", next.commissionTiming);
   if (next.providerCommissionPercent != null) put("laundry_provider_commission_percent", String(next.providerCommissionPercent));
   if (next.customerFeeEnabled != null) put("laundry_customer_fee_enabled", next.customerFeeEnabled ? "1" : "0");
   if (next.customerFeeType) put("laundry_customer_fee_type", next.customerFeeType);

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { checkoutTotal, clampOffer, conditionalTipReleased, customerFee, goodsPrice, normaliseTip, offerBand, overageUgx, priceLines, settleLaundry, splitRides, type ItemPrices } from "./laundry-pricing.js";
+import { checkoutTotal, commissionPlan, clampOffer, conditionalTipReleased, customerFee, goodsPrice, normaliseTip, offerBand, overageUgx, priceLines, settleLaundry, splitRides, type ItemPrices } from "./laundry-pricing.js";
 
 const items = new Map<string, ItemPrices>([
   ["shirt", { washUgx: 3000, dryCleanUgx: 6000, ironUgx: 1500 }],
@@ -95,4 +95,11 @@ test("a provider ride share bigger than the goods can't make the payout negative
   const s = settleLaundry({ goodsUgx: 2000, commissionPercent: 10, customerRideUgx: 0, providerRideUgx: 9000, tipUgx: 0, tipReleased: false, feeUgx: 0 });
   assert.ok(s.providerUgx >= 0);
   assert.equal(s.providerUgx + s.riderUgx + s.platformUgx + s.tipRefundUgx, 2000);
+});
+test("the timing rule decides when commission is taken, never both", () => {
+  assert.deepEqual(commissionPlan(40000, 15, "at_checkout"), { commissionUgx: 6000, takenAtCheckoutUgx: 6000, withheldAtPayoutUgx: 0 });
+  assert.deepEqual(commissionPlan(40000, 15, "on_payout"), { commissionUgx: 6000, takenAtCheckoutUgx: 0, withheldAtPayoutUgx: 6000 });
+  const s = settleLaundry({ goodsUgx: 40000, commissionPercent: 15, customerRideUgx: 0, providerRideUgx: 0, tipUgx: 0, tipReleased: false, feeUgx: 0, commissionTakenAtCheckout: true });
+  assert.equal(s.platformUgx, 0);
+  assert.equal(s.providerUgx, 34000);
 });

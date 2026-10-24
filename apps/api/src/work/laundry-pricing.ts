@@ -148,6 +148,8 @@ export type Settlement = {
 export function settleLaundry(p: {
   goodsUgx: number; commissionPercent: number; customerRideUgx: number; providerRideUgx: number;
   tipUgx: number; tipReleased: boolean; feeUgx: number;
+  /** Commission already taken at checkout (timing "at_checkout"); it is not taken again at payout. */
+  commissionTakenAtCheckout?: boolean;
 }): Settlement {
   const goods = Math.max(0, p.goodsUgx);
   const commissionUgx = Math.round((goods * p.commissionPercent) / 100);
@@ -156,8 +158,16 @@ export function settleLaundry(p: {
   return {
     providerUgx: goods - commissionUgx - providerRide + tipPaid,
     riderUgx: p.customerRideUgx + providerRide,
-    platformUgx: commissionUgx + p.feeUgx,
+    // At checkout the platform already has its commission, so only the customer fee is left to book here.
+    platformUgx: (p.commissionTakenAtCheckout ? 0 : commissionUgx) + p.feeUgx,
     commissionUgx,
     tipRefundUgx: p.tipUgx - tipPaid,
   };
+}
+export type CommissionTiming = "on_payout" | "at_checkout";
+
+/** Peebee's commission on the goods, and how much of it is taken at the moment of checkout under the admin's timing rule. */
+export function commissionPlan(goodsUgx: number, percent: number, timing: CommissionTiming) {
+  const commissionUgx = Math.round((Math.max(0, goodsUgx) * percent) / 100);
+  return { commissionUgx, takenAtCheckoutUgx: timing === "at_checkout" ? commissionUgx : 0, withheldAtPayoutUgx: timing === "at_checkout" ? 0 : commissionUgx };
 }

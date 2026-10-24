@@ -575,6 +575,9 @@ const DEFAULTS = {
   laundry_tip_ontime_hours: "48",
   // Peebee's cut, set the same way as for riders. Provider commission is withheld from the provider's payout on the goods
   // only (never the rider fee or a tip). The customer fee is added at checkout and is 100% platform revenue.
+  // When Peebee's commission is taken. "on_payout": withheld from the provider's payout as it lands in their app (like riders).
+  // "at_checkout": taken immediately, on every customer checkout, and not left to the payout.
+  laundry_commission_timing: "on_payout",
   laundry_provider_commission_percent: "15",
   laundry_customer_fee_enabled: "0",
   laundry_customer_fee_type: "flat",
