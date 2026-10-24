@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { clampOffer, conditionalTipReleased, goodsPrice, normaliseTip, offerBand, overageUgx, priceLines, splitRides, type ItemPrices } from "./laundry-pricing.js";
+import { checkoutTotal, clampOffer, conditionalTipReleased, customerFee, goodsPrice, normaliseTip, offerBand, overageUgx, priceLines, settleLaundry, splitRides, type ItemPrices } from "./laundry-pricing.js";
 
 const items = new Map<string, ItemPrices>([
   ["shirt", { washUgx: 3000, dryCleanUgx: 6000, ironUgx: 1500 }],
@@ -64,4 +64,35 @@ test("a conditional tip needs on-time delivery and no dispute", () => {
 test("overage is charged only above the limit", () => {
   assert.equal(overageUgx(12, 10, 1500), 3000);
   assert.equal(overageUgx(8, 10, 1500), 0);
+});
+
+const feeRule = { enabled: true, type: "percent" as const, value: 5, maxSharePercent: 50 };
+
+test("the customer fee is automatic, off when disabled, and capped", () => {
+  assert.equal(customerFee(40000, feeRule), 2000);
+  assert.equal(customerFee(40000, { ...feeRule, enabled: false }), 0);
+  assert.equal(customerFee(40000, { enabled: true, type: "flat", value: 1500, maxSharePercent: 50 }), 1500);
+  assert.equal(customerFee(1000, { enabled: true, type: "flat", value: 5000, maxSharePercent: 50 }), 500);
+});
+
+test("checkout adds the fee, ride share and tip to the goods", () => {
+  assert.equal(checkoutTotal({ goodsUgx: 40000, customerRideUgx: 4000, tipUgx: 2000, feeUgx: 2000 }), 48000);
+});
+
+test("rider gets the ride fee, commission comes off the goods only, tip goes to the provider", () => {
+  const s = settleLaundry({ goodsUgx: 40000, commissionPercent: 15, customerRideUgx: 4000, providerRideUgx: 3000, tipUgx: 2000, tipReleased: true, feeUgx: 2000 });
+  assert.deepEqual(s, { providerUgx: 40000 - 6000 - 3000 + 2000, riderUgx: 7000, platformUgx: 8000, commissionUgx: 6000, tipRefundUgx: 0 });
+  assert.equal(s.providerUgx + s.riderUgx + s.platformUgx + s.tipRefundUgx, 40000 + 4000 + 2000 + 2000);
+});
+
+test("an unearned conditional tip goes back to the customer and everything still adds up", () => {
+  const s = settleLaundry({ goodsUgx: 25000, commissionPercent: 10, customerRideUgx: 0, providerRideUgx: 6000, tipUgx: 3000, tipReleased: false, feeUgx: 0 });
+  assert.equal(s.tipRefundUgx, 3000);
+  assert.equal(s.providerUgx + s.riderUgx + s.platformUgx + s.tipRefundUgx, 25000 + 3000);
+});
+
+test("a provider ride share bigger than the goods can't make the payout negative", () => {
+  const s = settleLaundry({ goodsUgx: 2000, commissionPercent: 10, customerRideUgx: 0, providerRideUgx: 9000, tipUgx: 0, tipReleased: false, feeUgx: 0 });
+  assert.ok(s.providerUgx >= 0);
+  assert.equal(s.providerUgx + s.riderUgx + s.platformUgx + s.tipRefundUgx, 2000);
 });

@@ -108,3 +108,56 @@ export function conditionalTipReleased(input: { disputed: boolean; deliveredAt: 
 export function overageUgx(weighedLb: number, limitLb: number, perLbUgx: number): number {
   return Math.round(Math.max(0, weighedLb - limitLb) * perLbUgx);
 }
+
+export type CustomerFeeRule = { enabled: boolean; type: "flat" | "percent"; value: number; maxSharePercent: number };
+
+/**
+ * Peebee's fee added to the customer's total at checkout, automatically. Flat is UGX; percent is of
+ * what the customer pays for goods and their ride share. It can never exceed `maxSharePercent` of that base.
+ * It is all platform revenue: neither the provider nor the rider is paid less because of it.
+ */
+export function customerFee(baseUgx: number, rule: CustomerFeeRule): number {
+  if (!rule.enabled || baseUgx <= 0) return 0;
+  const raw = rule.type === "percent" ? (baseUgx * rule.value) / 100 : rule.value;
+  return Math.max(0, Math.min(Math.round(raw), Math.floor((baseUgx * rule.maxSharePercent) / 100)));
+}
+
+/** What the customer is charged at checkout, all held together. */
+export function checkoutTotal(p: { goodsUgx: number; customerRideUgx: number; tipUgx: number; feeUgx: number }): number {
+  return p.goodsUgx + p.customerRideUgx + p.tipUgx + p.feeUgx;
+}
+
+export type Settlement = {
+  /** To the provider: goods less Peebee's commission and the provider's ride share, plus a released tip. */
+  providerUgx: number;
+  /** To the rider(s): the whole ride fee, both shares. */
+  riderUgx: number;
+  /** Peebee's: commission on the goods plus the customer fee. */
+  platformUgx: number;
+  commissionUgx: number;
+  /** Back to the customer: a conditional tip that wasn't earned. */
+  tipRefundUgx: number;
+};
+
+/**
+ * Splits everything the customer paid once the order is delivered. The parts always add up to
+ * the amount held. Commission is taken from the goods only, as it lands in the provider's app,
+ * never from the rider fee or a tip. If the provider's ride share exceeds what the goods can cover,
+ * it is capped at the goods so the provider's payout is never negative.
+ */
+export function settleLaundry(p: {
+  goodsUgx: number; commissionPercent: number; customerRideUgx: number; providerRideUgx: number;
+  tipUgx: number; tipReleased: boolean; feeUgx: number;
+}): Settlement {
+  const goods = Math.max(0, p.goodsUgx);
+  const commissionUgx = Math.round((goods * p.commissionPercent) / 100);
+  const providerRide = Math.min(p.providerRideUgx, goods - commissionUgx);
+  const tipPaid = p.tipReleased ? p.tipUgx : 0;
+  return {
+    providerUgx: goods - commissionUgx - providerRide + tipPaid,
+    riderUgx: p.customerRideUgx + providerRide,
+    platformUgx: commissionUgx + p.feeUgx,
+    commissionUgx,
+    tipRefundUgx: p.tipUgx - tipPaid,
+  };
+}

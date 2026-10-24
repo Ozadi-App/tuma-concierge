@@ -573,6 +573,14 @@ const DEFAULTS = {
   laundry_tip_conditional_enabled: "1",
   laundry_tip_max_ugx: "50000",
   laundry_tip_ontime_hours: "48",
+  // Peebee's cut, set the same way as for riders. Provider commission is withheld from the provider's payout on the goods
+  // only (never the rider fee or a tip). The customer fee is added at checkout and is 100% platform revenue.
+  laundry_provider_commission_percent: "15",
+  laundry_customer_fee_enabled: "0",
+  laundry_customer_fee_type: "flat",
+  laundry_customer_fee_value: "0",
+  // The customer fee can never be more than this percent of what the customer pays for goods and rides (1-99).
+  laundry_customer_fee_max_share_percent: "50",
   /** Peebee Hire: a marketplace where customers find workers and workers find gigs, projects and hiring posts (tables talent_*). Off until admin turns it on. */
   talent_enabled: "0",
   talent_gigs_enabled: "1",

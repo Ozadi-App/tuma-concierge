@@ -4,7 +4,7 @@ import { logActivity } from "../admin/activity.js";
 import { requirePermission } from "../admin/permissions.js";
 import { db } from "../db/client.js";
 import { tablesExist } from "../lib/schema.js";
-import { goodsPrice, LAUNDRY_TREATMENTS, normaliseTip, offerBand, priceLines, RIDE_PAYERS, splitRides, type ItemPrices } from "./laundry-pricing.js";
+import { checkoutTotal, customerFee, goodsPrice, LAUNDRY_TREATMENTS, normaliseTip, offerBand, priceLines, RIDE_PAYERS, splitRides, type ItemPrices } from "./laundry-pricing.js";
 import { getLaundrySettings, LAUNDRY_SERVICES, setLaundrySettings, type LaundrySettings } from "./laundry-settings.js";
 import type { Row } from "./service.js";
 
@@ -132,6 +132,8 @@ laundryRoutes.post("/laundry/quote", async (c) => {
   const tip = normaliseTip(d.tip?.kind ?? "none", d.tip?.amountUgx ?? 0, { freeEnabled: settings.tipFreeEnabled, conditionalEnabled: settings.tipConditionalEnabled, maxUgx: settings.tipMaxUgx, stepUgx: settings.offerStepUgx });
   const rides = splitRides({ pickupUgx: settings.rideFeeUgx, deliveryUgx: settings.rideFeeUgx }, { pickup: settings.ridePayerPickup, delivery: settings.ridePayerDelivery }, settings.rideSplitCustomerPercent);
 
+  const feeUgx = customerFee(goodsUgx + rides.customerUgx, { enabled: settings.customerFeeEnabled, type: settings.customerFeeType, value: settings.customerFeeValue, maxSharePercent: settings.customerFeeMaxSharePercent });
+
   return c.json({
     currency: "UGX",
     lines: lines.priced.map((l) => ({ ...l, name: itemMap.get(l.itemId)?.name })),
@@ -143,7 +145,7 @@ laundryRoutes.post("/laundry/quote", async (c) => {
     goodsUgx,
     tip,
     rides: { customerUgx: rides.customerUgx, providerUgx: rides.providerUgx, pickup: rides.pickup, delivery: rides.delivery },
-    customerTotalUgx: goodsUgx + tip.amountUgx + rides.customerUgx,
+    // Peebee's fee, added automatically at checkout. Shown to the customer as its own line.\n    customerFeeUgx: feeUgx,\n    customerTotalUgx: checkoutTotal({ goodsUgx, customerRideUgx: rides.customerUgx, tipUgx: tip.amountUgx, feeUgx }),
   });
 });
 
@@ -165,6 +167,11 @@ const settingsSchema = z.object({
   tipConditionalEnabled: z.boolean().optional(),
   tipMaxUgx: z.number().int().min(0).max(10_000_000).optional(),
   tipOntimeHours: z.number().int().min(1).max(720).optional(),
+  providerCommissionPercent: z.number().int().min(0).max(60).optional(),
+  customerFeeEnabled: z.boolean().optional(),
+  customerFeeType: z.enum(["flat", "percent"]).optional(),
+  customerFeeValue: z.number().int().min(0).max(10_000_000).optional(),
+  customerFeeMaxSharePercent: z.number().int().min(1).max(99).optional(),
 });
 
 laundryRoutes.get("/admin/laundry/settings", requirePermission("work.view"), async (c) => c.json({ settings: await getLaundrySettings() }));
