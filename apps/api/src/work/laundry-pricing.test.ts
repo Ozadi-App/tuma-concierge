@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { checkoutTotal, commissionPlan, clampOffer, conditionalTipReleased, customerFee, goodsPrice, normaliseTip, offerBand, overageUgx, priceLines, settleLaundry, splitRides, type ItemPrices } from "./laundry-pricing.js";
+import { cancelLaundry, checkoutTotal, commissionPlan, clampOffer, conditionalTipReleased, customerFee, goodsPrice, normaliseTip, offerBand, overageUgx, priceLines, settleLaundry, splitRides, type ItemPrices } from "./laundry-pricing.js";
 
 const items = new Map<string, ItemPrices>([
   ["shirt", { washUgx: 3000, dryCleanUgx: 6000, ironUgx: 1500 }],
@@ -102,4 +102,10 @@ test("the timing rule decides when commission is taken, never both", () => {
   const s = settleLaundry({ goodsUgx: 40000, commissionPercent: 15, customerRideUgx: 0, providerRideUgx: 0, tipUgx: 0, tipReleased: false, feeUgx: 0, commissionTakenAtCheckout: true });
   assert.equal(s.platformUgx, 0);
   assert.equal(s.providerUgx, 34000);
+});
+
+test("cancelling: refund returns everything, keep lets Peebee retain what it took at checkout", () => {
+  assert.deepEqual(cancelLaundry({ heldUgx: 48000, commissionTakenAtCheckoutUgx: 6000, feeUgx: 2000, rule: "refund" }), { customerRefundUgx: 48000, platformUgx: 0 });
+  assert.deepEqual(cancelLaundry({ heldUgx: 48000, commissionTakenAtCheckoutUgx: 6000, feeUgx: 2000, rule: "keep" }), { customerRefundUgx: 40000, platformUgx: 8000 });
+  assert.deepEqual(cancelLaundry({ heldUgx: 42000, commissionTakenAtCheckoutUgx: 0, feeUgx: 0, rule: "keep" }), { customerRefundUgx: 42000, platformUgx: 0 });
 });

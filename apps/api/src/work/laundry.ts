@@ -168,6 +168,7 @@ const settingsSchema = z.object({
   tipMaxUgx: z.number().int().min(0).max(10_000_000).optional(),
   tipOntimeHours: z.number().int().min(1).max(720).optional(),
   commissionTiming: z.enum(["on_payout", "at_checkout"]).optional(),
+  cancelCommission: z.enum(["refund", "keep"]).optional(),
   providerCommissionPercent: z.number().int().min(0).max(60).optional(),
   customerFeeEnabled: z.boolean().optional(),
   customerFeeType: z.enum(["flat", "percent"]).optional(),

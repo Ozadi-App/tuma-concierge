@@ -171,3 +171,15 @@ export function commissionPlan(goodsUgx: number, percent: number, timing: Commis
   const commissionUgx = Math.round((Math.max(0, goodsUgx) * percent) / 100);
   return { commissionUgx, takenAtCheckoutUgx: timing === "at_checkout" ? commissionUgx : 0, withheldAtPayoutUgx: timing === "at_checkout" ? 0 : commissionUgx };
 }
+
+export type CancelRule = "refund" | "keep";
+
+/**
+ * Money back when an order is cancelled before the provider has done any work. Under "refund" the customer gets everything back.
+ * Under "keep" Peebee retains what it already took at checkout: the commission when timing is "at_checkout", and the customer fee.
+ * Under "on_payout" timing no commission was taken yet, so there is nothing to keep. The parts always add up to what was held.
+ */
+export function cancelLaundry(p: { heldUgx: number; commissionTakenAtCheckoutUgx: number; feeUgx: number; rule: CancelRule }) {
+  const platformUgx = p.rule === "keep" ? Math.min(p.heldUgx, p.commissionTakenAtCheckoutUgx + p.feeUgx) : 0;
+  return { customerRefundUgx: p.heldUgx - platformUgx, platformUgx };
+}

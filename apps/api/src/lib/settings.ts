@@ -578,6 +578,9 @@ const DEFAULTS = {
   // When Peebee's commission is taken. "on_payout": withheld from the provider's payout as it lands in their app (like riders).
   // "at_checkout": taken immediately, on every customer checkout, and not left to the payout.
   laundry_commission_timing: "on_payout",
+  // If an order is cancelled: "refund" gives the customer everything back, including Peebee's commission and fee; "keep" lets Peebee
+  // keep what it already took at checkout (commission under "at_checkout", and the customer fee).
+  laundry_cancel_commission: "refund",
   laundry_provider_commission_percent: "15",
   laundry_customer_fee_enabled: "0",
   laundry_customer_fee_type: "flat",
