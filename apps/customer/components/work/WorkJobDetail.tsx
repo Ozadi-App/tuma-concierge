@@ -350,7 +350,36 @@ function JobBody({ detail, settings, onChanged }: { detail: Detail; settings: Wo
           <Line label="When" value={job.scheduledFor ? formatWorkDate(job.scheduledFor) : "As soon as possible"} />
           <Line label="Where" value={job.address} />
         </dl>
-        {job.details ? <p className="rounded-2xl bg-[rgb(var(--surface-muted))] p-3 text-sm text-ink-500">{job.details}</p> : null}
+                {job.details ? <p className="rounded-2xl bg-[rgb(var(--surface-muted))] p-3 text-sm text-ink-500">{job.details}</p> : null}
+
+        {/* Laundry Bag Verification Sheet */}
+        {(job as any).laundry && (job as any).laundry.lines && (job as any).laundry.lines.length > 0 && (
+          <div className="space-y-2 rounded-2xl border border-[var(--border-faint)] bg-[var(--surface-raised)] p-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold uppercase tracking-wider text-ink">Laundry Bag Contents</span>
+              <span className="text-[10px] text-ink-500">Check at pickup</span>
+            </div>
+            <div className="divide-y divide-[var(--border-faint)]">
+              {(job as any).laundry.lines.map((l: any) => (
+                <div key={l.id} className="flex items-center justify-between py-2 text-xs">
+                  <div>
+                    <span className="font-semibold text-ink">{l.name}</span>
+                    {l.treatment && <span className="ml-1.5 rounded bg-[var(--surface-sunken)] px-1.5 py-0.5 text-[10px] text-ink-500 capitalize">{l.treatment.replace('_', ' ')}</span>}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-ink">× {l.count}</span>
+                    <span className="text-ink-500">{formatUgx(l.lineTotalUgx)}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {(job as any).laundry.contactless && (
+              <p className="border-t border-[var(--border-faint)] pt-2 text-[11px] text-ink-500">
+                • Contactless pickup and delivery requested
+              </p>
+            )}
+          </div>
+        )}
       </section>
 
       {job.provider ? (
