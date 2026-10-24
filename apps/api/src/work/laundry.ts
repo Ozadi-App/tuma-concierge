@@ -2,11 +2,17 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { logActivity } from "../admin/activity.js";
 import { requirePermission } from "../admin/permissions.js";
-import { db } from "../db/client.js";
+import { db, executeBatch, type DbStatement } from "../db/client.js";
+import { newId } from "../lib/ids.js";
+import { consume } from "../lib/ratelimit.js";
 import { tablesExist } from "../lib/schema.js";
-import { checkoutTotal, customerFee, goodsPrice, LAUNDRY_TREATMENTS, normaliseTip, offerBand, priceLines, RIDE_PAYERS, splitRides, type ItemPrices } from "./laundry-pricing.js";
+import { getPlatformEnvironment } from "../lib/settings.js";
+import { checkoutTotal, commissionPlan, customerFee, goodsPrice, LAUNDRY_TREATMENTS, normaliseTip, offerBand, priceLines, RIDE_PAYERS, splitRides, type ItemPrices } from "./laundry-pricing.js";
 import { getLaundrySettings, LAUNDRY_SERVICES, setLaundrySettings, type LaundrySettings } from "./laundry-settings.js";
-import type { Row } from "./service.js";
+import { customerActions, getJob, jobView } from "./jobs.js";
+import { LAUNDRY_SERVICE_ID } from "./laundry-orders.js";
+import { chargeCustomer, dropUnpaidHold, inMinutes, logEvent, notifyProviders, toDb, type Row } from "./service.js";
+import { getWorkSettings, type WorkMatchingMode } from "./settings.js";
 
 /**
  * Laundry catalogue, quote and admin configuration. Mounted under /v1/work.
@@ -82,14 +88,9 @@ const quoteSchema = z.object({
  * Prices a basket without creating anything: the catalogue total, the pricing mode that applies
  * (admin's choice), the offer slider band, the goods price after any offer, ride shares and tip.
  */
-laundryRoutes.post("/laundry/quote", async (c) => {
-  if (!(await laundryReady())) return c.json(pending, 503);
-  const parsed = quoteSchema.safeParse(await c.req.json().catch(() => ({})));
-  if (!parsed.success) return c.json({ error: "invalid_body", issues: parsed.error.issues }, 400);
-  const d = parsed.data;
-  if (d.items.length === 0 && d.packages.length === 0) return c.json({ error: "empty_order", message: "Choose something to wash first." }, 400);
-  const settings = await getLaundrySettings();
-
+async function quoteBasket(d: z.infer<typeof quoteSchema>, settings: LaundrySettings) {
+  const bad = (body: Record<string, unknown>) => ({ ok: false as const, status: 400 as const, body });
+  if (d.items.length === 0 && d.packages.length === 0) return bad({ error: "empty_order", message: "Choose something to wash first." });
   const itemRows = d.items.length
     ? ((await db.execute({ sql: `SELECT * FROM laundry_items WHERE active = 1 AND id IN (${d.items.map(() => "?").join(",")})`, args: [...new Set(d.items.map((i) => i.itemId))] })).rows as Row[])
     : [];
@@ -101,10 +102,10 @@ laundryRoutes.post("/laundry/quote", async (c) => {
   for (const l of d.items) counts.set(l.itemId, (counts.get(l.itemId) ?? 0) + l.count);
   for (const [id, n] of counts) {
     const max = itemMap.get(id)?.maxCount;
-    if (max != null && n > max) return c.json({ error: "too_many", message: `You can add up to ${max} of ${itemMap.get(id)?.name}.` }, 400);
+    if (max != null && n > max) return bad({ error: "too_many", message: `You can add up to ${max} of ${itemMap.get(id)?.name}.` });
   }
   const lines = priceLines(d.items, itemMap);
-  if (!lines.ok) return c.json({ error: lines.error, itemId: lines.itemId, message: "One of those items can't be ordered that way." }, 400);
+  if (!lines.ok) return bad({ error: lines.error, itemId: lines.itemId, message: "One of those items can't be ordered that way." });
 
   let packagesUgx = 0;
   const packageLines: { packageId: string; name: string; count: number; unitUgx: number; lineUgx: number }[] = [];
@@ -113,8 +114,8 @@ laundryRoutes.post("/laundry/quote", async (c) => {
     const byId = new Map(rows.map((r) => [String(r.id), rowToPackage(r)]));
     for (const p of d.packages) {
       const pkg = byId.get(p.packageId);
-      if (!pkg) return c.json({ error: "unknown_package", message: "That package isn't available." }, 400);
-      if (p.count > pkg.maxCount) return c.json({ error: "too_many", message: `You can order up to ${pkg.maxCount} of ${pkg.name}.` }, 400);
+      if (!pkg) return bad({ error: "unknown_package", message: "That package isn't available." });
+      if (p.count > pkg.maxCount) return bad({ error: "too_many", message: `You can order up to ${pkg.maxCount} of ${pkg.name}.` });
       packagesUgx += pkg.priceUgx * p.count;
       packageLines.push({ packageId: pkg.id, name: pkg.name, count: p.count, unitUgx: pkg.priceUgx, lineUgx: pkg.priceUgx * p.count });
     }
@@ -134,10 +135,11 @@ laundryRoutes.post("/laundry/quote", async (c) => {
 
   const feeUgx = customerFee(goodsUgx + rides.customerUgx, { enabled: settings.customerFeeEnabled, type: settings.customerFeeType, value: settings.customerFeeValue, maxSharePercent: settings.customerFeeMaxSharePercent });
 
-  return c.json({
+  const commission = commissionPlan(goodsUgx, settings.providerCommissionPercent, settings.commissionTiming);
+  return { ok: true as const, data: {
     currency: "UGX",
     lines: lines.priced.map((l) => ({ ...l, name: itemMap.get(l.itemId)?.name })),
-    packageLines,
+    packageLines: packageLines,
     catalogueUgx,
     pricingMode: mode,
     // The slider only exists when the customer is allowed to offer.
@@ -145,10 +147,146 @@ laundryRoutes.post("/laundry/quote", async (c) => {
     goodsUgx,
     tip,
     rides: { customerUgx: rides.customerUgx, providerUgx: rides.providerUgx, pickup: rides.pickup, delivery: rides.delivery },
-    // Peebee's fee, added automatically at checkout. Shown to the customer as its own line.\n    customerFeeUgx: feeUgx,\n    customerTotalUgx: checkoutTotal({ goodsUgx, customerRideUgx: rides.customerUgx, tipUgx: tip.amountUgx, feeUgx }),
-  });
+    // Peebee's fee, added automatically at checkout. Shown to the customer as its own line.
+    customerFeeUgx: feeUgx,
+    customerTotalUgx: checkoutTotal({ goodsUgx, customerRideUgx: rides.customerUgx, tipUgx: tip.amountUgx, feeUgx }),
+  }, commission, itemLines: lines.priced, packageLines, rides };
+}
+
+
+laundryRoutes.post("/laundry/quote", async (c) => {
+  if (!(await laundryReady())) return c.json(pending, 503);
+  const parsed = quoteSchema.safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) return c.json({ error: "invalid_body", issues: parsed.error.issues }, 400);
+  const result = await quoteBasket(parsed.data, await getLaundrySettings());
+  return result.ok ? c.json(result.data) : c.json(result.body, result.status);
 });
 
+// ---------------------------------------------------------------------------
+// Placing an order. This goes through the same checkout as every other Work booking:
+// the customer's wallet is charged and the money is held by Peebee; the engine's
+// top-up prompt (402), idempotency key, scheduling rules and provider matching all apply.
+// ---------------------------------------------------------------------------
+
+const orderSchema = quoteSchema.extend({
+  address: z.string().min(3).max(200),
+  area: z.string().max(80).optional(),
+  lat: z.number().min(-90).max(90).optional(),
+  lng: z.number().min(-180).max(180).optional(),
+  scheduledFor: z.string().max(40).optional(),
+  matchingMode: z.enum(["broadcast", "customer_picks", "admin_assigns"]).optional(),
+  idempotencyKey: z.string().min(8).max(64).optional(),
+  frequency: z.enum(["one_time", "weekly", "biweekly"]).default("one_time"),
+  detergent: z.enum(["standard", "fragrance_free"]).default("standard"),
+  contactless: z.boolean().default(false),
+  notes: z.string().max(1000).default(""),
+  /** What the customer saw on screen. If the price moved since, nothing is charged and they see the new one. */
+  expectedTotalUgx: z.number().int().min(0).optional(),
+});
+
+laundryRoutes.post("/laundry/orders", async (c) => {
+  const user = c.get("user");
+  if (user.role === "admin") return c.json({ error: "forbidden", message: "Staff accounts can't book jobs." }, 403);
+  if (!(await laundryReady())) return c.json(pending, 503);
+  const parsed = orderSchema.safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) return c.json({ error: "invalid_body", issues: parsed.error.issues }, 400);
+  const d = parsed.data;
+  const [work, settings] = await Promise.all([getWorkSettings(), getLaundrySettings()]);
+  if (!(work.serviceTypes as string[]).includes("laundry")) return c.json({ error: "service_closed", message: "Laundry isn't open right now." }, 403);
+
+  if (d.idempotencyKey) {
+    const existing = (await db.execute({ sql: "SELECT * FROM work_jobs WHERE customer_id = ? AND idempotency_key = ?", args: [user.sub, d.idempotencyKey] })).rows[0] as Row | undefined;
+    if (existing) return c.json({ job: await jobView(existing, "customer"), actions: customerActions(existing, work), repeated: true });
+  }
+
+  const quote = await quoteBasket(d, settings);
+  if (!quote.ok) return c.json(quote.body, quote.status);
+  const q = quote.data;
+  if (d.expectedTotalUgx != null && d.expectedTotalUgx !== q.customerTotalUgx) {
+    return c.json({ error: "price_changed", message: "The price changed. Check the new total and confirm again.", quote: q }, 409);
+  }
+  if (q.goodsUgx <= 0) return c.json({ error: "pricing_unavailable", message: "That order can't be booked right now." }, 409);
+
+  const matchingMode: WorkMatchingMode = d.matchingMode ?? work.defaultMatching;
+  if (!work.matchingModes.includes(matchingMode)) return c.json({ error: "matching_unavailable", message: "That way of finding a provider isn't available." }, 400);
+  if (matchingMode === "broadcast" && (d.lat == null || d.lng == null)) return c.json({ error: "location_required", message: "Share your location so nearby providers can be found." }, 400);
+
+  let scheduledFor: string | null = null;
+  if (d.scheduledFor) {
+    const when = new Date(d.scheduledFor);
+    if (Number.isNaN(when.getTime())) return c.json({ error: "invalid_schedule", message: "That date and time isn't valid." }, 400);
+    const minutesAhead = (when.getTime() - Date.now()) / 60_000;
+    if (minutesAhead < work.minLeadMinutes) return c.json({ error: "too_soon", message: `Book at least ${work.minLeadMinutes} minutes ahead.` }, 400);
+    if (minutesAhead > work.maxAdvanceDays * 1440) return c.json({ error: "too_far", message: `You can book up to ${work.maxAdvanceDays} days ahead.` }, 400);
+    scheduledFor = toDb(when);
+  }
+
+  const limit = await consume(`work-book:${user.sub}`, work.jobsPerHour, 3600);
+  if (!limit.allowed) return c.json({ error: "too_many_requests", message: "You've booked several jobs already. Try again later.", retryAfterSeconds: limit.retryAfterSeconds }, 429);
+
+  const service = (await db.execute({ sql: "SELECT * FROM work_services WHERE id = ?", args: [LAUNDRY_SERVICE_ID] })).rows[0] as Row | undefined;
+  if (!service) return c.json(pending, 503);
+
+  const environment = await getPlatformEnvironment();
+  const id = newId("wjob");
+  const hold = q.customerTotalUgx;
+  const details = [d.notes, d.detergent === "fragrance_free" ? "Fragrance-free detergent." : "", d.contactless ? "Contactless pickup." : "", d.frequency !== "one_time" ? `Repeats ${d.frequency === "weekly" ? "weekly" : "every two weeks"}.` : ""].filter(Boolean).join(" ").slice(0, 1000);
+  const promisedBy = toDb(new Date(Date.now() + settings.tipOntimeHours * 3_600_000));
+  const takenAtCheckout = quote.commission.takenAtCheckoutUgx;
+
+  // Everything about the order is written while the job is still 'pending_payment', so providers never see an unpaid order.
+  const statements: DbStatement[] = [
+    {
+      sql: `INSERT INTO work_jobs (id, customer_id, service_id, service_type, service_name, pricing_mode, matching_mode, status, quantity, details,
+              address, area, lat, lng, scheduled_for, unit_price_ugx, callout_fee_ugx, price_ugx, commission_percent, idempotency_key, environment)
+            VALUES (?, ?, ?, 'laundry', ?, 'fixed', ?, 'pending_payment', 1, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)`,
+      args: [id, user.sub, LAUNDRY_SERVICE_ID, service.name, matchingMode, details, d.address, d.area ?? null, d.lat ?? null, d.lng ?? null, scheduledFor, q.goodsUgx, q.goodsUgx, settings.providerCommissionPercent, d.idempotencyKey ?? null, environment],
+    },
+    {
+      sql: `INSERT INTO laundry_orders (job_id, mode, pricing_mode, catalogue_total_ugx, offer_ugx, goods_ugx, tip_kind, tip_ugx, pickup_ride_ugx, delivery_ride_ugx,
+              pickup_payer, delivery_payer, customer_ride_ugx, provider_ride_ugx, frequency, detergent, contactless, notes,
+              commission_timing, cancel_rule, commission_taken_ugx, fee_ugx, tip_promised_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: [id, d.items.length ? "custom" : "package", q.pricingMode, q.catalogueUgx, q.pricingMode === "estimate" ? q.goodsUgx : null, q.goodsUgx, q.tip.kind, q.tip.amountUgx,
+        settings.rideFeeUgx, settings.rideFeeUgx, settings.ridePayerPickup, settings.ridePayerDelivery, q.rides.customerUgx, q.rides.providerUgx, d.frequency, d.detergent, d.contactless ? 1 : 0, d.notes,
+        settings.commissionTiming, settings.cancelCommission, takenAtCheckout, q.customerFeeUgx, q.tip.kind === "conditional" ? promisedBy : null],
+    },
+    ...quote.itemLines.map((l) => ({
+      sql: "INSERT INTO laundry_order_lines (id, job_id, kind, ref_id, name, treatment, count, unit_price_ugx, line_total_ugx) VALUES (?, ?, 'item', ?, ?, ?, ?, ?, ?)",
+      args: [newId("lol"), id, l.itemId, q.lines.find((x) => x.itemId === l.itemId && x.treatment === l.treatment)?.name ?? l.itemId, l.treatment, l.count, l.unitUgx, l.lineUgx],
+    })),
+    ...quote.packageLines.map((l) => ({
+      sql: "INSERT INTO laundry_order_lines (id, job_id, kind, ref_id, name, treatment, count, unit_price_ugx, line_total_ugx) VALUES (?, ?, 'package', ?, ?, NULL, ?, ?, ?)",
+      args: [newId("lol"), id, l.packageId, l.name, l.count, l.unitUgx, l.lineUgx],
+    })),
+  ];
+  try {
+    await executeBatch(statements);
+  } catch (err) {
+    const again = d.idempotencyKey && (await db.execute({ sql: "SELECT * FROM work_jobs WHERE customer_id = ? AND idempotency_key = ?", args: [user.sub, d.idempotencyKey] })).rows[0];
+    if (again) return c.json({ job: await jobView(again as Row, "customer"), actions: customerActions(again as Row, work), repeated: true });
+    throw err;
+  }
+
+  // Peebee's customer fee (and the commission, when admin takes it at checkout) is recorded as Peebee's the moment the order is paid.
+  const open = {
+    sql: "UPDATE work_jobs SET status = 'open', held_ugx = ?, commission_ugx = ?, expires_at = ?, updated_at = datetime('now') WHERE id = ? AND status = 'pending_payment'",
+    args: [hold, takenAtCheckout + q.customerFeeUgx, inMinutes(work.offerWindowMinutes), id],
+  };
+  const result = await chargeCustomer({ jobId: id, key: "booking", customerId: user.sub, amount: hold, environment, note: `Peebee Work — ${service.name}`, then: open });
+  if (!result.charged) {
+    await dropUnpaidHold(id, "booking");
+    await db.execute({ sql: "DELETE FROM laundry_order_lines WHERE job_id = ?", args: [id] });
+    await db.execute({ sql: "DELETE FROM laundry_orders WHERE job_id = ?", args: [id] });
+    await db.execute({ sql: "DELETE FROM work_jobs WHERE id = ? AND status = 'pending_payment'", args: [id] });
+    return c.json({ error: "insufficient_wallet", message: `You need UGX ${hold.toLocaleString("en-UG")} in your wallet to book this. Top up and try again.`, neededUgx: hold }, 402);
+  }
+  await logEvent(id, user.sub, "customer", "created", { laundry: true, goodsUgx: q.goodsUgx, totalUgx: hold, pricingMode: q.pricingMode, matchingMode });
+
+  const job = (await getJob(id)) as Row;
+  if (matchingMode !== "admin_assigns") await notifyProviders(job, work);
+  return c.json({ job: await jobView(job, "customer"), actions: customerActions(job, work), totalUgx: hold }, 201);
+});
 // ---------------------------------------------------------------------------
 // Admin: settings, items and packages
 // ---------------------------------------------------------------------------

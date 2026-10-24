@@ -59,6 +59,14 @@ CREATE TABLE IF NOT EXISTS laundry_orders (
   contactless INTEGER NOT NULL DEFAULT 0,
   notes TEXT NOT NULL DEFAULT '',
   weighed_lb REAL,
+  -- Rules locked in at checkout, so a later admin change never alters an order already placed.
+  commission_timing TEXT NOT NULL DEFAULT 'on_payout' CHECK (commission_timing IN ('on_payout', 'at_checkout')),
+  cancel_rule TEXT NOT NULL DEFAULT 'refund' CHECK (cancel_rule IN ('refund', 'keep')),
+  commission_taken_ugx INTEGER NOT NULL DEFAULT 0,
+  fee_ugx INTEGER NOT NULL DEFAULT 0,
+  tip_promised_by TEXT,
+  -- Rider money: the rider share of both legs. Held until rider dispatch pays it out.
+  rider_fee_ugx INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -76,6 +84,10 @@ CREATE TABLE IF NOT EXISTS laundry_order_lines (
   line_total_ugx INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_laundry_lines_job ON laundry_order_lines(job_id);
+
+-- The service every laundry order is booked under. Switched off so it never shows in the old Work catalogue; orders are priced by the laundry catalogue instead.
+INSERT OR IGNORE INTO work_services (id, type, category, name, description, pricing_mode, unit_label, unit_price_ugx, callout_fee_ugx, min_quantity, max_quantity, sort_order, active) VALUES
+  ('wsv_laundry_order', 'laundry', 'order', 'Laundry order', 'Packages and clothes by type and count', 'fixed', 'order', 1, 0, 1, 1, 0, 0);
 
 -- Starting item list, UNPRICED and switched off: admin prices each item (UGX, steps of 500) and turns it on.
 INSERT OR IGNORE INTO laundry_items (id, name, category, sort_order, active) VALUES

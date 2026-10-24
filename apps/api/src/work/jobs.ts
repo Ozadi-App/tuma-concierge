@@ -2,6 +2,7 @@ import { db } from "../db/client.js";
 import type { PlatformEnvironment } from "../lib/settings.js";
 import type { WorkSettings } from "./settings.js";
 import { checkCancellation } from "./onsite.js";
+import { isLaundryJob, laundryOrderFor, planLaundryCancel, planLaundrySettlement } from "./laundry-orders.js";
 import {
   applyMoney, applyPendingMoney, chargeCustomer, dropUnpaidHold, fromDb, inMinutes, logEvent, notifyCustomer, notifyProviders, percentOf, publicProvider,
   splitHeld, toDb, transition, workExtrasReady, type ActorKind, type MoneyPlan, type Row,
@@ -119,7 +120,13 @@ export async function cancelJob(job: Row, by: ActorKind, actorId: string | null,
       ? "This job has started. If something is wrong, report a problem instead." : "This job can't be cancelled now.");
   }
 
-  if (by === "customer" && status !== "open" && held > 0 && providerUser) {
+  // A laundry order follows its own money rules (rider share, tip, Peebee's fee), locked in when it was placed.
+  const laundry = isLaundryJob(job) ? await laundryOrderFor(String(job.id)) : null;
+  if (laundry) {
+    const plan = planLaundryCancel(job, laundry);
+    money.push(...plan.money);
+    commission = plan.platformUgx;
+  } else if (by === "customer" && status !== "open" && held > 0 && providerUser) {
     // After a provider is on the job, a late cancellation pays them a share.
     const sinceAssigned = job.assigned_at ? (Date.now() - fromDb(String(job.assigned_at)).getTime()) / 60_000 : Infinity;
     const free = sinceAssigned <= settings.freeCancelMinutes;
@@ -200,10 +207,12 @@ export async function settleJob(
 ): Promise<Done | Failure> {
   const provider = await getProvider(job.provider_id);
   if (!provider) return fail(409, "no_provider", "This job has no provider.");
+  const laundry = isLaundryJob(job) ? await laundryOrderFor(String(job.id)) : null;
+  const plan = laundry ? planLaundrySettlement(job, laundry, { userId: String(provider.user_id) }, { refundUgx: opts.refundUgx, to: opts.to, disputed: String(job.status) === "disputed" }) : null;
   const held = Number(job.held_ugx);
-  const split = splitHeld(held, Number(job.commission_percent), opts.refundUgx);
-  const money: MoneyPlan[] = [
-    { kind: "refund", userId: String(job.customer_id), amount: split.refund, note: `Peebee Work refund — ${job.service_name}` },
+  const split = plan ? { commission: plan.platformUgx, payout: plan.money.find((m) => m.kind === "payout")?.amount ?? 0 } : splitHeld(held, Number(job.commission_percent), opts.refundUgx);
+  const money: MoneyPlan[] = plan ? plan.money : [
+    { kind: "refund", userId: String(job.customer_id), amount: (split as ReturnType<typeof splitHeld>).refund, note: `Peebee Work refund — ${job.service_name}` },
     { kind: "payout", userId: String(provider.user_id), amount: split.payout, note: `Peebee Work earnings — ${job.service_name}` },
   ];
   const set: Record<string, unknown> = { settled_at: toDb(), commission_ugx: split.commission };
@@ -211,9 +220,11 @@ export async function settleJob(
   if (opts.resolvedBy) set.resolved_by = opts.resolvedBy;
   const ok = await transition({
     jobId: String(job.id), from: opts.from, to: opts.to, set, money, environment: env(job), actor: opts.actor, action: opts.action,
-    detail: { refundUgx: split.refund, payoutUgx: split.payout, commissionUgx: split.commission },
+    detail: { refundUgx: plan ? (plan.money.find((m) => m.kind === "refund")?.amount ?? 0) : (split as ReturnType<typeof splitHeld>).refund, payoutUgx: split.payout, commissionUgx: split.commission },
   });
   if (!ok) return fail(409, "already_settled", "This job was already paid out or changed.");
+  // The rider share of a laundry order is not the provider's: record it for the rider payout.
+  if (plan && plan.riderFeeUgx > 0) await db.execute({ sql: "UPDATE laundry_orders SET rider_fee_ugx = ? WHERE job_id = ?", args: [plan.riderFeeUgx, job.id] });
   if (split.payout > 0) {
     await db.execute({ sql: "UPDATE work_providers SET jobs_completed = jobs_completed + 1, updated_at = datetime('now') WHERE id = ?", args: [provider.id] });
   }
