@@ -1,7 +1,7 @@
-import { WorkBooking } from "../../../components/work/WorkBooking";
+import { LaundryBooking } from "../../../components/work/LaundryBooking";
 
-export const metadata = { title: "Laundry | Peebee" };
+export const metadata = { title: "Laundry & Dry Cleaning | Peebee" };
 
 export default function LaundryPage() {
-  return <WorkBooking type="laundry" />;
+  return <LaundryBooking />;
 }
