@@ -551,6 +551,28 @@ const DEFAULTS = {
   work_schedule_quick_minutes: "60,180",
   work_schedule_tomorrow_enabled: "1",
   work_schedule_tomorrow_time: "09:00",
+  // Laundry marketplace: how each laundry service is priced (fixed = admin prices apply; estimate = customer may make an offer).
+  laundry_pricing_wash_fold: "fixed",
+  laundry_pricing_dry_clean: "fixed",
+  laundry_pricing_iron: "fixed",
+  laundry_pricing_custom: "fixed",
+  // Offer slider: lowest and highest offer as a percent of the catalogue total, and the step in UGX.
+  laundry_offer_min_percent: "80",
+  laundry_offer_max_percent: "130",
+  laundry_offer_step_ugx: "500",
+  // Who pays each rider leg: customer, provider or split. A split gives the customer this percent of the leg.
+  laundry_ride_payer_pickup: "customer",
+  laundry_ride_payer_delivery: "provider",
+  laundry_ride_split_customer_percent: "50",
+  // Flat fee per rider leg until rides are priced by the rider fare system. 0 = no ride charge.
+  laundry_ride_fee_ugx: "0",
+  // Extra weight over a package limit, UGX per lb (0 = not charged).
+  laundry_overage_ugx_per_lb: "0",
+  // Tips: a free tip is paid on delivery; a conditional tip is held and paid only for an on-time, undisputed delivery.
+  laundry_tip_free_enabled: "1",
+  laundry_tip_conditional_enabled: "1",
+  laundry_tip_max_ugx: "50000",
+  laundry_tip_ontime_hours: "48",
   /** Peebee Hire: a marketplace where customers find workers and workers find gigs, projects and hiring posts (tables talent_*). Off until admin turns it on. */
   talent_enabled: "0",
   talent_gigs_enabled: "1",
