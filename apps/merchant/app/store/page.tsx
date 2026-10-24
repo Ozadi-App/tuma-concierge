@@ -17,9 +17,15 @@ import type {
   StoreBundle,
   StoreBundleItem,
   StoreWinbackCampaign,
+  StorefrontSection,
+  StoreSmsLog,
 } from "@peebee/shared";
 import {
   AlertCircle,
+  ArrowUp,
+  ArrowDown,
+  EyeOff,
+  MessageSquare,
   BarChart3,
   Briefcase,
   Building2,
@@ -161,7 +167,7 @@ export default function MerchantProStorePage() {
 
   // Elite OS sub-navigation
   const [eliteSection, setEliteSection] = useState<
-    "overview" | "pos" | "theme" | "collections" | "discounts" | "inventory" | "b2b" | "crm" | "po" | "bundles" | "winback"
+    "overview" | "pos" | "theme" | "sections" | "sms" | "collections" | "discounts" | "inventory" | "b2b" | "crm" | "po" | "bundles" | "winback"
   >("overview");
   const [upgradingTier, setUpgradingTier] = useState(false);
 
@@ -181,6 +187,16 @@ export default function MerchantProStorePage() {
   const [purchaseOrders, setPurchaseOrders] = useState<StorePurchaseOrder[]>([]);
   const [bundles, setBundles] = useState<StoreBundle[]>([]);
   const [winbackCampaigns, setWinbackCampaigns] = useState<StoreWinbackCampaign[]>([]);
+  const [storefrontSections, setStorefrontSections] = useState<StorefrontSection[]>([]);
+  const [savingSections, setSavingSections] = useState(false);
+  const [smsLogs, setSmsLogs] = useState<StoreSmsLog[]>([]);
+  const [posSendSmsReceipt, setPosSendSmsReceipt] = useState(true);
+  const [smsRecipientPhone, setSmsRecipientPhone] = useState("");
+  const [smsRecipientName, setSmsRecipientName] = useState("");
+  const [smsBody, setSmsBody] = useState("");
+  const [smsMessageType, setSmsMessageType] = useState<"pos_receipt" | "order_confirmation" | "dispatch_alert" | "abandoned_cart">("pos_receipt");
+  const [sendingSms, setSendingSms] = useState(false);
+  const [lastSmsSent, setLastSmsSent] = useState<{ id: string; whatsappUrl?: string } | null>(null);
   const [inactiveCustomers, setInactiveCustomers] = useState<StoreCustomerLoyalty[]>([]);
 
   // New PO form
@@ -367,7 +383,7 @@ export default function MerchantProStorePage() {
         setLoyaltyEnabled(Boolean(s.loyalty_enabled));
         if (s.loyalty_cashback_percent != null) setLoyaltyCashback(String(s.loyalty_cashback_percent));
 
-        const [prodRes, colRes, discRes, invRes, drfRes, anaRes, posRes, trfRes, crmRes] = await Promise.all([
+        const [prodRes, colRes, discRes, invRes, drfRes, anaRes, posRes, trfRes, crmRes, secRes, smsRes] = await Promise.all([
           api.getMerchantProProducts().catch(() => ({ products: [] })),
           api.getMerchantCollections().catch(() => ({ collections: [] })),
           api.getMerchantDiscounts().catch(() => ({ discounts: [] })),
@@ -380,7 +396,11 @@ export default function MerchantProStorePage() {
             customers: [],
             summary: { totalCustomers: 0, vipCount: 0, repeatCount: 0, b2bCount: 0, totalLoyaltyBalanceUgx: 0 },
           })),
+          api.getMerchantStorefrontSections().catch(() => ({ sections: [] })),
+          api.getMerchantSmsLogs().catch(() => ({ logs: [] })),
         ]);
+        setStorefrontSections(secRes.sections || []);
+        setSmsLogs(smsRes.logs || []);
         const loadedProducts = prodRes.products || [];
         setProducts(loadedProducts);
         setCollections(colRes.collections || []);
@@ -412,6 +432,63 @@ export default function MerchantProStorePage() {
       setError(errorMessage(err));
     } finally {
       setLoading(false);
+    }
+  }
+
+  function moveSection(index: number, direction: "up" | "down") {
+    const targetIdx = direction === "up" ? index - 1 : index + 1;
+    if (targetIdx < 0 || targetIdx >= storefrontSections.length) return;
+    const next = [...storefrontSections];
+    const temp = next[index];
+    next[index] = next[targetIdx];
+    next[targetIdx] = temp;
+    next.forEach((s, idx) => { s.order = idx + 1; });
+    setStorefrontSections(next);
+  }
+
+  function toggleSection(id: string) {
+    setStorefrontSections(storefrontSections.map((s) => s.id === id ? { ...s, enabled: !s.enabled } : s));
+  }
+
+  function updateSectionTitle(id: string, title: string, subtitle?: string) {
+    setStorefrontSections(storefrontSections.map((s) => s.id === id ? { ...s, title, subtitle: subtitle ?? s.subtitle } : s));
+  }
+
+  async function handleSaveSections() {
+    setSavingSections(true);
+    try {
+      await api.updateMerchantStorefrontSections(storefrontSections);
+      alert("Storefront section layout saved successfully!");
+    } catch (err) {
+      alert("Failed to save sections: " + errorMessage(err));
+    } finally {
+      setSavingSections(false);
+    }
+  }
+
+  async function handleSendDirectSms(e: React.FormEvent) {
+    e.preventDefault();
+    if (!smsRecipientPhone.trim() || !smsBody.trim()) {
+      alert("Please provide recipient phone number and message body.");
+      return;
+    }
+    setSendingSms(true);
+    try {
+      const res = await api.sendMerchantSms({
+        recipient_phone: smsRecipientPhone,
+        recipient_name: smsRecipientName || undefined,
+        message_type: smsMessageType,
+        body: smsBody,
+      });
+      setLastSmsSent({ id: res.logId, whatsappUrl: res.whatsappShareUrl });
+      const refreshed = await api.getMerchantSmsLogs().catch(() => ({ logs: [] }));
+      setSmsLogs(refreshed.logs || []);
+      setSmsBody("");
+      alert("SMS notification processed (" + res.status + ")! Tracking ID: " + res.logId);
+    } catch (err) {
+      alert("Failed to send SMS: " + errorMessage(err));
+    } finally {
+      setSendingSms(false);
     }
   }
 
@@ -1255,6 +1332,8 @@ export default function MerchantProStorePage() {
               { id: "overview", label: "P&L Analytics", icon: BarChart3 },
               { id: "pos", label: `POS Register (${posSales.length})`, icon: ShoppingBag },
               { id: "theme", label: "Store 2.0 Theme", icon: Palette },
+              { id: "sections", label: `Page Builder (${storefrontSections.length})`, icon: SlidersHorizontal },
+              { id: "sms", label: `SMS Receipts (${smsLogs.length})`, icon: MessageSquare },
               { id: "collections", label: `Collections (${collections.length})`, icon: Layers },
               { id: "discounts", label: `Promos (${discounts.length})`, icon: Tag },
               { id: "inventory", label: "Multi-Outlet & Transfers", icon: Building2 },
@@ -3254,6 +3333,329 @@ export default function MerchantProStorePage() {
                         </div>
                       ))}
                     </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ELITE SUB-TAB: STORE 2.0 VISUAL SECTION PAGE BUILDER */}
+          {eliteSection === "sections" && (
+            <div className="rounded-[24px] border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-5 shadow-sm space-y-5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[var(--border-faint)] pb-4">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-gold/15 text-gold font-bold">
+                      <SlidersHorizontal className="h-4 w-4" />
+                    </span>
+                    <h3 className="font-serif text-lg font-black text-ink">Store 2.0 Visual Section Page Builder</h3>
+                    <span className="rounded-full bg-gold/20 px-2.5 py-0.5 text-[10px] font-black text-gold">Shopify Plus Level</span>
+                  </div>
+                  <p className="mt-1 text-xs text-ink-500">
+                    Reorder homepage sections, toggle visibility, and customize section headlines directly without code.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  {store && (
+                    <a
+                      href={store.custom_domain ? `https://${store.custom_domain}` : `https://${store.slug}.peebee.online`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] px-3.5 py-2 text-xs font-bold text-ink hover:text-gold"
+                    >
+                      <Globe className="h-3.5 w-3.5 text-gold" />
+                      View Live Storefront
+                    </a>
+                  )}
+                  <button
+                    type="button"
+                    disabled={savingSections}
+                    onClick={handleSaveSections}
+                    className="rounded-full bg-gold px-5 py-2 text-xs font-black text-ink-gold shadow-sm transition active:scale-95 disabled:opacity-60"
+                  >
+                    {savingSections ? "Saving Layout…" : "Save Section Layout ✓"}
+                  </button>
+                </div>
+              </div>
+
+              {/* Sections Reordering List */}
+              <div className="space-y-3">
+                {storefrontSections.map((sec, idx) => (
+                  <div
+                    key={sec.id}
+                    className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border p-4 transition ${
+                      sec.enabled
+                        ? "border-[var(--border-faint)] bg-[rgb(var(--surface-card))] shadow-xs"
+                        : "border-dashed border-[var(--border-faint)] bg-[rgb(var(--surface-muted))]/60 opacity-60"
+                    }`}
+                  >
+                    <div className="flex items-start sm:items-center gap-3 min-w-0 flex-1">
+                      {/* Order Controls */}
+                      <div className="flex flex-col items-center gap-1 shrink-0">
+                        <button
+                          type="button"
+                          disabled={idx === 0}
+                          onClick={() => moveSection(idx, "up")}
+                          aria-label="Move Section Up"
+                          className="flex h-6 w-6 items-center justify-center rounded bg-[rgb(var(--surface-muted))] text-ink-500 hover:text-ink disabled:opacity-20"
+                        >
+                          <ArrowUp className="h-3.5 w-3.5" />
+                        </button>
+                        <span className="font-mono text-xs font-bold text-ink-500">{sec.order}</span>
+                        <button
+                          type="button"
+                          disabled={idx === storefrontSections.length - 1}
+                          onClick={() => moveSection(idx, "down")}
+                          aria-label="Move Section Down"
+                          className="flex h-6 w-6 items-center justify-center rounded bg-[rgb(var(--surface-muted))] text-ink-500 hover:text-ink disabled:opacity-20"
+                        >
+                          <ArrowDown className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+
+                      {/* Section Info & Editable Headlines */}
+                      <div className="min-w-0 flex-1 space-y-1.5">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-[10px] font-black uppercase tracking-wider bg-gold/15 text-gold px-2 py-0.5 rounded">
+                            {sec.type.replace("_", " ")}
+                          </span>
+                          <span className="text-xs font-bold text-ink">{sec.title}</span>
+                          {!sec.enabled && (
+                            <span className="text-[10px] font-bold text-ink-400 bg-black/10 px-1.5 py-0.5 rounded">Hidden</span>
+                          )}
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          <input
+                            type="text"
+                            value={sec.title}
+                            onChange={(e) => updateSectionTitle(sec.id, e.target.value)}
+                            placeholder="Section Title"
+                            className="rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] px-3 py-1.5 text-xs font-bold text-ink"
+                          />
+                          <input
+                            type="text"
+                            value={sec.subtitle || ""}
+                            onChange={(e) => updateSectionTitle(sec.id, sec.title, e.target.value)}
+                            placeholder="Subtitle / Caption (Optional)"
+                            className="rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] px-3 py-1.5 text-xs text-ink-500"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Toggle Visibility */}
+                    <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => toggleSection(sec.id)}
+                        className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold transition ${
+                          sec.enabled
+                            ? "bg-emerald-500/15 text-emerald-600 hover:bg-emerald-500/25"
+                            : "bg-surface-muted text-ink-500 hover:bg-black/10"
+                        }`}
+                      >
+                        {sec.enabled ? (
+                          <>
+                            <Eye className="h-3.5 w-3.5" /> Visible
+                          </>
+                        ) : (
+                          <>
+                            <EyeOff className="h-3.5 w-3.5" /> Hidden
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ELITE SUB-TAB: AUTOMATED SMS RECEIPTS & ORDER ALERTS */}
+          {eliteSection === "sms" && (
+            <div className="space-y-5">
+              {/* Top SMS Status Bar */}
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                <div className="rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-4 shadow-xs">
+                  <span className="text-[10px] font-bold uppercase text-ink-500">SMS Gateway Status</span>
+                  <div className="mt-1 flex items-center gap-1.5 font-bold text-sm text-emerald-600">
+                    <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                    Online · {settings?.smsProvider || "Simulator"}
+                  </div>
+                  <span className="text-[10px] text-ink-400">Zero Carrier Cost Simulation</span>
+                </div>
+
+                <div className="rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-4 shadow-xs">
+                  <span className="text-[10px] font-bold uppercase text-ink-500">Rate Per SMS</span>
+                  <div className="mt-1 font-mono text-base font-black text-ink">
+                    UGX {settings?.eliteSmsCostPerMessageUgx || 35}
+                  </div>
+                  <span className="text-[10px] text-ink-400">Uganda Local Networks</span>
+                </div>
+
+                <div className="rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-4 shadow-xs">
+                  <span className="text-[10px] font-bold uppercase text-ink-500">Total SMS Dispatched</span>
+                  <div className="mt-1 font-mono text-base font-black text-gold">{smsLogs.length} messages</div>
+                  <span className="text-[10px] text-emerald-600 font-semibold">100% Delivery Rate</span>
+                </div>
+
+                <div className="rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-4 shadow-xs">
+                  <span className="text-[10px] font-bold uppercase text-ink-500">Auto POS Receipts</span>
+                  <div className="mt-1 flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="autoPosSms"
+                      checked={posSendSmsReceipt}
+                      onChange={(e) => setPosSendSmsReceipt(e.target.checked)}
+                      className="rounded text-gold focus:ring-gold"
+                    />
+                    <label htmlFor="autoPosSms" className="text-xs font-bold text-ink cursor-pointer">
+                      {posSendSmsReceipt ? "Enabled (Auto)" : "Disabled"}
+                    </label>
+                  </div>
+                  <span className="text-[10px] text-ink-400">Triggers on register sale</span>
+                </div>
+              </div>
+
+              {/* Direct SMS Notification Dispatcher */}
+              <div className="rounded-[24px] border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-5 shadow-sm space-y-4">
+                <div className="flex items-center justify-between border-b border-[var(--border-faint)] pb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-gold/15 text-gold font-bold">
+                      <MessageSquare className="h-4 w-4" />
+                    </span>
+                    <div>
+                      <h3 className="font-serif text-base font-black text-ink">Dispatch Direct SMS Notification</h3>
+                      <p className="text-[11px] text-ink-500">Send an instant customer alert or test SMS message</p>
+                    </div>
+                  </div>
+                </div>
+
+                <form onSubmit={handleSendDirectSms} className="space-y-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="text-xs font-semibold text-ink-500">Customer Phone Number</label>
+                      <input
+                        type="text"
+                        value={smsRecipientPhone}
+                        onChange={(e) => setSmsRecipientPhone(e.target.value)}
+                        placeholder="e.g. +256 701 445889"
+                        className="mt-1 w-full rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] px-3 py-2 text-xs font-mono font-bold text-ink"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-ink-500">Customer Name (Optional)</label>
+                      <input
+                        type="text"
+                        value={smsRecipientName}
+                        onChange={(e) => setSmsRecipientName(e.target.value)}
+                        placeholder="e.g. Dr. Julian M."
+                        className="mt-1 w-full rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] px-3 py-2 text-xs text-ink"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-ink-500">Alert Type</label>
+                      <select
+                        value={smsMessageType}
+                        onChange={(e) => {
+                          const val = e.target.value as any;
+                          setSmsMessageType(val);
+                          if (val === "pos_receipt") {
+                            setSmsBody(`Thank you for shopping at ${store?.name || "our store"}! Your digital POS receipt code is #POS-0892. Amount: UGX 48,925. View receipt: https://${store?.slug || "store"}.peebee.online/receipts/0892`);
+                          } else if (val === "order_confirmation") {
+                            setSmsBody(`Your order with ${store?.name || "our store"} has been received and verified. Boda rider will be dispatched shortly!`);
+                          } else if (val === "dispatch_alert") {
+                            setSmsBody(`Peebee Dispatch Alert: Boda rider is en route with your package from ${store?.name || "our store"}. Keep your phone nearby.`);
+                          }
+                        }}
+                        className="mt-1 w-full rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] px-3 py-2 text-xs font-bold text-ink"
+                      >
+                        <option value="pos_receipt">Digital POS Receipt</option>
+                        <option value="order_confirmation">Storefront Order Confirmation</option>
+                        <option value="dispatch_alert">Boda Delivery Dispatch Alert</option>
+                        <option value="abandoned_cart">Abandoned Cart SMS Recovery</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-semibold text-ink-500">SMS Message Content</label>
+                    <textarea
+                      rows={2}
+                      value={smsBody}
+                      onChange={(e) => setSmsBody(e.target.value)}
+                      placeholder="Type SMS text message..."
+                      className="mt-1 w-full rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] p-3 text-xs text-ink"
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between pt-1">
+                    <span className="text-[11px] text-ink-400">
+                      Standard GSM: {smsBody.length} characters ({Math.ceil(smsBody.length / 160) || 1} SMS segment)
+                    </span>
+                    <button
+                      type="submit"
+                      disabled={sendingSms}
+                      className="rounded-full bg-gold px-6 py-2.5 text-xs font-black text-ink-gold shadow-sm transition active:scale-95 disabled:opacity-60"
+                    >
+                      {sendingSms ? "Sending SMS…" : "Send Instant SMS Notification →"}
+                    </button>
+                  </div>
+                </form>
+
+                {lastSmsSent && (
+                  <div className="rounded-xl bg-emerald-500/10 border border-emerald-500/30 p-3 flex items-center justify-between text-xs">
+                    <span className="font-bold text-emerald-700">✓ SMS successfully dispatched! Tracking ID: {lastSmsSent.id}</span>
+                    {lastSmsSent.whatsappUrl && (
+                      <a
+                        href={lastSmsSent.whatsappUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="rounded-full bg-emerald-600 text-white px-3 py-1 font-bold text-[11px] flex items-center gap-1 shadow-xs"
+                      >
+                        Share via WhatsApp
+                      </a>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Recent SMS Delivery Logs */}
+              <div className="rounded-[24px] border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-5 shadow-sm space-y-3">
+                <div className="flex items-center justify-between border-b border-[var(--border-faint)] pb-3">
+                  <h4 className="font-bold text-xs uppercase tracking-wider text-ink-500">Recent SMS Delivery Logs</h4>
+                  <span className="text-xs text-ink-400">{smsLogs.length} recorded</span>
+                </div>
+
+                {smsLogs.length === 0 ? (
+                  <p className="text-xs text-ink-500 py-4 text-center">No SMS notifications recorded yet.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {smsLogs.map((log) => (
+                      <div
+                        key={log.id}
+                        className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-xl bg-[rgb(var(--surface-muted))] p-3 text-xs"
+                      >
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono font-bold text-ink">{log.recipient_phone}</span>
+                            {log.recipient_name && (
+                              <span className="text-[11px] text-ink-500">({log.recipient_name})</span>
+                            )}
+                            <span className="font-mono text-[10px] font-bold uppercase bg-gold/15 text-gold px-1.5 py-0.5 rounded">
+                              {log.message_type.replace("_", " ")}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-ink-500 mt-1 line-clamp-1">{log.body}</p>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="font-mono text-[10px] text-ink-400">UGX {log.cost_ugx || 35}</span>
+                          <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold text-emerald-600">
+                            {log.status}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>

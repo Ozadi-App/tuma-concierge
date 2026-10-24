@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createClient, type Client, type InArgs } from "@libsql/client/node";
 import app from "../app.js";
@@ -34,7 +34,7 @@ function bindDatabase(client: Client) {
 test("marketplace routes: public browsing is accessible without authentication", async () => {
   resetSchemaCache();
   const client = createClient({ url: "file::memory:" });
-  const migrations = join(process.cwd(), "src/db/migrations");
+  const migrations = existsSync(join(process.cwd(), "apps/api/src/db/migrations")) ? join(process.cwd(), "apps/api/src/db/migrations") : join(process.cwd(), "src/db/migrations");
   for (const file of readdirSync(migrations).filter((f) => f.endsWith(".sql")).sort()) {
     for (const sql of splitSqlStatements(readFileSync(join(migrations, file), "utf8"))) {
       await client.execute(sql);
@@ -106,7 +106,7 @@ test("marketplace checkout: links orders to delivery system and alerts boda ride
   process.env.JWT_SECRET = "marketplace-tests-only";
   resetSchemaCache();
   const client = createClient({ url: "file::memory:" });
-  const migrations = join(process.cwd(), "src/db/migrations");
+  const migrations = existsSync(join(process.cwd(), "apps/api/src/db/migrations")) ? join(process.cwd(), "apps/api/src/db/migrations") : join(process.cwd(), "src/db/migrations");
   for (const file of readdirSync(migrations).filter((f) => f.endsWith(".sql")).sort()) {
     for (const sql of splitSqlStatements(readFileSync(join(migrations, file), "utf8"))) {
       await client.execute(sql);
@@ -210,7 +210,7 @@ test("marketplace checkout: links orders to delivery system and alerts boda ride
 test("marketplace checkout: a bag from several stores is one delivery, priced exactly and paid once", async () => {
   resetSchemaCache();
   const client = createClient({ url: "file::memory:" });
-  const migrations = join(process.cwd(), "src/db/migrations");
+  const migrations = existsSync(join(process.cwd(), "apps/api/src/db/migrations")) ? join(process.cwd(), "apps/api/src/db/migrations") : join(process.cwd(), "src/db/migrations");
   for (const file of readdirSync(migrations).filter((f) => f.endsWith(".sql")).sort()) {
     for (const sql of splitSqlStatements(readFileSync(join(migrations, file), "utf8"))) await client.execute(sql);
   }
@@ -265,7 +265,7 @@ test("marketplace checkout: a bag from several stores is one delivery, priced ex
 test("marketplace checkout: a long delivery from one store is relayed by matatu", async () => {
   resetSchemaCache();
   const client = createClient({ url: "file::memory:" });
-  const migrations = join(process.cwd(), "src/db/migrations");
+  const migrations = existsSync(join(process.cwd(), "apps/api/src/db/migrations")) ? join(process.cwd(), "apps/api/src/db/migrations") : join(process.cwd(), "src/db/migrations");
   for (const file of readdirSync(migrations).filter((f) => f.endsWith(".sql")).sort()) {
     for (const sql of splitSqlStatements(readFileSync(join(migrations, file), "utf8"))) await client.execute(sql);
   }
@@ -304,7 +304,7 @@ test("marketplace checkout: a long delivery from one store is relayed by matatu"
 test("merchant elite tier: upgrades to elite, manages Store 2.0 theme, smart collections, discounts, multi-outlet stock, B2B draft orders, and P&L analytics", async () => {
   resetSchemaCache();
   const client = createClient({ url: "file::memory:" });
-  const migrations = join(process.cwd(), "src/db/migrations");
+  const migrations = existsSync(join(process.cwd(), "apps/api/src/db/migrations")) ? join(process.cwd(), "apps/api/src/db/migrations") : join(process.cwd(), "src/db/migrations");
   for (const file of readdirSync(migrations).filter((f) => f.endsWith(".sql")).sort()) {
     for (const sql of splitSqlStatements(readFileSync(join(migrations, file), "utf8"))) await client.execute(sql);
   }
@@ -708,6 +708,56 @@ test("merchant elite tier: upgrades to elite, manages Store 2.0 theme, smart col
     const winbackList = (await winbackListRes.json()) as any;
     assert.equal(winbackList.campaigns.length, 1);
     assert.equal(winbackList.campaigns[0].customer_phone, "256777000111");
+
+    // 20. Store 2.0 Visual Section Page Builder
+    const sectionsRes = await req("/merchants/me/storefront-sections");
+    assert.equal(sectionsRes.status, 200);
+    const sectionsData = (await sectionsRes.json()) as any;
+    assert.ok(Array.isArray(sectionsData.sections));
+    assert.ok(sectionsData.sections.length >= 7);
+
+    // Reorder and update sections
+    const reorderedSections = [
+      { id: "sec_hero", type: "hero", title: "Kampala Flagship Store", enabled: true, order: 1 },
+      { id: "sec_bundles", type: "bundles", title: "Luxury Hamper Packages", enabled: true, order: 2 },
+      { id: "sec_reviews", type: "testimonials", title: "VIP Client Reviews", enabled: false, order: 3 },
+    ];
+    const updateSecRes = await req("/merchants/me/storefront-sections", "PUT", {
+      sections: reorderedSections,
+    });
+    assert.equal(updateSecRes.status, 200);
+    const updateSec = (await updateSecRes.json()) as any;
+    assert.equal(updateSec.ok, true);
+    assert.equal(updateSec.sections.length, 3);
+    assert.equal(updateSec.sections[0].id, "sec_hero");
+
+    // Public store returns updated sections
+    const publicStoreWithSecRes = await req(`/marketplace/stores/${upgradeData.store.id}`);
+    assert.equal(publicStoreWithSecRes.status, 200);
+    const publicStoreWithSec = (await publicStoreWithSecRes.json()) as any;
+    assert.equal(publicStoreWithSec.sections.length, 3);
+    assert.equal(publicStoreWithSec.sections[0].title, "Kampala Flagship Store");
+
+    // 21. Automated SMS Receipts & Order Alerts
+    const sendSmsRes = await req("/merchants/me/send-sms", "POST", {
+      recipient_phone: "+256701445889",
+      recipient_name: "Dr. Julian M.",
+      message_type: "pos_receipt",
+      body: "Thank you for shopping at Elite Boutique! Receipt code: #POS-9901. Total: UGX 220,000.",
+    });
+    assert.equal(sendSmsRes.status, 200);
+    const sendSmsData = (await sendSmsRes.json()) as any;
+    assert.equal(sendSmsData.ok, true);
+    assert.equal(sendSmsData.status, "delivered");
+    assert.ok(sendSmsData.logId);
+    assert.ok(sendSmsData.whatsappShareUrl.includes("wa.me/256701445889"));
+
+    const smsLogsRes = await req("/merchants/me/sms-logs");
+    assert.equal(smsLogsRes.status, 200);
+    const smsLogsData = (await smsLogsRes.json()) as any;
+    assert.equal(smsLogsData.logs.length, 1);
+    assert.equal(smsLogsData.logs[0].recipient_phone, "+256701445889");
+    assert.equal(smsLogsData.logs[0].message_type, "pos_receipt");
   } finally {
     process.env.JWT_SECRET = previousSecret;
     client.close();

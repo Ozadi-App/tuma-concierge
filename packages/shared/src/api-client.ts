@@ -90,6 +90,8 @@ import type {
   StoreBundleItem,
   StoreBundle,
   StoreWinbackCampaign,
+  StorefrontSection,
+  StoreSmsLog,
   StoreEliteAnalytics,
   GuestSettings,
   GuestConfig,
@@ -2476,6 +2478,29 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
       message: string;
     }) {
       return request<{ ok: boolean; campaignId: string; whatsappUrl: string }>("/v1/merchants/me/winback-campaigns", {
+        method: "POST",
+        body: JSON.stringify(input),
+      });
+    },
+    async getMerchantStorefrontSections() {
+      return request<{ sections: StorefrontSection[] }>("/v1/merchants/me/storefront-sections");
+    },
+    async updateMerchantStorefrontSections(sections: StorefrontSection[]) {
+      return request<{ ok: boolean; sections: StorefrontSection[] }>("/v1/merchants/me/storefront-sections", {
+        method: "PUT",
+        body: JSON.stringify({ sections }),
+      });
+    },
+    async getMerchantSmsLogs() {
+      return request<{ logs: StoreSmsLog[] }>("/v1/merchants/me/sms-logs");
+    },
+    async sendMerchantSms(input: {
+      recipient_phone: string;
+      recipient_name?: string;
+      message_type: "pos_receipt" | "order_confirmation" | "dispatch_alert" | "abandoned_cart";
+      body: string;
+    }) {
+      return request<{ ok: boolean; logId: string; status: "delivered" | "simulated" | "failed"; costUgx: number; whatsappShareUrl?: string }>("/v1/merchants/me/send-sms", {
         method: "POST",
         body: JSON.stringify(input),
       });

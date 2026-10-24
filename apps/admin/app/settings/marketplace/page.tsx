@@ -51,6 +51,10 @@ export default function MarketplaceSettingsPage() {
   const [elitePurchaseOrdersEnabled, setElitePurchaseOrdersEnabled] = useState(true);
   const [eliteBundlesEnabled, setEliteBundlesEnabled] = useState(true);
   const [eliteWinbackEnabled, setEliteWinbackEnabled] = useState(true);
+  const [eliteStorefrontSectionsEnabled, setEliteStorefrontSectionsEnabled] = useState(true);
+  const [eliteSmsAlertsEnabled, setEliteSmsAlertsEnabled] = useState(true);
+  const [eliteSmsCostPerMessageUgx, setEliteSmsCostPerMessageUgx] = useState(35);
+  const [smsProvider, setSmsProvider] = useState<"simulator" | "africas_talking" | "twilio">("simulator");
 
   const load = useCallback(async () => {
     const res = await api.adminGetMarketplaceSettings();
@@ -88,6 +92,10 @@ export default function MarketplaceSettingsPage() {
     setElitePurchaseOrdersEnabled(m.elitePurchaseOrdersEnabled ?? true);
     setEliteBundlesEnabled(m.eliteBundlesEnabled ?? true);
     setEliteWinbackEnabled(m.eliteWinbackEnabled ?? true);
+    setEliteStorefrontSectionsEnabled(m.eliteStorefrontSectionsEnabled ?? true);
+    setEliteSmsAlertsEnabled(m.eliteSmsAlertsEnabled ?? true);
+    setEliteSmsCostPerMessageUgx(m.eliteSmsCostPerMessageUgx ?? 35);
+    setSmsProvider(m.smsProvider ?? "simulator");
   }, []);
 
   useEffect(() => {
@@ -143,6 +151,10 @@ export default function MarketplaceSettingsPage() {
         elitePurchaseOrdersEnabled,
         eliteBundlesEnabled,
         eliteWinbackEnabled,
+        eliteStorefrontSectionsEnabled,
+        eliteSmsAlertsEnabled,
+        eliteSmsCostPerMessageUgx,
+        smsProvider,
       };
 
       await api.adminUpdateMarketplaceSettings(payload);
@@ -672,6 +684,77 @@ export default function MarketplaceSettingsPage() {
                   }`}
                 />
               </button>
+            </div>
+
+            <div className="flex items-center justify-between rounded-2xl bg-[rgb(var(--surface-muted))] p-3">
+              <div>
+                <span className="block text-xs font-bold text-ink">Store 2.0 Visual Section Page Builder</span>
+                <span className="text-[10px] text-ink-500">Allow merchants to toggle, reorder, and customize storefront sections</span>
+              </div>
+              <button
+                type="button"
+                disabled={!canManage}
+                onClick={() => setEliteStorefrontSectionsEnabled(!eliteStorefrontSectionsEnabled)}
+                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${
+                  eliteStorefrontSectionsEnabled ? "bg-gold" : "bg-neutral-300 dark:bg-neutral-700"
+                }`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${
+                    eliteStorefrontSectionsEnabled ? "translate-x-5" : "translate-x-0"
+                  }`}
+                />
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between rounded-2xl bg-[rgb(var(--surface-muted))] p-3">
+              <div>
+                <span className="block text-xs font-bold text-ink">Automated SMS Receipts & Order Alerts</span>
+                <span className="text-[10px] text-ink-500">Digital POS receipt SMS, order notifications, and delivery SMS alerts</span>
+              </div>
+              <button
+                type="button"
+                disabled={!canManage}
+                onClick={() => setEliteSmsAlertsEnabled(!eliteSmsAlertsEnabled)}
+                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${
+                  eliteSmsAlertsEnabled ? "bg-gold" : "bg-neutral-300 dark:bg-neutral-700"
+                }`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${
+                    eliteSmsAlertsEnabled ? "translate-x-5" : "translate-x-0"
+                  }`}
+                />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
+              <label className="block text-xs font-semibold text-ink">
+                SMS Provider Gateway
+                <select
+                  disabled={!canManage}
+                  value={smsProvider}
+                  onChange={(e) => setSmsProvider(e.target.value as any)}
+                  className="mt-1 w-full rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] p-2.5 text-xs font-bold text-ink"
+                >
+                  <option value="simulator">SMS Simulator + WhatsApp Web (Zero Carrier Cost)</option>
+                  <option value="africas_talking">Africa's Talking Uganda Gateway</option>
+                  <option value="twilio">Twilio Global SMS</option>
+                </select>
+              </label>
+
+              <label className="block text-xs font-semibold text-ink">
+                Cost Per SMS Message (UGX)
+                <input
+                  type="number"
+                  min="0"
+                  max="500"
+                  disabled={!canManage}
+                  value={eliteSmsCostPerMessageUgx}
+                  onChange={(e) => setEliteSmsCostPerMessageUgx(Number(e.target.value))}
+                  className="mt-1 w-full rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] p-2.5 text-xs font-mono font-bold text-ink"
+                />
+              </label>
             </div>
           </div>
         </section>

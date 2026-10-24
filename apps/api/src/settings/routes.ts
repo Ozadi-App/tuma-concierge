@@ -502,6 +502,14 @@ const updateSchema = z.object({
       elitePurchaseOrdersEnabled: z.boolean(),
       eliteBundlesEnabled: z.boolean(),
       eliteWinbackEnabled: z.boolean(),
+    eliteStorefrontSectionsEnabled: z.boolean(),
+    eliteSmsAlertsEnabled: z.boolean(),
+    eliteSmsCostPerMessageUgx: z.number().min(0).max(1000),
+    smsProvider: z.enum(["simulator", "africas_talking", "twilio"]),
+      eliteStorefrontSectionsEnabled: z.boolean(),
+      eliteSmsAlertsEnabled: z.boolean(),
+      eliteSmsCostPerMessageUgx: z.number().min(0).max(1000),
+      smsProvider: z.enum(["simulator", "africas_talking", "twilio"]),
     })
     .partial()
     .optional(),
