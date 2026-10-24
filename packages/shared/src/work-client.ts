@@ -276,6 +276,83 @@ export function workMethods(request: Request) {
       return post<{ message: WorkMessage }>(`/v1/work/jobs/${encodeURIComponent(jobId)}/messages`, { body });
     },
 
+    // ---- Laundry Admin ----
+    workAdminLaundrySettings() {
+      return request<{
+        settings: {
+          pricing: Record<string, "fixed" | "estimate">;
+          offerMinPercent: number;
+          offerMaxPercent: number;
+          offerStepUgx: number;
+          ridePayerPickup: "customer" | "provider" | "split";
+          ridePayerDelivery: "customer" | "provider" | "split";
+          rideSplitCustomerPercent: number;
+          rideFeeUgx: number;
+          overageUgxPerLb: number;
+          tipFreeEnabled: boolean;
+          tipConditionalEnabled: boolean;
+          tipMaxUgx: number;
+          tipOntimeHours: number;
+          commissionTiming: "on_payout" | "at_checkout";
+          cancelCommission: "refund" | "keep";
+          providerCommissionPercent: number;
+          customerFeeEnabled: boolean;
+          customerFeeType: "flat" | "percent";
+          customerFeeValue: number;
+          customerFeeMaxSharePercent: number;
+        };
+      }>("/v1/work/admin/laundry/settings");
+    },
+    workAdminUpdateLaundrySettings(input: Record<string, any>) {
+      return request<{ settings: any }>("/v1/work/admin/laundry/settings", {
+        method: "PUT",
+        body: JSON.stringify(input),
+      });
+    },
+    workAdminLaundryItems() {
+      return request<{
+        items: Array<{
+          id: string;
+          name: string;
+          category: string;
+          washUgx: number | null;
+          dryCleanUgx: number | null;
+          ironUgx: number | null;
+          maxCount: number;
+          sortOrder: number;
+          active: boolean;
+        }>;
+        packages: Array<{
+          id: string;
+          name: string;
+          description: string;
+          minLb: number | null;
+          maxLb: number | null;
+          priceUgx: number;
+          maxCount: number;
+          sortOrder: number;
+          active: boolean;
+        }>;
+      }>("/v1/work/admin/laundry/items");
+    },
+    workAdminUpdateLaundryItem(id: string, input: Record<string, any>) {
+      return request<{ ok: true }>(`/v1/work/admin/laundry/items/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        body: JSON.stringify(input),
+      });
+    },
+    workAdminCreateLaundryItem(input: Record<string, any>) {
+      return request<{ id: string }>("/v1/work/admin/laundry/items", {
+        method: "POST",
+        body: JSON.stringify(input),
+      });
+    },
+    workAdminUpdateLaundryPackage(id: string, input: Record<string, any>) {
+      return request<{ ok: true }>(`/v1/work/admin/laundry/packages/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        body: JSON.stringify(input),
+      });
+    },
     // ---- Provider ----
     workProviderRegister(input: { kind: "individual" | "company"; displayName: string; companyName?: string; phone?: string; bio?: string; serviceIds: string[] }) {
       return post<{ provider: WorkProviderProfile }>("/v1/work/provider/register", input);

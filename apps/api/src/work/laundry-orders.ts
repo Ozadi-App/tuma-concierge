@@ -1,6 +1,8 @@
 import { db } from "../db/client.js";
 import { cancelLaundry, conditionalTipReleased, settleLaundry } from "./laundry-pricing.js";
 import { fromDb, type MoneyPlan, type Row } from "./service.js";
+import { newId } from "../lib/ids.js";
+import { getPlatformEnvironment } from "../lib/settings.js";
 
 /** Every laundry order is booked under this service, so the engine can tell them apart without a query. */
 export const LAUNDRY_SERVICE_ID = "wsv_laundry_order";
@@ -63,4 +65,62 @@ export function planLaundryCancel(job: Row, order: Row): { money: MoneyPlan[]; p
     rule: order.cancel_rule === "keep" ? "keep" : "refund",
   });
   return { money: [{ kind: "refund", userId: String(job.customer_id), amount: c.customerRefundUgx, note: `Peebee Work refund — ${job.service_name}` }], platformUgx: c.platformUgx };
+}
+
+/**
+ * Creates a platform boda rider delivery leg (order_type = "parcel") for customer <-> laundry provider transit.
+ */
+export async function createLaundryRiderLeg(input: {
+  jobId: string;
+  leg: "pickup" | "delivery";
+  customerId: string;
+  provider: { id: string; name: string; address?: string; lat?: number; lng?: number };
+  customerAddress: string;
+  customerLat?: number;
+  customerLng?: number;
+  rideFeeUgx: number;
+}): Promise<string | null> {
+  if (input.rideFeeUgx <= 0) return null;
+  const environment = await getPlatformEnvironment();
+  const orderId = newId("ord");
+  const listId = newId("list");
+
+  const isPickup = input.leg === "pickup";
+  const pickupAddress = isPickup ? input.customerAddress : (input.provider.address || "Laundry Provider");
+  const pickupLat = isPickup ? input.customerLat : input.provider.lat;
+  const pickupLng = isPickup ? input.customerLng : input.provider.lng;
+
+  const destAddress = isPickup ? (input.provider.address || "Laundry Provider") : input.customerAddress;
+  const destLat = isPickup ? input.provider.lat : input.customerLat;
+  const destLng = isPickup ? input.provider.lng : input.customerLng;
+
+  try {
+    await db.execute({
+      sql: `INSERT INTO lists (id, title, user_id, environment) VALUES (?, ?, ?, ?)`,
+      args: [listId, `Laundry ${isPickup ? "Pickup" : "Delivery"} - Job ${input.jobId}`, input.customerId, environment],
+    });
+
+    await db.execute({
+      sql: `INSERT INTO orders (id, list_id, customer_id, stage, type, currency, delivery_fee, estimated_total, final_total,
+              pickup_address, pickup_lat, pickup_lng, destination_address, destination_lat, destination_lng, environment)
+            VALUES (?, ?, ?, 'Match', 'parcel', 'UGX', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: [
+        orderId, listId, input.customerId, input.rideFeeUgx, input.rideFeeUgx, input.rideFeeUgx,
+        pickupAddress, pickupLat ?? null, pickupLng ?? null,
+        destAddress, destLat ?? null, destLng ?? null,
+        environment,
+      ],
+    });
+
+    const col = isPickup ? "pickup_order_id" : "delivery_order_id";
+    await db.execute({
+      sql: `UPDATE laundry_orders SET ${col} = ? WHERE job_id = ?`,
+      args: [orderId, input.jobId],
+    });
+
+    return orderId;
+  } catch (err) {
+    console.error("[laundry] failed to create rider dispatch leg:", err);
+    return null;
+  }
 }

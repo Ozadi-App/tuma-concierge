@@ -67,6 +67,8 @@ CREATE TABLE IF NOT EXISTS laundry_orders (
   tip_promised_by TEXT,
   -- Rider money: the rider share of both legs. Held until rider dispatch pays it out.
   rider_fee_ugx INTEGER NOT NULL DEFAULT 0,
+  pickup_order_id TEXT REFERENCES orders(id),
+  delivery_order_id TEXT REFERENCES orders(id),
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
