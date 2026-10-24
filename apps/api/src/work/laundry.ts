@@ -42,6 +42,13 @@ const rowToItem = (r: Row) => ({
   ironUgx: r.iron_price_ugx == null ? null : Number(r.iron_price_ugx),
   sortOrder: Number(r.sort_order), active: Number(r.active) === 1,
 });
+export const DEFAULT_LAUNDRY_PACKAGES = [
+  { id: "lp_single", name: "Single load", description: "1/2 Full Laundry Bag · 1–10 lbs", minLb: 1, maxLb: 10, priceUgx: 20000, maxCount: 10, sortOrder: 10, active: true },
+  { id: "lp_couple", name: "Couple load", description: "1 Full Laundry Bag · 10–25 lbs", minLb: 10, maxLb: 25, priceUgx: 35000, maxCount: 10, sortOrder: 20, active: true },
+  { id: "lp_family", name: "Family load", description: "2 Full Laundry Bags · 25–40 lbs", minLb: 25, maxLb: 40, priceUgx: 55000, maxCount: 10, sortOrder: 30, active: true },
+  { id: "lp_duvet", name: "Duvet or blanket", description: "Large comforter, blanket or duvet", minLb: 1, maxLb: 15, priceUgx: 25000, maxCount: 10, sortOrder: 40, active: true },
+];
+
 const rowToPackage = (r: Row) => ({
   id: String(r.id), name: String(r.name), description: String(r.description), minLb: r.min_lb == null ? null : Number(r.min_lb), maxLb: r.max_lb == null ? null : Number(r.max_lb),
   priceUgx: Number(r.price_ugx), maxCount: Number(r.max_count), sortOrder: Number(r.sort_order), active: Number(r.active) === 1,
@@ -71,7 +78,7 @@ laundryRoutes.get("/laundry/catalog", async (c) => {
   return c.json({
     // An item with no price for any treatment can't be ordered, so it isn't shown.
     items: (items.rows as Row[]).map(rowToItem).filter((i) => [i.washUgx, i.dryCleanUgx, i.ironUgx].some((p) => p != null && p > 0)),
-    packages: (packages.rows as Row[]).map(rowToPackage),
+    packages: (packages.rows as Row[]).length > 0 ? (packages.rows as Row[]).map(rowToPackage) : DEFAULT_LAUNDRY_PACKAGES,
     settings: publicSettings(settings),
   });
 });
@@ -112,6 +119,11 @@ async function quoteBasket(d: z.infer<typeof quoteSchema>, settings: LaundrySett
   if (d.packages.length) {
     const rows = (await db.execute({ sql: `SELECT * FROM laundry_packages WHERE active = 1 AND price_ugx > 0 AND id IN (${d.packages.map(() => "?").join(",")})`, args: d.packages.map((p) => p.packageId) })).rows as Row[];
     const byId = new Map(rows.map((r) => [String(r.id), rowToPackage(r)]));
+    for (const dp of DEFAULT_LAUNDRY_PACKAGES) {
+      if (!byId.has(dp.id) || (byId.get(dp.id)?.priceUgx ?? 0) <= 0) {
+        byId.set(dp.id, dp);
+      }
+    }
     for (const p of d.packages) {
       const pkg = byId.get(p.packageId);
       if (!pkg) return bad({ error: "unknown_package", message: "That package isn't available." });
