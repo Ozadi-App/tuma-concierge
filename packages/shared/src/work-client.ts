@@ -136,6 +136,80 @@ type Request = <T>(path: string, init?: RequestInit) => Promise<T>;
 export function workMethods(request: Request) {
   const post = <T>(path: string, body: unknown = {}) => request<T>(path, { method: "POST", body: JSON.stringify(body) });
   return {
+    // ---- Laundry Marketplace ----
+    laundryCatalog() {
+      return request<{
+        items: Array<{
+          id: string;
+          name: string;
+          category: string;
+          maxCount: number;
+          washUgx: number | null;
+          dryCleanUgx: number | null;
+          ironUgx: number | null;
+          sortOrder: number;
+          active: boolean;
+        }>;
+        packages: Array<{
+          id: string;
+          name: string;
+          description: string;
+          minLb: number | null;
+          maxLb: number | null;
+          priceUgx: number;
+          maxCount: number;
+          sortOrder: number;
+          active: boolean;
+        }>;
+        settings: {
+          pricing: Record<string, "fixed" | "estimate">;
+          offer: { minPercent: number; maxPercent: number; stepUgx: number };
+          tips: { freeEnabled: boolean; conditionalEnabled: boolean; maxUgx: number; stepUgx: number; ontimeHours: number };
+          rides: { pickupPayer: string; deliveryPayer: string; splitCustomerPercent: number };
+          overageUgxPerLb: number;
+        };
+      }>("/v1/work/laundry/catalog");
+    },
+    laundryQuote(input: {
+      items?: Array<{ itemId: string; treatment: "wash" | "dry_clean" | "iron"; count: number }>;
+      packages?: Array<{ packageId: string; count: number }>;
+      offerUgx?: number;
+      tip?: { kind: "none" | "free" | "conditional"; amountUgx: number };
+    }) {
+      return post<{
+        currency: string;
+        lines: Array<{ itemId: string; treatment: string; count: number; unitUgx: number; lineUgx: number; name?: string }>;
+        packageLines: Array<{ packageId: string; name: string; count: number; unitUgx: number; lineUgx: number }>;
+        catalogueUgx: number;
+        pricingMode: "fixed" | "estimate";
+        offerBand: { minUgx: number; averageUgx: number; maxUgx: number; stepUgx: number } | null;
+        goodsUgx: number;
+        tip: { kind: string; amountUgx: number };
+        rides: { customerUgx: number; providerUgx: number; pickup: { customer: number; provider: number }; delivery: { customer: number; provider: number } };
+        customerFeeUgx: number;
+        customerTotalUgx: number;
+      }>("/v1/work/laundry/quote", input);
+    },
+    laundryOrder(input: {
+      items?: Array<{ itemId: string; treatment: "wash" | "dry_clean" | "iron"; count: number }>;
+      packages?: Array<{ packageId: string; count: number }>;
+      offerUgx?: number;
+      tip?: { kind: "none" | "free" | "conditional"; amountUgx: number };
+      address: string;
+      area?: string;
+      lat?: number;
+      lng?: number;
+      scheduledFor?: string;
+      matchingMode?: WorkMatchingMode;
+      idempotencyKey?: string;
+      frequency?: "one_time" | "weekly" | "biweekly";
+      detergent?: "standard" | "fragrance_free";
+      contactless?: boolean;
+      notes?: string;
+      expectedTotalUgx?: number;
+    }) {
+      return post<{ job: WorkJob; actions: WorkCustomerAction[]; repeated?: boolean; totalUgx: number }>("/v1/work/laundry/orders", input);
+    },
     // ---- Customer ----
     workCatalog(type?: WorkServiceType) {
       return request<{ services: WorkService[]; settings: WorkPublicSettings }>(`/v1/work/catalog${type ? `?type=${type}` : ""}`);
