@@ -55,6 +55,10 @@ export default function MarketplaceSettingsPage() {
   const [eliteSmsAlertsEnabled, setEliteSmsAlertsEnabled] = useState(true);
   const [eliteSmsCostPerMessageUgx, setEliteSmsCostPerMessageUgx] = useState(35);
   const [smsProvider, setSmsProvider] = useState<"simulator" | "africas_talking" | "twilio">("simulator");
+  const [eliteDigitalProductsEnabled, setEliteDigitalProductsEnabled] = useState(true);
+  const [eliteLmsSyncEnabled, setEliteLmsSyncEnabled] = useState(true);
+  const [eliteMaxCourses, setEliteMaxCourses] = useState(50);
+  const [eliteMaxDigitalProducts, setEliteMaxDigitalProducts] = useState(200);
 
   const load = useCallback(async () => {
     const res = await api.adminGetMarketplaceSettings();
@@ -96,6 +100,10 @@ export default function MarketplaceSettingsPage() {
     setEliteSmsAlertsEnabled(m.eliteSmsAlertsEnabled ?? true);
     setEliteSmsCostPerMessageUgx(m.eliteSmsCostPerMessageUgx ?? 35);
     setSmsProvider(m.smsProvider ?? "simulator");
+    setEliteDigitalProductsEnabled(m.eliteDigitalProductsEnabled ?? true);
+    setEliteLmsSyncEnabled(m.eliteLmsSyncEnabled ?? true);
+    setEliteMaxCourses(m.eliteMaxCourses ?? 50);
+    setEliteMaxDigitalProducts(m.eliteMaxDigitalProducts ?? 200);
   }, []);
 
   useEffect(() => {
@@ -155,6 +163,10 @@ export default function MarketplaceSettingsPage() {
         eliteSmsAlertsEnabled,
         eliteSmsCostPerMessageUgx,
         smsProvider,
+        eliteDigitalProductsEnabled,
+        eliteLmsSyncEnabled,
+        eliteMaxCourses,
+        eliteMaxDigitalProducts,
       };
 
       await api.adminUpdateMarketplaceSettings(payload);
@@ -726,6 +738,76 @@ export default function MarketplaceSettingsPage() {
                   }`}
                 />
               </button>
+            </div>
+
+            <div className="flex items-center justify-between py-2 border-t border-[var(--border-faint)]">
+              <div>
+                <span className="block text-xs font-bold text-ink">Dynamic Digital Products Management</span>
+                <span className="text-[10px] text-ink-500">Allow Tier 3 merchants to sell downloadable files, templates, guides, and software license keys</span>
+              </div>
+              <button
+                type="button"
+                disabled={!canManage}
+                onClick={() => setEliteDigitalProductsEnabled(!eliteDigitalProductsEnabled)}
+                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${
+                  eliteDigitalProductsEnabled ? "bg-gold" : "bg-neutral-300 dark:bg-neutral-700"
+                }`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${
+                    eliteDigitalProductsEnabled ? "translate-x-5" : "translate-x-0"
+                  }`}
+                />
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between py-2 border-t border-[var(--border-faint)]">
+              <div>
+                <span className="block text-xs font-bold text-ink">Robust LMS & Peebee Learn Direct Sync</span>
+                <span className="text-[10px] text-ink-500">Enable in-store courses, masterclasses, and auto-enrollment into Peebee Learn classroom</span>
+              </div>
+              <button
+                type="button"
+                disabled={!canManage}
+                onClick={() => setEliteLmsSyncEnabled(!eliteLmsSyncEnabled)}
+                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${
+                  eliteLmsSyncEnabled ? "bg-gold" : "bg-neutral-300 dark:bg-neutral-700"
+                }`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${
+                    eliteLmsSyncEnabled ? "translate-x-5" : "translate-x-0"
+                  }`}
+                />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
+              <label className="block text-xs font-semibold text-ink">
+                Max LMS Courses per Tier 3 Merchant
+                <input
+                  type="number"
+                  min="1"
+                  max="500"
+                  disabled={!canManage}
+                  value={eliteMaxCourses}
+                  onChange={(e) => setEliteMaxCourses(Number(e.target.value))}
+                  className="mt-1 w-full rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] p-2.5 text-xs font-mono font-bold text-ink"
+                />
+              </label>
+
+              <label className="block text-xs font-semibold text-ink">
+                Max Digital Products per Tier 3 Merchant
+                <input
+                  type="number"
+                  min="1"
+                  max="1000"
+                  disabled={!canManage}
+                  value={eliteMaxDigitalProducts}
+                  onChange={(e) => setEliteMaxDigitalProducts(Number(e.target.value))}
+                  className="mt-1 w-full rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] p-2.5 text-xs font-mono font-bold text-ink"
+                />
+              </label>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">

@@ -438,6 +438,10 @@ const DEFAULTS = {
   marketplace_elite_sms_alerts_enabled: "1",
   marketplace_elite_sms_cost_per_message_ugx: "35",
   marketplace_sms_provider: "simulator",
+  marketplace_elite_digital_products_enabled: "1",
+  marketplace_elite_lms_sync_enabled: "1",
+  marketplace_elite_max_courses: "50",
+  marketplace_elite_max_digital_products: "200",
   /** Peebee Learn Studio: schools, classes, courses and lessons made by educators */
   learn_enabled: "1",
   learn_streams: "sprouts,foundations,academy,compass,skills",
@@ -1817,6 +1821,14 @@ export type MarketplaceSettings = {
   elitePurchaseOrdersEnabled: boolean;
   eliteBundlesEnabled: boolean;
   eliteWinbackEnabled: boolean;
+  eliteStorefrontSectionsEnabled: boolean;
+  eliteSmsAlertsEnabled: boolean;
+  eliteSmsCostPerMessageUgx: number;
+  smsProvider: "simulator" | "africas_talking" | "twilio";
+  eliteDigitalProductsEnabled: boolean;
+  eliteLmsSyncEnabled: boolean;
+  eliteMaxCourses: number;
+  eliteMaxDigitalProducts: number;
 };
 
 export async function getMarketplaceSettings(): Promise<MarketplaceSettings> {
@@ -1858,6 +1870,10 @@ export async function getMarketplaceSettings(): Promise<MarketplaceSettings> {
     eliteSmsAlertsStr,
     eliteSmsCostStr,
     smsProviderStr,
+    eliteDigitalProductsStr,
+    eliteLmsSyncStr,
+    eliteMaxCoursesStr,
+    eliteMaxDigitalProductsStr,
   ] = await Promise.all([
     getSetting("marketplace_enabled"),
     getSetting("marketplace_live_enabled"),
@@ -1896,6 +1912,10 @@ export async function getMarketplaceSettings(): Promise<MarketplaceSettings> {
     getSetting("marketplace_elite_sms_alerts_enabled"),
     getSetting("marketplace_elite_sms_cost_per_message_ugx"),
     getSetting("marketplace_sms_provider"),
+    getSetting("marketplace_elite_digital_products_enabled"),
+    getSetting("marketplace_elite_lms_sync_enabled"),
+    getSetting("marketplace_elite_max_courses"),
+    getSetting("marketplace_elite_max_digital_products"),
   ]);
 
   return {
@@ -1936,6 +1956,10 @@ export async function getMarketplaceSettings(): Promise<MarketplaceSettings> {
     eliteSmsAlertsEnabled: eliteSmsAlertsStr !== "0",
     eliteSmsCostPerMessageUgx: Math.max(0, Number(eliteSmsCostStr) || 35),
     smsProvider: (smsProviderStr === "africas_talking" || smsProviderStr === "twilio") ? smsProviderStr : "simulator",
+    eliteDigitalProductsEnabled: eliteDigitalProductsStr !== "0",
+    eliteLmsSyncEnabled: eliteLmsSyncStr !== "0",
+    eliteMaxCourses: Math.max(1, Number(eliteMaxCoursesStr) || 50),
+    eliteMaxDigitalProducts: Math.max(1, Number(eliteMaxDigitalProductsStr) || 200),
   };
 }
 

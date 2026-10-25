@@ -25,6 +25,14 @@ import {
   Truck,
   Video,
   X,
+  BookOpen,
+  Download,
+  GraduationCap,
+  Key,
+  Clock,
+  PlayCircle,
+  FileCode,
+  CheckCircle2,
 } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -49,6 +57,44 @@ interface StoreBundleItem {
   productId: string;
   title: string;
   quantity: number;
+}
+
+export interface StoreDigitalProductItem {
+  id: string;
+  store_id?: string;
+  title: string;
+  slug?: string;
+  kind: "download" | "license_key" | "course" | "template" | "service" | string;
+  description: string | null;
+  price?: number;
+  price_ugx?: number;
+  compare_at_price?: number | null;
+  compare_at_price_ugx?: number | null;
+  file_name?: string | null;
+  file_url?: string | null;
+  file_size_bytes?: number;
+  mime_type?: string | null;
+  delivery_instructions?: string | null;
+  badge?: string | null;
+  downloads_count?: number;
+}
+
+export interface StoreLmsCourseItem {
+  id: string;
+  school_id?: string;
+  title: string;
+  slug?: string;
+  summary?: string | null;
+  subtitle?: string | null;
+  description?: string | null;
+  stream?: string;
+  category?: string;
+  level?: string;
+  duration_minutes?: number;
+  lessons_count?: number;
+  price_ugx: number;
+  status?: string;
+  is_published?: number | boolean;
 }
 
 interface StoreBundle {
@@ -169,6 +215,8 @@ export default function DedicatedStorefrontPage({ overrideSlug }: { overrideSlug
   const [outlets, setOutlets] = useState<StoreOutlet[]>([]);
   const [bundles, setBundles] = useState<StoreBundle[]>([]);
   const [sections, setSections] = useState<StorefrontSection[]>([]);
+  const [digitalProducts, setDigitalProducts] = useState<StoreDigitalProductItem[]>([]);
+  const [courses, setCourses] = useState<StoreLmsCourseItem[]>([]);
   const [customerPhone, setCustomerPhone] = useState("");
   const [orderSmsStatus, setOrderSmsStatus] = useState<string | null>(null);
 
@@ -213,6 +261,8 @@ export default function DedicatedStorefrontPage({ overrideSlug }: { overrideSlug
         setOutlets(storeRes.outlets ?? []);
         setBundles(storeRes.bundles ?? []);
         setSections(storeRes.sections ?? []);
+        setDigitalProducts(storeRes.digitalProducts ?? []);
+        setCourses(storeRes.courses ?? []);
         const loadedProducts: StoreProduct[] = prodRes?.products ?? [];
         setProducts(loadedProducts);
 
@@ -702,6 +752,34 @@ export default function DedicatedStorefrontPage({ overrideSlug }: { overrideSlug
                 Special Offers
               </button>
             )}
+            {digitalProducts.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setActiveCollectionId("digital")}
+                className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-4 py-2 text-xs font-black transition ${
+                  activeCollectionId === "digital"
+                    ? "bg-gold text-ink-gold"
+                    : "bg-surface-muted text-ink hover:bg-gold/20"
+                }`}
+              >
+                <Download className="h-3.5 w-3.5" />
+                Digital Downloads ({digitalProducts.length})
+              </button>
+            )}
+            {courses.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setActiveCollectionId("courses")}
+                className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-4 py-2 text-xs font-black transition ${
+                  activeCollectionId === "courses"
+                    ? "bg-gold text-ink-gold"
+                    : "bg-surface-muted text-ink hover:bg-gold/20"
+                }`}
+              >
+                <GraduationCap className="h-3.5 w-3.5" />
+                Courses &amp; Learn ({courses.length})
+              </button>
+            )}
             {categories.map((cat) => (
               <button
                 key={cat}
@@ -795,6 +873,170 @@ export default function DedicatedStorefrontPage({ overrideSlug }: { overrideSlug
                       >
                         Add Bundle to Bag
                       </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
+        {/* Digital Products Showcase (E-books, Software, Guides, Presets) */}
+        {digitalProducts.length > 0 && (activeCollectionId === "all" || activeCollectionId === "digital") && (
+          <section className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-black text-ink flex items-center gap-2">
+                  <Download className="h-5 w-5 text-gold" />
+                  Instant Digital Downloads &amp; Resources
+                </h2>
+                <p className="text-xs text-ink-500">Automated instant download links &amp; license keys delivered upon payment</p>
+              </div>
+              <span className="rounded-full bg-gold/15 px-3 py-1 text-xs font-black text-gold">Instant Delivery</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+              {digitalProducts.map((dig) => {
+                const digPrice = Number(dig.price_ugx ?? dig.price ?? 0);
+                const digCompare = dig.compare_at_price_ugx ?? dig.compare_at_price ?? null;
+                const savings = digCompare && digCompare > digPrice ? digCompare - digPrice : 0;
+                const sizeMb = dig.file_size_bytes ? (dig.file_size_bytes / (1024 * 1024)).toFixed(1) + " MB" : null;
+                const kindBadge = dig.kind === "license_key" ? "Software License Key" : dig.kind === "template" ? "Digital Toolkit" : dig.kind === "course" ? "Masterclass" : "Instant Download";
+                return (
+                  <div
+                    key={dig.id}
+                    className="flex flex-col justify-between rounded-3xl border border-gold/30 bg-[rgb(var(--surface-card))] p-5 shadow-sm space-y-4 hover:border-gold transition"
+                  >
+                    <div>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="inline-flex items-center gap-1 rounded-full bg-gold/15 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider text-gold">
+                          {kindBadge}
+                        </span>
+                        {savings > 0 && (
+                          <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-black text-emerald-600">
+                            Save {ugx(savings)}
+                          </span>
+                        )}
+                      </div>
+                      <h3 className="mt-2 font-bold text-base text-ink leading-tight">{dig.title}</h3>
+                      {dig.description && <p className="mt-1 text-xs text-ink-500 line-clamp-2">{dig.description}</p>}
+                      <div className="mt-3 flex items-baseline gap-2">
+                        <span className="font-mono font-black text-base text-gold">{ugx(digPrice)}</span>
+                        {digCompare && (
+                          <span className="font-mono text-xs text-ink-400 line-through">{ugx(digCompare)}</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="border-t border-[var(--border-faint)] pt-3 text-xs text-ink-500 space-y-2">
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="flex items-center gap-1 font-semibold text-ink">
+                          <CheckCircle2 className="h-3.5 w-3.5 text-gold" />
+                          {sizeMb ? `File: ${sizeMb}` : "Instant access"}
+                        </span>
+                        <span className="text-ink-400">⚡ Instant SMS link</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          addToBag({
+                            id: dig.id,
+                            title: dig.title,
+                            price: digPrice,
+                            image_url: null,
+                            store_id: store.id,
+                            description: dig.description,
+                            compare_at_price: digCompare,
+                          } as any);
+                        }}
+                        className="w-full mt-2 rounded-2xl bg-gold py-2.5 text-xs font-black text-ink-gold shadow transition hover:opacity-90 active:scale-95"
+                      >
+                        Buy &amp; Download ({ugx(digPrice)})
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
+        {/* Online Video Masterclasses & Courses (Synced with Peebee Learn) */}
+        {courses.length > 0 && (activeCollectionId === "all" || activeCollectionId === "courses") && (
+          <section className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-black text-ink flex items-center gap-2">
+                  <GraduationCap className="h-5 w-5 text-gold" />
+                  Online Courses &amp; Masterclasses
+                </h2>
+                <p className="text-xs text-ink-500">Official masterclasses synced directly with Peebee Learn LMS player</p>
+              </div>
+              <span className="rounded-full bg-gold/15 px-3 py-1 text-xs font-black text-gold">Peebee Learn Certified</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+              {courses.map((course) => {
+                return (
+                  <div
+                    key={course.id}
+                    className="flex flex-col justify-between rounded-3xl border border-gold/30 bg-[rgb(var(--surface-card))] p-5 shadow-sm space-y-4 hover:border-gold transition"
+                  >
+                    <div>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="inline-flex items-center gap-1 rounded-full bg-gold/20 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider text-ink">
+                          <Sparkles className="h-3 w-3 text-gold" />
+                          {course.category || "Masterclass"}
+                        </span>
+                        <span className="rounded-full bg-surface-muted px-2 py-0.5 text-[10px] font-bold text-ink-500 uppercase">
+                          {course.level || "All Levels"}
+                        </span>
+                      </div>
+                      <h3 className="mt-2 font-bold text-base text-ink leading-tight">{course.title}</h3>
+                      {(course.summary || course.subtitle || course.description) && (
+                        <p className="mt-1 text-xs text-ink-500 line-clamp-2">{course.summary || course.subtitle || course.description}</p>
+                      )}
+                      <div className="mt-3 flex items-center gap-4 text-xs text-ink font-semibold">
+                        <span className="flex items-center gap-1">
+                          <PlayCircle className="h-3.5 w-3.5 text-gold" />
+                          {course.lessons_count ?? 12} Lessons
+                        </span>
+                        {course.duration_minutes ? (
+                          <span className="flex items-center gap-1 text-ink-500">
+                            <Clock className="h-3.5 w-3.5 text-gold" />
+                            {Math.round(course.duration_minutes / 60)}h {course.duration_minutes % 60}m
+                          </span>
+                        ) : null}
+                      </div>
+                      <div className="mt-3 flex items-baseline gap-2">
+                        <span className="font-mono font-black text-base text-gold">{ugx(course.price_ugx)}</span>
+                        <span className="text-[11px] font-bold text-emerald-600">Lifetime Learn Access</span>
+                      </div>
+                    </div>
+                    <div className="border-t border-[var(--border-faint)] pt-3 text-xs text-ink-500 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <a
+                          href={`${CUSTOMER_APP_URL}/learn/course/${course.id}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="flex-1 text-center rounded-2xl border border-[var(--border-faint)] bg-surface-muted py-2 text-[11px] font-bold text-ink hover:border-gold transition"
+                        >
+                          Preview Curriculum
+                        </a>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            addToBag({
+                              id: course.id,
+                              title: course.title,
+                              price: course.price_ugx,
+                              image_url: null,
+                              store_id: store.id,
+                              description: course.subtitle,
+                            } as any);
+                          }}
+                          className="flex-1 rounded-2xl bg-gold py-2 text-[11px] font-black text-ink-gold shadow transition hover:opacity-90 active:scale-95"
+                        >
+                          Enroll Now
+                        </button>
+                      </div>
                     </div>
                   </div>
                 );

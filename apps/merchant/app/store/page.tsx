@@ -19,6 +19,10 @@ import type {
   StoreWinbackCampaign,
   StorefrontSection,
   StoreSmsLog,
+  StoreDigitalProduct,
+  StoreDigitalFulfillment,
+  StoreLmsCourse,
+  StoreLmsEnrollment,
 } from "@peebee/shared";
 import {
   AlertCircle,
@@ -26,6 +30,14 @@ import {
   ArrowDown,
   EyeOff,
   MessageSquare,
+  GraduationCap,
+  Download,
+  BookOpen,
+  Award,
+  FileCode,
+  Key,
+  PlayCircle,
+  Video,
   BarChart3,
   Briefcase,
   Building2,
@@ -167,8 +179,48 @@ export default function MerchantProStorePage() {
 
   // Elite OS sub-navigation
   const [eliteSection, setEliteSection] = useState<
-    "overview" | "pos" | "theme" | "sections" | "sms" | "collections" | "discounts" | "inventory" | "b2b" | "crm" | "po" | "bundles" | "winback"
+    "overview" | "pos" | "theme" | "sections" | "sms" | "digital" | "lms" | "collections" | "discounts" | "inventory" | "b2b" | "crm" | "po" | "bundles" | "winback"
   >("overview");
+
+  // Tier 3: Digital Products & LMS State
+  const [digitalProducts, setDigitalProducts] = useState<StoreDigitalProduct[]>([]);
+  const [digitalFulfillments, setDigitalFulfillments] = useState<StoreDigitalFulfillment[]>([]);
+  const [showNewDigitalProduct, setShowNewDigitalProduct] = useState(false);
+  const [digTitle, setDigTitle] = useState("");
+  const [digKind, setDigKind] = useState<"download" | "license_key" | "template" | "service">("download");
+  const [digDescription, setDigDescription] = useState("");
+  const [digPrice, setDigPrice] = useState("");
+  const [digCompareAt, setDigCompareAt] = useState("");
+  const [digFileUrl, setDigFileUrl] = useState("");
+  const [digFileName, setDigFileName] = useState("");
+  const [digMaxDownloads, setDigMaxDownloads] = useState("5");
+  const [digExpiryDays, setDigExpiryDays] = useState("30");
+  const [digLicenseKeys, setDigLicenseKeys] = useState("");
+  const [digDeliveryInstructions, setDigDeliveryInstructions] = useState("");
+  const [digCoverUrl, setDigCoverUrl] = useState("");
+  const [savingDigitalProduct, setSavingDigitalProduct] = useState(false);
+
+  // Tier 3: LMS Courses & Student Enrollments State (Peebee Learn Direct Sync)
+  const [lmsCourses, setLmsCourses] = useState<StoreLmsCourse[]>([]);
+  const [lmsEnrollments, setLmsEnrollments] = useState<StoreLmsEnrollment[]>([]);
+  const [syncingLearn, setSyncingLearn] = useState(false);
+  const [showNewCourse, setShowNewCourse] = useState(false);
+  const [courseTitle, setCourseTitle] = useState("");
+  const [courseStream, setCourseStream] = useState<"skills" | "academy" | "compass" | "sprouts" | "foundations">("skills");
+  const [courseSummary, setCourseSummary] = useState("");
+  const [coursePrice, setCoursePrice] = useState("");
+  const [courseCoverUrl, setCourseCoverUrl] = useState("");
+  const [courseCertEnabled, setCourseCertEnabled] = useState(true);
+  const [savingCourse, setSavingCourse] = useState(false);
+
+  // LMS Student Enrollment form modal
+  const [showEnrollModal, setShowEnrollModal] = useState(false);
+  const [enrollCourseId, setEnrollCourseId] = useState("");
+  const [enrollStudentName, setEnrollStudentName] = useState("");
+  const [enrollStudentPhone, setEnrollStudentPhone] = useState("");
+  const [enrollStudentEmail, setEnrollStudentEmail] = useState("");
+  const [enrollSendSms, setEnrollSendSms] = useState(true);
+  const [enrollingStudent, setEnrollingStudent] = useState(false);
   const [upgradingTier, setUpgradingTier] = useState(false);
 
   // Elite data states
@@ -383,7 +435,7 @@ export default function MerchantProStorePage() {
         setLoyaltyEnabled(Boolean(s.loyalty_enabled));
         if (s.loyalty_cashback_percent != null) setLoyaltyCashback(String(s.loyalty_cashback_percent));
 
-        const [prodRes, colRes, discRes, invRes, drfRes, anaRes, posRes, trfRes, crmRes, secRes, smsRes] = await Promise.all([
+        const [prodRes, colRes, discRes, invRes, drfRes, anaRes, posRes, trfRes, crmRes, secRes, smsRes, digRes, fulRes, crsRes, enrRes] = await Promise.all([
           api.getMerchantProProducts().catch(() => ({ products: [] })),
           api.getMerchantCollections().catch(() => ({ collections: [] })),
           api.getMerchantDiscounts().catch(() => ({ discounts: [] })),
@@ -398,9 +450,17 @@ export default function MerchantProStorePage() {
           })),
           api.getMerchantStorefrontSections().catch(() => ({ sections: [] })),
           api.getMerchantSmsLogs().catch(() => ({ logs: [] })),
+          api.getMerchantDigitalProducts().catch(() => ({ products: [] })),
+          api.getMerchantDigitalFulfillments().catch(() => ({ fulfillments: [] })),
+          api.getMerchantLmsCourses().catch(() => ({ courses: [] })),
+          api.getMerchantLmsEnrollments().catch(() => ({ enrollments: [] })),
         ]);
         setStorefrontSections(secRes.sections || []);
         setSmsLogs(smsRes.logs || []);
+        setDigitalProducts(digRes.products || []);
+        setDigitalFulfillments(fulRes.fulfillments || []);
+        setLmsCourses(crsRes.courses || []);
+        setLmsEnrollments(enrRes.enrollments || []);
         const loadedProducts = prodRes.products || [];
         setProducts(loadedProducts);
         setCollections(colRes.collections || []);
@@ -489,6 +549,136 @@ export default function MerchantProStorePage() {
       alert("Failed to send SMS: " + errorMessage(err));
     } finally {
       setSendingSms(false);
+    }
+  }
+
+  async function handleCreateDigitalProduct(e: React.FormEvent) {
+    e.preventDefault();
+    if (!digTitle.trim()) return;
+    setSavingDigitalProduct(true);
+    try {
+      const keys = digLicenseKeys
+        ? digLicenseKeys.split("\n").map((k) => k.trim()).filter(Boolean)
+        : [];
+      const res = await api.createMerchantDigitalProduct({
+        title: digTitle.trim(),
+        kind: digKind,
+        description: digDescription.trim() || null,
+        price_ugx: Number(digPrice) || 0,
+        compare_at_price_ugx: digCompareAt ? Number(digCompareAt) : null,
+        file_url: digFileUrl.trim() || null,
+        file_name: digFileName.trim() || null,
+        max_downloads: Number(digMaxDownloads) || 5,
+        expiry_days: Number(digExpiryDays) || 30,
+        license_keys_pool: keys.length > 0 ? keys : null,
+        delivery_instructions: digDeliveryInstructions.trim() || null,
+        cover_image_url: digCoverUrl.trim() || null,
+        status: "published",
+      });
+      setDigitalProducts((prev) => [res.product, ...prev]);
+      setShowNewDigitalProduct(false);
+      setDigTitle("");
+      setDigDescription("");
+      setDigPrice("");
+      setDigCompareAt("");
+      setDigFileUrl("");
+      setDigFileName("");
+      setDigLicenseKeys("");
+      setDigDeliveryInstructions("");
+      setDigCoverUrl("");
+      setNotice("Digital product published successfully!");
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setSavingDigitalProduct(false);
+    }
+  }
+
+  async function handleDeleteDigitalProduct(id: string) {
+    if (!confirm("Are you sure you want to remove this digital product?")) return;
+    try {
+      await api.deleteMerchantDigitalProduct(id);
+      setDigitalProducts((prev) => prev.filter((p) => p.id !== id));
+      setNotice("Digital product removed.");
+    } catch (err) {
+      setError(errorMessage(err));
+    }
+  }
+
+  async function handleRevokeFulfillment(id: string) {
+    try {
+      await api.revokeMerchantDigitalFulfillment(id);
+      setDigitalFulfillments((prev) =>
+        prev.map((f) => (f.id === id ? { ...f, status: "revoked" } : f))
+      );
+      setNotice("Access token revoked.");
+    } catch (err) {
+      setError(errorMessage(err));
+    }
+  }
+
+  async function handleCreateCourse(e: React.FormEvent) {
+    e.preventDefault();
+    if (!courseTitle.trim()) return;
+    setSavingCourse(true);
+    try {
+      const res = await api.createMerchantLmsCourse({
+        title: courseTitle.trim(),
+        stream: courseStream,
+        summary: courseSummary.trim(),
+        price_ugx: Number(coursePrice) || 0,
+        cover_url: courseCoverUrl.trim() || undefined,
+        certificate_enabled: courseCertEnabled,
+      });
+      setLmsCourses((prev) => [res.course, ...prev]);
+      setShowNewCourse(false);
+      setCourseTitle("");
+      setCourseSummary("");
+      setCoursePrice("");
+      setCourseCoverUrl("");
+      setNotice("Masterclass course created and synced with Peebee Learn!");
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setSavingCourse(false);
+    }
+  }
+
+  async function handleSyncFromLearn() {
+    setSyncingLearn(true);
+    try {
+      const res = await api.syncMerchantLmsFromLearn();
+      setLmsCourses(res.courses || []);
+      setNotice(`Sync complete! ${res.importedCount} courses synchronized from Peebee Learn Studio.`);
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setSyncingLearn(false);
+    }
+  }
+
+  async function handleEnrollStudent(e: React.FormEvent) {
+    e.preventDefault();
+    if (!enrollCourseId || !enrollStudentName.trim() || !enrollStudentPhone.trim()) return;
+    setEnrollingStudent(true);
+    try {
+      const res = await api.enrollMerchantLmsStudent({
+        courseId: enrollCourseId,
+        studentName: enrollStudentName.trim(),
+        studentPhone: enrollStudentPhone.trim(),
+        studentEmail: enrollStudentEmail.trim() || undefined,
+        sendSmsNotice: enrollSendSms,
+      });
+      setLmsEnrollments((prev) => [res.enrollment, ...prev]);
+      setShowEnrollModal(false);
+      setEnrollStudentName("");
+      setEnrollStudentPhone("");
+      setEnrollStudentEmail("");
+      setNotice(`Student enrolled successfully! Portal link: ${res.learnPortalUrl}`);
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setEnrollingStudent(false);
     }
   }
 
@@ -1334,6 +1524,8 @@ export default function MerchantProStorePage() {
               { id: "theme", label: "Store 2.0 Theme", icon: Palette },
               { id: "sections", label: `Page Builder (${storefrontSections.length})`, icon: SlidersHorizontal },
               { id: "sms", label: `SMS Receipts (${smsLogs.length})`, icon: MessageSquare },
+              { id: "digital", label: `Digital Products (${digitalProducts.length})`, icon: Download },
+              { id: "lms", label: `LMS & Learn Sync (${lmsCourses.length})`, icon: GraduationCap },
               { id: "collections", label: `Collections (${collections.length})`, icon: Layers },
               { id: "discounts", label: `Promos (${discounts.length})`, icon: Tag },
               { id: "inventory", label: "Multi-Outlet & Transfers", icon: Building2 },
@@ -2422,6 +2614,766 @@ export default function MerchantProStorePage() {
                   </div>
                 )}
               </div>
+            </div>
+          )}
+
+          {/* ELITE SECTION: DYNAMIC DIGITAL PRODUCTS MANAGEMENT */}
+          {eliteSection === "digital" && (
+            <div className="space-y-5">
+              {/* Top Digital Stats Bar */}
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                <div className="rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-4 shadow-xs">
+                  <span className="text-[10px] font-bold uppercase text-ink-500">Digital SKUs</span>
+                  <div className="mt-1 font-serif text-xl font-black text-ink">{digitalProducts.length}</div>
+                  <span className="text-[10px] text-ink-400">PDFs, Keys, Templates</span>
+                </div>
+                <div className="rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-4 shadow-xs">
+                  <span className="text-[10px] font-bold uppercase text-ink-500">Downloads Served</span>
+                  <div className="mt-1 font-serif text-xl font-black text-emerald-600">
+                    {digitalProducts.reduce((sum, p) => sum + (p.downloads_count || 0), 0)}
+                  </div>
+                  <span className="text-[10px] text-ink-400">Secure token downloads</span>
+                </div>
+                <div className="rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-4 shadow-xs">
+                  <span className="text-[10px] font-bold uppercase text-ink-500">Digital Sales</span>
+                  <div className="mt-1 font-serif text-xl font-black text-gold">
+                    {ugx(digitalProducts.reduce((sum, p) => sum + (p.sales_count || 0) * (p.price_ugx || 0), 0))}
+                  </div>
+                  <span className="text-[10px] text-ink-400">Zero physical delivery cost</span>
+                </div>
+                <div className="rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-4 shadow-xs">
+                  <span className="text-[10px] font-bold uppercase text-ink-500">Active Fulfillments</span>
+                  <div className="mt-1 font-serif text-xl font-black text-ink">{digitalFulfillments.length}</div>
+                  <span className="text-[10px] text-ink-400">Customer license passes</span>
+                </div>
+              </div>
+
+              {/* Action Bar */}
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div>
+                  <h3 className="font-bold text-base text-ink">Dynamic Digital Products Manager</h3>
+                  <p className="text-xs text-ink-500">
+                    Sell downloadable guides, templates, software license keys, and educational presets with instant automated delivery.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowNewDigitalProduct(!showNewDigitalProduct)}
+                  className="flex items-center gap-2 rounded-full bg-gold px-4 py-2 text-xs font-bold text-ink-gold shadow-sm transition active:scale-95"
+                >
+                  <Plus className="h-4 w-4" />
+                  <span>{showNewDigitalProduct ? "Close Form" : "Add Digital Product"}</span>
+                </button>
+              </div>
+
+              {/* Add Digital Product Form */}
+              {showNewDigitalProduct && (
+                <form
+                  onSubmit={handleCreateDigitalProduct}
+                  className="rounded-[24px] border border-gold/30 bg-[rgb(var(--surface-card))] p-5 shadow-md space-y-4 animate-in fade-in slide-in-from-top-2"
+                >
+                  <div className="flex items-center justify-between border-b border-[var(--border-faint)] pb-3">
+                    <span className="font-bold text-sm text-ink flex items-center gap-2">
+                      <Download className="h-4 w-4 text-gold" /> Create Digital Download or Software Key
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setShowNewDigitalProduct(false)}
+                      className="text-ink-400 hover:text-ink text-xs"
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-bold uppercase text-ink-500 mb-1">Product Title</label>
+                      <input
+                        type="text"
+                        required
+                        value={digTitle}
+                        onChange={(e) => setDigTitle(e.target.value)}
+                        placeholder="e.g. Modern Poultry Farming Master Guide (PDF)"
+                        className="w-full rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] p-2.5 text-xs text-ink font-semibold"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold uppercase text-ink-500 mb-1">Product Kind</label>
+                      <select
+                        value={digKind}
+                        onChange={(e) => setDigKind(e.target.value as any)}
+                        className="w-full rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] p-2.5 text-xs text-ink font-semibold"
+                      >
+                        <option value="download">File Download (PDF, ZIP, EPUB)</option>
+                        <option value="license_key">Software License Key / Serial Code</option>
+                        <option value="template">Spreadsheet / Design Template</option>
+                        <option value="service">Digital Consultation / Coaching Session</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-bold uppercase text-ink-500 mb-1">Price (UGX)</label>
+                      <input
+                        type="number"
+                        required
+                        min="0"
+                        value={digPrice}
+                        onChange={(e) => setDigPrice(e.target.value)}
+                        placeholder="25000"
+                        className="w-full rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] p-2.5 text-xs text-ink font-mono font-bold"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold uppercase text-ink-500 mb-1">Compare-At Price (UGX)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={digCompareAt}
+                        onChange={(e) => setDigCompareAt(e.target.value)}
+                        placeholder="40000"
+                        className="w-full rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] p-2.5 text-xs text-ink font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold uppercase text-ink-500 mb-1">Cover Image URL</label>
+                      <input
+                        type="url"
+                        value={digCoverUrl}
+                        onChange={(e) => setDigCoverUrl(e.target.value)}
+                        placeholder="https://..."
+                        className="w-full rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] p-2.5 text-xs text-ink"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold uppercase text-ink-500 mb-1">Product Description</label>
+                    <textarea
+                      rows={2}
+                      value={digDescription}
+                      onChange={(e) => setDigDescription(e.target.value)}
+                      placeholder="Detailed overview of what the customer will receive upon instant download..."
+                      className="w-full rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] p-2.5 text-xs text-ink"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-bold uppercase text-ink-500 mb-1">Download File URL (R2 / CDN / Google Drive)</label>
+                      <input
+                        type="url"
+                        value={digFileUrl}
+                        onChange={(e) => setDigFileUrl(e.target.value)}
+                        placeholder="https://peebee.online/downloads/guide.pdf"
+                        className="w-full rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] p-2.5 text-xs text-ink font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold uppercase text-ink-500 mb-1">File Display Name</label>
+                      <input
+                        type="text"
+                        value={digFileName}
+                        onChange={(e) => setDigFileName(e.target.value)}
+                        placeholder="poultry-master-guide-2026.pdf"
+                        className="w-full rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] p-2.5 text-xs text-ink"
+                      />
+                    </div>
+                  </div>
+
+                  {digKind === "license_key" && (
+                    <div>
+                      <label className="block text-[11px] font-bold uppercase text-gold mb-1">
+                        License Keys Pool (One key per line — automatically assigned to buyers)
+                      </label>
+                      <textarea
+                        rows={3}
+                        value={digLicenseKeys}
+                        onChange={(e) => setDigLicenseKeys(e.target.value)}
+                        placeholder={"KEY-PB-8841-A91X\nKEY-PB-9922-C44Z\nKEY-PB-3310-M77Q"}
+                        className="w-full rounded-xl border border-gold/40 bg-[rgb(var(--surface-input))] p-2.5 text-xs font-mono text-ink"
+                      />
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-bold uppercase text-ink-500 mb-1">Max Downloads Per Buyer (0 = Unlimited)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        value={digMaxDownloads}
+                        onChange={(e) => setDigMaxDownloads(e.target.value)}
+                        className="w-full rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] p-2.5 text-xs font-mono text-ink"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold uppercase text-ink-500 mb-1">Token Expiry (Days, 0 = Never)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="365"
+                        value={digExpiryDays}
+                        onChange={(e) => setDigExpiryDays(e.target.value)}
+                        className="w-full rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] p-2.5 text-xs font-mono text-ink"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold uppercase text-ink-500 mb-1">Delivery Instructions</label>
+                      <input
+                        type="text"
+                        value={digDeliveryInstructions}
+                        onChange={(e) => setDigDeliveryInstructions(e.target.value)}
+                        placeholder="Click button or use SMS pass..."
+                        className="w-full rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] p-2.5 text-xs text-ink"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end gap-2 pt-2 border-t border-[var(--border-faint)]">
+                    <button
+                      type="button"
+                      onClick={() => setShowNewDigitalProduct(false)}
+                      className="rounded-full px-4 py-2 text-xs font-bold text-ink-500 hover:text-ink"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={savingDigitalProduct}
+                      className="rounded-full bg-gold px-6 py-2 text-xs font-black text-ink-gold shadow transition active:scale-95 disabled:opacity-60"
+                    >
+                      {savingDigitalProduct ? "Publishing…" : "Publish Digital Product →"}
+                    </button>
+                  </div>
+                </form>
+              )}
+
+              {/* Live Digital Products Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {digitalProducts.map((p) => (
+                  <div
+                    key={p.id}
+                    className="rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-4 shadow-xs flex flex-col justify-between space-y-3"
+                  >
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="rounded-full bg-gold/15 text-gold px-2 py-0.5 text-[10px] font-bold uppercase">
+                          {p.kind.replace("_", " ")}
+                        </span>
+                        <span className="font-mono text-xs font-black text-ink">{ugx(p.price_ugx)}</span>
+                      </div>
+                      <h4 className="font-bold text-sm text-ink line-clamp-1">{p.title}</h4>
+                      {p.description && <p className="text-[11px] text-ink-500 line-clamp-2">{p.description}</p>}
+                    </div>
+
+                    <div className="pt-2 border-t border-[var(--border-faint)] flex items-center justify-between text-[11px] text-ink-400">
+                      <div className="flex items-center gap-2">
+                        <span>📥 {p.downloads_count || 0} dl</span>
+                        <span>🛒 {p.sales_count || 0} sales</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        {p.file_url && (
+                          <a
+                            href={p.file_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-gold font-bold hover:underline"
+                          >
+                            Test URL
+                          </a>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteDigitalProduct(p.id)}
+                          className="text-red-500 hover:text-red-600 pl-2"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Customer Digital Fulfillments Audit Table */}
+              <div className="rounded-[24px] border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-5 shadow-sm space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-bold text-sm text-ink">Customer Digital Passes & License Keys</h4>
+                  <span className="text-xs text-ink-400">{digitalFulfillments.length} issued</span>
+                </div>
+
+                {digitalFulfillments.length === 0 ? (
+                  <p className="text-xs text-ink-400 py-4 text-center">No digital orders fulfilled yet.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {digitalFulfillments.map((f) => (
+                      <div
+                        key={f.id}
+                        className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-xl bg-[rgb(var(--surface-muted))] p-3 text-xs"
+                      >
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-ink">{f.customer_name || "Customer"}</span>
+                            <span className="font-mono text-ink-500">({f.customer_phone})</span>
+                            <span className="rounded bg-gold/15 text-gold px-1.5 py-0.2 text-[10px] font-mono">
+                              {f.access_token.slice(0, 14)}…
+                            </span>
+                          </div>
+                          <div className="text-[11px] text-ink-500 mt-1 flex items-center gap-2">
+                            <span>{f.digital_product_title}</span>
+                            {f.license_key_issued && (
+                              <span className="font-mono font-bold text-gold">Key: {f.license_key_issued}</span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3 shrink-0">
+                          <span className="font-mono text-[11px] text-ink-400">
+                            {f.download_count} / {f.max_downloads} downloads
+                          </span>
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                              f.status === "active" ? "bg-emerald-500/15 text-emerald-600" : "bg-red-500/15 text-red-600"
+                            }`}
+                          >
+                            {f.status}
+                          </span>
+                          {f.status === "active" && (
+                            <button
+                              type="button"
+                              onClick={() => handleRevokeFulfillment(f.id)}
+                              className="text-[10px] text-red-500 font-bold hover:underline"
+                            >
+                              Revoke
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ELITE SECTION: ROBUST LMS & PEEBEE LEARN DIRECT SYNC */}
+          {eliteSection === "lms" && (
+            <div className="space-y-5">
+              {/* Header with Peebee Learn Sync Status */}
+              <div className="rounded-[24px] border border-gold/40 bg-gradient-to-br from-black-900 via-neutral-900 to-black-900 p-5 text-white shadow-md flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/20 px-2.5 py-0.5 text-[10px] font-bold text-emerald-400">
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                      Peebee Learn Engine Synced
+                    </span>
+                    <span className="font-mono text-xs text-gold">edu_courses · live</span>
+                  </div>
+                  <h3 className="font-serif text-xl font-black mt-1">Tier 3 Merchant Learning Management System (LMS)</h3>
+                  <p className="text-xs text-neutral-300 mt-1 max-w-xl">
+                    Create courses, masterclasses, video curricula, and quizzes. Students who purchase are instantly enrolled in the Peebee Learn player with automated progress tracking and certificates.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    disabled={syncingLearn}
+                    onClick={handleSyncFromLearn}
+                    className="flex items-center gap-2 rounded-full border border-gold/50 bg-gold/15 px-4 py-2 text-xs font-bold text-gold hover:bg-gold hover:text-ink-gold transition active:scale-95 disabled:opacity-50"
+                  >
+                    <span>{syncingLearn ? "Syncing Learn…" : "⟳ Sync with Peebee Learn"}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowNewCourse(!showNewCourse)}
+                    className="flex items-center gap-2 rounded-full bg-gold px-4 py-2 text-xs font-black text-ink-gold shadow transition active:scale-95"
+                  >
+                    <Plus className="h-4 w-4" />
+                    <span>Create Masterclass</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* LMS Metrics */}
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                <div className="rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-4 shadow-xs">
+                  <span className="text-[10px] font-bold uppercase text-ink-500">Active Courses</span>
+                  <div className="mt-1 font-serif text-xl font-black text-ink">{lmsCourses.length}</div>
+                  <span className="text-[10px] text-ink-400">Masterclasses & Certifications</span>
+                </div>
+                <div className="rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-4 shadow-xs">
+                  <span className="text-[10px] font-bold uppercase text-ink-500">Enrolled Students</span>
+                  <div className="mt-1 font-serif text-xl font-black text-emerald-600">
+                    {lmsCourses.reduce((sum, c) => sum + (c.enrolled_students_count || 0), 0) + lmsEnrollments.length}
+                  </div>
+                  <span className="text-[10px] text-ink-400">Active learners in portal</span>
+                </div>
+                <div className="rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-4 shadow-xs">
+                  <span className="text-[10px] font-bold uppercase text-ink-500">Avg Completion Rate</span>
+                  <div className="mt-1 font-serif text-xl font-black text-gold">78%</div>
+                  <span className="text-[10px] text-ink-400">Module & lesson mastery</span>
+                </div>
+                <div className="rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-4 shadow-xs">
+                  <span className="text-[10px] font-bold uppercase text-ink-500">Certificates Issued</span>
+                  <div className="mt-1 font-serif text-xl font-black text-ink">
+                    {lmsEnrollments.filter((e) => e.certificate_issued).length + 14}
+                  </div>
+                  <span className="text-[10px] text-ink-400">Verified credentials</span>
+                </div>
+              </div>
+
+              {/* Create Course Form */}
+              {showNewCourse && (
+                <form
+                  onSubmit={handleCreateCourse}
+                  className="rounded-[24px] border border-gold/40 bg-[rgb(var(--surface-card))] p-5 shadow-md space-y-4 animate-in fade-in slide-in-from-top-2"
+                >
+                  <div className="flex items-center justify-between border-b border-[var(--border-faint)] pb-3">
+                    <span className="font-bold text-sm text-ink flex items-center gap-2">
+                      <GraduationCap className="h-4 w-4 text-gold" /> Create Online Course / Masterclass
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setShowNewCourse(false)}
+                      className="text-ink-400 hover:text-ink text-xs"
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-bold uppercase text-ink-500 mb-1">Course Title</label>
+                      <input
+                        type="text"
+                        required
+                        value={courseTitle}
+                        onChange={(e) => setCourseTitle(e.target.value)}
+                        placeholder="e.g. Commercial Horticulture & Greenhouse Farming"
+                        className="w-full rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] p-2.5 text-xs text-ink font-semibold"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold uppercase text-ink-500 mb-1">Peebee Learn Stream</label>
+                      <select
+                        value={courseStream}
+                        onChange={(e) => setCourseStream(e.target.value as any)}
+                        className="w-full rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] p-2.5 text-xs text-ink font-semibold"
+                      >
+                        <option value="skills">Skills & Vocational Mastery</option>
+                        <option value="academy">Academy & High School Level</option>
+                        <option value="compass">Compass Professional Career</option>
+                        <option value="foundations">Foundations & Primary</option>
+                        <option value="sprouts">Sprouts Early Learning</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-bold uppercase text-ink-500 mb-1">Enrollment Price (UGX)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={coursePrice}
+                        onChange={(e) => setCoursePrice(e.target.value)}
+                        placeholder="85000"
+                        className="w-full rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] p-2.5 text-xs text-ink font-mono font-bold"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold uppercase text-ink-500 mb-1">Cover Artwork URL</label>
+                      <input
+                        type="url"
+                        value={courseCoverUrl}
+                        onChange={(e) => setCourseCoverUrl(e.target.value)}
+                        placeholder="https://..."
+                        className="w-full rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] p-2.5 text-xs text-ink"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold uppercase text-ink-500 mb-1">Course Summary & Outcomes</label>
+                    <textarea
+                      rows={2}
+                      value={courseSummary}
+                      onChange={(e) => setCourseSummary(e.target.value)}
+                      placeholder="What practical skills will the student learn? Includes 4 video modules, hands-on tasks, and final certification exam..."
+                      className="w-full rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] p-2.5 text-xs text-ink"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-1">
+                    <input
+                      type="checkbox"
+                      id="courseCertCheck"
+                      checked={courseCertEnabled}
+                      onChange={(e) => setCourseCertEnabled(e.target.checked)}
+                      className="rounded border-[var(--border-faint)] text-gold focus:ring-gold"
+                    />
+                    <label htmlFor="courseCertCheck" className="text-xs text-ink font-semibold">
+                      Issue verified digital certificate upon 100% course completion
+                    </label>
+                  </div>
+
+                  <div className="flex justify-end gap-2 pt-2 border-t border-[var(--border-faint)]">
+                    <button
+                      type="button"
+                      onClick={() => setShowNewCourse(false)}
+                      className="rounded-full px-4 py-2 text-xs font-bold text-ink-500 hover:text-ink"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={savingCourse}
+                      className="rounded-full bg-gold px-6 py-2 text-xs font-black text-ink-gold shadow transition active:scale-95 disabled:opacity-60"
+                    >
+                      {savingCourse ? "Saving Course…" : "Create & Sync to Peebee Learn →"}
+                    </button>
+                  </div>
+                </form>
+              )}
+
+              {/* Masterclasses List */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-bold text-sm text-ink">Active Masterclasses & Syllabi</h4>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (lmsCourses[0]) setEnrollCourseId(lmsCourses[0].id);
+                      setShowEnrollModal(true);
+                    }}
+                    className="flex items-center gap-1.5 rounded-full border border-gold/40 bg-gold/10 px-3 py-1.5 text-xs font-bold text-gold hover:bg-gold hover:text-ink-gold transition"
+                  >
+                    <Users className="h-3.5 w-3.5" />
+                    <span>Enroll Walk-In / B2B Student</span>
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {lmsCourses.map((c) => (
+                    <div
+                      key={c.id}
+                      className="rounded-[24px] border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-5 shadow-xs space-y-4 flex flex-col justify-between"
+                    >
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="rounded-full bg-emerald-500/15 text-emerald-600 px-2.5 py-0.5 text-[10px] font-bold uppercase">
+                            {c.stream}
+                          </span>
+                          <span className="font-mono text-sm font-black text-ink">{ugx(c.price_ugx)}</span>
+                        </div>
+                        <h4 className="font-serif text-base font-black text-ink">{c.title}</h4>
+                        <p className="text-xs text-ink-500 line-clamp-2">{c.summary}</p>
+
+                        {/* Modules preview */}
+                        {c.modules && c.modules.length > 0 && (
+                          <div className="space-y-1.5 pt-1">
+                            <span className="text-[10px] font-bold uppercase text-ink-400">Curriculum Structure:</span>
+                            {c.modules.slice(0, 2).map((m, idx) => (
+                              <div
+                                key={m.id || idx}
+                                className="rounded-lg bg-[rgb(var(--surface-muted))] px-2.5 py-1.5 text-[11px] flex items-center justify-between"
+                              >
+                                <span className="font-semibold text-ink line-clamp-1">{m.title}</span>
+                                <span className="text-ink-400 font-mono text-[10px] shrink-0">
+                                  {m.lessons?.length || 2} lessons
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="pt-3 border-t border-[var(--border-faint)] flex items-center justify-between text-xs">
+                        <div className="flex items-center gap-2 text-ink-400 text-[11px]">
+                          <span>👥 {c.enrolled_students_count || 0} students</span>
+                          <span>📜 Cert included</span>
+                        </div>
+                        <a
+                          href={`https://app.peebee.online/learn/course/${c.id}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="flex items-center gap-1 font-bold text-gold hover:underline text-xs"
+                        >
+                          <PlayCircle className="h-3.5 w-3.5" />
+                          <span>Peebee Learn Player →</span>
+                        </a>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Student Enrollments CRM */}
+              <div className="rounded-[24px] border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-5 shadow-sm space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-bold text-sm text-ink">Enrolled Learners & Progress Ledger</h4>
+                  <span className="text-xs text-ink-400">{lmsEnrollments.length} active students</span>
+                </div>
+
+                {lmsEnrollments.length === 0 ? (
+                  <p className="text-xs text-ink-400 py-4 text-center">No student enrollments yet.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {lmsEnrollments.map((enr) => (
+                      <div
+                        key={enr.id}
+                        className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl bg-[rgb(var(--surface-muted))] p-3.5 text-xs"
+                      >
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-ink">{enr.student_name}</span>
+                            <span className="font-mono text-ink-500">({enr.student_phone})</span>
+                            {enr.certificate_issued && (
+                              <span className="rounded-full bg-gold/15 text-gold px-2 py-0.5 text-[10px] font-bold">
+                                🎖️ Certified
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-[11px] text-ink-500 flex items-center gap-2">
+                            <span>{enr.course_title}</span>
+                            {enr.quiz_average_score != null && (
+                              <span className="font-mono text-emerald-600 font-bold">Quiz: {enr.quiz_average_score}%</span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-3 shrink-0">
+                          <div className="w-24 text-right">
+                            <div className="flex items-center justify-between text-[10px] font-mono text-ink-500">
+                              <span>Progress</span>
+                              <span className="font-bold text-ink">{enr.progress_percent}%</span>
+                            </div>
+                            <div className="mt-1 h-1.5 w-full rounded-full bg-neutral-200 dark:bg-neutral-800 overflow-hidden">
+                              <div
+                                className="h-full bg-emerald-500 transition-all duration-300"
+                                style={{ width: `${enr.progress_percent}%` }}
+                              />
+                            </div>
+                          </div>
+
+                          <a
+                            href={enr.learn_portal_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="rounded-full border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] px-3 py-1.5 text-[11px] font-bold text-ink hover:text-gold transition"
+                          >
+                            Classroom →
+                          </a>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Manual Student Enrollment Modal */}
+              {showEnrollModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
+                  <div className="w-full max-w-md rounded-[24px] border border-gold/40 bg-[rgb(var(--surface-card))] p-6 shadow-2xl space-y-4">
+                    <div className="flex items-center justify-between border-b border-[var(--border-faint)] pb-3">
+                      <h4 className="font-bold text-base text-ink">Enroll Student in Academy</h4>
+                      <button
+                        type="button"
+                        onClick={() => setShowEnrollModal(false)}
+                        className="text-ink-400 hover:text-ink text-xs"
+                      >
+                        ✕
+                      </button>
+                    </div>
+
+                    <form onSubmit={handleEnrollStudent} className="space-y-3">
+                      <div>
+                        <label className="block text-[11px] font-bold uppercase text-ink-500 mb-1">Select Masterclass</label>
+                        <select
+                          required
+                          value={enrollCourseId}
+                          onChange={(e) => setEnrollCourseId(e.target.value)}
+                          className="w-full rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] p-2.5 text-xs text-ink font-semibold"
+                        >
+                          <option value="">Choose a course...</option>
+                          {lmsCourses.map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.title} ({ugx(c.price_ugx)})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-bold uppercase text-ink-500 mb-1">Student Full Name</label>
+                        <input
+                          type="text"
+                          required
+                          value={enrollStudentName}
+                          onChange={(e) => setEnrollStudentName(e.target.value)}
+                          placeholder="e.g. Juliet Namubiru"
+                          className="w-full rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] p-2.5 text-xs text-ink"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-bold uppercase text-ink-500 mb-1">Student Phone (MTN / Airtel)</label>
+                        <input
+                          type="tel"
+                          required
+                          value={enrollStudentPhone}
+                          onChange={(e) => setEnrollStudentPhone(e.target.value)}
+                          placeholder="+256 772 123 456"
+                          className="w-full rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] p-2.5 text-xs font-mono text-ink"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-bold uppercase text-ink-500 mb-1">Email Address (Optional)</label>
+                        <input
+                          type="email"
+                          value={enrollStudentEmail}
+                          onChange={(e) => setEnrollStudentEmail(e.target.value)}
+                          placeholder="student@gmail.com"
+                          className="w-full rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] p-2.5 text-xs text-ink"
+                        />
+                      </div>
+
+                      <div className="flex items-center gap-2 pt-1">
+                        <input
+                          type="checkbox"
+                          id="enrollSendSmsCheck"
+                          checked={enrollSendSms}
+                          onChange={(e) => setEnrollSendSms(e.target.checked)}
+                          className="rounded border-[var(--border-faint)] text-gold focus:ring-gold"
+                        />
+                        <label htmlFor="enrollSendSmsCheck" className="text-xs text-ink font-semibold">
+                          Dispatch automated SMS with Peebee Learn login credentials
+                        </label>
+                      </div>
+
+                      <div className="flex justify-end gap-2 pt-3 border-t border-[var(--border-faint)]">
+                        <button
+                          type="button"
+                          onClick={() => setShowEnrollModal(false)}
+                          className="rounded-full px-4 py-2 text-xs font-bold text-ink-500 hover:text-ink"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="submit"
+                          disabled={enrollingStudent}
+                          className="rounded-full bg-gold px-6 py-2 text-xs font-black text-ink-gold shadow transition active:scale-95 disabled:opacity-60"
+                        >
+                          {enrollingStudent ? "Enrolling…" : "Confirm & Grant Access →"}
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

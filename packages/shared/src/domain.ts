@@ -415,6 +415,10 @@ export type MarketplaceSettings = {
   eliteSmsAlertsEnabled?: boolean;
   eliteSmsCostPerMessageUgx?: number;
   smsProvider?: "simulator" | "africas_talking" | "twilio";
+  eliteDigitalProductsEnabled?: boolean;
+  eliteLmsSyncEnabled?: boolean;
+  eliteMaxCourses?: number;
+  eliteMaxDigitalProducts?: number;
 };
 
 export type StoreCollection = {
@@ -603,7 +607,9 @@ export type StorefrontSectionType =
   | "testimonials"
   | "trust_badges"
   | "faq"
-  | "contact_strip";
+  | "contact_strip"
+  | "digital_products"
+  | "lms_courses";
 
 export type StorefrontSection = {
   id: string;
@@ -613,6 +619,115 @@ export type StorefrontSection = {
   enabled: boolean;
   order: number;
   settings?: Record<string, any>;
+};
+
+export type DigitalProductKind = "download" | "license_key" | "course" | "template" | "service";
+
+export type StoreDigitalProduct = {
+  id: string;
+  store_id: string;
+  title: string;
+  kind: DigitalProductKind;
+  description: string | null;
+  price_ugx: number;
+  compare_at_price_ugx?: number | null;
+  file_url?: string | null;
+  file_name?: string | null;
+  file_size_bytes?: number | null;
+  mime_type?: string | null;
+  max_downloads: number;
+  expiry_days: number;
+  license_keys_pool?: string[] | null;
+  delivery_instructions?: string | null;
+  cover_image_url?: string | null;
+  linked_course_id?: string | null;
+  status: "published" | "draft" | "archived";
+  downloads_count: number;
+  sales_count: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type StoreDigitalFulfillment = {
+  id: string;
+  store_id: string;
+  digital_product_id: string;
+  digital_product_title?: string;
+  order_id?: string | null;
+  customer_name: string | null;
+  customer_phone: string;
+  customer_email?: string | null;
+  access_token: string;
+  license_key_issued?: string | null;
+  download_count: number;
+  max_downloads: number;
+  download_url?: string;
+  expires_at?: string | null;
+  edu_enrollment_id?: string | null;
+  status: "active" | "revoked" | "expired";
+  created_at: string;
+};
+
+export type StoreLmsLesson = {
+  id: string;
+  title: string;
+  content_type: "video" | "audio" | "pdf_worksheet" | "quiz" | "article";
+  duration_minutes: number;
+  content_url?: string;
+  summary?: string;
+  quiz_questions_count?: number;
+};
+
+export type StoreLmsModule = {
+  id: string;
+  title: string;
+  description?: string;
+  position: number;
+  lessons: StoreLmsLesson[];
+};
+
+export type StoreLmsCourse = {
+  id: string;
+  store_id: string;
+  learn_course_id?: string;
+  learn_school_id?: string;
+  title: string;
+  slug?: string;
+  stream: "skills" | "academy" | "compass" | "sprouts" | "foundations";
+  summary: string;
+  price_ugx: number;
+  cover_url?: string;
+  certificate_enabled: boolean;
+  drip_schedule?: "all_at_once" | "daily" | "weekly";
+  status: "draft" | "published";
+  modules: StoreLmsModule[];
+  total_lessons: number;
+  total_duration_minutes: number;
+  enrolled_students_count: number;
+  completion_rate_percent: number;
+  learn_synced: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type StoreLmsEnrollment = {
+  id: string;
+  store_id: string;
+  course_id: string;
+  course_title?: string;
+  student_name: string;
+  student_phone: string;
+  student_email?: string;
+  progress_percent: number;
+  completed_lessons: number;
+  total_lessons: number;
+  quiz_average_score?: number | null;
+  certificate_issued: boolean;
+  certificate_url?: string | null;
+  enrolled_at: string;
+  last_active_at: string;
+  access_status: "active" | "completed" | "suspended";
+  learn_portal_url: string;
 };
 
 export type StoreSmsLog = {

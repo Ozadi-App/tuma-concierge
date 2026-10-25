@@ -13,7 +13,10 @@ import { notifyUser } from "../lib/webpush.js";
 import { insertRelayLegs, planRelay, relayChargeFor, resolveLastMile, type RelayLastMile, type RelayMeet, type RelayPlan } from "../relay/service.js";
 import { getRelaySettings } from "../relay/settings.js";
 
+import { digitalLmsRoutes } from "./digital-lms.js";
+
 export const marketplaceRoutes = new Hono();
+marketplaceRoutes.route("/", digitalLmsRoutes);
 
 type Row = Record<string, unknown>;
 
@@ -3298,6 +3301,24 @@ marketplaceRoutes.get("/marketplace/stores/:id", async (c) => {
     outlets = outRes.rows as Row[];
   }
 
+  let digitalProducts: Row[] = [];
+  if (await hasTable("store_digital_products")) {
+    const digRes = await db.execute({
+      sql: "SELECT id, store_id, title, kind, description, price_ugx, compare_at_price_ugx, file_url, file_name, file_size_bytes, mime_type, delivery_instructions, cover_image_url, linked_course_id, downloads_count FROM store_digital_products WHERE store_id = ? AND status = 'published' ORDER BY created_at DESC",
+      args: [storeId],
+    });
+    digitalProducts = digRes.rows as Row[];
+  }
+
+  let courses: Row[] = [];
+  if ((await hasTable("edu_courses")) && (await hasColumn("edu_courses", "store_id"))) {
+    const crsRes = await db.execute({
+      sql: "SELECT id, school_id, title, summary, stream, price_ugx, status, created_at FROM edu_courses WHERE store_id = ? AND status = 'published' ORDER BY created_at DESC",
+      args: [storeId],
+    });
+    courses = crsRes.rows as Row[];
+  }
+
   return c.json({
     store,
     collections,
@@ -3305,6 +3326,8 @@ marketplaceRoutes.get("/marketplace/stores/:id", async (c) => {
     bundles,
     sections,
     outlets,
+    digitalProducts,
+    courses,
     channels: {
       customerAppUrl: `https://app.peebee.online/store/${slug}`,
       dedicatedStorefrontUrl: `https://${slug}.peebee.online`,
