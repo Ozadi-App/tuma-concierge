@@ -92,6 +92,10 @@ import type {
   StoreWinbackCampaign,
   StorefrontSection,
   StoreSmsLog,
+  StoreDigitalProduct,
+  StoreDigitalFulfillment,
+  StoreLmsCourse,
+  StoreLmsEnrollment,
   StoreEliteAnalytics,
   GuestSettings,
   GuestConfig,
@@ -2504,6 +2508,66 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
         method: "POST",
         body: JSON.stringify(input),
       });
+    },
+    // Tier 3: Dynamic Digital Products Management
+    async getMerchantDigitalProducts() {
+      return request<{ products: StoreDigitalProduct[] }>("/v1/merchants/me/digital-products");
+    },
+    async createMerchantDigitalProduct(input: Partial<StoreDigitalProduct>) {
+      return request<{ ok: boolean; product: StoreDigitalProduct }>("/v1/merchants/me/digital-products", {
+        method: "POST",
+        body: JSON.stringify(input),
+      });
+    },
+    async deleteMerchantDigitalProduct(id: string) {
+      return request<{ ok: boolean }>(`/v1/merchants/me/digital-products/${id}`, {
+        method: "DELETE",
+      });
+    },
+    async getMerchantDigitalFulfillments() {
+      return request<{ fulfillments: StoreDigitalFulfillment[] }>("/v1/merchants/me/digital-fulfillments");
+    },
+    async revokeMerchantDigitalFulfillment(id: string) {
+      return request<{ ok: boolean }>(`/v1/merchants/me/digital-fulfillments/${id}/revoke`, {
+        method: "POST",
+      });
+    },
+
+    // Tier 3: Robust LMS & Course Management (synced with Peebee Learn)
+    async getMerchantLmsCourses() {
+      return request<{ courses: StoreLmsCourse[] }>("/v1/merchants/me/lms/courses");
+    },
+    async createMerchantLmsCourse(input: Partial<StoreLmsCourse>) {
+      return request<{ ok: boolean; course: StoreLmsCourse }>("/v1/merchants/me/lms/courses", {
+        method: "POST",
+        body: JSON.stringify(input),
+      });
+    },
+    async syncMerchantLmsFromLearn() {
+      return request<{ ok: boolean; importedCount: number; courses: StoreLmsCourse[] }>("/v1/merchants/me/lms/sync-from-learn", {
+        method: "POST",
+      });
+    },
+    async getMerchantLmsEnrollments() {
+      return request<{ enrollments: StoreLmsEnrollment[] }>("/v1/merchants/me/lms/enrollments");
+    },
+    async enrollMerchantLmsStudent(input: {
+      courseId: string;
+      studentName: string;
+      studentPhone: string;
+      studentEmail?: string;
+      sendSmsNotice?: boolean;
+    }) {
+      return request<{ ok: boolean; enrollment: StoreLmsEnrollment; learnPortalUrl: string }>("/v1/merchants/me/lms/enrollments", {
+        method: "POST",
+        body: JSON.stringify(input),
+      });
+    },
+    async getStoreDigitalProducts(storeId: string) {
+      return request<{ digitalProducts: StoreDigitalProduct[]; courses: StoreLmsCourse[] }>(`/v1/marketplace/stores/${storeId}/digital-products`);
+    },
+    async getDigitalFulfillment(accessToken: string) {
+      return request<{ ok: boolean; fulfillment: StoreDigitalFulfillment; downloadUrl?: string }>(`/v1/marketplace/digital-fulfillments/${accessToken}`);
     },
 
     // Peebee Car — customer

@@ -506,10 +506,10 @@ const updateSchema = z.object({
     eliteSmsAlertsEnabled: z.boolean(),
     eliteSmsCostPerMessageUgx: z.number().min(0).max(1000),
     smsProvider: z.enum(["simulator", "africas_talking", "twilio"]),
-      eliteStorefrontSectionsEnabled: z.boolean(),
-      eliteSmsAlertsEnabled: z.boolean(),
-      eliteSmsCostPerMessageUgx: z.number().min(0).max(1000),
-      smsProvider: z.enum(["simulator", "africas_talking", "twilio"]),
+    eliteDigitalProductsEnabled: z.boolean(),
+    eliteLmsSyncEnabled: z.boolean(),
+    eliteMaxCourses: z.number().int().min(1).max(1000),
+    eliteMaxDigitalProducts: z.number().int().min(1).max(5000),
     })
     .partial()
     .optional(),
