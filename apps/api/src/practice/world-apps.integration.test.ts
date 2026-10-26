@@ -62,3 +62,14 @@ test("Every partner app can practise on the shared world", async (t) => {
     return app.request(`/v1${path}`, { headers: { Authorization: `Device ${secret}` } });
   }
 });
+
+test("the partner always has ride requests to look at", async () => {
+  const { call, json, start } = await practiceHarness();
+  const { topUpDemoOrders } = await import("./demo-customers.js");
+  const { runInPractice } = await import("../db/practice-context.js");
+  await start("customer");
+  await runInPractice(() => topUpDemoOrders(1, 0));
+  const partner = await start("partner");
+  const jobs = await json<{ jobs: unknown[] }>(await call(partner.token, "/car/driver/jobs"));
+  assert.ok(jobs.jobs.length >= 1, "a demo customer's ride request reaches the partner driver");
+});

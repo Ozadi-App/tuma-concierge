@@ -92,6 +92,24 @@ export async function topUpDemoOrders(target = 4, foodTarget = 2): Promise<numbe
       console.error("Practice demo order failed:", err);
     }
   }
+  placed += await topUpCarRides(2);
+  return placed;
+}
+
+/** Car drivers and owners always have a couple of ride requests to look at: demo customers ask for a normal car or a comfort minivan. */
+async function topUpCarRides(target: number): Promise<number> {
+  const open = Number((await db.execute(`SELECT COUNT(*) AS n FROM car_bookings b JOIN orders o ON o.id = b.order_id
+    WHERE b.status = 'requested' AND o.rider_id IS NULL AND o.stage IN ('Create', 'Match') AND b.customer_id LIKE 'prac\\_%' ESCAPE '\\'`)).rows[0]?.n ?? 0);
+  const { carNow, carComfortLarge } = await import("./scenarios-ride.js");
+  let placed = 0;
+  for (let i = open; i < target; i++) {
+    const customer = PRACTICE_CUSTOMERS[Math.floor(Math.random() * PRACTICE_CUSTOMERS.length)]!;
+    try {
+      if (await (Math.random() < 0.5 ? carNow : carComfortLarge)(customer, await actAs(customer))) placed++;
+    } catch (err) {
+      console.error("Practice demo car ride failed:", err);
+    }
+  }
   return placed;
 }
 
