@@ -57,7 +57,7 @@ test("public store reads are allow-lists and only serve live stores", async () =
   assert.equal(products.products.length, 1);
   assert.ok(!("cost_price" in products.products[0]), "cost price is private");
 
-  assert.equal((await anonymous(`/marketplace/stores/${gone.slug}`)).status, 404, "suspended stores are not served");
+  assert.equal((await anonymous(`/marketplace/stores/${gone.slug}`)).status, 410, "suspended stores are not served (they say so)");
   assert.deepEqual((await json(await anonymous(`/marketplace/stores/${gone.slug}/products`))).products, []);
   assert.equal((await anonymous("/marketplace/products/p_gone")).status, 404, "nor their products");
   assert.equal((await anonymous("/marketplace/products/p_pub")).status, 200);

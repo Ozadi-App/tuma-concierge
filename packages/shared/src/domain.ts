@@ -448,6 +448,8 @@ export type StoreDiscount = {
   max_uses: number | null;
   uses_count: number;
   is_automatic: number;
+  /** Listed on the public web store (when the platform allows it). */
+  is_public?: number;
   starts_at: string;
   expires_at: string | null;
   status: "active" | "paused" | "expired";

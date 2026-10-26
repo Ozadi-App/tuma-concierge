@@ -2239,6 +2239,14 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
         body: JSON.stringify(input),
       });
     },
+    async verifyMerchantStoreDomain() {
+      return request<{
+        verified: boolean;
+        domain: string;
+        record: { type: "TXT"; name: string; value: string };
+        message: string;
+      }>("/v1/merchants/me/store/domain/verify", { method: "POST", body: JSON.stringify({}) });
+    },
     async updateMerchantProStore(input: any) {
       return request<{ store: any }>("/v1/merchants/me/store", {
         method: "PUT",
@@ -2308,6 +2316,8 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
       min_order_amount?: number;
       max_uses?: number | null;
       is_automatic?: boolean;
+      is_public?: boolean;
+      expires_at?: string | null;
     }) {
       return request<{ ok: boolean; id: string }>("/v1/merchants/me/discounts", {
         method: "POST",

@@ -81,3 +81,23 @@ export async function allowDemoCatalog(client: Client): Promise<void> {
   await client.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('marketplace_demo_catalog', 'always')");
   invalidateSettingsCache();
 }
+
+/** A signed-in staff member (super admin) and a caller bound to their token. */
+export async function addAdmin(client: Client, id = "adm_test") {
+  await client.execute({
+    sql: "INSERT INTO users (id, phone, name, password_hash, role, status, admin_role) VALUES (?, ?, 'Staff', 'hash', 'admin', 'active', 'super_admin')",
+    args: [id, `+2567${Math.floor(Math.random() * 1e8).toString().padStart(8, "0")}`],
+  });
+  const token = await signToken({ sub: id, role: "admin" } as never);
+  const call = (path: string, method = "GET", body?: object) =>
+    app.request(`/v1${path}`, {
+      method,
+      headers: { Authorization: `Bearer ${token}`, ...(body ? { "Content-Type": "application/json" } : {}) },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+    });
+  const setOptions = async (values: Record<string, unknown>) => {
+    const res = await call("/admin/option-settings", "PATCH", { values });
+    if (res.status !== 200) throw new Error(`option change refused: ${JSON.stringify(await res.json())}`);
+  };
+  return { token, call, setOptions };
+}

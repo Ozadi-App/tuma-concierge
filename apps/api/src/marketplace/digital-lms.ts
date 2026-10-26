@@ -6,6 +6,7 @@ import { newId } from "../lib/ids.js";
 import { getMarketplaceSettings } from "../lib/settings.js";
 import { hasColumn, hasTable } from "../lib/schema.js";
 import { demoCatalogAllowed, findPublicStore } from "./public.js";
+import { sendStoreSms } from "./sms.js";
 import { migrationPending, publicRateLimit } from "../lib/guards.js";
 import { getOptions } from "../lib/option-settings.js";
 import { enrollmentSchema, parseCourse, parseDigitalProduct } from "./digital-input.js";
@@ -908,13 +909,15 @@ digitalLmsRoutes.post("/merchants/me/lms/enrollments", requireAuth, async (c) =>
   }
 
   // 3. Dispatch automated SMS receipt/access notice if requested
-  if (sendSmsNotice && (await hasTable("store_sms_logs"))) {
+  let sms: { status: string; error?: string } | null = null;
+  if (sendSmsNotice) {
     const cleanPhone = studentPhone.replace(/[^0-9]/g, "");
-    const smsBody = `Hi ${studentName}! You've been enrolled in ${String(store.name)} Academy. Access your lessons here: ${portalUrl}`;
-    await db.execute({
-      sql: `INSERT INTO store_sms_logs (id, store_id, recipient_phone, recipient_name, message_type, body, status, cost_ugx)
-            VALUES (?, ?, ?, ?, 'order_confirmation', ?, 'simulated', 0)`,
-      args: [newId("sms"), storeId, "+" + cleanPhone, studentName, smsBody],
+    sms = await sendStoreSms({
+      storeId,
+      phone: "+" + cleanPhone,
+      name: studentName,
+      type: "order_confirmation",
+      body: `Hi ${studentName}! You've been enrolled in ${String(store.name)} Academy. Access your lessons here: ${portalUrl}`,
     });
   }
 
@@ -938,6 +941,7 @@ digitalLmsRoutes.post("/merchants/me/lms/enrollments", requireAuth, async (c) =>
       learn_portal_url: portalUrl,
     },
     learnPortalUrl: portalUrl,
+    sms,
   });
 });
 

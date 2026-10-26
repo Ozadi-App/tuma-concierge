@@ -1,5 +1,6 @@
 "use client";
 
+import { SectionContentEditor } from "../../components/SectionContentEditor";
 import { Select } from "@peebee/shared/select";
 import type {
   MarketplaceSettings,
@@ -97,6 +98,8 @@ interface ProStore {
   pro_tier?: string;
   elite_tier?: number;
   custom_domain?: string | null;
+  domain_verified?: number;
+  domain_verify_token?: string | null;
   theme_layout?: "grid" | "editorial" | "compact";
   theme_accent?: "gold" | "ink" | "cream";
   hero_headline?: string | null;
@@ -295,6 +298,7 @@ export default function MerchantProStorePage() {
 
   // Elite Theme & Brand Builder state
   const [customDomain, setCustomDomain] = useState("");
+  const [verifyingDomain, setVerifyingDomain] = useState(false);
   const [themeLayout, setThemeLayout] = useState<"grid" | "editorial" | "compact">("grid");
   const [themeAccent, setThemeAccent] = useState<"gold" | "ink" | "cream">("gold");
   const [heroHeadline, setHeroHeadline] = useState("");
@@ -320,6 +324,8 @@ export default function MerchantProStorePage() {
   const [discValue, setDiscValue] = useState("15");
   const [discMinOrder, setDiscMinOrder] = useState("20000");
   const [discAuto, setDiscAuto] = useState(false);
+  const [discPublic, setDiscPublic] = useState(false);
+  const [discExpires, setDiscExpires] = useState("");
   const [savingDisc, setSavingDisc] = useState(false);
 
   // Elite Multi-Outlet Inventory & Branch Transfer form state
@@ -512,6 +518,10 @@ export default function MerchantProStorePage() {
 
   function updateSectionTitle(id: string, title: string, subtitle?: string) {
     setStorefrontSections(storefrontSections.map((s) => s.id === id ? { ...s, title, subtitle: subtitle ?? s.subtitle } : s));
+  }
+
+  function updateSectionSettings(id: string, settings: Record<string, any>) {
+    setStorefrontSections(storefrontSections.map((s) => (s.id === id ? { ...s, settings } : s)));
   }
 
   async function handleSaveSections() {
@@ -729,13 +739,32 @@ export default function MerchantProStorePage() {
     }
   }
 
+  async function handleVerifyDomain() {
+    setVerifyingDomain(true);
+    setError("");
+    try {
+      const res = await api.verifyMerchantStoreDomain();
+      if (res.verified) {
+        setStore((prev: any) => (prev ? { ...prev, domain_verified: 1 } : prev));
+        setNotice("✓ Domain verified. Your store now answers on it.");
+      } else {
+        setError(res.message);
+      }
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setVerifyingDomain(false);
+    }
+  }
+
   async function handleSaveTheme() {
     if (!store) return;
     setSavingTheme(true);
     setError("");
     try {
       const res = await api.updateMerchantProStore({
-        custom_domain: customDomain.trim() || undefined,
+        // Only sent when it changed: an emptied field disconnects the domain, an untouched one leaves it alone.
+        ...(customDomain.trim() !== (store.custom_domain ?? "") ? { custom_domain: customDomain.trim() } : {}),
         theme_layout: themeLayout,
         theme_accent: themeAccent,
         hero_headline: heroHeadline.trim() || undefined,
@@ -804,7 +833,11 @@ export default function MerchantProStorePage() {
         value: discKind === "free_delivery" ? 0 : Number(discValue) || 10,
         min_order_amount: Number(discMinOrder) || 0,
         is_automatic: discAuto,
+        is_public: discPublic,
+        expires_at: discExpires || null,
       });
+      setDiscExpires("");
+      setDiscPublic(false);
       setDiscCode("");
       setDiscTitle("");
       await refreshEliteData();
@@ -1828,6 +1861,20 @@ export default function MerchantProStorePage() {
                     placeholder="e.g. shop.mybrand.ug"
                     className="mt-1 w-full rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] px-3.5 py-2.5 text-sm text-ink"
                   />
+                  {store.custom_domain && Number(store.domain_verified || 0) === 1 && (
+                    <p className="mt-1.5 text-[11px] font-bold text-emerald-600">✓ {store.custom_domain} is verified and serving your store.</p>
+                  )}
+                  {store.custom_domain && Number(store.domain_verified || 0) !== 1 && store.domain_verify_token && (
+                    <div className="mt-2 space-y-2 rounded-2xl bg-[rgb(var(--surface-muted))] p-3 text-[11px] text-ink">
+                      <p className="font-bold">Prove you own {store.custom_domain}</p>
+                      <p className="text-ink-500">Add this TXT record at your domain provider, then press Check now. It can take a few minutes to appear.</p>
+                      <p className="break-all font-mono">_peebee-verify.{store.custom_domain}</p>
+                      <p className="break-all font-mono">peebee-verify={store.domain_verify_token}</p>
+                      <button type="button" onClick={handleVerifyDomain} disabled={verifyingDomain} className="rounded-full bg-gold px-4 py-2 text-xs font-black text-ink-gold disabled:opacity-60">
+                        {verifyingDomain ? "Checking…" : "Check now"}
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
@@ -2139,6 +2186,21 @@ export default function MerchantProStorePage() {
                   />
                   <span>Apply automatically at checkout when minimum cart spend is reached</span>
                 </label>
+
+                <label className="flex items-center gap-2 text-xs text-ink cursor-pointer">
+                  <input type="checkbox" checked={discPublic} onChange={(e) => setDiscPublic(e.target.checked)} className="h-4 w-4 accent-gold" />
+                  <span>List this code on my web store (otherwise customers need to be given it)</span>
+                </label>
+
+                <div>
+                  <label className="text-xs font-semibold text-ink-500">Ends on (optional)</label>
+                  <input
+                    type="date"
+                    value={discExpires}
+                    onChange={(e) => setDiscExpires(e.target.value)}
+                    className="mt-1 w-full rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] px-3 py-2.5 text-xs text-ink"
+                  />
+                </div>
 
                 <button
                   type="button"
@@ -4392,6 +4454,7 @@ export default function MerchantProStorePage() {
                             className="rounded-xl border border-[var(--border-faint)] bg-[rgb(var(--surface-input))] px-3 py-1.5 text-xs text-ink-500"
                           />
                         </div>
+                        <SectionContentEditor section={sec} onChange={(settings) => updateSectionSettings(sec.id, settings)} />
                       </div>
                     </div>
 

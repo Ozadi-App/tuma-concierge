@@ -8,6 +8,7 @@ import { setD1Binding, type D1Database } from "../db/client.js";
 import { splitSqlStatements } from "../db/split-sql.js";
 import { resetSchemaCache } from "../lib/schema.js";
 import { signToken } from "../auth/jwt.js";
+import { invalidateSettingsCache } from "../lib/settings.js";
 import { allowDemoCatalog } from "../test-support/db.js";
 
 function bindDatabase(client: Client) {
@@ -368,6 +369,8 @@ test("merchant elite tier: upgrades to elite, manages Store 2.0 theme, smart col
     assert.equal(Number(upgradeData.store.elite_tier), 1);
 
     // 3. Customize Store 2.0 theme, custom domain, loyalty, and B2B wholesale
+    await client.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('storefront_domain_mode', 'subdomain_plus_verified_custom_domains')");
+    invalidateSettingsCache();
     const updateStoreRes = await req("/merchants/me/store", "PUT", {
       name: "Kampala Boutique Elite",
       theme_layout: "editorial",
@@ -386,6 +389,7 @@ test("merchant elite tier: upgrades to elite, manages Store 2.0 theme, smart col
     assert.equal(updatedStore.pro_tier, "elite");
     assert.equal(updatedStore.theme_layout, "editorial");
     assert.equal(updatedStore.custom_domain, "shop.kampalaboutique.ug");
+    await client.execute({ sql: "UPDATE stores SET domain_verified = 1 WHERE id = ?", args: [updatedStore.id] }); // the DNS check is covered in security/storefront.test.ts
     assert.equal(Number(updatedStore.loyalty_enabled), 1);
     assert.equal(Number(updatedStore.loyalty_cashback_percent), 5);
     assert.equal(Number(updatedStore.b2b_wholesale_enabled), 1);
@@ -753,7 +757,8 @@ test("merchant elite tier: upgrades to elite, manages Store 2.0 theme, smart col
     assert.equal(sendSmsRes.status, 200);
     const sendSmsData = (await sendSmsRes.json()) as any;
     assert.equal(sendSmsData.ok, true);
-    assert.equal(sendSmsData.status, "delivered");
+    assert.equal(sendSmsData.status, "simulated", "no SMS provider is connected, so nothing was really sent");
+    assert.equal(sendSmsData.costUgx, 0);
     assert.ok(sendSmsData.logId);
     assert.ok(sendSmsData.whatsappShareUrl.includes("wa.me/256701445889"));
 

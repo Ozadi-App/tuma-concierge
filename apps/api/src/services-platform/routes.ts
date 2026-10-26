@@ -9,6 +9,7 @@ import { newId } from "../lib/ids.js";
 import { hasColumn, hasTable } from "../lib/schema.js";
 import { getOptions } from "../lib/option-settings.js";
 import { migrationPending, publicRateLimit } from "../lib/guards.js";
+import { proofIsValid } from "../lib/phone-proof.js";
 import { dateString, eatInstant, httpsUrl, phoneString, timeString } from "../lib/validation.js";
 import { getServicesPlatformSettings, setServicesPlatformSettings } from "./settings.js";
 import type {
@@ -955,6 +956,11 @@ servicesPlatformRoutes.post("/public/:slug/book", async (c) => {
 
   const limited = await publicRateLimit(c, "svc-book", data.customer_phone, "rate_limit_public_booking_per_hour", 3600);
   if (limited) return limited;
+  if ((await getOptions(["services_booking_verification"])).services_booking_verification === "phone_otp") {
+    if (!(await proofIsValid(c.req.header("x-phone-proof"), data.customer_phone, "service_booking"))) {
+      return c.json({ error: "phone_proof_required", message: "Confirm your phone number with the code we text you, then send the booking again." }, 403);
+    }
+  }
 
   const platform = await getServicesPlatformSettings();
   const opts = await getOptions(["services_enabled_rails", "services_booking_confirmation"]);

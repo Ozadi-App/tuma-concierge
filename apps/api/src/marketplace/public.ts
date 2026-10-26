@@ -41,7 +41,8 @@ export function toPublicProduct(row: Row): Row {
 /**
  * The one way a public route turns a URL segment into a store.
  * Only live stores in the platform's current environment resolve; an id or slug always beats a custom domain, so a
- * merchant cannot capture another store's address by choosing it as a domain.
+ * merchant cannot capture another store's address by choosing it as a domain. A custom domain only answers once the
+ * admin option allows custom domains AND the merchant has proven they control it.
  */
 export async function findPublicStore(idOrSlug: string): Promise<Row | null> {
   const environment = await getPlatformEnvironment();
@@ -50,14 +51,26 @@ export async function findPublicStore(idOrSlug: string): Promise<Row | null> {
     args: [idOrSlug, idOrSlug, environment, idOrSlug],
   });
   if (exact.rows[0]) return exact.rows[0] as Row;
-  if (await hasColumn("stores", "custom_domain")) {
-    const byDomain = await db.execute({
-      sql: "SELECT * FROM stores WHERE LOWER(custom_domain) = LOWER(?) AND status = 'active' AND environment = ? LIMIT 1",
-      args: [idOrSlug, environment],
-    });
-    if (byDomain.rows[0]) return byDomain.rows[0] as Row;
+  if ((await hasColumn("stores", "custom_domain")) && (await hasColumn("stores", "domain_verified"))) {
+    const mode = (await getOptions(["storefront_domain_mode"])).storefront_domain_mode;
+    if (mode === "subdomain_plus_verified_custom_domains") {
+      const byDomain = await db.execute({
+        sql: "SELECT * FROM stores WHERE custom_domain = ? AND domain_verified = 1 AND status = 'active' AND environment = ? LIMIT 1",
+        args: [idOrSlug.toLowerCase(), environment],
+      });
+      if (byDomain.rows[0]) return byDomain.rows[0] as Row;
+    }
   }
   return null;
+}
+
+/** A store that exists but is not live (paused, suspended or draft) — so the page can say so instead of "not found". */
+export async function isStoreUnavailable(idOrSlug: string): Promise<boolean> {
+  const res = await db.execute({
+    sql: "SELECT 1 FROM stores WHERE (id = ? OR slug = ?) AND status != 'active' LIMIT 1",
+    args: [idOrSlug, idOrSlug],
+  });
+  return res.rows.length > 0;
 }
 
 /**

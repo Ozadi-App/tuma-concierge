@@ -8,7 +8,7 @@ import { errorMessage, getStoredToken } from "../lib/api";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "https://api.peebee.online";
 
-type OptionChoice = { value: string; label: string; hint?: string; recommended: boolean; available: boolean; reason?: "not_built" | "migration_pending"; migration?: string };
+type OptionChoice = { value: string; label: string; hint?: string; recommended: boolean; available: boolean; reason?: "not_built" | "migration_pending" | "sms_provider_pending"; migration?: string };
 type OptionValue = string | string[] | number | boolean;
 export type OptionView = {
   key: string;
@@ -28,7 +28,11 @@ export type OptionView = {
 };
 
 const unavailableNote = (o: OptionChoice) =>
-  o.reason === "migration_pending" ? `Waiting for migration ${o.migration ?? ""}`.trim() : "Not available yet";
+  o.reason === "migration_pending"
+    ? `Waiting for migration ${o.migration ?? ""}`.trim()
+    : o.reason === "sms_provider_pending"
+      ? "Needs a real SMS provider (set it under Marketplace settings)"
+      : "Not available yet";
 
 /**
  * One panel for every option in the registry (apps/api/src/lib/option-registry.ts) of a module: the recommended choice

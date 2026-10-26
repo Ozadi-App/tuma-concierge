@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
-import DedicatedStorefrontPage from "../app/site/[slug]/page";
+import StorefrontClient from "./storefront/StorefrontClient";
 
 const RESERVED_SUBDOMAINS = new Set([
   "www",
@@ -57,7 +57,7 @@ export function StorefrontHostGateway({ children }: { children: ReactNode }) {
   }, []);
 
   if (storeHostSlug) {
-    return <DedicatedStorefrontPage overrideSlug={storeHostSlug} />;
+    return <StorefrontClient overrideSlug={storeHostSlug} />;
   }
 
   return <>{children}</>;

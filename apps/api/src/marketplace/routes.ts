@@ -15,9 +15,15 @@ import { getRelaySettings } from "../relay/settings.js";
 
 import { digitalLmsRoutes } from "./digital-lms.js";
 import { priceCheckoutItems } from "./pricing.js";
-import { demoCatalogAllowed, findPublicStore, toPublicProduct, toPublicStore } from "./public.js";
+import { demoCatalogAllowed, findPublicStore, isStoreUnavailable, toPublicProduct, toPublicStore } from "./public.js";
+import { checkDomain, normalizeHostname, verifyRecordName, verifyRecordValue } from "../lib/domains.js";
+import { getOption } from "../lib/option-settings.js";
 import { merchantRoleGuard, publicRateLimit } from "../lib/guards.js";
 import { getOptions } from "../lib/option-settings.js";
+import { recordLoyaltyForOrder, settleLoyalty } from "./loyalty.js";
+import { sendStoreSms } from "./sms.js";
+import { cleanSections, parseSections } from "./sections.js";
+import { proofIsValid } from "../lib/phone-proof.js";
 
 export const marketplaceRoutes = new Hono();
 // Team roles are checked before any merchant route (including the digital and learning ones mounted below) runs.
@@ -1054,6 +1060,11 @@ marketplaceRoutes.post("/merchants/me/store", requireAuth, async (c) => {
 
   const storeId = newId("store");
   const baseSlug = slugify(parsed.data.name);
+  const reservedNames = await getOption<string[]>("storefront_reserved_subdomains");
+  const compactSlug = baseSlug.replace(/-/g, "");
+  if (reservedNames.some((r) => r === baseSlug || r.replace(/-/g, "") === compactSlug)) {
+    return c.json({ error: "reserved_name", message: "That store name can't be used because it could be mistaken for a Peebee page. Please choose another name." }, 400);
+  }
   const slug = `${baseSlug}-${storeId.slice(-4)}`;
   const environment = await getPlatformEnvironment();
   const settings = await getMarketplaceSettings();
@@ -1126,8 +1137,9 @@ marketplaceRoutes.put("/merchants/me/store", requireAuth, async (c) => {
     hero_cta_text: z.string().max(40).optional(),
     seo_title: z.string().max(120).optional(),
     seo_description: z.string().max(240).optional(),
-    meta_pixel_id: z.string().max(60).optional(),
-    tiktok_pixel_id: z.string().max(60).optional(),
+    // Pixel ids are put into a script on the public store, so only the exact shape of a real id is accepted.
+    meta_pixel_id: z.string().trim().regex(/^(\d{5,20})?$/, "A Meta pixel id is digits only").optional(),
+    tiktok_pixel_id: z.string().trim().toUpperCase().regex(/^([A-Z0-9]{8,32})?$/, "A TikTok pixel id is letters and numbers only").optional(),
     loyalty_enabled: z.boolean().optional(),
     loyalty_cashback_percent: z.number().min(0).max(50).optional(),
     b2b_wholesale_enabled: z.boolean().optional(),
@@ -1162,7 +1174,27 @@ marketplaceRoutes.put("/merchants/me/store", requireAuth, async (c) => {
   if (parsed.data.min_order_amount != null) { updates.push("min_order_amount = ?"); args.push(parsed.data.min_order_amount); }
 
   if (await hasColumn("stores", "custom_domain")) {
-    if (parsed.data.custom_domain != null) { updates.push("custom_domain = ?"); args.push(parsed.data.custom_domain.trim().toLowerCase()); }
+    if (parsed.data.custom_domain != null) {
+      const raw = parsed.data.custom_domain.trim();
+      const hasVerifyCols = await hasColumn("stores", "domain_verified");
+      if (raw === "") {
+        updates.push("custom_domain = NULL");
+        if (hasVerifyCols) updates.push("domain_verified = 0", "domain_verify_token = NULL");
+      } else if (raw.toLowerCase() !== String(store.custom_domain ?? "")) {
+        const domainMode = await getOption<string>("storefront_domain_mode");
+        if (domainMode !== "subdomain_plus_verified_custom_domains") {
+          return c.json({ error: "custom_domains_disabled", message: "Custom domains are not switched on for the platform yet. Your store is available at its Peebee address." }, 409);
+        }
+        const host = normalizeHostname(raw);
+        if (!host) return c.json({ error: "invalid_domain", message: "Enter a domain like shop.example.com (no http://, no path)." }, 400);
+        const taken = await db.execute({ sql: "SELECT id FROM stores WHERE custom_domain = ? AND id != ? LIMIT 1", args: [host, String(store.id)] });
+        if (taken.rows[0]) return c.json({ error: "domain_taken", message: "That domain is already connected to another store." }, 409);
+        if (String(store.custom_domain ?? "") !== host) {
+          updates.push("custom_domain = ?", "domain_verified = 0", "domain_verify_token = ?");
+          args.push(host, crypto.randomUUID().replace(/-/g, "").slice(0, 24));
+        }
+      }
+    }
     if (parsed.data.theme_layout != null) { updates.push("theme_layout = ?"); args.push(parsed.data.theme_layout); }
     if (parsed.data.theme_accent != null) { updates.push("theme_accent = ?"); args.push(parsed.data.theme_accent); }
     if (parsed.data.hero_headline != null) { updates.push("hero_headline = ?"); args.push(parsed.data.hero_headline); }
@@ -1189,6 +1221,36 @@ marketplaceRoutes.put("/merchants/me/store", requireAuth, async (c) => {
 
   const updated = await getMerchantStore(merchantId);
   return c.json({ store: updated });
+});
+
+// 3a. Prove control of a custom domain: the merchant publishes a TXT record and we look for it.
+marketplaceRoutes.post("/merchants/me/store/domain/verify", requireAuth, async (c) => {
+  const user = c.get("user");
+  const memberRes = await db.execute({
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' ORDER BY CASE role WHEN 'owner' THEN 0 WHEN 'manager' THEN 1 WHEN 'finance' THEN 2 ELSE 3 END LIMIT 1",
+    args: [user.sub],
+  });
+  const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
+  if (!merchantId) return c.json({ error: "no_merchant_membership" }, 403);
+  const store = await getMerchantStore(merchantId);
+  if (!store) return c.json({ error: "no_store" }, 404);
+  if (!(await hasColumn("stores", "domain_verified"))) {
+    return c.json({ error: "migration_pending", message: "Custom domains are being set up (0135_storefront_hardening.sql is not applied yet)." }, 503);
+  }
+  const domain = String(store.custom_domain ?? "");
+  const token = String(store.domain_verify_token ?? "");
+  if (!domain || !token) return c.json({ error: "no_domain", message: "Add a custom domain first." }, 400);
+  const limited = await publicRateLimit(c, "domain-verify", String(store.id), "rate_limit_public_inquiry_per_hour", 3600);
+  if (limited) return limited;
+
+  const verified = await checkDomain(domain, token);
+  if (verified) await db.execute({ sql: "UPDATE stores SET domain_verified = 1, updated_at = datetime('now') WHERE id = ?", args: [String(store.id)] });
+  return c.json({
+    verified,
+    domain,
+    record: { type: "TXT", name: verifyRecordName(domain), value: verifyRecordValue(token) },
+    message: verified ? "Domain verified. Your store now answers on it." : "We could not find the TXT record yet. DNS changes can take a few minutes — try again shortly.",
+  });
 });
 
 // 3b. Upgrade Store Tier (Pro Store / Pro Live / Elite Shopify Plus)
@@ -1794,6 +1856,10 @@ const discountSchema = z.object({
   min_order_amount: z.number().int().nonnegative().default(0),
   max_uses: z.number().int().positive().nullable().optional(),
   is_automatic: z.boolean().default(false),
+  /** List this code on the public web store (needs the admin option "flagged_public"). */
+  is_public: z.boolean().default(false),
+  /** When the offer ends: a date (2030-12-31) or a full ISO time. */
+  expires_at: z.string().max(40).refine((v) => !Number.isNaN(Date.parse(v)), "Not a valid date").nullable().optional(),
 });
 
 marketplaceRoutes.post("/merchants/me/discounts", requireAuth, async (c) => {
@@ -1833,9 +1899,10 @@ marketplaceRoutes.post("/merchants/me/discounts", requireAuth, async (c) => {
   }
 
   const id = newId("dsc");
+  const hasPublicCol = await hasColumn("store_discounts", "is_public");
   await db.execute({
-    sql: `INSERT INTO store_discounts (id, store_id, code, title, kind, value, min_order_amount, max_uses, is_automatic, status)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
+    sql: `INSERT INTO store_discounts (id, store_id, code, title, kind, value, min_order_amount, max_uses, is_automatic, expires_at${hasPublicCol ? ", is_public" : ""}, status)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?${hasPublicCol ? ", ?" : ""}, 'active')`,
     args: [
       id,
       String(store.id),
@@ -1846,6 +1913,8 @@ marketplaceRoutes.post("/merchants/me/discounts", requireAuth, async (c) => {
       parsed.data.min_order_amount,
       parsed.data.max_uses ?? null,
       parsed.data.is_automatic ? 1 : 0,
+      parsed.data.expires_at ? new Date(parsed.data.expires_at).toISOString() : null,
+      ...(hasPublicCol ? [parsed.data.is_public ? 1 : 0] : []),
     ],
   });
 
@@ -2545,6 +2614,7 @@ marketplaceRoutes.post("/merchants/me/stock-transfers", requireAuth, async (c) =
 // 7h. VIP Customer CRM & Loyalty Cashback Directory
 // ---------------------------------------------------------------------------
 marketplaceRoutes.get("/merchants/me/crm-customers", requireAuth, async (c) => {
+  await settleLoyalty().catch(() => {});
   const user = c.get("user");
   const memberRes = await db.execute({
     sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' ORDER BY CASE role WHEN 'owner' THEN 0 WHEN 'manager' THEN 1 WHEN 'finance' THEN 2 ELSE 3 END LIMIT 1",
@@ -3011,9 +3081,9 @@ export const DEFAULT_STOREFRONT_SECTIONS = [
   { id: "sec_bundles", type: "bundles", title: "Bundles & Gift Hampers", subtitle: "Curated multi-product kits with package savings", enabled: true, order: 3, settings: { maxItems: 6 } },
   { id: "sec_collections", type: "featured_collection", title: "Featured Collections", subtitle: "Automated smart categories & featured shelves", enabled: true, order: 4, settings: { layout: "grid" } },
   { id: "sec_video", type: "video_spotlight", title: "Live Selling & Video Reel", subtitle: "Live video stream or farm harvest demo", enabled: true, order: 5, settings: { autoPlayMuted: false } },
-  { id: "sec_reviews", type: "testimonials", title: "Customer Reviews & Social Proof", subtitle: "Verified buyer feedback and 5-star ratings", enabled: true, order: 6, settings: { showRatings: true } },
-  { id: "sec_badges", type: "trust_badges", title: "Store Guarantees", subtitle: "Speedy boda delivery, freshness guarantee & direct payments", enabled: true, order: 7, settings: { columns: 4 } },
-  { id: "sec_faq", type: "faq", title: "Frequently Asked Questions", subtitle: "Order timing, delivery areas & payment FAQs", enabled: true, order: 8, settings: {} },
+  { id: "sec_reviews", type: "testimonials", title: "What customers say", subtitle: "Reviews the store chooses to share", enabled: true, order: 6, settings: { showRatings: true, items: [] } },
+  { id: "sec_badges", type: "trust_badges", title: "Store promises", subtitle: "What the store stands behind", enabled: true, order: 7, settings: { columns: 4, items: [] } },
+  { id: "sec_faq", type: "faq", title: "Frequently asked questions", subtitle: "Delivery, payment and ordering", enabled: true, order: 8, settings: { items: [] } },
 ];
 
 marketplaceRoutes.get("/merchants/me/storefront-sections", requireAuth, async (c) => {
@@ -3059,10 +3129,9 @@ marketplaceRoutes.put("/merchants/me/storefront-sections", requireAuth, async (c
   }
 
   const body = await c.req.json().catch(() => ({}));
-  const sections = Array.isArray(body.sections) ? body.sections : [];
-  if (sections.length === 0) {
-    return c.json({ error: "invalid_sections", message: "Sections list cannot be empty." }, 400);
-  }
+  const checked = parseSections(body.sections);
+  if (!checked.ok) return c.json({ error: "invalid_sections", message: checked.message }, 400);
+  const sections = checked.sections;
 
   if (await hasColumn("stores", "theme_sections")) {
     await db.execute({
@@ -3129,34 +3198,23 @@ marketplaceRoutes.post("/merchants/me/send-sms", requireAuth, async (c) => {
     ? body.message_type
     : "pos_receipt";
 
-  const logId = "sms_" + crypto.randomUUID().slice(0, 12);
-  const costUgx = Number(settings.eliteSmsCostPerMessageUgx) || 35;
-  const extId = "SMS-UG-" + Date.now().toString(36).toUpperCase() + "-" + Math.floor(Math.random() * 899 + 100);
-
-  if (await hasTable("store_sms_logs")) {
-    await db.execute({
-      sql: "INSERT INTO store_sms_logs (id, store_id, recipient_phone, recipient_name, message_type, body, status, external_message_id, cost_ugx) VALUES (?, ?, ?, ?, ?, ?, 'delivered', ?, ?)",
-      args: [
-        logId,
-        String(store.id),
-        "+" + cleanPhone,
-        body.recipient_name ? String(body.recipient_name).trim() : null,
-        messageType,
-        bodyText,
-        extId,
-        costUgx,
-      ],
-    });
-  }
+  const outcome = await sendStoreSms({
+    storeId: String(store.id),
+    phone: "+" + cleanPhone,
+    name: body.recipient_name ? String(body.recipient_name).trim() : null,
+    type: messageType,
+    body: bodyText,
+  });
 
   const whatsappShareUrl = "https://wa.me/" + cleanPhone + "?text=" + encodeURIComponent(bodyText);
 
   return c.json({
-    ok: true,
-    logId,
-    status: "delivered",
-    costUgx,
-    externalMessageId: extId,
+    ok: outcome.status !== "failed",
+    logId: outcome.logId,
+    status: outcome.status,
+    costUgx: outcome.costUgx,
+    externalMessageId: outcome.externalMessageId,
+    ...(outcome.error ? { error: outcome.error } : {}),
     whatsappShareUrl,
   });
 });
@@ -3226,15 +3284,25 @@ marketplaceRoutes.get("/marketplace/stores/:id", async (c) => {
     store = DEMO_MARKETPLACE_STORES.find((s) => s.id === id || s.slug === id) || null;
   }
 
-  if (!store) return c.json({ error: "store_not_found" }, 404);
+  if (!store) {
+    // A store that exists but is paused or suspended can say so (admin option) instead of looking like a bad link.
+    if ((await getOption<string>("storefront_stale_status_behavior")) === "show_suspended_page" && (await isStoreUnavailable(id))) {
+      return c.json({ error: "store_unavailable", message: "This store isn't open right now. Please check back soon." }, 410);
+    }
+    return c.json({ error: "store_not_found" }, 404);
+  }
 
   if (Number(store.elite_tier || 0) === 1) {
     store = { ...store, pro_tier: "elite" };
   }
 
   const slug = String(store.slug || store.id);
+  const customDomainLive = Boolean(store.custom_domain) && Number(store.domain_verified || 0) === 1
+    && (await getOption<string>("storefront_domain_mode")) === "subdomain_plus_verified_custom_domains";
   store = {
     ...store,
+    // An unverified domain is the merchant's claim, not an address of ours.
+    custom_domain: customDomainLive ? store.custom_domain : null,
     subdomain_url: `https://${slug}.peebee.online`,
     marketplace_url: `https://app.peebee.online/store/${slug}`,
   };
@@ -3262,7 +3330,7 @@ marketplaceRoutes.get("/marketplace/stores/:id", async (c) => {
   const { storefront_promo_visibility: promoVisibility } = await getOptions(["storefront_promo_visibility"]);
   if (promoVisibility !== "none_public" && (await hasTable("store_discounts"))) {
     const discRes = await db.execute({
-      sql: "SELECT id, code, title, kind, value, min_order_amount, is_automatic FROM store_discounts WHERE store_id = ? AND status = 'active' AND is_automatic = 1 ORDER BY created_at DESC",
+      sql: `SELECT id, code, title, kind, value, min_order_amount, is_automatic FROM store_discounts WHERE store_id = ? AND status = 'active' AND (starts_at IS NULL OR starts_at <= datetime('now')) AND (expires_at IS NULL OR expires_at > datetime('now')) AND ${promoVisibility === "flagged_public" ? "(is_automatic = 1 OR is_public = 1)" : "is_automatic = 1"} ORDER BY created_at DESC`,
       args: [storeId],
     });
     discounts = discRes.rows as Row[];
@@ -3285,11 +3353,12 @@ marketplaceRoutes.get("/marketplace/stores/:id", async (c) => {
   if (await hasColumn("stores", "theme_sections")) {
     try {
       if (store.theme_sections) {
-        const parsedSec = JSON.parse(String(store.theme_sections));
-        if (Array.isArray(parsedSec) && parsedSec.length > 0) sections = parsedSec;
+        const parsedSec = cleanSections(JSON.parse(String(store.theme_sections)));
+        if (parsedSec.length > 0) sections = parsedSec;
       }
     } catch {}
   }
+  sections = cleanSections(sections);
 
   let outlets: Row[] = [];
   if (store.merchant_id && (await hasTable("merchant_outlets"))) {
@@ -3332,7 +3401,38 @@ marketplaceRoutes.get("/marketplace/stores/:id", async (c) => {
       dedicatedStorefrontUrl: `https://${slug}.peebee.online`,
       customDomainUrl: store.custom_domain ? `https://${String(store.custom_domain)}` : null,
     },
+    // What the web store should do, as set by admin.
+    storefront: await storefrontOptions(store),
   });
+});
+
+// The web store asks the server what a code is worth; private codes are never listed, only checked.
+const promoCheckSchema = z.object({
+  code: z.string().min(1).max(40),
+  items: z.array(z.object({ productId: z.string(), variantId: z.string().optional(), quantity: z.number().int().positive().max(50) })).min(1).max(50),
+});
+
+marketplaceRoutes.post("/marketplace/stores/:id/promo-check", async (c) => {
+  const store = await findPublicStore(c.req.param("id")!);
+  if (!store) return c.json({ error: "store_not_found" }, 404);
+  const parsed = promoCheckSchema.safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) return c.json({ error: "invalid_body", issues: parsed.error.issues }, 400);
+  const limited = await publicRateLimit(c, "promo-check", null, "rate_limit_public_inquiry_per_hour", 3600);
+  if (limited) return limited;
+
+  const priced = await priceCheckoutItems(
+    parsed.data.items.map((it) => ({ ...it, storeId: String(store.id), title: "", price: 0 })),
+    (await demoCatalogAllowed()) ? DEMO_MARKETPLACE_PRODUCTS : {},
+  );
+  if (!priced.ok) return c.json({ error: priced.error, message: priced.message }, priced.status);
+  const subtotal = priced.items.reduce((sum, it) => sum + it.price * it.quantity, 0);
+  const stop: DeliveryStop = { storeId: String(store.id), storeName: String(store.name), storeAddress: null, lat: null, lng: null, items: priced.items, itemsTotal: subtotal, distanceKm: null, deliveryFee: 0 };
+  const result = await evaluateBagPromosAndLoyalty([stop], parsed.data.code);
+  const applied = result.appliedDiscount;
+  if (!applied || applied.code.toUpperCase() !== parsed.data.code.trim().toUpperCase()) {
+    return c.json({ valid: false, subtotal, message: "That code isn't valid for this bag." });
+  }
+  return c.json({ valid: true, subtotal, code: applied.code, title: applied.title, kind: applied.kind, amount: applied.discountAmount, freeDelivery: applied.freeDelivery });
 });
 
 // Public B2B Wholesale Inquiry from Dedicated Storefront ([store-name].peebee.online)
@@ -3370,6 +3470,12 @@ marketplaceRoutes.post("/marketplace/stores/:id/b2b-inquiry", async (c) => {
 
   const limited = await publicRateLimit(c, "b2b", parsed.data.customer_phone, "rate_limit_public_inquiry_per_hour", 3600);
   if (limited) return limited;
+  if ((await getOption<string>("storefront_b2b_inquiry_protection")) === "phone_otp") {
+    const proof = c.req.header("x-phone-proof");
+    if (!(await proofIsValid(proof, parsed.data.customer_phone, "b2b_inquiry"))) {
+      return c.json({ error: "phone_proof_required", message: "Confirm your phone number with the code we text you, then send the inquiry again." }, 403);
+    }
+  }
 
   // The merchant sees catalogue prices, whatever the form sent.
   const priced = await priceCheckoutItems(
@@ -3535,6 +3641,20 @@ marketplaceRoutes.get("/marketplace/spotlight", async (c) => {
   return c.json({ spotlight: items });
 });
 
+/** The admin-chosen behaviour the web storefront follows, plus the store's ad pixel IDs when admin allows them. */
+async function storefrontOptions(store: Row) {
+  const o = await getOptions(["storefront_checkout_mode", "storefront_pixels_enabled", "storefront_render_mode"]);
+  const pixels = o.storefront_pixels_enabled === true;
+  const meta = String(store.meta_pixel_id ?? "");
+  const tiktok = String(store.tiktok_pixel_id ?? "");
+  return {
+    checkoutMode: o.storefront_checkout_mode as string,
+    renderMode: o.storefront_render_mode as string,
+    metaPixelId: pixels && /^\d{5,20}$/.test(meta) ? meta : null,
+    tiktokPixelId: pixels && /^[A-Z0-9]{8,32}$/.test(tiktok) ? tiktok : null,
+  };
+}
+
 async function ensureDemoStoreInDb(demoStoreId: string, environment: string) {
   if (!(await hasTable("stores"))) return;
   const existing = await db.execute({ sql: "SELECT id FROM stores WHERE id = ?", args: [demoStoreId] });
@@ -3642,8 +3762,8 @@ async function evaluateBagPromosAndLoyalty(
     if (hasDiscounts && !appliedDiscount) {
       const discRes = await db.execute({
         sql: cleanCode
-          ? "SELECT * FROM store_discounts WHERE store_id = ? AND status = 'active' AND (UPPER(code) = ? OR is_automatic = 1) ORDER BY CASE WHEN UPPER(code) = ? THEN 0 ELSE 1 END, created_at DESC"
-          : "SELECT * FROM store_discounts WHERE store_id = ? AND status = 'active' AND is_automatic = 1 ORDER BY created_at DESC",
+          ? "SELECT * FROM store_discounts WHERE store_id = ? AND status = 'active' AND (starts_at IS NULL OR starts_at <= datetime('now')) AND (expires_at IS NULL OR expires_at > datetime('now')) AND (UPPER(code) = ? OR is_automatic = 1) ORDER BY CASE WHEN UPPER(code) = ? THEN 0 ELSE 1 END, created_at DESC"
+          : "SELECT * FROM store_discounts WHERE store_id = ? AND status = 'active' AND (starts_at IS NULL OR starts_at <= datetime('now')) AND (expires_at IS NULL OR expires_at > datetime('now')) AND is_automatic = 1 ORDER BY created_at DESC",
         args: cleanCode ? [stop.storeId, cleanCode, cleanCode] : [stop.storeId],
       });
       for (const d of discRes.rows as Row[]) {
@@ -3751,10 +3871,14 @@ marketplaceRoutes.post("/marketplace/checkout", requireAuth, async (c) => {
     }
   }
   if (promoEval.appliedDiscount && (await hasTable("store_discounts"))) {
-    await db.execute({
-      sql: "UPDATE store_discounts SET uses_count = uses_count + 1 WHERE id = ?",
+    // Claimed in one conditional update, so the last use of a limited code can't be taken twice.
+    const claim = await db.execute({
+      sql: "UPDATE store_discounts SET uses_count = uses_count + 1 WHERE id = ? AND (max_uses IS NULL OR uses_count < max_uses)",
       args: [promoEval.appliedDiscount.id],
     });
+    if (!claim.rowsAffected) {
+      return c.json({ error: "promo_exhausted", message: "That offer has just been used up. Review your bag and try again." }, 409);
+    }
   }
   const relay = bag.mode === "relay" ? bag.relay : null;
   if (relay && paymentRail === "float") {
@@ -3834,62 +3958,32 @@ marketplaceRoutes.post("/marketplace/checkout", requireAuth, async (c) => {
     }
     createdOrders.push({ id: orderId });
 
-    // Credit store VIP loyalty ledger for online orders if store has loyalty enabled
-    if (await hasTable("store_customer_loyalty")) {
-      try {
-        const custRes = await db.execute({
-          sql: "SELECT name, phone FROM users WHERE id = ? LIMIT 1",
-          args: [user.sub],
+    // Cashback for this store's share of the bag; credited when the admin-chosen moment arrives (see loyalty.ts).
+    try {
+      const mktSettings = await getMarketplaceSettings();
+      let earnedUgx = 0;
+      if (mktSettings.eliteLoyaltyEnabled && (await hasColumn("stores", "loyalty_enabled"))) {
+        const stRes = await db.execute({
+          sql: "SELECT loyalty_enabled, loyalty_cashback_percent FROM stores WHERE id = ? LIMIT 1",
+          args: [stop.storeId],
         });
-        const cust = custRes.rows[0] as Row | undefined;
-        const custPhone = String(cust?.phone || user.sub);
-        const custName = cust?.name ? String(cust.name) : null;
-        const mktSettings = await getMarketplaceSettings();
-        let earnedUgx = 0;
-        if (mktSettings.eliteLoyaltyEnabled && (await hasColumn("stores", "loyalty_enabled"))) {
-          const stRes = await db.execute({
-            sql: "SELECT loyalty_enabled, loyalty_cashback_percent FROM stores WHERE id = ? LIMIT 1",
-            args: [stop.storeId],
-          });
-          const st = stRes.rows[0] as Row | undefined;
-          if (st && Number(st.loyalty_enabled) === 1) {
-            const pct = Math.min(Number(st.loyalty_cashback_percent || 0), mktSettings.eliteMaxLoyaltyCashbackPercent);
-            if (pct > 0) earnedUgx = Math.round((stop.itemsTotal * pct) / 100);
-          }
+        const st = stRes.rows[0] as Row | undefined;
+        if (st && Number(st.loyalty_enabled) === 1) {
+          const pct = Math.min(Number(st.loyalty_cashback_percent || 0), mktSettings.eliteMaxLoyaltyCashbackPercent);
+          if (pct > 0) earnedUgx = Math.round((stop.itemsTotal * pct) / 100);
         }
-        await db.execute({
-          sql: `INSERT INTO store_customer_loyalty (
-                  id, store_id, customer_phone, customer_name, points_balance_ugx,
-                  total_earned_ugx, total_redeemed_ugx, orders_count, total_spent_ugx,
-                  tier, last_order_at, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, 0, 1, ?, ?, datetime('now'), datetime('now'))
-                ON CONFLICT(store_id, customer_phone) DO UPDATE SET
-                  customer_name = COALESCE(excluded.customer_name, store_customer_loyalty.customer_name),
-                  points_balance_ugx = store_customer_loyalty.points_balance_ugx + excluded.points_balance_ugx,
-                  total_earned_ugx = store_customer_loyalty.total_earned_ugx + excluded.total_earned_ugx,
-                  orders_count = store_customer_loyalty.orders_count + 1,
-                  total_spent_ugx = store_customer_loyalty.total_spent_ugx + excluded.total_spent_ugx,
-                  tier = CASE
-                    WHEN store_customer_loyalty.tier = 'b2b' THEN 'b2b'
-                    WHEN (store_customer_loyalty.total_spent_ugx + excluded.total_spent_ugx) >= 200000 OR (store_customer_loyalty.orders_count + 1) >= 5 THEN 'vip'
-                    WHEN (store_customer_loyalty.orders_count + 1) >= 2 THEN 'repeat'
-                    ELSE 'standard'
-                  END,
-                  last_order_at = datetime('now')`,
-          args: [
-            newId("crm"),
-            stop.storeId,
-            custPhone,
-            custName,
-            earnedUgx,
-            earnedUgx,
-            stop.itemsTotal,
-            stop.itemsTotal >= 200000 ? "vip" : "standard",
-          ],
-        });
-      } catch {
-        // Non-blocking loyalty ledger update
       }
+      const custRes = await db.execute({ sql: "SELECT name, phone FROM users WHERE id = ? LIMIT 1", args: [user.sub] });
+      const cust = custRes.rows[0] as Row | undefined;
+      // Without a verified phone number there is no loyalty account to credit.
+      if (cust?.phone) {
+        await recordLoyaltyForOrder({
+          storeId: stop.storeId, orderId, phone: String(cust.phone), name: cust.name ? String(cust.name) : null,
+          earnedUgx, spentUgx: stop.itemsTotal,
+        });
+      }
+    } catch (err) {
+      console.error("loyalty ledger update failed", err);
     }
   }
 

@@ -21,6 +21,8 @@ export type OptionRequirement = {
   columns?: Array<[table: string, column: string]>;
   /** The migration file to apply, shown to admin. */
   migration?: string;
+  /** Needs a real SMS provider (not the simulator) with its credentials set. */
+  sms?: boolean;
 };
 
 export type OptionChoice = {
@@ -62,7 +64,7 @@ export const OPTION_SETTINGS: SettingDef[] = [
     options: [
       opt("handoff_to_app", "Continue in the Peebee app", true, { recommended: true, hint: "The web store builds the bag and hands over to the app, where payment and tracking live." }),
       opt("inline_web_checkout", "Pay on the web storefront", false, { hint: "Phone sign-in and mobile-money payment without leaving the web store." }),
-      opt("whatsapp_order", "Send the order on WhatsApp", false, { hint: "The bag is sent to the merchant on WhatsApp; they confirm and invoice." }),
+      opt("whatsapp_order", "Send the order on WhatsApp", true, { hint: "The bag is sent to the merchant on WhatsApp; they confirm and invoice." }),
     ],
   },
   {
@@ -71,7 +73,7 @@ export const OPTION_SETTINGS: SettingDef[] = [
     default: "subdomain_only",
     options: [
       opt("subdomain_only", "Peebee subdomain only", true, { recommended: true, hint: "[store].peebee.online" }),
-      opt("subdomain_plus_verified_custom_domains", "Subdomain and verified custom domains", false, {
+      opt("subdomain_plus_verified_custom_domains", "Subdomain and verified custom domains", true, {
         hint: "Merchants can connect their own domain after proving they own it (DNS check).",
         requires: { columns: [["stores", "domain_verified"]], migration: "0135_storefront_hardening.sql" },
       }),
@@ -89,18 +91,18 @@ export const OPTION_SETTINGS: SettingDef[] = [
     default: "automatic_only_public",
     options: [
       opt("automatic_only_public", "Automatic offers only", true, { recommended: true }),
-      opt("flagged_public", "Automatic offers and codes the merchant marks public", false, { requires: { columns: [["store_discounts", "is_public"]], migration: "0135_storefront_hardening.sql" } }),
+      opt("flagged_public", "Automatic offers and codes the merchant marks public", true, { requires: { columns: [["store_discounts", "is_public"]], migration: "0135_storefront_hardening.sql" } }),
       opt("none_public", "Nothing listed", true),
     ],
   },
   {
     key: "storefront_b2b_inquiry_protection", module: "storefront", kind: "enum", label: "Wholesale inquiry protection",
     description: "How the public wholesale form is protected from spam.",
-    default: "rate_limit_only",
+    default: "phone_otp",
     options: [
-      opt("rate_limit_only", "Rate limit", true, { recommended: true }),
-      opt("phone_otp", "Rate limit and phone code", false),
-      opt("captcha", "Rate limit and captcha", false),
+      opt("rate_limit_only", "Rate limit", true),
+      opt("phone_otp", "Rate limit and phone code", true, { recommended: true, requires: { sms: true } }),
+      opt("captcha", "Rate limit and captcha", false, { hint: "Needs a captcha account (e.g. Cloudflare Turnstile) to be connected first." }),
     ],
   },
   {
@@ -108,7 +110,7 @@ export const OPTION_SETTINGS: SettingDef[] = [
     description: "Server-rendered pages give search engines and link previews real content.",
     default: "server_rendered_seo",
     options: [
-      opt("server_rendered_seo", "Server-rendered with SEO tags", false, { recommended: true }),
+      opt("server_rendered_seo", "Server-rendered with SEO tags", true, { recommended: true }),
       opt("client_only", "Browser-rendered only", true),
     ],
   },
@@ -117,7 +119,7 @@ export const OPTION_SETTINGS: SettingDef[] = [
     description: "What visitors see at the address of a store that is not live.",
     default: "show_suspended_page",
     options: [
-      opt("show_suspended_page", "A friendly 'store unavailable' page", false, { recommended: true }),
+      opt("show_suspended_page", "A friendly 'store unavailable' page", true, { recommended: true }),
       opt("not_found", "Not found (404)", true),
     ],
   },
@@ -126,8 +128,8 @@ export const OPTION_SETTINGS: SettingDef[] = [
     description: "Cashback is only credited once the chosen event happens, and reversed on a refund.",
     default: "on_delivery_or_paid",
     options: [
-      opt("on_delivery_or_paid", "Once the order is delivered or paid", false, { recommended: true }),
-      opt("on_payment_confirmed", "Once payment is confirmed", false),
+      opt("on_delivery_or_paid", "Once the order is delivered and settled", true, { recommended: true, requires: { tables: ["store_loyalty_events"], migration: "0135_storefront_hardening.sql" } }),
+      opt("on_payment_confirmed", "Once payment is confirmed", true, { requires: { tables: ["store_loyalty_events"], migration: "0135_storefront_hardening.sql" } }),
       opt("on_order_placed", "As soon as the order is placed", true, { hint: "The previous behaviour. Not recommended: cancelled orders keep the points." }),
     ],
   },
@@ -310,9 +312,9 @@ export const OPTION_SETTINGS: SettingDef[] = [
   {
     key: "services_booking_verification", module: "services", kind: "enum", label: "Checking public bookings",
     description: "How a public booking request is checked before it is accepted.",
-    default: "rate_limit_only",
+    default: "phone_otp",
     options: [
-      opt("phone_otp", "Rate limit and phone code", false, { recommended: true }),
+      opt("phone_otp", "Rate limit and phone code", true, { recommended: true, requires: { sms: true } }),
       opt("rate_limit_only", "Rate limit only", true),
       opt("none", "No checks", true),
     ],
@@ -390,15 +392,16 @@ export function decodeValue(def: SettingDef, raw: string | undefined | null): Op
   }
 }
 
-export type Availability = { available: boolean; reason?: "not_built" | "migration_pending" };
+export type Availability = { available: boolean; reason?: "not_built" | "migration_pending" | "sms_provider_pending" };
 /** Which database objects exist right now; supplied by the caller (see option-settings.ts). */
-export type SchemaProbe = { hasTable(name: string): boolean; hasColumn(table: string, column: string): boolean };
+export type SchemaProbe = { hasTable(name: string): boolean; hasColumn(table: string, column: string): boolean; smsReady?(): boolean };
 
 export function choiceAvailability(choice: OptionChoice, schema: SchemaProbe): Availability {
   if (!choice.built) return { available: false, reason: "not_built" };
   const need = choice.requires;
   if (need?.tables?.some((t) => !schema.hasTable(t))) return { available: false, reason: "migration_pending" };
   if (need?.columns?.some(([t, c]) => !schema.hasColumn(t, c))) return { available: false, reason: "migration_pending" };
+  if (need?.sms && !schema.smsReady?.()) return { available: false, reason: "sms_provider_pending" };
   return { available: true };
 }
 
@@ -439,7 +442,7 @@ export function validateValue(def: SettingDef, input: unknown, schema: SchemaPro
       const choice = def.options.find((o) => o.value === input);
       if (!choice) return { ok: false, message: `${def.label}: unknown option.` };
       const a = choiceAvailability(choice, schema);
-      if (!a.available) return { ok: false, message: `${def.label}: "${choice.label}" is ${a.reason === "not_built" ? "not available yet" : `waiting for migration ${choice.requires?.migration ?? ""}`}.` };
+      if (!a.available) return { ok: false, message: `${def.label}: "${choice.label}" is ${a.reason === "not_built" ? "not available yet" : a.reason === "sms_provider_pending" ? "waiting for a real SMS provider (Admin → Marketplace → SMS provider, with its credentials set)" : `waiting for migration ${choice.requires?.migration ?? ""}`}.` };
       return { ok: true, value: choice.value };
     }
     case "multi": {
