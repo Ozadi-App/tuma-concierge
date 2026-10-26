@@ -133,6 +133,15 @@ export type ChannelsConfig = {
     showViewerCount: boolean;
     showInSpotlight: boolean;
     requireVerifiedPublisher: boolean;
+    broadcastsEnabled: boolean;
+    premieresEnabled: boolean;
+    maxProgramItems: number;
+    maxProgramMinutes: number;
+    minLeadMinutes: number;
+    maxLeadDays: number;
+    maxUpcomingPerPublisher: number;
+    remindersEnabled: boolean;
+    notifyFollowersOnAir: boolean;
   };
   rewards: {
     enabled: boolean;
@@ -163,7 +172,7 @@ export const CHANNELS_SECTIONS = [
   { id: "monetization", label: "Memberships, paid posts and tips", hint: "Money from audiences. Needs the right licences before you switch it on." },
   { id: "kyc", label: "Verification and withdrawals", hint: "ID checks are asked for only when someone withdraws" },
   { id: "causes", label: "Causes (fundraising)", hint: "Approval, goals, donations and releases. Needs the right licences before you switch it on." },
-  { id: "live", label: "Go live", hint: "Going live from a phone camera. Needs a video provider that supports live (Cloudflare Stream) set up in Video and ads." },
+  { id: "live", label: "Go live, broadcasts and premieres", hint: "Going live from a phone camera needs a video provider that supports live (Cloudflare Stream). Broadcasts and premieres only air videos already uploaded, so they work with any video provider." },
   { id: "rewards", label: "Rewards", hint: "Points for views, and turning points into money" },
 ] as const;
 
@@ -326,6 +335,15 @@ export const CHANNELS_FIELDS: ChannelsField[] = [
   B("live", "live.showViewerCount", "Show viewer count to everyone", "Off shows the count to the host only", true),
   B("live", "live.showInSpotlight", "Show live streams in the Spotlight", "Off keeps them on the host's channel page", true),
   B("live", "live.requireVerifiedPublisher", "Only verified publishers can go live", "A verified badge is given by staff", false),
+  B("live", "live.broadcastsEnabled", "Broadcasts", "A channel can air pre-recorded videos back to back at a set time, like a TV station. Viewers all watch the same moment, with live chat.", false),
+  B("live", "live.premieresEnabled", "Premieres", "A channel can premiere a video: a countdown, everyone watching it together the first time with live chat, then it stays up as a normal video.", false),
+  N("live", "live.maxProgramItems", "Videos in one broadcast", "", 12, 1, 100),
+  N("live", "live.maxProgramMinutes", "Longest broadcast", "Total running time of all its videos", 480, 5, 1440, "minutes"),
+  N("live", "live.minLeadMinutes", "Least notice before an airing", "A broadcast or premiere cannot start sooner than this. 0 allows starting straight away.", 2, 0, 1440, "minutes"),
+  N("live", "live.maxLeadDays", "Furthest ahead an airing can be scheduled", "", 30, 1, 365, "days"),
+  N("live", "live.maxUpcomingPerPublisher", "Upcoming airings per publisher", "Broadcasts and premieres waiting to start", 10, 1, 100),
+  B("live", "live.remindersEnabled", "Reminders", "People can tap Remind me and get a notification when an airing starts", true),
+  B("live", "live.notifyFollowersOnAir", "Notify followers when a broadcast or premiere starts", "Sends a notification to a channel's followers (up to 500). Off by default to keep notifications rare.", false),
 
   B("rewards", "rewards.enabled", "Rewards", "The master switch for points and cash-outs. Needs a rate (below) before anything is paid. Off until licensed.", false),
   N("rewards", "rewards.qualifiedViewSeconds", "Seconds watched for a view to count", "", 3, 1, 60, "seconds"),

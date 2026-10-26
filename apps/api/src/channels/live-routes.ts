@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireAuth } from "../auth/middleware.js";
 import { clientIp, consume, hashKey } from "../lib/ratelimit.js";
 import { fail } from "./common.js";
+import { cancelEvent, createBroadcast, createPremiere, eventPlay, myEvents, rescheduleEvent, setReminder } from "./events.js";
 import { createHelperCode, endLive, goLive, helperStreams, joinAsHelper, liveState, moderateLiveComment, myOpenLive, postLiveComment, startLive } from "./live.js";
 import { optionalUser, viewerKey } from "./viewer.js";
 
@@ -94,6 +95,79 @@ liveRoutes.post("/live/:id/comments/:commentId/:action", requireAuth, async (c) 
 liveRoutes.post("/live/:id/helper-code", requireAuth, async (c) => {
   try {
     return c.json(await createHelperCode(c.get("user"), c.req.param("id") as string));
+  } catch (err) {
+    return fail(c, err);
+  }
+});
+
+// ----------------------------------------------------------- broadcasts and premieres
+
+const broadcastSchema = z.object({
+  publisherType: z.string().max(20), publisherId: z.string().max(80), title: z.string().max(140),
+  assetIds: z.array(z.string().max(80)).max(100), startsAt: z.string().max(40).nullable().optional(),
+});
+
+liveRoutes.post("/airings/broadcast", requireAuth, async (c) => {
+  try {
+    const body = broadcastSchema.safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ error: "invalid_input", message: "Give the broadcast a name and choose its videos." }, 400);
+    return c.json({ airing: await createBroadcast(c.get("user"), body.data) }, 201);
+  } catch (err) {
+    return fail(c, err);
+  }
+});
+
+liveRoutes.post("/airings/premiere", requireAuth, async (c) => {
+  try {
+    const body = z.object({ postId: z.string().max(80), startsAt: z.string().max(40).nullable().optional() }).safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ error: "invalid_input", message: "Choose a video and a time." }, 400);
+    return c.json({ airing: await createPremiere(c.get("user"), body.data) }, 201);
+  } catch (err) {
+    return fail(c, err);
+  }
+});
+
+liveRoutes.get("/airings/mine", requireAuth, async (c) => {
+  try {
+    return c.json({ airings: await myEvents(c.get("user").sub) });
+  } catch (err) {
+    return fail(c, err);
+  }
+});
+
+/** What a player needs to join an airing in step with everyone else. Open to anyone the post's access rules allow. */
+liveRoutes.get("/airings/:ref/play", async (c) => {
+  try {
+    const user = await optionalUser(c);
+    c.header("Cache-Control", "private, no-store");
+    return c.json(await eventPlay(user?.id ?? null, c.req.param("ref") as string));
+  } catch (err) {
+    return fail(c, err);
+  }
+});
+
+liveRoutes.post("/airings/:ref/remind", requireAuth, async (c) => {
+  try {
+    const body = z.object({ on: z.boolean() }).safeParse(await c.req.json().catch(() => null));
+    return c.json(await setReminder(c.get("user"), c.req.param("ref") as string, body.success ? body.data.on : true));
+  } catch (err) {
+    return fail(c, err);
+  }
+});
+
+liveRoutes.post("/airings/:ref/cancel", requireAuth, async (c) => {
+  try {
+    return c.json(await cancelEvent(c.get("user"), c.req.param("ref") as string));
+  } catch (err) {
+    return fail(c, err);
+  }
+});
+
+liveRoutes.post("/airings/:ref/reschedule", requireAuth, async (c) => {
+  try {
+    const body = z.object({ startsAt: z.string().max(40) }).safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ error: "invalid_input", message: "Choose a time." }, 400);
+    return c.json({ airing: await rescheduleEvent(c.get("user"), c.req.param("ref") as string, body.data.startsAt) });
   } catch (err) {
     return fail(c, err);
   }

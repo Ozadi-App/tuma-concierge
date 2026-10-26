@@ -6,7 +6,7 @@ import { VIDEO_ADAPTERS } from "./adapters/index.js";
 import { clearCredentials, hasRequiredFields, loadCredentials, saveCredentials, validFieldKeys } from "./credentials.js";
 import { getVideoConfig } from "./settings.js";
 import {
-  getAsset, importVideo, isProviderKey, playbackFor, providerCatalogue, publicAsset, refreshAsset, removeAsset, startUpload, VideoRequestError,
+  getAsset, importVideo, readyVideosOf, isProviderKey, playbackFor, providerCatalogue, publicAsset, refreshAsset, removeAsset, startUpload, VideoRequestError,
 } from "./service.js";
 import { VideoProviderError } from "./types.js";
 
@@ -109,6 +109,15 @@ videoRoutes.post("/video/assets/import", requireAuth, async (c) => {
   try {
     const asset = await importVideo(user.sub, { provider: body.data.provider, reference: body.data.reference, title: body.data.title });
     return c.json({ asset: publicAsset(asset, true) }, 201);
+  } catch (err) {
+    return fail(c, err);
+  }
+});
+
+/** The signed-in person's own ready videos. */
+videoRoutes.get("/video/mine", requireAuth, async (c) => {
+  try {
+    return c.json({ assets: (await readyVideosOf(c.get("user").sub)).map((r) => publicAsset(r, true)) });
   } catch (err) {
     return fail(c, err);
   }

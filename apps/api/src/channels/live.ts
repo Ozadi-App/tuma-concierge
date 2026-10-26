@@ -2,12 +2,13 @@ import { randomInt } from "node:crypto";
 import { db } from "../db/client.js";
 import { newId } from "../lib/ids.js";
 import { consume } from "../lib/ratelimit.js";
-import { hasTable } from "../lib/schema.js";
+import { hasColumn, hasTable } from "../lib/schema.js";
 import { getPlatformEnvironment } from "../lib/settings.js";
 import { endLiveInput, startLiveInput, VideoRequestError } from "../video/service.js";
 import { ChannelsError, requireChannels, sqlTime, type Row } from "./common.js";
 import { createPost, containsBlockedWord } from "./posts.js";
 import { driverOnJob, resolveIdentity } from "./publishers.js";
+import { eventsReady, sweepEvents, syncEvent } from "./events.js";
 import type { ChannelsConfig } from "@peebee/shared";
 
 /**
@@ -16,6 +17,9 @@ import type { ChannelsConfig } from "@peebee/shared";
  * host's helper device poll `liveState` every few seconds for the viewer count and comments; there is no
  * always-open connection to keep. The host's private publish address never reaches a viewer.
  */
+
+/** A camera stream only. Once migration 0143 is in, broadcasts and premieres share the table and are told apart by `kind`. */
+const cameraOnly = async (alias = "") => ((await hasColumn("live_sessions", "kind")) ? `AND ${alias}kind = 'camera'` : "");
 
 export type LiveRow = Row & {
   id: string; post_id: string; host_id: string; publisher_type: string; publisher_id: string; title: string | null; provider: string;
@@ -41,6 +45,13 @@ export async function requireLive(): Promise<ChannelsConfig> {
   return cfg;
 }
 
+/** Chat and helper tools serve camera streams and also broadcasts and premieres, so any of those switches opens them. */
+async function requireLiveAny(): Promise<ChannelsConfig> {
+  const cfg = await requireChannels();
+  if (!(cfg.live.enabled || cfg.live.broadcastsEnabled || cfg.live.premieresEnabled) || !(await liveReady())) throw new ChannelsError("live_unavailable", "Live is not available yet.", 503);
+  return cfg;
+}
+
 export async function getLive(id: string): Promise<LiveRow | null> {
   const res = await db.execute({ sql: "SELECT * FROM live_sessions WHERE id = ?", args: [id] });
   return (res.rows[0] as unknown as LiveRow | undefined) ?? null;
@@ -50,7 +61,8 @@ export async function getLive(id: string): Promise<LiveRow | null> {
 export async function resolveLive(ref: string): Promise<LiveRow | null> {
   const direct = await getLive(ref);
   if (direct) return direct;
-  const res = await db.execute({ sql: "SELECT * FROM live_sessions WHERE post_id = ? AND status != 'ready' ORDER BY created_at DESC LIMIT 1", args: [ref] });
+  const visible = (await hasColumn("live_sessions", "kind")) ? "(status != 'ready' OR kind != 'camera')" : "status != 'ready'";
+  const res = await db.execute({ sql: `SELECT * FROM live_sessions WHERE post_id = ? AND ${visible} ORDER BY created_at DESC LIMIT 1`, args: [ref] });
   return (res.rows[0] as unknown as LiveRow | undefined) ?? null;
 }
 
@@ -103,11 +115,11 @@ export async function startLive(user: { sub: string; role: string }, input: { pu
   const title = (input.title ?? "").trim().slice(0, 140);
   if (title && containsBlockedWord(title, cfg)) throw new ChannelsError("blocked_words", "Please change the title and try again.", 400);
 
-  const today = await db.execute({ sql: "SELECT COUNT(*) AS n FROM live_sessions WHERE publisher_type = ? AND publisher_id = ? AND created_at > datetime('now', '-1 day')", args: [identity.type, identity.id] });
+  const today = await db.execute({ sql: `SELECT COUNT(*) AS n FROM live_sessions WHERE publisher_type = ? AND publisher_id = ? AND created_at > datetime('now', '-1 day') ${await cameraOnly()}`, args: [identity.type, identity.id] });
   if (Number((today.rows[0] as Row).n) >= cfg.live.maxPerDay) throw new ChannelsError("daily_live_limit", "You have gone live as many times as allowed today.", 429);
 
   // A host has one stream at a time: starting again closes the earlier one.
-  const open = (await db.execute({ sql: "SELECT id FROM live_sessions WHERE host_id = ? AND status != 'ended'", args: [user.sub] })).rows as unknown as Array<{ id: string }>;
+  const open = (await db.execute({ sql: `SELECT id FROM live_sessions WHERE host_id = ? AND status != 'ended' ${await cameraOnly()}`, args: [user.sub] })).rows as unknown as Array<{ id: string }>;
   for (const o of open) await closeLive(o.id, "replaced");
 
   let provider;
@@ -179,7 +191,7 @@ export async function endLive(user: { sub: string }, id: string) {
 /** The host's open stream, so a second device (or a reopened app) can pick it up. */
 export async function myOpenLive(userId: string) {
   if (!(await liveReady())) return null;
-  const res = await db.execute({ sql: "SELECT * FROM live_sessions WHERE host_id = ? AND status != 'ended' ORDER BY created_at DESC LIMIT 1", args: [userId] });
+  const res = await db.execute({ sql: `SELECT * FROM live_sessions WHERE host_id = ? AND status != 'ended' ${await cameraOnly()} ORDER BY created_at DESC LIMIT 1`, args: [userId] });
   const s = res.rows[0] as unknown as LiveRow | undefined;
   return s ? hostView(s) : null;
 }
@@ -195,8 +207,11 @@ const commentView = (c: CommentRow, withHidden: boolean) => ({
  */
 export async function liveState(ref: string, viewer: { userId: string | null; key: string }, opts: { after: number; beat: boolean }) {
   const cfg = await requireChannels();
-  const s = await resolveLive(ref);
-  if (!s || s.status === "ready") throw new ChannelsError("not_found", "That stream was not found.", 404);
+  let s = await resolveLive(ref);
+  // A broadcast or premiere is visible before it starts (its countdown page has a chat room waiting); a camera stream is not.
+  const isEvent = !!s && (await eventsReady()) && String((s as Row).kind ?? "camera") !== "camera";
+  if (s && isEvent) s = (await syncEvent(s as never)) as unknown as LiveRow;
+  if (!s || (s.status === "ready" && !isEvent)) throw new ChannelsError("not_found", "That stream was not found.", 404);
   const id = s.id;
   const role = await roleOf(s, viewer.userId);
   const staff = role !== "viewer";
@@ -224,7 +239,7 @@ export async function liveState(ref: string, viewer: { userId: string | null; ke
   const pinnedRow = (await db.execute({ sql: "SELECT * FROM live_comments WHERE session_id = ? AND pinned = 1 AND hidden = 0 ORDER BY id DESC LIMIT 1", args: [id] })).rows[0] as unknown as CommentRow | undefined;
 
   return {
-    id, status: s.status, title: s.title, role,
+    id, status: (isEvent && s.status === "ready" ? "scheduled" : s.status) as "scheduled" | "live" | "ended", title: s.title, role,
     viewers: staff || cfg.live.showViewerCount ? count : null,
     peakViewers: staff ? peak : null,
     startedAt: s.started_at, endsAt: s.max_ends_at,
@@ -239,7 +254,7 @@ export async function liveState(ref: string, viewer: { userId: string | null; ke
 }
 
 export async function postLiveComment(user: { sub: string; name: string }, ref: string, rawBody: string) {
-  const cfg = await requireLive();
+  const cfg = await requireLiveAny();
   if (!cfg.live.commentsEnabled) throw new ChannelsError("comments_off", "Comments are off for live streams.", 403);
   const s = await resolveLive(ref);
   if (!s || s.status !== "live") throw new ChannelsError("live_ended", "This stream is not live.", 409);
@@ -279,7 +294,7 @@ export async function moderateLiveComment(user: { sub: string }, id: string, com
 
 /** A short code the host can read out to someone who should help run the stream from their own phone. */
 export async function createHelperCode(user: { sub: string }, id: string) {
-  const cfg = await requireLive();
+  const cfg = await requireLiveAny();
   if (!cfg.live.helperEnabled) throw new ChannelsError("helper_off", "Helper devices are not available.", 403);
   const s = await getLive(id);
   if (!s || s.host_id !== user.sub || s.status === "ended") throw new ChannelsError("not_found", "That stream was not found.", 404);
@@ -296,7 +311,7 @@ export async function createHelperCode(user: { sub: string }, id: string) {
 }
 
 export async function joinAsHelper(user: { sub: string }, rawCode: string) {
-  const cfg = await requireLive();
+  const cfg = await requireLiveAny();
   if (!cfg.live.helperEnabled) throw new ChannelsError("helper_off", "Helper devices are not available.", 403);
   const code = rawCode.replace(/\D/g, "");
   const gate = await consume(`live_helper:${user.sub}`, 10, 600);
@@ -322,11 +337,11 @@ export async function helperStreams(userId: string) {
 export async function sweepLive(): Promise<number> {
   if (!(await liveReady())) return 0;
   const stale = (await db.execute({
-    sql: `SELECT id FROM live_sessions WHERE (status = 'live' AND (max_ends_at < datetime('now') OR host_seen_at < datetime('now', ?)))
-             OR (status = 'ready' AND created_at < datetime('now', ?))`,
+    sql: `SELECT id FROM live_sessions WHERE ((status = 'live' AND (max_ends_at < datetime('now') OR host_seen_at < datetime('now', ?)))
+             OR (status = 'ready' AND created_at < datetime('now', ?))) ${await cameraOnly()}`,
     args: [`-${HOST_GONE_SECONDS} seconds`, `-${READY_EXPIRES_MINUTES} minutes`],
   })).rows as unknown as Array<{ id: string }>;
   for (const s of stale) await closeLive(s.id, "sweep");
   await db.execute({ sql: "DELETE FROM live_viewers WHERE last_seen < ?", args: [Date.now() - 10 * 60_000] });
-  return stale.length;
+  return stale.length + (await sweepEvents());
 }
