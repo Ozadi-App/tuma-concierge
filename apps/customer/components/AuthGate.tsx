@@ -15,7 +15,7 @@ const ALWAYS_ALLOWED_PATHS = ["/verify"];
 // be signed out here (different device/browser than where they signed up).
 const UNGATED_PATHS = ["/verify/confirmed", "/activate"];
 // A shared product or dish link: signed out, the page shows a public preview itself.
-const SHARED_ITEM_PATH = /^\/(product\/[^/]+|restaurants\/[^/]+\/items\/[^/]+)\/?$/;
+const SHARED_ITEM_PATH = /^\/(product\/[^/]+|restaurants\/[^/]+\/items\/[^/]+|c\/[^/]+|give\/[^/]+|post\/[^/]+)\/?$/;
 
 export function AuthGate({ children }: { children: React.ReactNode }) {
   const { user, ready } = useAuth();

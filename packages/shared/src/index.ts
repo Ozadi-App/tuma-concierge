@@ -27,6 +27,7 @@ export {
   detectMobileMoneyNetwork,
   mobileMoneyNetworkLabel,
   mobileMoneyCurrencyCode,
+  normalizeUgandaMsisdn,
 } from "./mobile-money.js";
 export type { MobileMoneyNetwork } from "./mobile-money.js";
 export {
@@ -335,6 +336,9 @@ export { WORK_SETTINGS_EXTRA_DEFAULTS } from "./work-admin-client.js";
 export * from "./talent-client.js";
 export { TALENT_DEMO } from "./practice-talent.js";
 export * from "./talent-admin-client.js";
+export * from "./video-ads-client.js";
+export * from "./channels-config.js";
+export * from "./channels-client.js";
 
 export * from "./education/types.js";
 export * from "./education/studio.js";

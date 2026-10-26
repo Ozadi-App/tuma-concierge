@@ -2,6 +2,7 @@
 
 import { ChevronRight, LogOut, Settings, Shield, Wallet } from "lucide-react";
 import Link from "next/link";
+import { ChannelEntryCard } from "../../components/channels/ChannelEntryCard";
 import { DisplayNameSettings } from "../../components/DisplayNameSettings";
 import { ProfilePhoto } from "../../components/ProfilePhoto";
 import { PracticeModeCard } from "../../components/PracticeMode";
@@ -33,6 +34,8 @@ export default function AccountPage() {
         <Wallet className="h-5 w-5 text-gold" strokeWidth={1.75} aria-hidden />
         {t("nav_wallet")}
       </Link>
+
+      <ChannelEntryCard />
 
       <DisplayNameSettings />
 

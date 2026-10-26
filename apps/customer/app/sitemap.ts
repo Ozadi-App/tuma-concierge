@@ -1,5 +1,6 @@
 import type { MetadataRoute } from "next";
 import { dishPath, productPath, SITE_URL } from "../lib/public-share";
+import { causePath, channelPath } from "../lib/public-channels";
 
 const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:10000").replace(/\/$/, "");
 
@@ -22,6 +23,18 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     for (const d of data.dishes) pages.push({ url: `${SITE_URL}${dishPath(d.restaurantId, d.id)}`, lastModified: when(d.updatedAt), changeFrequency: "weekly", priority: 0.6 });
   } catch {
     // Without the API the sitemap still lists the main pages.
+  }
+  // Public channels and causes (an empty list when Channels is switched off).
+  try {
+    const res = await fetch(`${API_URL}/v1/public/channels-sitemap`, { next: { revalidate: 3600 } });
+    if (res.ok) {
+      const data = (await res.json()) as { channels: Array<{ handle: string; updatedAt: string }>; causes: Array<{ slug: string; updatedAt: string }> };
+      const when = (at: string) => new Date(`${at.replace(" ", "T")}Z`);
+      for (const c of data.channels) pages.push({ url: `${SITE_URL}${channelPath(c.handle)}`, lastModified: when(c.updatedAt), changeFrequency: "daily", priority: 0.5 });
+      for (const c of data.causes) pages.push({ url: `${SITE_URL}${causePath(c.slug)}`, lastModified: when(c.updatedAt), changeFrequency: "daily", priority: 0.6 });
+    }
+  } catch {
+    // Same: the main pages are enough.
   }
   return pages;
 }

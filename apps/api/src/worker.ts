@@ -12,6 +12,7 @@ import { releaseStaleBookings } from "./taxipress/bookings.js";
 import { sweepRentalRequests } from "./car/selfdrive.js";
 import { sweepWork } from "./work/scheduled.js";
 import { sweepTalent } from "./talent/scheduled.js";
+import { sweepChannels } from "./channels/scheduled.js";
 import { expireStaleVouchers } from "./gas/vouchers.js";
 import { sweepStageEscalations, sweepStageFines, sweepElectionSessions } from "./stages/escalation.js";
 import { sweepActivationMessages } from "./onboarding/service.js";
@@ -95,6 +96,11 @@ export default {
       sweepTalent()
         .then((r) => console.log("Peebee Hire sweep:", JSON.stringify(r)))
         .catch((err) => console.error("Peebee Hire sweep failed:", err)),
+    );
+    ctx.waitUntil(
+      sweepChannels()
+        .then((r) => console.log("Channels sweep:", JSON.stringify(r)))
+        .catch((err) => console.error("Channels sweep failed:", err)),
     );
     ctx.waitUntil(
       expireStaleVouchers()
