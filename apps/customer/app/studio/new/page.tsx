@@ -28,7 +28,6 @@ export default function NewPostPage() {
   const [tags, setTags] = useState("");
   const [images, setImages] = useState<Array<{ path: string; url: string }>>([]);
   const [audio, setAudio] = useState<{ path: string; url: string; name: string } | null>(null);
-  const [liveUrl, setLiveUrl] = useState("");
   const [video, setVideo] = useState<VideoAssetView | null>(null);
   const [cover, setCover] = useState<{ path: string; url: string } | null>(null);
   const [pollOn, setPollOn] = useState(false);
@@ -53,7 +52,8 @@ export default function NewPostPage() {
   );
   const identity = usable.find((i) => `${i.type}:${i.id}` === identityKey) ?? usable[0] ?? null;
   const isChannel = identity?.type === "channel";
-  const allowedTypes = (pub?.postTypes ?? []) as PostType[];
+  // Going live is its own screen (the camera, no stream links), so it is not one of the post forms.
+  const allowedTypes: PostType[] = ((pub?.postTypes ?? []) as PostType[]).filter((t) => t !== "live");
   const money = config?.monetization;
   const canLock = isChannel && !!money?.enabled && (money.memberships || money.payPerView) && type !== "live";
 
@@ -75,7 +75,6 @@ export default function NewPostPage() {
     : type === "image" ? images.length === 1
     : type === "carousel" ? images.length >= 2
     : type === "audio" ? !!audio
-    : type === "live" ? /^https:\/\/.+\.m3u8/i.test(liveUrl.trim())
     : caption.trim().length > 0 || (pollOn && pollOk);
   const priceOk = access !== "pay_per_view" || (money && price >= money.minPayPerViewUgx && price <= money.maxPayPerViewUgx);
   const scheduleOk = !schedule || (scheduledAt !== "" && new Date(scheduledAt).getTime() > Date.now());
@@ -106,7 +105,6 @@ export default function NewPostPage() {
         tags: tagList,
         images: type === "image" || type === "carousel" ? images.map((i) => i.path) : undefined,
         audioPath: type === "audio" ? audio?.path : undefined,
-        liveUrl: type === "live" ? liveUrl.trim() : undefined,
         videoAssetId: type === "video" ? video?.id : undefined,
         coverPath: cover?.path ?? null,
         poll: type === "text" && pollOn ? { question: pollQuestion.trim() || undefined, options: pollOptions.map((o) => o.trim()).filter(Boolean) } : null,
@@ -130,6 +128,13 @@ export default function NewPostPage() {
   return (
     <div className="space-y-4">
       <h1 className="text-xl font-extrabold text-ink">Create a post</h1>
+
+      {config.live?.enabled && (
+        <Link href="/live" className="flex items-center gap-4 rounded-[28px] bg-red-600 p-5 text-white shadow-sm transition active:scale-[0.99]">
+          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white/20"><Radio className="h-6 w-6" aria-hidden /></span>
+          <span className="min-w-0 flex-1"><span className="block text-base font-extrabold">Go live now</span><span className="block text-xs font-medium text-white/85">Use your phone camera. No links, no extra app.</span></span>
+        </Link>
+      )}
 
       {usable.length > 1 && (
         <Card title="Post as">
@@ -184,9 +189,6 @@ export default function NewPostPage() {
             </label>
             <p className="text-xs text-ink-500">Up to {pub?.maxAudioMb ?? 25} MB.</p>
           </div>
-        )}
-        {type === "live" && (
-          <TextField id="np-live" label="Live stream address (https, .m3u8)" value={liveUrl} onChange={setLiveUrl} placeholder="https://…/stream.m3u8" hint="Start streaming from your encoder, then post. Gifts and tips work during a live stream." />
         )}
         {type === "text" && (
           <div className="space-y-3">

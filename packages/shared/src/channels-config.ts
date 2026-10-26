@@ -120,6 +120,20 @@ export type ChannelsConfig = {
     reviewEditsAfterApproval: boolean;
     donationCutPercent: number;
   };
+  live: {
+    enabled: boolean;
+    minFollowers: number;
+    maxMinutes: number;
+    maxPerDay: number;
+    commentsEnabled: boolean;
+    maxCommentChars: number;
+    commentCooldownSeconds: number;
+    helperEnabled: boolean;
+    helperCodeMinutes: number;
+    showViewerCount: boolean;
+    showInSpotlight: boolean;
+    requireVerifiedPublisher: boolean;
+  };
   rewards: {
     enabled: boolean;
     qualifiedViewSeconds: number;
@@ -149,6 +163,7 @@ export const CHANNELS_SECTIONS = [
   { id: "monetization", label: "Memberships, paid posts and tips", hint: "Money from audiences. Needs the right licences before you switch it on." },
   { id: "kyc", label: "Verification and withdrawals", hint: "ID checks are asked for only when someone withdraws" },
   { id: "causes", label: "Causes (fundraising)", hint: "Approval, goals, donations and releases. Needs the right licences before you switch it on." },
+  { id: "live", label: "Go live", hint: "Going live from a phone camera. Needs a video provider that supports live (Cloudflare Stream) set up in Video and ads." },
   { id: "rewards", label: "Rewards", hint: "Points for views, and turning points into money" },
 ] as const;
 
@@ -298,6 +313,19 @@ export const CHANNELS_FIELDS: ChannelsField[] = [
   B("causes", "causes.donorWallVisible", "Show the donor wall", "Names and amounts of donors who chose to be shown", true),
   B("causes", "causes.reviewEditsAfterApproval", "Review changes to live causes", "A material edit sends the cause back for approval", true),
   N("causes", "causes.donationCutPercent", "Peebee's cut of donations", "Percent", 0, 0, 50, "%"),
+
+  B("live", "live.enabled", "Going live", "People can go live from their phone camera. Off until a live-capable video provider is set up. Live streams are never locked and never carry ads.", false),
+  N("live", "live.minFollowers", "Followers needed to go live", "0 lets any publisher go live", 0, 0, 100000),
+  N("live", "live.maxMinutes", "Longest live stream", "The stream ends by itself after this long", 120, 5, 720, "minutes"),
+  N("live", "live.maxPerDay", "Live streams per publisher per day", "", 5, 1, 50),
+  B("live", "live.commentsEnabled", "Live comments", "Viewers can comment while a stream is on", true),
+  N("live", "live.maxCommentChars", "Longest live comment", "Characters", 200, 20, 1000),
+  N("live", "live.commentCooldownSeconds", "Seconds between one person's comments", "Slows spam during a stream", 2, 0, 60, "seconds"),
+  B("live", "live.helperEnabled", "Helper device", "The host can open the stream on a second device (or give a code to a helper) to read comments, hide or pin them", true),
+  N("live", "live.helperCodeMinutes", "How long a helper code works", "", 120, 5, 720, "minutes"),
+  B("live", "live.showViewerCount", "Show viewer count to everyone", "Off shows the count to the host only", true),
+  B("live", "live.showInSpotlight", "Show live streams in the Spotlight", "Off keeps them on the host's channel page", true),
+  B("live", "live.requireVerifiedPublisher", "Only verified publishers can go live", "A verified badge is given by staff", false),
 
   B("rewards", "rewards.enabled", "Rewards", "The master switch for points and cash-outs. Needs a rate (below) before anything is paid. Off until licensed.", false),
   N("rewards", "rewards.qualifiedViewSeconds", "Seconds watched for a view to count", "", 3, 1, 60, "seconds"),

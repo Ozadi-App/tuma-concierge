@@ -308,6 +308,11 @@ export function friendlyErrorMessage(err: unknown): string {
       });
       return `Please check: ${parts.join("; ")}`;
     }
+    // A "not available yet" or a provider problem is written for the person, so say it instead of a blanket apology.
+    if (err.status === 503 || (err.status === 502 && err.code?.startsWith("provider_"))) {
+      const written = err.message.replace(/^API \d+: /, "");
+      if (written && written !== err.code && !/^[a-z0-9_]+$/.test(written)) return written;
+    }
     if (err.status >= 500) return "Something went wrong on our end. Please try again in a moment.";
     // The server's own message, when it wrote one — most 4xx handlers in
     // this codebase already pass a plain-English `message` alongside the

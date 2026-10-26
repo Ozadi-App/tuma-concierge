@@ -37,7 +37,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // Spotlight is an edge-to-edge immersive feed: no header. It keeps the bottom nav,
   // which becomes Spotlight's own menu (Home button + five filters) floating over the feed.
   const isSpotlight = pathname === "/spotlight" || pathname.startsWith("/spotlight/");
-  const isImmersiveFullscreen = isSingleStore || isSingleProduct;
+  // Going live (the camera, or a helper device) takes the whole screen, like Spotlight, with no header or menu.
+  const isGoLive = pathname === "/live" || pathname.startsWith("/live/");
+  const isImmersiveFullscreen = isSingleStore || isSingleProduct || isGoLive;
 
   const showHeader = !isAuthPage && !isChatThread && !isFoodDetail && !isImmersiveFullscreen && !isSpotlight;
   const showNav = !isAuthPage && !isChatThread && !isFoodDetail && !navigationOverlayOpen && !isImmersiveFullscreen;
