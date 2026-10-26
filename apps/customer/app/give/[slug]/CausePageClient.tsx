@@ -112,7 +112,8 @@ export function CausePageClient({ slug }: { slug: string }) {
           {cause.status !== "live" && <p className="rounded-2xl bg-[rgb(var(--surface-muted))] px-4 py-3 text-sm font-semibold text-ink">{cause.status === "ended" || cause.status === "closed" ? "This cause has ended. Thank you to everyone who gave." : cause.status === "frozen" ? "Giving is paused while this cause is reviewed." : `This cause is ${cause.status}.`}</p>}
 
           <div className="space-y-2 rounded-3xl bg-[rgb(var(--surface-card))] p-5 shadow-sm">
-            <p className="text-2xl font-extrabold text-ink">{ugx(cause.raisedUgx)} <span className="text-sm font-medium text-ink-500">raised of {ugx(cause.goalUgx)}</span></p>
+            <p className="text-2xl font-extrabold text-ink">{ugx(cause.raisedUgx)}</p>
+            <p className="text-sm text-ink-500">raised of {ugx(cause.goalUgx)}</p>
             <ProgressBar percent={cause.percent} />
             <p className="flex items-center gap-4 text-sm text-ink-500"><span>{cause.donorCount} donor{cause.donorCount === 1 ? "" : "s"}</span>{accepting && <span className="flex items-center gap-1"><Clock className="h-4 w-4" aria-hidden /> {cause.daysLeft} day{cause.daysLeft === 1 ? "" : "s"} left</span>}</p>
             <div className="flex gap-2 pt-2">
@@ -154,7 +155,7 @@ export function CausePageClient({ slug }: { slug: string }) {
               {presets.map((v) => <button key={v} type="button" aria-pressed={amount === v} onClick={() => setAmount(v)} className={`rounded-full px-4 py-2 text-sm font-semibold ${amount === v ? "bg-gold text-ink-gold" : "bg-[rgb(var(--surface-muted))] text-ink"}`}>{ugx(v)}</button>)}
             </div>
             <label className="block text-xs font-bold text-ink-500">Amount (UGX)
-              <span className="field-box mt-1 flex items-center rounded-2xl px-4"><input type="number" inputMode="numeric" required min={rules?.minDonationUgx} max={rules?.maxDonationUgx} value={amount} onChange={(e) => setAmount(Number(e.target.value))} className="h-12 w-full text-base text-ink outline-none" /></span>
+              <span className="field-box border border-[var(--border-faint)] mt-1 flex items-center rounded-2xl px-4"><input type="number" inputMode="numeric" required min={rules?.minDonationUgx} max={rules?.maxDonationUgx} value={amount} onChange={(e) => setAmount(Number(e.target.value))} className="h-12 w-full text-base text-ink outline-none" /></span>
             </label>
             {rules?.donorTipEnabled && (
               <div className="space-y-2"><p className="text-xs font-bold text-ink-500">Add a tip to help Peebee run this (optional)</p>
@@ -162,11 +163,11 @@ export function CausePageClient({ slug }: { slug: string }) {
               </div>
             )}
             <label className="block text-xs font-bold text-ink-500">Your name (optional)
-              <span className="field-box mt-1 flex items-center rounded-2xl px-4"><input value={name} maxLength={60} onChange={(e) => setName(e.target.value)} autoComplete="name" className="h-12 w-full text-base text-ink outline-none" /></span>
+              <span className="field-box border border-[var(--border-faint)] mt-1 flex items-center rounded-2xl px-4"><input value={name} maxLength={60} onChange={(e) => setName(e.target.value)} autoComplete="name" className="h-12 w-full text-base text-ink outline-none" /></span>
             </label>
             {rules?.allowAnonymous && <label className="flex items-center gap-3 text-sm text-ink"><input type="checkbox" checked={anonymous} onChange={(e) => setAnonymous(e.target.checked)} className="h-5 w-5" /> Hide my name from the donor list</label>}
             <label className="block text-xs font-bold text-ink-500">A message (optional)
-              <span className="field-box mt-1 flex items-center rounded-2xl px-4"><input value={message} maxLength={300} onChange={(e) => setMessage(e.target.value)} className="h-12 w-full text-base text-ink outline-none" /></span>
+              <span className="field-box border border-[var(--border-faint)] mt-1 flex items-center rounded-2xl px-4"><input value={message} maxLength={300} onChange={(e) => setMessage(e.target.value)} className="h-12 w-full text-base text-ink outline-none" /></span>
             </label>
             <div role="tablist" aria-label="How to pay" className="flex gap-2">
               {canMomo && <button type="button" role="tab" aria-selected={method === "momo"} onClick={() => setMethod("momo")} className={`flex-1 rounded-full px-4 py-3 text-sm font-bold ${method === "momo" ? "bg-gold text-ink-gold" : "bg-[rgb(var(--surface-muted))] text-ink"}`}>Mobile money</button>}
@@ -174,7 +175,7 @@ export function CausePageClient({ slug }: { slug: string }) {
             </div>
             {method === "momo" && canMomo && (
               <label className="block text-xs font-bold text-ink-500">MTN or Airtel number
-                <span className="field-box mt-1 flex items-center rounded-2xl px-4"><input type="tel" inputMode="tel" required autoComplete="tel" placeholder="07XX XXX XXX" value={msisdn} onChange={(e) => setMsisdn(e.target.value)} className="h-12 w-full text-base text-ink outline-none" /></span>
+                <span className="field-box border border-[var(--border-faint)] mt-1 flex items-center rounded-2xl px-4"><input type="tel" inputMode="tel" required autoComplete="tel" placeholder="07XX XXX XXX" value={msisdn} onChange={(e) => setMsisdn(e.target.value)} className="h-12 w-full text-base text-ink outline-none" /></span>
               </label>
             )}
             {formError && <p role="alert" className="rounded-2xl bg-red-50 p-3 text-sm text-red-700">{formError}</p>}

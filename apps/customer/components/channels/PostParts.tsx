@@ -11,7 +11,7 @@ import { BottomDrawer } from "../BottomDrawer";
 
 /** Avatar with initials when there is no picture. */
 export function Avatar({ name, url, size = 40 }: { name: string; url: string | null; size?: number }) {
-  const initials = name.trim().split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase() ?? "").join("") || "?";
+  const initials = name.trim().split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w)).slice(0, 2).map((w) => w[0]?.toUpperCase() ?? "").join("") || "?";
   return url ? (
     // eslint-disable-next-line @next/next/no-img-element
     <img src={url} alt="" width={size} height={size} className="shrink-0 rounded-full object-cover" style={{ width: size, height: size }} />
@@ -214,7 +214,7 @@ export function CommentsSheet({ post, open, onClose, onCountChange }: { post: Po
         {held && <p className="text-xs text-ink-500">Your comment is waiting for review.</p>}
         {user ? (
           <div className="flex items-center gap-2">
-            <div className="field-box flex min-w-0 flex-1 items-center rounded-full px-4">
+            <div className="field-box border border-[var(--border-faint)] flex min-w-0 flex-1 items-center rounded-full px-4">
               <input value={text} maxLength={500} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && send()} placeholder="Add a comment…" aria-label="Add a comment" className="h-11 w-full text-sm text-ink outline-none" />
             </div>
             <button type="button" onClick={send} disabled={!text.trim() || busy} aria-label="Post comment" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gold text-ink-gold disabled:opacity-40"><Send className="h-4 w-4" /></button>
@@ -255,7 +255,7 @@ export function TipSheet({ channelId, channelName, postId, config, open, onClose
                 <button key={v} type="button" aria-pressed={amount === v} onClick={() => setAmount(v)} className={`rounded-full px-4 py-2 text-sm font-semibold ${amount === v ? "bg-gold text-ink-gold" : "bg-[rgb(var(--surface-muted))] text-ink"}`}>{ugx(v)}</button>
               ))}
             </div>
-            <div className="field-box flex items-center rounded-2xl px-4">
+            <div className="field-box border border-[var(--border-faint)] flex items-center rounded-2xl px-4">
               <input type="number" inputMode="numeric" min={m.minTipUgx} max={m.maxTipUgx} value={amount} onChange={(e) => setAmount(Number(e.target.value))} aria-label="Tip amount in UGX" className="h-12 w-full text-sm text-ink outline-none" />
             </div>
             <button type="button" disabled={busy !== null} onClick={() => send("tip", { amountUgx: amount })} className="min-h-11 w-full rounded-full bg-gold text-sm font-bold text-ink-gold disabled:opacity-60">{busy === "tip" ? "Sending…" : `Tip ${ugx(amount)}`}</button>

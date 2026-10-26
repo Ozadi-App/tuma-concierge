@@ -70,7 +70,7 @@ export default function DriverSpotlightPost() {
       {picture && /* eslint-disable-next-line @next/next/no-img-element */ <img src={picture.url} alt="Your picture" className="aspect-square w-full rounded-3xl object-cover" />}
       <label className="flex min-h-12 cursor-pointer items-center justify-center rounded-full bg-[rgb(var(--surface-muted))] px-5 text-sm font-bold text-ink">{picture ? "Change picture" : "Add a picture"}<input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" onChange={(e) => { void pickPicture(e.target.files?.[0]); e.target.value = ""; }} /></label>
       <label className="block text-xs font-bold text-ink-500">What do you want to say?
-        <span className="field-box mt-1 flex rounded-2xl px-4 py-3"><textarea value={caption} rows={4} maxLength={500} onChange={(e) => setCaption(e.target.value)} className="w-full resize-none text-base font-normal text-ink outline-none" /></span>
+        <span className="field-box border border-[var(--border-faint)] mt-1 flex rounded-2xl px-4 py-3"><textarea value={caption} rows={4} maxLength={500} onChange={(e) => setCaption(e.target.value)} className="w-full resize-none text-base font-normal text-ink outline-none" /></span>
       </label>
       {message && <p role={message.ok ? "status" : "alert"} className={`rounded-2xl px-4 py-3 text-sm font-semibold ${message.ok ? "bg-green/10 text-green" : "bg-red-50 text-red-700"}`}>{message.text}</p>}
       <button type="submit" disabled={busy || (!picture && !caption.trim())} className="min-h-12 w-full rounded-full bg-gold text-sm font-bold text-ink-gold disabled:opacity-50">{busy ? "Posting…" : "Post"}</button>

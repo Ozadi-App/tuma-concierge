@@ -60,7 +60,7 @@ export function PostMedia({ post, muted, fullscreen = false, onChanged }: { post
   // Text and polls
   if (post.type === "text") {
     return (
-      <div className={`${fullscreen ? "absolute inset-0" : "w-full rounded-3xl"} flex flex-col justify-center gap-4 overflow-auto p-6 ${fullscreen ? "bg-gradient-to-br from-neutral-900 via-neutral-950 to-black text-white" : "bg-[rgb(var(--surface-muted))] text-ink"}`}>
+      <div className={`${fullscreen ? "absolute inset-0" : "w-full rounded-3xl"} flex flex-col justify-center gap-4 overflow-auto p-6 ${fullscreen ? "pr-20" : ""} ${fullscreen ? "bg-gradient-to-br from-neutral-900 via-neutral-950 to-black text-white" : "bg-[rgb(var(--surface-muted))] text-ink"}`}>
         {post.locked ? <LockPanel post={post} onUnlocked={refresh} dark={fullscreen} /> : (
           <>
             {post.caption && !post.poll && <p className={`whitespace-pre-wrap break-words font-semibold leading-snug ${fullscreen ? "text-2xl" : "text-lg"}`}>{post.caption}</p>}

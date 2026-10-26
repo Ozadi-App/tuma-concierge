@@ -98,7 +98,7 @@ export function ChannelPageClient({ handle }: { handle: string }) {
         <div className="relative h-36 w-full bg-gradient-to-br from-gold/40 to-gold/10">
           {c.bannerUrl && /* eslint-disable-next-line @next/next/no-img-element */ <img src={c.bannerUrl} alt="" className="h-full w-full object-cover" />}
         </div>
-        <div className="-mt-10 space-y-3 px-4">
+        <div className="relative z-10 -mt-10 space-y-3 px-4">
           <div className="flex items-end justify-between gap-3">
             <span className="rounded-full border-4 border-[rgb(var(--color-cream))]"><Avatar name={c.displayName} url={c.avatarUrl} size={80} /></span>
             <div className="flex items-center gap-2 pb-1">

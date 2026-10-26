@@ -1,7 +1,8 @@
 # Channels — controlling specification
 
-**Status: DRAFT v0.2. Development is on hold until this document is approved.**
-Only the video and ad foundation (see `docs/video-and-ads.md`) exists in code. Nothing else in this document has been built.
+**Status: v1.0. All phases below are built, and every feature ships switched off.**
+The owner approved the recommended defaults and asked for everything to be built, with every option switchable from Admin so features that need a licence stay off until the business has one. Admin → Settings → Channels holds every option; its screen is drawn from `packages/shared/src/channels-config.ts`.
+Migrations to apply by hand, in order: `0134_video_and_ads.sql`, then `0135_channels.sql`.
 
 How to read this: **Decided** items come from the product owner and are binding. **Default** items are the recommendation used if no one objects. **[OPEN Qn]** items need an answer before the phase that depends on them starts. Section 17 lists every open question in one place.
 
@@ -197,12 +198,12 @@ One "Channels" area: switches (channels, each publisher type, each post type), l
 | # | Phase | Status |
 |---|---|---|
 | 0 | Video providers + ad server + Admin page | **Built** |
-| 1 | Shared post model, Spotlight generalisation (publishers), channel page, Studio basics, follow, free posts | Not started |
-| 2 | Memberships, locked posts, free preview, pay-per-view, tips, in-app player with ads | Not started |
-| 3 | Creator KYC, balances, withdrawal | Not started |
-| 4 | Causes: approval, public give pages, held funds, release | Not started |
-| 5 | Rewards: qualified views, rate table, cash-out, ad-share payout | Not started |
-| 6 | Growth: live, gifts, collaborations, analytics depth, advertiser self-serve | Not started |
+| 1 | Shared post model, Spotlight generalisation (publishers), channel page, Studio, follow, free posts | **Built** |
+| 2 | Memberships, locked posts, free preview, pay-per-view, tips, in-app player with ads | **Built** |
+| 3 | Creator KYC (at withdrawal only), balances, payout accounts, withdrawal | **Built** |
+| 4 | Causes: approval, public give pages (guests too), held funds, release, refunds | **Built** |
+| 5 | Rewards: counted views, dated rate table, cash-out, ad-share payout | **Built** |
+| 6 | Live (stream address) and audio posts, gifts | **Built, off by default.** Not built: collaborations, advertiser self-serve, auction between campaigns, in-app live ingest |
 
 Each phase is its own branch from current `origin/main`, its own pull request, lists any migration to apply by hand, and ships dark.
 
@@ -215,7 +216,7 @@ Each phase is its own branch from current `origin/main`, its own pull request, l
 | D3 | KYC is not asked upfront; it is asked only to withdraw channel earnings, rewards or cause funds | Owner |
 | D4 | Stores and channels are separate; the Spotlight is shared across all modules and publishers, including drivers | Owner |
 | D5 | Studio is inside the customer app; no separate creator app | Owner |
-| D6 | Stage rule: hold development until this document is approved | Owner |
+| D6 | Build everything with the recommended defaults; every option is switchable from Admin; licence-dependent features stay off until the owner turns them on | Owner |
 
 ## 19. Open questions
 

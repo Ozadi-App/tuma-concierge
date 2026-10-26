@@ -225,7 +225,7 @@ export default function NewPostPage() {
             tiers.length === 0
               ? <Notice tone="info">Create a membership tier first. <Link href="/studio/members" className="font-bold underline">Set up memberships</Link></Notice>
               : <label className="block text-xs font-bold text-ink-500">Lowest tier that can watch
-                  <span className="field-box mt-1 flex items-center rounded-2xl px-4"><select value={minTier} onChange={(e) => setMinTier(e.target.value)} className="h-12 w-full text-base font-normal text-ink outline-none"><option value="">Any member</option>{tiers.map((t) => <option key={t.id} value={t.id}>{t.name} · {ugx(t.priceUgx)}</option>)}</select></span>
+                  <span className="field-box border border-[var(--border-faint)] mt-1 flex items-center rounded-2xl px-4"><select value={minTier} onChange={(e) => setMinTier(e.target.value)} className="h-12 w-full text-base font-normal text-ink outline-none"><option value="">Any member</option>{tiers.map((t) => <option key={t.id} value={t.id}>{t.name} · {ugx(t.priceUgx)}</option>)}</select></span>
                 </label>
           )}
           {access !== "free" && type === "video" && (money?.maxPreviewSeconds ?? 0) > 0 && (

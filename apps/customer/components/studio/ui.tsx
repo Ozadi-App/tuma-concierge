@@ -16,7 +16,7 @@ export function TextField({ id, label, hint, value, onChange, type = "text", ...
   return (
     <label htmlFor={id} className="block text-xs font-bold text-ink-500">
       {label}
-      <span className="field-box mt-1 flex items-center rounded-2xl px-4">
+      <span className="field-box border border-[var(--border-faint)] mt-1 flex items-center rounded-2xl px-4">
         <input id={id} type={type} value={value} onChange={(e) => onChange(e.target.value)} className="h-12 w-full text-base font-normal text-ink outline-none" {...rest} />
       </span>
       {hint && <span className="mt-1 block text-[11px] font-normal text-ink-500">{hint}</span>}
@@ -28,7 +28,7 @@ export function TextArea({ id, label, hint, value, onChange, rows = 4, ...rest }
   return (
     <label htmlFor={id} className="block text-xs font-bold text-ink-500">
       {label}
-      <span className="field-box mt-1 flex rounded-2xl px-4 py-3">
+      <span className="field-box border border-[var(--border-faint)] mt-1 flex rounded-2xl px-4 py-3">
         <textarea id={id} value={value} rows={rows} onChange={(e) => onChange(e.target.value)} className="w-full resize-none text-base font-normal text-ink outline-none" {...rest} />
       </span>
       {hint && <span className="mt-1 block text-[11px] font-normal text-ink-500">{hint}</span>}
