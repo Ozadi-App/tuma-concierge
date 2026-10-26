@@ -2,7 +2,7 @@
 
 **Status: v1.0. All phases below are built, and every feature ships switched off.**
 The owner approved the recommended defaults and asked for everything to be built, with every option switchable from Admin so features that need a licence stay off until the business has one. Admin → Settings → Channels holds every option; its screen is drawn from `packages/shared/src/channels-config.ts`.
-Migrations to apply by hand, in order: `0134_video_and_ads.sql`, then `0135_channels.sql`.
+Migrations to apply by hand, in order: `0135_video_and_ads.sql`, then `0136_channels.sql`.
 
 How to read this: **Decided** items come from the product owner and are binding. **Default** items are the recommendation used if no one objects. **[OPEN Qn]** items need an answer before the phase that depends on them starts. Section 17 lists every open question in one place.
 
@@ -179,7 +179,7 @@ Channel page (header, tabs: Posts / About / Causes, Follow, Subscribe). Studio (
 
 ## 14. Data model (planned)
 
-New tables, each added by an additive hand-applied migration with a fallback until applied: `channels`, `channel_follows`, `channel_tiers`, `channel_subscriptions`, `posts`, `post_media`, `post_access_grants`, `post_reactions`, `post_comments`, `post_reports`, `causes`, `cause_updates`, `donations`, `reward_rates`, `reward_points`, `creator_kyc`, `creator_payout_accounts`, `creator_balances`. Already added (migration 0134): `video_credentials`, `video_assets`, `ad_campaigns`, `ad_creatives`, `ad_events`.
+New tables, each added by an additive hand-applied migration with a fallback until applied: `channels`, `channel_follows`, `channel_tiers`, `channel_subscriptions`, `posts`, `post_media`, `post_access_grants`, `post_reactions`, `post_comments`, `post_reports`, `causes`, `cause_updates`, `donations`, `reward_rates`, `reward_points`, `creator_kyc`, `creator_payout_accounts`, `creator_balances`. Already added (migration 0135): `video_credentials`, `video_assets`, `ad_campaigns`, `ad_creatives`, `ad_events`.
 
 ## 15. Admin app (planned)
 

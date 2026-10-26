@@ -1,7 +1,7 @@
 # Creator video and ads
 
 Foundation for Channels. Everything here is off until an admin turns it on (Admin → Settings → Video & ads).
-**Needs migration `apps/api/src/db/migrations/0134_video_and_ads.sql`, applied by hand.** Until then the endpoints answer "unavailable" and the Admin page says so.
+**Needs migration `apps/api/src/db/migrations/0135_video_and_ads.sql`, applied by hand.** Until then the endpoints answer "unavailable" and the Admin page says so.
 
 ## Video: one interface, many providers
 

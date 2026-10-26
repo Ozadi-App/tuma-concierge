@@ -1,6 +1,6 @@
--- Migration 0135: Channels (creator spaces), the shared Spotlight post model, memberships and
+-- Migration 0136: Channels (creator spaces), the shared Spotlight post model, memberships and
 -- paid posts, creator earnings and verified withdrawals, causes (fundraising), and rewards.
--- Additive only. Needs 0134 (video assets). The code checks for these tables (hasTable) and keeps
+-- Additive only. Needs 0135 (video assets). The code checks for these tables (hasTable) and keeps
 -- every Channels feature switched off until they exist, so this can be applied after deploy.
 -- Every feature is also an Admin switch (settings.channels_config) and ships off.
 

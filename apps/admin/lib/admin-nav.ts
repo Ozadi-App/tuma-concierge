@@ -92,6 +92,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: "/settings/home-menu", label: "Home menu", icon: Home, hint: "Names and Hive shortcuts", visible: can("settings.manage") },
       { href: "/settings/marketplace", label: "Marketplace", icon: Store, hint: "Pro stores, live and ads" },
+      { href: "/settings/services-platform", label: "Services Platform", icon: Briefcase, hint: "Standalone services & aggregator isolation" },
       { href: "/settings/learn", label: "Peebee Learn", icon: GraduationCap, hint: "Schools and courses" },
       { href: "/settings/channels", label: "Channels", icon: Clapperboard, hint: "Creators, Spotlight, memberships, causes, rewards", keywords: "creator spotlight membership cause donation reward kyc verification", visible: (r) => hasPermission(r, "channels.view") || hasPermission(r, "settings.manage"), children: [{ href: "/settings/channels/review", label: "Channels review queues" }] },
       { href: "/settings/video-ads", label: "Video & ads", icon: Video, hint: "Creator video providers and ads", keywords: "channels creators cloudinary mux bunny cloudflare advertising campaigns", visible: can("settings.manage") },

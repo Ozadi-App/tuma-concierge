@@ -3378,3 +3378,113 @@ export type GuestTrack = {
   /** Present only when the signed-in viewer owns the order: open it in the app. */
   orderId?: string;
 };
+
+export type ServiceBusinessCategory =
+  | "consultation"
+  | "health_wellness"
+  | "home_trades"
+  | "tech_creative"
+  | "beauty_salon"
+  | "events_hospitality"
+  | "education_coaching"
+  | "automotive_repairs";
+
+export type ServicePricingModel = "fixed" | "hourly" | "custom_quote" | "deposit";
+
+export type ServiceLocationModel = "in_facility" | "client_site" | "virtual";
+
+export type ServicePaymentRail = "momo_mtn" | "momo_airtel" | "cash_at_venue" | "bank_wire";
+
+export type ServiceBusinessProfile = {
+  id: string;
+  owner_id: string;
+  name: string;
+  slug: string;
+  tagline: string;
+  description: string;
+  category: ServiceBusinessCategory;
+  phone: string;
+  whatsapp: string;
+  email: string;
+  address: string;
+  city: string;
+  service_area: string;
+  logo_url: string;
+  banner_url: string;
+  cancellation_policy: string;
+  allowed_payment_rails: ServicePaymentRail[];
+  custom_domain?: string | null;
+  is_open: boolean;
+  status: "active" | "paused" | "pending_review";
+  created_at: string;
+  updated_at: string;
+};
+
+export type ServiceOffering = {
+  id: string;
+  business_id: string;
+  title: string;
+  slug: string;
+  category: string;
+  description: string;
+  pricing_type: ServicePricingModel;
+  price_ugx: number;
+  deposit_ugx?: number | null;
+  compare_at_price_ugx?: number | null;
+  duration_minutes: number;
+  buffer_minutes: number;
+  location_type: ServiceLocationModel;
+  virtual_meeting_url?: string | null;
+  deliverables: string[];
+  is_active: boolean;
+  bookings_count: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ServiceStaffMember = {
+  id: string;
+  business_id: string;
+  name: string;
+  role: string;
+  phone: string;
+  email?: string | null;
+  is_active: boolean;
+  created_at: string;
+};
+
+export type ServiceBookingRecord = {
+  id: string;
+  business_id: string;
+  service_id: string;
+  service_title?: string;
+  customer_name: string;
+  customer_phone: string;
+  customer_email?: string | null;
+  scheduled_date: string;
+  scheduled_time: string;
+  duration_minutes: number;
+  location_type: ServiceLocationModel;
+  address?: string | null;
+  virtual_meeting_url?: string | null;
+  notes?: string | null;
+  pricing_type: string;
+  total_price_ugx: number;
+  deposit_ugx: number;
+  payment_rail: ServicePaymentRail;
+  payment_status: "unpaid" | "deposit_paid" | "paid_full" | "waived";
+  status: "pending" | "confirmed" | "in_progress" | "completed" | "cancelled";
+  staff_id?: string | null;
+  staff_name?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ServicesPlatformSettings = {
+  enabled: boolean;
+  commissionPercent: number;
+  leadTimeHours: number;
+  maxServicesPerBusiness: number;
+  disallowAggregatorForIntangibles: boolean;
+  virtualConsultationsEnabled: boolean;
+};

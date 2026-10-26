@@ -1,4 +1,4 @@
--- Migration 0134: pluggable video infrastructure and the ad system.
+-- Migration 0135: pluggable video infrastructure and the ad system.
 -- Additive only. The code checks for these tables (hasTable) and keeps the
 -- features switched off until they exist, so this can be applied after deploy.
 --
