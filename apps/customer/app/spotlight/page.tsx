@@ -1,9 +1,9 @@
 "use client";
 
-import type { PostView, PublisherType } from "@peebee/shared";
+import { isPracticeMode, type PostView, type PublisherType } from "@peebee/shared";
 import { Plus, Volume2, VolumeX } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { api, errorMessage } from "../../lib/api";
 import { useCart } from "../../lib/cart";
 import { addSpotlightItemToCart } from "../../lib/spotlight-cart";
@@ -55,7 +55,9 @@ export default function SpotlightPage() {
   const filter = useSpotlightFilter();
   const { user } = useAuth();
   const { config: channelsConfig } = useChannelsConfig();
-  const channelsOn = channelsConfig?.enabled === true;
+  // Practice mode has its own demo posts from every kind of publisher, so the feed is on there even though real Channels are not.
+  const practice = useSyncExternalStore(() => () => undefined, isPracticeMode, () => false);
+  const channelsOn = channelsConfig?.enabled === true || practice;
   const [posts, setPosts] = useState<PostView[]>([]);
   const [nextCursor, setNextCursor] = useState<number | null>(null);
   const [followed, setFollowed] = useState<Set<string>>(new Set());
@@ -186,7 +188,7 @@ export default function SpotlightPage() {
 
   const topControls = (
     <div className="flex items-center justify-end gap-3 px-4">
-      {channelsOn && (
+      {channelsOn && !practice && (
         <Link href="/studio/new" aria-label="Create a post" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gold text-ink-gold transition active:scale-95">
           <Plus className="h-5 w-5" aria-hidden />
         </Link>
