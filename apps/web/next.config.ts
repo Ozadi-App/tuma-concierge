@@ -27,6 +27,8 @@ const nextConfig: NextConfig = {
     return securityHeaderRules({
       apiUrl: process.env.NEXT_PUBLIC_API_URL,
       dev: process.env.NODE_ENV === "development",
+      // Merchants may connect their own Meta / TikTok pixel on their public store.
+      adPixels: true,
     });
   },
 };

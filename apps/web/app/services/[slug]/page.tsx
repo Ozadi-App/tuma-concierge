@@ -63,6 +63,88 @@ export default function DedicatedServiceSitePage() {
   const [paymentRail, setPaymentRail] = useState<ServicePaymentRail>("momo_mtn");
   const [submittingBooking, setSubmittingBooking] = useState(false);
   const [bookingSuccess, setBookingSuccess] = useState<any | null>(null);
+  const [slots, setSlots] = useState<Array<{ time: string; seatsFree: number }>>([]);
+  const [slotMode, setSlotMode] = useState<"weekly_schedule_with_slots" | "free_text_request">("free_text_request");
+  const [slotsLoading, setSlotsLoading] = useState(false);
+  // Phone code step (only when the platform asks for one)
+  const [challenge, setChallenge] = useState("");
+  const [proof, setProof] = useState("");
+  const [code, setCode] = useState("");
+  const [codeNote, setCodeNote] = useState("");
+  // What the customer is told about their payment, kept fresh while it is pending
+  const [live, setLive] = useState<any | null>(null);
+  const [cancelNote, setCancelNote] = useState("");
+
+  // Which times can be picked: the provider's open slots, or free text when the platform runs that way.
+  useEffect(() => {
+    if (!bookingModalOpen || !selectedOffering || !scheduledDate) return;
+    let stale = false;
+    setSlotsLoading(true);
+    fetch(`${API_BASE}/v1/services-platform/public/${encodeURIComponent(slug)}/slots?service_id=${encodeURIComponent(selectedOffering.id)}&from=${scheduledDate}&days=1`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (stale) return;
+        setSlotMode(data.mode === "weekly_schedule_with_slots" ? "weekly_schedule_with_slots" : "free_text_request");
+        const list = (data.slots || []) as Array<{ time: string; seatsFree: number }>;
+        setSlots(list);
+        if (data.mode === "weekly_schedule_with_slots") setScheduledTime((t) => (list.some((x) => x.time === t) ? t : list[0]?.time ?? ""));
+      })
+      .catch(() => { if (!stale) setSlots([]); })
+      .finally(() => { if (!stale) setSlotsLoading(false); });
+    return () => { stale = true; };
+  }, [bookingModalOpen, selectedOffering, scheduledDate, slug]);
+
+  // While a mobile-money payment is waiting for the customer's PIN, keep asking where it stands.
+  useEffect(() => {
+    if (!bookingSuccess?.code) return;
+    let stopped = false;
+    let tries = 0;
+    const tick = async () => {
+      tries += 1;
+      try {
+        const r = await fetch(`${API_BASE}/v1/services-platform/public/bookings/${bookingSuccess.code}?phone=${encodeURIComponent(customerPhone)}`, { cache: "no-store" });
+        const d = await r.json();
+        if (!stopped && r.ok) setLive(d.booking);
+        if (!stopped && r.ok && d.booking.payment_state !== "pending") return;
+      } catch { /* keep trying */ }
+      if (!stopped && tries < 40) setTimeout(tick, 4000);
+    };
+    void tick();
+    return () => { stopped = true; };
+  }, [bookingSuccess?.code, customerPhone]);
+
+  async function requestCode() {
+    setCodeNote("");
+    const r = await fetch(`${API_BASE}/v1/public/phone-proof/request`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phone: customerPhone, purpose: "service_booking" }) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) return setCodeNote(d.message || "We couldn't send a code.");
+    setChallenge(d.challenge);
+    setCodeNote("We texted you a 6-digit code.");
+  }
+
+  async function confirmCode() {
+    const r = await fetch(`${API_BASE}/v1/public/phone-proof/verify`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ challenge, code: code.trim() }) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) return setCodeNote(d.message || "That code isn't right.");
+    setProof(d.proof);
+    setCodeNote("Phone confirmed. Press Confirm Booking again.");
+  }
+
+  async function cancelBooking() {
+    if (!bookingSuccess?.code) return;
+    const r = await fetch(`${API_BASE}/v1/services-platform/public/bookings/${bookingSuccess.code}/cancel`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phone: customerPhone }) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) return setCancelNote(d.message || "We couldn't cancel this booking.");
+    setCancelNote(d.refund?.state === "kept" ? `Cancelled. ${d.refund.note}` : d.refund?.state === "review" ? "Cancelled. The provider will decide on your refund." : d.refund?.amount_ugx ? "Cancelled. Your refund is on its way." : "Cancelled.");
+    setLive((prev: any) => ({ ...(prev ?? bookingSuccess), status: "cancelled" }));
+  }
+
+  async function payNow() {
+    if (!bookingSuccess?.code) return;
+    const r = await fetch(`${API_BASE}/v1/services-platform/public/bookings/${bookingSuccess.code}/pay`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phone: customerPhone }) });
+    const d = await r.json().catch(() => ({}));
+    setCancelNote(r.ok ? d.payment?.message || "Approve the payment on your phone." : d.message || "We couldn't start the payment.");
+  }
 
   useEffect(() => {
     if (!slug) return;
@@ -102,7 +184,7 @@ export default function DedicatedServiceSitePage() {
     try {
       const res = await fetch(`${API_BASE}/v1/services-platform/public/${encodeURIComponent(slug)}/book`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...(proof ? { "x-phone-proof": proof } : {}) },
         body: JSON.stringify({
           service_id: selectedOffering.id,
           customer_name: customerName,
@@ -118,8 +200,13 @@ export default function DedicatedServiceSitePage() {
       });
 
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message || data.error || "Booking could not be confirmed");
-      setBookingSuccess(data.booking);
+      if (!res.ok) {
+        if (data.error === "phone_proof_required" && !challenge) await requestCode();
+        throw new Error(data.message || data.error || "Booking could not be confirmed");
+      }
+      setBookingSuccess({ ...data.booking, payment: data.payment });
+      setLive(null);
+      setCancelNote("");
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -416,7 +503,7 @@ export default function DedicatedServiceSitePage() {
                 </div>
                 <div className="space-y-1">
                   <h4 className="text-lg font-black text-ink">Your Appointment is Scheduled</h4>
-                  <p className="text-xs text-ink-600">Reference: <strong>{bookingSuccess.id}</strong></p>
+                  <p className="text-xs text-ink-600">Your booking code: <strong className="tracking-widest">{bookingSuccess.code}</strong></p>
                   <p className="text-xs text-ink-500 mt-2">{bookingSuccess.instructions}</p>
                 </div>
 
@@ -430,15 +517,34 @@ export default function DedicatedServiceSitePage() {
                     <span className="font-bold text-ink">{ugx(bookingSuccess.total_price_ugx)}</span>
                   </div>
                   <div className="flex justify-between">
+                    <span className="text-ink-400">Status:</span>
+                    <span className="font-bold text-ink capitalize">{String((live ?? bookingSuccess).status).replace("_", " ")} · {String((live ?? bookingSuccess).payment_status).replace("_", " ")}</span>
+                  </div>
+                  <div className="flex justify-between">
                     <span className="text-ink-400">Payment Rail:</span>
                     <span className="font-bold text-ink capitalize">{bookingSuccess.payment_rail?.replace("_", " ")}</span>
                   </div>
                 </div>
 
+                {bookingSuccess.payment?.status === "pending" && live?.payment_state !== "successful" && (
+                  <p className="text-xs font-bold text-ink-600">{bookingSuccess.payment.message}</p>
+                )}
+                {live?.payment_state === "successful" && <p className="text-xs font-bold text-emerald-700">Payment received.</p>}
+                {live?.payment_state === "failed" && (
+                  <button onClick={payNow} className="w-full rounded-2xl border border-gold py-2.5 text-xs font-black text-ink">Try the payment again</button>
+                )}
+                {cancelNote && <p className="text-xs text-ink-600">{cancelNote}</p>}
+                {(live ?? bookingSuccess).status !== "cancelled" && (
+                  <button onClick={cancelBooking} className="w-full rounded-2xl border border-ink/10 py-2.5 text-xs font-bold text-ink-500 hover:text-ink">
+                    Cancel this booking{live?.cancellation_note ? ` — ${live.cancellation_note}` : ""}
+                  </button>
+                )}
                 <button
                   onClick={() => {
                     setBookingModalOpen(false);
                     setBookingSuccess(null);
+                    setLive(null);
+                    setCancelNote("");
                   }}
                   className="w-full rounded-2xl bg-gold py-3 text-xs font-black text-black shadow hover:bg-gold-light"
                 >
@@ -470,21 +576,31 @@ export default function DedicatedServiceSitePage() {
                   </div>
 
                   <div className="space-y-1">
-                    <label className="font-bold text-ink">Preferred Time *</label>
-                    <div className="field-box rounded-xl">
-                      <select
-                        value={scheduledTime}
-                        onChange={(e) => setScheduledTime(e.target.value)}
-                        className="w-full p-2.5 text-xs text-ink outline-none bg-transparent"
-                      >
-                        <option value="09:00">09:00 AM</option>
-                        <option value="10:30">10:30 AM</option>
-                        <option value="11:30">11:30 AM</option>
-                        <option value="14:00">02:00 PM</option>
-                        <option value="15:30">03:30 PM</option>
-                        <option value="17:00">05:00 PM</option>
-                      </select>
-                    </div>
+                    <label className="font-bold text-ink">{slotMode === "weekly_schedule_with_slots" ? "Available times *" : "Preferred Time *"}</label>
+                    {slotMode === "weekly_schedule_with_slots" ? (
+                      slotsLoading ? (
+                        <p className="py-2 text-ink-500">Checking the diary…</p>
+                      ) : slots.length === 0 ? (
+                        <p className="py-2 text-ink-500">Nothing free that day. Try another date.</p>
+                      ) : (
+                        <div className="flex flex-wrap gap-1.5">
+                          {slots.map((sl) => (
+                            <button
+                              type="button"
+                              key={sl.time}
+                              onClick={() => setScheduledTime(sl.time)}
+                              className={`rounded-lg border px-2.5 py-1.5 font-bold ${scheduledTime === sl.time ? "border-gold bg-gold/10 text-ink" : "border-ink/10 bg-cream/50 text-ink-600"}`}
+                            >
+                              {sl.time}
+                            </button>
+                          ))}
+                        </div>
+                      )
+                    ) : (
+                      <div className="field-box rounded-xl">
+                        <input type="time" required value={scheduledTime} onChange={(e) => setScheduledTime(e.target.value)} className="w-full p-2.5 text-xs text-ink outline-none" />
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -546,6 +662,19 @@ export default function DedicatedServiceSitePage() {
                     />
                   </div>
                 </div>
+
+                {challenge && !proof && (
+                  <div className="space-y-1 rounded-xl border border-ink/10 p-3">
+                    <label className="font-bold text-ink">Code we texted to {customerPhone}</label>
+                    <div className="flex gap-2">
+                      <div className="field-box flex-1 rounded-xl">
+                        <input inputMode="numeric" maxLength={6} value={code} onChange={(e) => setCode(e.target.value)} className="w-full p-2.5 text-xs text-ink outline-none" />
+                      </div>
+                      <button type="button" onClick={confirmCode} className="rounded-xl bg-gold px-4 font-black text-black">Confirm</button>
+                    </div>
+                  </div>
+                )}
+                {codeNote && <p className="text-xs text-ink-600">{codeNote}</p>}
 
                 {/* Compliant Payment Rail Selection */}
                 <div className="space-y-2 pt-2 border-t border-ink/5">

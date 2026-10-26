@@ -16,6 +16,7 @@ import { sweepChannels } from "./channels/scheduled.js";
 import { expireStaleVouchers } from "./gas/vouchers.js";
 import { sweepStageEscalations, sweepStageFines, sweepElectionSessions } from "./stages/escalation.js";
 import { sweepActivationMessages } from "./onboarding/service.js";
+import { sweepServicePayments } from "./services-platform/payments.js";
 import { sweepFoodHours } from "./restaurants/hours.js";
 import { sweepSandboxCar } from "./car/sandbox-demo.js";
 import { sweepSandboxRelay } from "./relay/sandbox-demo.js";
@@ -51,6 +52,7 @@ export default {
   async scheduled(event: { cron?: string }, env: WorkerEnv, ctx: CfExecutionContext): Promise<void> {
     bindEnv(env);
     ctx.waitUntil(sweepFoodHours().catch((err) => console.error("Food hours sweep failed:", err)));
+    ctx.waitUntil(sweepServicePayments().catch((err) => console.error("Service payment sweep failed:", err)));
     ctx.waitUntil(sweepActivationMessages().catch(() => console.error('Activation message retry failed')));
     ctx.waitUntil(
       sweepProviderOperations()

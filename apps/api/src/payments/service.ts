@@ -71,10 +71,11 @@ function mockOf(identity: PaymentProviderIdentity): PaymentsProvider {
  */
 export async function resolveProvider(
   capability: "collection" | "disbursement",
-  options?: { forceMock?: boolean; network?: MobileMoneyNetwork | null },
+  options?: { forceMock?: boolean; network?: MobileMoneyNetwork | null; directPushOnly?: boolean },
 ): Promise<PaymentsProvider> {
   const active = await getActiveProviders();
-  const candidates = active.filter((identity) =>
+  // directPushOnly: carriers and Yo! push a prompt to the customer's phone; Flutterwave is a hosted checkout that can take cards.
+  const candidates = active.filter((identity) => !(options?.directPushOnly && identity === "flutterwave")).filter((identity) =>
     !options?.network ||
     (identity !== "mtn" || options.network === "mtn_momo") &&
     (identity !== "airtel" || options.network === "airtel_money"));
@@ -186,6 +187,8 @@ type InitiateInput = {
    * environment — forces resolveProvider() to mock regardless of demo
    * mode or configured credentials. See resolveProvider's doc comment. */
   forceMock?: boolean;
+  /** Only providers that push a mobile-money prompt to the phone; never a hosted checkout that could take a card. */
+  directPushOnly?: boolean;
 };
 
 type InitiateResult = {
@@ -203,7 +206,7 @@ async function initiate(
   input: InitiateInput,
   defaultNarrative: string,
 ): Promise<InitiateResult> {
-  const provider = await resolveProvider(capability, { forceMock: input.forceMock, network: input.msisdn ? detectMobileMoneyNetwork(input.msisdn) : null });
+  const provider = await resolveProvider(capability, { forceMock: input.forceMock, directPushOnly: input.directPushOnly, network: input.msisdn ? detectMobileMoneyNetwork(input.msisdn) : null });
   const adapter = ADAPTERS[provider];
 
   let network: MobileMoneyNetwork | null = null;

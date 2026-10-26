@@ -448,6 +448,8 @@ export type StoreDiscount = {
   max_uses: number | null;
   uses_count: number;
   is_automatic: number;
+  /** Listed on the public web store (when the platform allows it). */
+  is_public?: number;
   starts_at: string;
   expires_at: string | null;
   status: "active" | "paused" | "expired";
@@ -638,6 +640,10 @@ export type StoreDigitalProduct = {
   max_downloads: number;
   expiry_days: number;
   license_keys_pool?: string[] | null;
+  license_keys_available?: number;
+  license_keys_issued?: number;
+  /** A licence product with no key left to sell. */
+  sold_out?: boolean;
   delivery_instructions?: string | null;
   cover_image_url?: string | null;
   linked_course_id?: string | null;
@@ -657,10 +663,16 @@ export type StoreDigitalFulfillment = {
   customer_name: string | null;
   customer_phone: string;
   customer_email?: string | null;
-  access_token: string;
+  /** Only the last four characters of the buyer's link; the working token belongs to the buyer. */
+  token_hint?: string | null;
   license_key_issued?: string | null;
   download_count: number;
   max_downloads: number;
+  price_paid_ugx?: number;
+  commission_ugx?: number;
+  sms_status?: string | null;
+  needs_manual_fulfilment?: boolean;
+  refunded_at?: string | null;
   download_url?: string;
   expires_at?: string | null;
   edu_enrollment_id?: string | null;
@@ -3473,9 +3485,13 @@ export type ServiceBookingRecord = {
   deposit_ugx: number;
   payment_rail: ServicePaymentRail;
   payment_status: "unpaid" | "deposit_paid" | "paid_full" | "waived";
-  status: "pending" | "confirmed" | "in_progress" | "completed" | "cancelled";
+  status: "pending" | "confirmed" | "in_progress" | "completed" | "cancelled" | "no_show";
   staff_id?: string | null;
   staff_name?: string | null;
+  booking_code?: string | null;
+  paid_ugx?: number;
+  refund_ugx?: number;
+  refund_state?: string | null;
   created_at: string;
   updated_at: string;
 };

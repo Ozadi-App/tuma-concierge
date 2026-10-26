@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { getRoadSettings } from "../lib/road-distance.js";
 import { z } from "zod";
+import { describeOptions, setOptions } from "../lib/option-settings.js";
 import { logActivity } from "../admin/activity.js";
 import { getWorkSettings, setWorkSettings, WORK_MATCHING_MODES, WORK_PRICING_MODES, WORK_PROVIDER_KINDS, WORK_SERVICE_TYPES } from "../work/settings.js";
 import { hasPermission, requirePermission } from "../admin/permissions.js";
@@ -1324,3 +1325,31 @@ settingsRoutes.patch(
   },
 );
 
+
+// Store, digital-product, learning and services options: one registry (lib/option-registry.ts) drives these.
+settingsRoutes.get(
+  "/admin/option-settings",
+  requireAuth,
+  requireRole("admin"),
+  requirePermission("settings.view"),
+  async (c) => {
+    const module = c.req.query("module");
+    const known = ["storefront", "digital", "lms", "services", "platform"] as const;
+    if (module && !(known as readonly string[]).includes(module)) return c.json({ error: "unknown_module" }, 400);
+    return c.json({ settings: await describeOptions(module as (typeof known)[number] | undefined) });
+  },
+);
+
+settingsRoutes.patch(
+  "/admin/option-settings",
+  requireAuth,
+  requireRole("admin"),
+  requirePermission("settings.manage"),
+  async (c) => {
+    const body = (await c.req.json().catch(() => null)) as { values?: Record<string, unknown> } | null;
+    if (!body?.values || typeof body.values !== "object" || Array.isArray(body.values)) return c.json({ error: "invalid_body" }, 400);
+    const result = await setOptions(body.values, c.get("user"), clientIp(c));
+    if (!result.ok) return c.json({ error: "invalid_settings", errors: result.errors }, 400);
+    return c.json({ ok: true, changed: result.changed, settings: await describeOptions() });
+  },
+);

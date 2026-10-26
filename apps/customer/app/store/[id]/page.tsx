@@ -10,6 +10,7 @@ import { CategoryChips, MarketProductCard, MarketSearchBar, defaultVariant, prod
 import { ProductImage } from "../../../components/ProductImage";
 import { addToCart } from "../../../lib/cart";
 import { CartDrawer, CartDrawerTrigger } from "../../../components/CartDrawer";
+import { DigitalShelf } from "../../../components/marketplace/DigitalShelf";
 import { useCustomerLocation, formatDistanceKm, haversineKm } from "../../../lib/location";
 
 interface StoreDetail {
@@ -68,6 +69,7 @@ export default function StoreDetailPage() {
   const [loading, setLoading] = useState(true);
   const [store, setStore] = useState<StoreDetail | null>(null);
   const [products, setProducts] = useState<StoreProduct[]>([]);
+  const [digitalItems, setDigitalItems] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   // "All", "Deals" (badged or discounted items) or one of the store's categories.
   const [activeChip, setActiveChip] = useState<string>("All");
@@ -107,6 +109,7 @@ export default function StoreDetailPage() {
               Math.round(haversineKm(userLat, userLng, Number(loadedStore.lat), Number(loadedStore.lng)) * 10) / 10;
           }
           setStore(loadedStore);
+          setDigitalItems((storeRes as { digitalProducts?: any[] }).digitalProducts ?? []);
         } else {
           setError("Store not found");
         }
@@ -383,6 +386,7 @@ export default function StoreDetailPage() {
         )}
       </section>
 
+      <DigitalShelf items={digitalItems} />
 
       {/* Slide-in Shopping Cart Drawer */}
       <CartDrawer

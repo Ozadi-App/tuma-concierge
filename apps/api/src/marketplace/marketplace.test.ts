@@ -8,6 +8,8 @@ import { setD1Binding, type D1Database } from "../db/client.js";
 import { splitSqlStatements } from "../db/split-sql.js";
 import { resetSchemaCache } from "../lib/schema.js";
 import { signToken } from "../auth/jwt.js";
+import { invalidateSettingsCache } from "../lib/settings.js";
+import { allowDemoCatalog } from "../test-support/db.js";
 
 function bindDatabase(client: Client) {
   const prepare = (sql: string) => ({
@@ -41,6 +43,7 @@ test("marketplace routes: public browsing is accessible without authentication",
     }
   }
   bindDatabase(client);
+  await allowDemoCatalog(client);
 
   // 1. Public stores list
   const storesRes = await app.request("/v1/marketplace/stores");
@@ -113,6 +116,7 @@ test("marketplace checkout: links orders to delivery system and alerts boda ride
     }
   }
   bindDatabase(client);
+  await allowDemoCatalog(client);
 
   // Setup user and rider
   await client.execute("INSERT INTO users (id, phone, name, password_hash, role, status) VALUES ('cust_1', '+256700111222', 'Alice Mukasa', 'hash', 'customer', 'active')");
@@ -215,6 +219,7 @@ test("marketplace checkout: a bag from several stores is one delivery, priced ex
     for (const sql of splitSqlStatements(readFileSync(join(migrations, file), "utf8"))) await client.execute(sql);
   }
   bindDatabase(client);
+  await allowDemoCatalog(client);
   const previousSecret = process.env.JWT_SECRET;
   process.env.JWT_SECRET = "marketplace-bag-tests-only";
   try {
@@ -227,7 +232,7 @@ test("marketplace checkout: a bag from several stores is one delivery, priced ex
       method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify(body),
     });
     const items = [
-      { productId: "prod_avocado", storeId: "store_demo_fresh_mart", title: "Hass Avocados", price: 5000, quantity: 1 },
+      { productId: "prod_avocados_pack", storeId: "store_demo_fresh_mart", title: "Hass Avocados (Pack of 3)", price: 5000, quantity: 1 },
       { productId: "prod_retro_high_top", storeId: "store_demo_sneaker_hub", title: "Air Retro", price: 185000, quantity: 1 },
     ];
     const destination = { destinationLat: 0.3476, destinationLng: 32.5825 };
@@ -270,6 +275,7 @@ test("marketplace checkout: a long delivery from one store is relayed by matatu"
     for (const sql of splitSqlStatements(readFileSync(join(migrations, file), "utf8"))) await client.execute(sql);
   }
   bindDatabase(client);
+  await allowDemoCatalog(client);
   const previousSecret = process.env.JWT_SECRET;
   process.env.JWT_SECRET = "marketplace-relay-tests-only";
   try {
@@ -363,6 +369,8 @@ test("merchant elite tier: upgrades to elite, manages Store 2.0 theme, smart col
     assert.equal(Number(upgradeData.store.elite_tier), 1);
 
     // 3. Customize Store 2.0 theme, custom domain, loyalty, and B2B wholesale
+    await client.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('storefront_domain_mode', 'subdomain_plus_verified_custom_domains')");
+    invalidateSettingsCache();
     const updateStoreRes = await req("/merchants/me/store", "PUT", {
       name: "Kampala Boutique Elite",
       theme_layout: "editorial",
@@ -381,6 +389,7 @@ test("merchant elite tier: upgrades to elite, manages Store 2.0 theme, smart col
     assert.equal(updatedStore.pro_tier, "elite");
     assert.equal(updatedStore.theme_layout, "editorial");
     assert.equal(updatedStore.custom_domain, "shop.kampalaboutique.ug");
+    await client.execute({ sql: "UPDATE stores SET domain_verified = 1 WHERE id = ?", args: [updatedStore.id] }); // the DNS check is covered in security/storefront.test.ts
     assert.equal(Number(updatedStore.loyalty_enabled), 1);
     assert.equal(Number(updatedStore.loyalty_cashback_percent), 5);
     assert.equal(Number(updatedStore.b2b_wholesale_enabled), 1);
@@ -484,7 +493,7 @@ test("merchant elite tier: upgrades to elite, manages Store 2.0 theme, smart col
     assert.equal(storefrontData.channels.customerAppUrl, `https://app.peebee.online/store/${updatedStore.slug}`);
     assert.equal(storefrontData.channels.customDomainUrl, "https://shop.kampalaboutique.ug");
     assert.equal(storefrontData.collections.length, 1);
-    assert.equal(storefrontData.discounts.length, 1);
+    assert.equal(storefrontData.discounts.length, 0, "a private promo code is not published; only automatic offers are");
     assert.equal(storefrontData.outlets.length, 2);
 
     // 11. Public B2B Wholesale Inquiry from Dedicated Storefront ([store-name].peebee.online)
@@ -748,7 +757,8 @@ test("merchant elite tier: upgrades to elite, manages Store 2.0 theme, smart col
     assert.equal(sendSmsRes.status, 200);
     const sendSmsData = (await sendSmsRes.json()) as any;
     assert.equal(sendSmsData.ok, true);
-    assert.equal(sendSmsData.status, "delivered");
+    assert.equal(sendSmsData.status, "simulated", "no SMS provider is connected, so nothing was really sent");
+    assert.equal(sendSmsData.costUgx, 0);
     assert.ok(sendSmsData.logId);
     assert.ok(sendSmsData.whatsappShareUrl.includes("wa.me/256701445889"));
 
