@@ -10,7 +10,7 @@ import { runInPractice } from "../db/practice-context.js";
 import { splitSqlStatements } from "../db/split-sql.js";
 import { resetSchemaCache } from "../lib/schema.js";
 import { invalidateSettingsCache } from "../lib/settings.js";
-import { topUpDemoOrders } from "./demo-customers.js";
+import { runDemoCustomerAutopilot, topUpDemoOrders } from "./demo-customers.js";
 import { ridersForThisWorld } from "./people.js";
 import { practiceCounts, resetPracticeWorld, seedPracticeWorld } from "./seed.js";
 
@@ -95,6 +95,29 @@ test("practice and sandbox share one database; real people and demo people never
     assert.ok(demoJobs.length >= 1, "a practising rider sees what the demo customers ordered");
     const realJobs = (await json<{ jobs: unknown[] }>(await call(rider, "/riders/jobs/available"))).jobs;
     assert.equal(realJobs.length, 0, "a real rider on the live platform sees none of it");
+  });
+
+  await t.test("a practising rider's whole job finishes: take, be paid for, deliver, hand over, settle, be rated", async () => {
+    const demoRider = await start(rider, "rider");
+    const open = await db.execute(`SELECT id FROM orders WHERE customer_id LIKE 'prac\\_%' ESCAPE '\\' AND rider_id IS NULL AND type = 'parcel' AND restaurant_id IS NULL ORDER BY created_at LIMIT 1`);
+    const id = String(open.rows[0]?.id ?? "");
+    assert.ok(id, "a demo parcel is waiting for a rider");
+    const stageOf = async () => String((await db.execute({ sql: "SELECT stage FROM orders WHERE id = ?", args: [id] })).rows[0]!.stage);
+    const act = (path: string, body: unknown = {}) => call(demoRider.token, `/orders/${id}/${path}`, { method: "POST", body: JSON.stringify(body) });
+    const claimed = await act("claim");
+    assert.ok(claimed.status < 300, `claim ${claimed.status} ${JSON.stringify(await claimed.clone().json().catch(() => ({})))}`);
+    assert.equal(await stageOf(), "Match");
+    assert.ok((await runInPractice(() => runDemoCustomerAutopilot())) >= 1, "the demo customer pays");
+    assert.equal(await stageOf(), "Shop");
+    const delivering = await act("deliver", { etaMinutes: 10 });
+    assert.ok(delivering.status < 300, `deliver ${delivering.status}`);
+    assert.ok((await runInPractice(() => runDemoCustomerAutopilot())) >= 1, "the demo customer hands over with the PIN");
+    assert.equal(await stageOf(), "Handover");
+    const settled = await act("settle");
+    assert.ok(settled.status < 300, `settle ${settled.status} ${JSON.stringify(await settled.clone().json().catch(() => ({})))}`);
+    assert.equal(await stageOf(), "Settle");
+    assert.ok((await runInPractice(() => runDemoCustomerAutopilot())) >= 1, "the demo customer rates");
+    assert.equal(Number((await db.execute({ sql: "SELECT COUNT(*) n FROM order_ratings WHERE order_id = ?", args: [id] })).rows[0]!.n), 1);
   });
 
   await t.test("rider pools: practice offers demo riders only, live offers real riders only", async () => {

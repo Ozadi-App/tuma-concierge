@@ -79,6 +79,7 @@ async function waiting(): Promise<{ forRiders: number; forRestaurants: number }>
  * has something to accept. Must run inside runInPractice. Returns how many orders were placed.
  */
 export async function topUpDemoOrders(target = 4, foodTarget = 2): Promise<number> {
+  await runDemoCustomerAutopilot().catch((err) => console.error("Practice autopilot failed:", err));
   let placed = 0;
   for (let attempt = 0; attempt < (target + foodTarget) * 2; attempt++) {
     const { forRiders, forRestaurants } = await waiting();
@@ -92,6 +93,48 @@ export async function topUpDemoOrders(target = 4, foodTarget = 2): Promise<numbe
     }
   }
   return placed;
+}
+
+/**
+ * Demo customers follow their orders through: once a rider has taken one they pay for it (wallet first, mobile money if the
+ * wallet is short), when it reaches them they give the rider the PIN, and when it is settled they leave a rating. Everything goes
+ * through the real API as that customer, so a practice rider's whole job — take, deliver, get paid — can finish.
+ * Must run inside runInPractice. Returns how many steps were taken.
+ */
+export async function runDemoCustomerAutopilot(limit = 20): Promise<number> {
+  const res = await db.execute({
+    sql: `SELECT o.id, o.stage, o.customer_id, o.pin_code,
+            EXISTS (SELECT 1 FROM order_ratings r WHERE r.order_id = o.id) AS rated
+          FROM orders o
+          WHERE o.customer_id LIKE 'prac\\_%' ESCAPE '\\' AND o.rider_id IS NOT NULL
+            AND (o.stage IN ('Match', 'Deliver', 'Arrived', 'PickedUp')
+                 OR (o.stage = 'Settle' AND NOT EXISTS (SELECT 1 FROM order_ratings r WHERE r.order_id = o.id)))
+          ORDER BY o.updated_at LIMIT ?`,
+    args: [limit],
+  });
+  let steps = 0;
+  for (const row of res.rows) {
+    const customer = PRACTICE_CUSTOMERS.find((c) => c.id === row.customer_id);
+    if (!customer) continue;
+    const id = String(row.id);
+    try {
+      const call = await actAs(customer);
+      const stage = String(row.stage);
+      let answer: Answer;
+      if (stage === "Match") {
+        answer = await call("POST", `/orders/${id}/fund`, { paymentMethod: "wallet", useWallet: true });
+        if (answer.status >= 300) answer = await call("POST", `/orders/${id}/fund`, { paymentMethod: "mobile_money", msisdn: customer.phone });
+      } else if (stage === "Settle") {
+        answer = await call("POST", `/orders/${id}/rate`, { rating: 5, comment: "Thank you, quick and friendly.", recommended: true });
+      } else {
+        answer = await call("POST", `/orders/${id}/handover`, { pin: String(row.pin_code ?? "") });
+      }
+      if (answer.status < 300) steps++;
+    } catch (err) {
+      console.error("Practice demo customer step failed:", err);
+    }
+  }
+  return steps;
 }
 
 /**
