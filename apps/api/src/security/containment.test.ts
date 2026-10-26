@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { addMerchantStore, addUser, anonymous, app, freshDatabase } from "../test-support/db.js";
+import { sha256Hex } from "../marketplace/digital-sales.js";
 
 const json = async (res: Response) => (await res.json()) as any;
 
@@ -87,33 +88,46 @@ test("B2B inquiries are priced from the catalogue", async () => {
   assert.notEqual(bad.status, 201);
 });
 
-test("digital download tokens: expiry, an atomic cap, unlimited, revoke", async () => {
+test("digital download tokens: viewing is free, the file request is counted atomically, expiry, unlimited, revoke", async () => {
   const client = await freshDatabase();
   const seller = await addMerchantStore(client, "u_dl_seller");
   await client.execute({ sql: "INSERT INTO store_digital_products (id, store_id, title, price_ugx, file_url) VALUES ('dig_dl', ?, 'Guide', 5000, 'https://files.example/a.pdf')", args: [seller.storeId] });
-  const make = (id: string, max: number, expires: string | null, status = "active") =>
-    client.execute({ sql: "INSERT INTO store_digital_fulfillments (id, store_id, digital_product_id, customer_phone, access_token, max_downloads, expires_at, status) VALUES (?, ?, 'dig_dl', '+256700000009', ?, ?, ?, ?)", args: [id, seller.storeId, `tok_${id}`, max, expires, status] });
+  const make = async (id: string, max: number, expires: string | null, status = "active") =>
+    client.execute({ sql: "INSERT INTO store_digital_fulfillments (id, store_id, digital_product_id, customer_phone, access_token, max_downloads, expires_at, status) VALUES (?, ?, 'dig_dl', '+256700000009', ?, ?, ?, ?)", args: [id, seller.storeId, await sha256Hex(`tok_${id}`), max, expires, status] });
   await make("f_cap", 2, null);
   await make("f_exp", 5, new Date(Date.now() - 1000).toISOString());
   await make("f_unl", 0, null);
   await make("f_rev", 5, null, "revoked");
-  const get = (t: string) => anonymous(`/marketplace/digital-fulfillments/tok_${t}`);
+  const view = (t: string) => anonymous(`/marketplace/digital-fulfillments/tok_${t}`);
+  const take = (t: string) => anonymous(`/marketplace/digital-fulfillments/tok_${t}/download`, "POST", {});
 
-  assert.equal((await get("f_cap")).status, 200);
-  assert.equal((await get("f_cap")).status, 200);
-  const third = await get("f_cap");
+  for (let i = 0; i < 5; i++) assert.equal((await view("f_cap")).status, 200);
+  assert.equal(Number((await client.execute("SELECT download_count FROM store_digital_fulfillments WHERE id = 'f_cap'")).rows[0].download_count), 0, "looking at the page uses nothing up");
+  assert.equal((await take("f_cap")).status, 200);
+  assert.equal((await take("f_cap")).status, 200);
+  const third = await take("f_cap");
   assert.equal(third.status, 403);
   assert.equal((await json(third)).error, "limit_reached");
-  const row = await client.execute("SELECT download_count FROM store_digital_fulfillments WHERE id = 'f_cap'");
-  assert.equal(Number(row.rows[0].download_count), 2);
+  assert.equal(Number((await client.execute("SELECT download_count FROM store_digital_fulfillments WHERE id = 'f_cap'")).rows[0].download_count), 2);
 
-  const burst = await Promise.all([1, 2, 3, 4].map(() => get("f_unl")));
+  const burst = await Promise.all([1, 2, 3, 4].map(() => take("f_unl")));
   assert.ok(burst.every((r) => r.status === 200), "0 means unlimited");
+  const raced = await Promise.all([1, 2, 3, 4, 5, 6].map(() => take("f_cap2")));
+  assert.ok(raced.every((r) => r.status === 404), "unknown links are not found");
 
-  assert.equal((await get("f_exp")).status, 403, "expired");
-  assert.equal((await json(await get("f_rev"))).error, "revoked");
-  const ok = await json(await get("f_unl"));
-  assert.ok(!("customer_phone" in ok.fulfillment), "the buyer's phone is not echoed to whoever holds the link");
+  assert.equal((await take("f_exp")).status, 403, "expired");
+  assert.equal((await json(await view("f_rev"))).error, "revoked");
+  const info = await json(await view("f_unl"));
+  assert.ok(!JSON.stringify(info).includes("+256700000009"), "the buyer's phone is not echoed to whoever holds the link");
+  assert.ok(!JSON.stringify(info).includes("files.example"), "the merchant's file address is not on the page");
+
+  const stored = (await client.execute("SELECT access_token FROM store_digital_fulfillments WHERE id = 'f_cap'")).rows[0].access_token;
+  assert.notEqual(stored, "tok_f_cap", "tokens are stored only as a hash");
+
+  // A burst against a limit of 1 lets exactly one through.
+  await make("f_one", 1, null);
+  const results = await Promise.all([1, 2, 3, 4, 5].map(() => take("f_one")));
+  assert.equal(results.filter((r) => r.status === 200).length, 1);
 });
 
 test("a merchant cannot overwrite another store's course or product, or enrol onto it", async () => {

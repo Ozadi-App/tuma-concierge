@@ -1086,25 +1086,15 @@ export default function StorefrontClient({ overrideSlug, initial }: { overrideSl
                           <CheckCircle2 className="h-3.5 w-3.5 text-gold" />
                           {sizeMb ? `File: ${sizeMb}` : "Instant access"}
                         </span>
-                        <span className="text-ink-400">⚡ Instant SMS link</span>
+                        <span className="text-ink-400">⚡ Instant access</span>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          addToBag({
-                            id: dig.id,
-                            title: dig.title,
-                            price: digPrice,
-                            image_url: null,
-                            store_id: store.id,
-                            description: dig.description,
-                            compare_at_price: digCompare,
-                          } as any);
-                        }}
-                        className="w-full mt-2 rounded-2xl bg-gold py-2.5 text-xs font-black text-ink-gold shadow transition hover:opacity-90 active:scale-95"
+                      {/* Digital goods are paid from the wallet in the Peebee app, not added to the delivery bag. */}
+                      <a
+                        href={`${customerAppStoreUrl}#digital`}
+                        className="mt-2 flex w-full items-center justify-center rounded-2xl bg-gold py-2.5 text-xs font-black text-ink-gold shadow transition hover:opacity-90 active:scale-95"
                       >
-                        Buy &amp; Download ({ugx(digPrice)})
-                      </button>
+                        Buy in the Peebee app ({ugx(digPrice)})
+                      </a>
                     </div>
                   </div>
                 );

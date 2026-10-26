@@ -23,6 +23,7 @@ import { getOptions } from "../lib/option-settings.js";
 import { recordLoyaltyForOrder, settleLoyalty } from "./loyalty.js";
 import { sendStoreSms } from "./sms.js";
 import { cleanSections, parseSections } from "./sections.js";
+import { soldOutLicenseProducts } from "./digital-sales.js";
 import { proofIsValid } from "../lib/phone-proof.js";
 
 export const marketplaceRoutes = new Hono();
@@ -3375,7 +3376,8 @@ marketplaceRoutes.get("/marketplace/stores/:id", async (c) => {
       sql: "SELECT id, store_id, title, kind, description, price_ugx, compare_at_price_ugx, file_name, file_size_bytes, mime_type, cover_image_url, linked_course_id, downloads_count FROM store_digital_products WHERE store_id = ? AND status = 'published' ORDER BY created_at DESC",
       args: [storeId],
     });
-    digitalProducts = digRes.rows as Row[];
+    const soldOut = await soldOutLicenseProducts(storeId);
+    digitalProducts = (digRes.rows as Row[]).map((r) => ({ ...r, sold_out: soldOut.has(String(r.id)) }));
   }
 
   let courses: Row[] = [];

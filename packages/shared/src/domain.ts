@@ -640,6 +640,10 @@ export type StoreDigitalProduct = {
   max_downloads: number;
   expiry_days: number;
   license_keys_pool?: string[] | null;
+  license_keys_available?: number;
+  license_keys_issued?: number;
+  /** A licence product with no key left to sell. */
+  sold_out?: boolean;
   delivery_instructions?: string | null;
   cover_image_url?: string | null;
   linked_course_id?: string | null;
@@ -659,10 +663,16 @@ export type StoreDigitalFulfillment = {
   customer_name: string | null;
   customer_phone: string;
   customer_email?: string | null;
-  access_token: string;
+  /** Only the last four characters of the buyer's link; the working token belongs to the buyer. */
+  token_hint?: string | null;
   license_key_issued?: string | null;
   download_count: number;
   max_downloads: number;
+  price_paid_ugx?: number;
+  commission_ugx?: number;
+  sms_status?: string | null;
+  needs_manual_fulfilment?: boolean;
+  refunded_at?: string | null;
   download_url?: string;
   expires_at?: string | null;
   edu_enrollment_id?: string | null;

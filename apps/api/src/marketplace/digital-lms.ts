@@ -7,6 +7,8 @@ import { getMarketplaceSettings } from "../lib/settings.js";
 import { hasColumn, hasTable } from "../lib/schema.js";
 import { demoCatalogAllowed, findPublicStore } from "./public.js";
 import { sendStoreSms } from "./sms.js";
+import { digitalDeliveryRoutes } from "./digital-delivery.js";
+import { licensePoolCounts, soldOutLicenseProducts, syncLicensePool } from "./digital-sales.js";
 import { migrationPending, publicRateLimit } from "../lib/guards.js";
 import { getOptions } from "../lib/option-settings.js";
 import { enrollmentSchema, parseCourse, parseDigitalProduct } from "./digital-input.js";
@@ -18,6 +20,8 @@ import type {
 } from "@peebee/shared";
 
 export const digitalLmsRoutes = new Hono();
+// Purchase, delivery, refunds and file upload live in digital-delivery.ts.
+digitalLmsRoutes.route("/", digitalDeliveryRoutes);
 
 type Row = Record<string, unknown>;
 
@@ -148,7 +152,7 @@ export const DEMO_LMS_COURSES: StoreLmsCourse[] = [
   },
 ];
 
-async function getMerchantStore(userId: string): Promise<Row | null> {
+export async function getMerchantStore(userId: string): Promise<Row | null> {
   if (!(await hasTable("stores"))) return null;
   let merchantId = userId;
   if (await hasTable("merchant_members")) {
@@ -187,6 +191,15 @@ digitalLmsRoutes.get("/merchants/me/digital-products", requireAuth, async (c) =>
     args: [String(store.id)],
   });
 
+  const poolFor = new Map<string, { available: number; issued: number; keys: string[] }>();
+  if (await hasTable("store_license_keys")) {
+    const keyRows = await db.execute({ sql: "SELECT product_id, license_key, status FROM store_license_keys WHERE store_id = ? AND status IN ('available', 'issued') ORDER BY created_at", args: [String(store.id)] });
+    for (const k of keyRows.rows as Row[]) {
+      const entry = poolFor.get(String(k.product_id)) ?? { available: 0, issued: 0, keys: [] };
+      if (k.status === "available") { entry.available++; entry.keys.push(String(k.license_key)); } else entry.issued++;
+      poolFor.set(String(k.product_id), entry);
+    }
+  }
   const products = (res.rows as Row[]).map((r) => ({
     id: String(r.id),
     store_id: String(r.store_id),
@@ -201,7 +214,9 @@ digitalLmsRoutes.get("/merchants/me/digital-products", requireAuth, async (c) =>
     mime_type: r.mime_type ? String(r.mime_type) : null,
     max_downloads: Number(r.max_downloads ?? 5),
     expiry_days: Number(r.expiry_days ?? 30),
-    license_keys_pool: r.license_keys_pool ? JSON.parse(String(r.license_keys_pool)) : null,
+    license_keys_pool: poolFor.get(String(r.id))?.keys ?? (r.license_keys_pool ? JSON.parse(String(r.license_keys_pool)) : null),
+    license_keys_available: poolFor.get(String(r.id))?.available ?? 0,
+    license_keys_issued: poolFor.get(String(r.id))?.issued ?? 0,
     delivery_instructions: r.delivery_instructions ? String(r.delivery_instructions) : null,
     cover_image_url: r.cover_image_url ? String(r.cover_image_url) : null,
     linked_course_id: r.linked_course_id ? String(r.linked_course_id) : null,
@@ -285,9 +300,13 @@ digitalLmsRoutes.post("/merchants/me/digital-products", requireAuth, async (c) =
     args: [
       id, String(store.id), d.title, d.kind, d.description, d.price_ugx, d.compare_at_price_ugx,
       d.file_url, fileName, d.file_size_bytes, d.mime_type, maxDownloads, expiryDays,
-      JSON.stringify(d.license_keys_pool), d.delivery_instructions, d.cover_image_url, d.linked_course_id, d.status,
+      "[]", d.delivery_instructions, d.cover_image_url, d.linked_course_id, d.status,
     ],
   });
+
+  // Keys live one-per-row so a key can be issued to exactly one buyer; the product row's JSON stays empty.
+  if (body.license_keys_pool !== undefined) await syncLicensePool(String(store.id), id, d.license_keys_pool);
+  const pool = await licensePoolCounts(id);
 
   return c.json({
     ok: true,
@@ -306,6 +325,8 @@ digitalLmsRoutes.post("/merchants/me/digital-products", requireAuth, async (c) =
       max_downloads: maxDownloads,
       expiry_days: expiryDays,
       license_keys_pool: d.license_keys_pool,
+      license_keys_available: pool.available,
+      license_keys_issued: pool.issued,
       delivery_instructions: d.delivery_instructions,
       cover_image_url: d.cover_image_url,
       linked_course_id: d.linked_course_id,
@@ -325,10 +346,15 @@ digitalLmsRoutes.delete("/merchants/me/digital-products/:id", requireAuth, async
 
   const id = String(c.req.param("id") || "");
   if (await hasTable("store_digital_products")) {
-    await db.execute({
-      sql: "DELETE FROM store_digital_products WHERE id = ? AND store_id = ?",
-      args: [id, String(store.id)],
-    });
+    // A product that has been bought stays on file (buyers keep their access); it is just taken off sale.
+    const sold = (await hasTable("store_digital_fulfillments"))
+      ? (await db.execute({ sql: "SELECT 1 FROM store_digital_fulfillments WHERE digital_product_id = ? LIMIT 1", args: [id] })).rows.length > 0
+      : false;
+    if (sold) {
+      await db.execute({ sql: "UPDATE store_digital_products SET status = 'archived', updated_at = datetime('now') WHERE id = ? AND store_id = ?", args: [id, String(store.id)] });
+    } else {
+      await db.execute({ sql: "DELETE FROM store_digital_products WHERE id = ? AND store_id = ?", args: [id, String(store.id)] });
+    }
   }
   return c.json({ ok: true });
 });
@@ -338,41 +364,18 @@ digitalLmsRoutes.get("/merchants/me/digital-fulfillments", requireAuth, async (c
   const store = await getMerchantStore(user.sub);
   if (!store) return c.json({ error: "no_store" }, 404);
 
-  if (!(await hasTable("store_digital_fulfillments"))) {
-    return c.json({
-      fulfillments: [
-        {
-          id: "ful_demo_1",
-          store_id: String(store.id),
-          digital_product_id: "dig_demo_ebook",
-          digital_product_title: "Organic Urban Farming Guide & Seasonal Harvest Calendar",
-          order_id: "ord_demo_101",
-          customer_name: "Sarah Nalwanga",
-          customer_phone: "+256 772 443 112",
-          customer_email: "sarah.nalwanga@gmail.com",
-          access_token: "tok_dig_demo_7721",
-          license_key_issued: null,
-          download_count: 2,
-          max_downloads: 5,
-          download_url: "https://peebee.online/downloads/urban-farming-guide-2026.pdf",
-          expires_at: new Date(Date.now() + 45 * 86400000).toISOString(),
-          edu_enrollment_id: null,
-          status: "active",
-          created_at: new Date(Date.now() - 3 * 86400000).toISOString(),
-        },
-      ],
-    });
-  }
+  if (!(await hasTable("store_digital_fulfillments"))) return c.json({ fulfillments: [] });
 
   const res = await db.execute({
-    sql: `SELECT f.*, p.title as digital_product_title, p.file_url as download_url
+    sql: `SELECT f.*, p.title as digital_product_title
           FROM store_digital_fulfillments f
           LEFT JOIN store_digital_products p ON p.id = f.digital_product_id
-          WHERE f.store_id = ?
-          ORDER BY f.created_at DESC`,
+          WHERE f.store_id = ? AND f.status != 'pending'
+          ORDER BY f.created_at DESC LIMIT 500`,
     args: [String(store.id)],
   });
 
+  // The buyer's link is theirs alone: the merchant sees the last four characters, never a working token.
   const fulfillments = (res.rows as Row[]).map((r) => ({
     id: String(r.id),
     store_id: String(r.store_id),
@@ -382,14 +385,18 @@ digitalLmsRoutes.get("/merchants/me/digital-fulfillments", requireAuth, async (c
     customer_name: r.customer_name ? String(r.customer_name) : null,
     customer_phone: String(r.customer_phone),
     customer_email: r.customer_email ? String(r.customer_email) : null,
-    access_token: String(r.access_token),
+    token_hint: r.token_hint ? String(r.token_hint) : null,
     license_key_issued: r.license_key_issued ? String(r.license_key_issued) : null,
     download_count: Number(r.download_count) || 0,
-    max_downloads: Number(r.max_downloads) || 5,
-    download_url: r.download_url ? String(r.download_url) : undefined,
+    max_downloads: Number(r.max_downloads ?? 0),
+    price_paid_ugx: Number(r.price_paid_ugx) || 0,
+    commission_ugx: Number(r.commission_ugx) || 0,
+    sms_status: r.sms_status ? String(r.sms_status) : null,
+    needs_manual_fulfilment: Number(r.needs_manual_fulfilment) === 1,
+    refunded_at: r.refunded_at ? String(r.refunded_at) : null,
     expires_at: r.expires_at ? String(r.expires_at) : null,
     edu_enrollment_id: r.edu_enrollment_id ? String(r.edu_enrollment_id) : null,
-    status: (r.status as any) || "active",
+    status: (r.status as string) || "active",
     created_at: String(r.created_at),
   }));
 
@@ -962,7 +969,9 @@ digitalLmsRoutes.get("/marketplace/stores/:id/digital-products", async (c) => {
       sql: "SELECT * FROM store_digital_products WHERE store_id = ? AND status = 'published' ORDER BY created_at DESC",
       args: [storeId],
     });
+    const soldOut = await soldOutLicenseProducts(storeId);
     digitalProducts = (res.rows as Row[]).map((r) => ({
+      sold_out: soldOut.has(String(r.id)),
       id: String(r.id),
       store_id: String(r.store_id),
       title: String(r.title),
@@ -1005,76 +1014,5 @@ digitalLmsRoutes.get("/marketplace/stores/:id/digital-products", async (c) => {
   return c.json({
     digitalProducts,
     courses: demoStore ? DEMO_LMS_COURSES : courses,
-  });
-});
-
-digitalLmsRoutes.get("/marketplace/digital-fulfillments/:token", async (c) => {
-  const token = c.req.param("token");
-  const limited = await publicRateLimit(c, "dl", token, "rate_limit_token_download_per_minute", 60);
-  if (limited) return limited;
-
-  if (!(await hasTable("store_digital_fulfillments"))) {
-    return c.json({ error: "not_found", message: "Fulfillment token not found or expired." }, 404);
-  }
-
-  const res = await db.execute({
-    sql: `SELECT f.*, p.title as digital_product_title, p.file_url as product_file_url, p.file_name, p.delivery_instructions
-          FROM store_digital_fulfillments f
-          JOIN store_digital_products p ON p.id = f.digital_product_id
-          WHERE f.access_token = ? LIMIT 1`,
-    args: [token],
-  });
-
-  const row = res.rows[0] as Row | undefined;
-  if (!row) {
-    return c.json({ error: "not_found", message: "Invalid or expired digital access token." }, 404);
-  }
-
-  if (row.status === "revoked") {
-    return c.json({ error: "revoked", message: "This digital access token has been revoked by the merchant." }, 403);
-  }
-
-  if (row.expires_at && new Date(String(row.expires_at)).getTime() <= Date.now()) {
-    return c.json({ error: "expired", message: "This download link has expired." }, 403);
-  }
-
-  // 0 means unlimited. The cap is enforced by the UPDATE itself so concurrent requests cannot overshoot it.
-  const maxDownloads = Number(row.max_downloads ?? 5);
-  const claim = await db.execute({
-    sql: `UPDATE store_digital_fulfillments SET download_count = download_count + 1
-          WHERE id = ? AND status = 'active' AND (? = 0 OR download_count < ?)`,
-    args: [String(row.id), maxDownloads, maxDownloads],
-  });
-  if (!claim.rowsAffected) {
-    return c.json({ error: "limit_reached", message: `Download limit of ${maxDownloads} downloads reached.` }, 403);
-  }
-  const downloadCount = (Number(row.download_count) || 0) + 1;
-
-  if (await hasTable("store_digital_products")) {
-    await db.execute({
-      sql: "UPDATE store_digital_products SET downloads_count = downloads_count + 1 WHERE id = ?",
-      args: [String(row.digital_product_id)],
-    });
-  }
-
-  return c.json({
-    ok: true,
-    fulfillment: {
-      id: String(row.id),
-      store_id: String(row.store_id),
-      digital_product_id: String(row.digital_product_id),
-      digital_product_title: String(row.digital_product_title),
-      order_id: row.order_id ? String(row.order_id) : null,
-      access_token: String(row.access_token),
-      license_key_issued: row.license_key_issued ? String(row.license_key_issued) : null,
-      download_count: downloadCount,
-      max_downloads: maxDownloads,
-      download_url: row.product_file_url ? String(row.product_file_url) : undefined,
-      delivery_instructions: row.delivery_instructions ? String(row.delivery_instructions) : undefined,
-      expires_at: row.expires_at ? String(row.expires_at) : null,
-      status: String(row.status),
-      created_at: String(row.created_at),
-    },
-    downloadUrl: row.product_file_url ? String(row.product_file_url) : undefined,
   });
 });

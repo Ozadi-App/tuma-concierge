@@ -2542,6 +2542,37 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
         method: "POST",
       });
     },
+    async refundMerchantDigitalFulfillment(id: string) {
+      return request<{ ok: boolean }>(`/v1/merchants/me/digital-fulfillments/${id}/refund`, { method: "POST", body: JSON.stringify({}) });
+    },
+    async resendMerchantDigitalFulfillment(id: string) {
+      return request<{ ok: boolean; sms: string; error?: string }>(`/v1/merchants/me/digital-fulfillments/${id}/resend`, { method: "POST", body: JSON.stringify({}) });
+    },
+    async fulfillMerchantDigitalLicense(id: string, licenseKey: string) {
+      return request<{ ok: boolean }>(`/v1/merchants/me/digital-fulfillments/${id}/license`, { method: "POST", body: JSON.stringify({ license_key: licenseKey }) });
+    },
+    /** Sends the file itself (streamed) to the product's private storage. */
+    async uploadMerchantDigitalFile(productId: string, file: File) {
+      const res = await f(`${root}/v1/merchants/me/digital-products/${encodeURIComponent(productId)}/file`, {
+        method: "PUT",
+        headers: { ...authHeaders(), "content-type": file.type || "application/octet-stream", "x-file-name": encodeURIComponent(file.name) },
+        body: file,
+      });
+      return json<{ ok: boolean; file: { name: string; sizeBytes: number; contentType: string } }>(res);
+    },
+    /** A shopper buys a digital product or course from their wallet. */
+    async buyDigitalProduct(productId: string) {
+      return request<{
+        ok: boolean; fulfillmentId: string; accessUrl: string; token: string; licenseKey: string | null;
+        expiresAt: string | null; maxDownloads: number; pricePaidUgx: number; sms: { status: string } | null; needsManualFulfilment: boolean;
+      }>(`/v1/marketplace/digital/${encodeURIComponent(productId)}/buy`, { method: "POST", body: JSON.stringify({}) });
+    },
+    async getMyDigitalPurchases() {
+      return request<{ purchases: Array<{ id: string; status: string; title: string; kind: string; store_name: string; download_count: number; max_downloads: number; expires_at: string | null; price_paid_ugx: number; created_at: string }> }>("/v1/me/digital-purchases");
+    },
+    async newDigitalPurchaseLink(id: string) {
+      return request<{ ok: boolean; accessUrl: string }>(`/v1/me/digital-purchases/${encodeURIComponent(id)}/link`, { method: "POST", body: JSON.stringify({}) });
+    },
 
     // Tier 3: Robust LMS & Course Management (synced with Peebee Learn)
     async getMerchantLmsCourses() {

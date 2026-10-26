@@ -627,6 +627,50 @@ export default function MerchantProStorePage() {
     }
   }
 
+  async function handleRefundFulfillment(id: string) {
+    if (!window.confirm("Refund this sale? The buyer gets their money back from your balance.")) return;
+    try {
+      await api.refundMerchantDigitalFulfillment(id);
+      setDigitalFulfillments((prev) => prev.map((f) => (f.id === id ? { ...f, refunded_at: new Date().toISOString() } : f)));
+      setNotice("Refunded.");
+    } catch (err) {
+      setError(errorMessage(err));
+    }
+  }
+
+  async function handleResendFulfillment(id: string) {
+    try {
+      const res = await api.resendMerchantDigitalFulfillment(id);
+      setNotice(res.ok ? `New link sent (${res.sms}).` : `Could not send the text: ${res.error ?? "try again"}`);
+    } catch (err) {
+      setError(errorMessage(err));
+    }
+  }
+
+  async function handleFulfilLicense(id: string) {
+    const key = window.prompt("Licence key for this buyer");
+    if (!key?.trim()) return;
+    try {
+      await api.fulfillMerchantDigitalLicense(id, key.trim());
+      setDigitalFulfillments((prev) => prev.map((f) => (f.id === id ? { ...f, license_key_issued: key.trim(), needs_manual_fulfilment: false } : f)));
+      setNotice("Key added to the purchase.");
+    } catch (err) {
+      setError(errorMessage(err));
+    }
+  }
+
+  async function handleUploadDigitalFile(productId: string, file: File | undefined) {
+    if (!file) return;
+    setError("");
+    try {
+      const res = await api.uploadMerchantDigitalFile(productId, file);
+      setDigitalProducts((prev) => prev.map((p) => (p.id === productId ? { ...p, file_name: res.file.name, file_size_bytes: res.file.sizeBytes, file_url: null } : p)));
+      setNotice(`${res.file.name} uploaded to private storage.`);
+    } catch (err) {
+      setError(errorMessage(err));
+    }
+  }
+
   async function handleCreateCourse(e: React.FormEvent) {
     e.preventDefault();
     if (!courseTitle.trim()) return;
@@ -2937,6 +2981,14 @@ export default function MerchantProStorePage() {
                         <span>🛒 {p.sales_count || 0} sales</span>
                       </div>
                       <div className="flex items-center gap-1.5">
+                        {p.kind === "license_key" && (
+                          <span className="font-mono" title="Licence keys left / sold">🔑 {p.license_keys_available ?? 0} left · {p.license_keys_issued ?? 0} sold</span>
+                        )}
+                        {p.file_name && !p.file_url && <span className="truncate max-w-[8rem]" title={p.file_name}>🔒 {p.file_name}</span>}
+                        <label className="cursor-pointer text-gold font-bold hover:underline">
+                          {p.file_name && !p.file_url ? "Replace file" : "Upload file"}
+                          <input type="file" className="sr-only" onChange={(e) => { void handleUploadDigitalFile(p.id, e.target.files?.[0]); e.target.value = ""; }} />
+                        </label>
                         {p.file_url && (
                           <a
                             href={p.file_url}
@@ -2981,7 +3033,7 @@ export default function MerchantProStorePage() {
                             <span className="font-bold text-ink">{f.customer_name || "Customer"}</span>
                             <span className="font-mono text-ink-500">({f.customer_phone})</span>
                             <span className="rounded bg-gold/15 text-gold px-1.5 py-0.2 text-[10px] font-mono">
-                              {f.access_token.slice(0, 14)}…
+                              link …{f.token_hint ?? "----"}
                             </span>
                           </div>
                           <div className="text-[11px] text-ink-500 mt-1 flex items-center gap-2">
@@ -3002,6 +3054,21 @@ export default function MerchantProStorePage() {
                           >
                             {f.status}
                           </span>
+                          {f.needs_manual_fulfilment && (
+                            <button type="button" onClick={() => handleFulfilLicense(f.id)} className="text-[10px] text-gold font-bold hover:underline">
+                              Add key
+                            </button>
+                          )}
+                          {f.status === "active" && (
+                            <button type="button" onClick={() => handleResendFulfillment(f.id)} className="text-[10px] text-ink-500 font-bold hover:underline">
+                              Resend{f.sms_status ? ` (${f.sms_status})` : ""}
+                            </button>
+                          )}
+                          {!f.refunded_at && Number(f.price_paid_ugx) > 0 && (
+                            <button type="button" onClick={() => handleRefundFulfillment(f.id)} className="text-[10px] text-red-500 font-bold hover:underline">
+                              Refund {ugx(Number(f.price_paid_ugx))}
+                            </button>
+                          )}
                           {f.status === "active" && (
                             <button
                               type="button"

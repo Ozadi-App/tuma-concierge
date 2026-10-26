@@ -23,6 +23,8 @@ export type OptionRequirement = {
   migration?: string;
   /** Needs a real SMS provider (not the simulator) with its credentials set. */
   sms?: boolean;
+  /** Needs the private file storage (R2) to be connected. */
+  r2?: boolean;
 };
 
 export type OptionChoice = {
@@ -144,8 +146,8 @@ export const OPTION_SETTINGS: SettingDef[] = [
     description: "Files are only ever reached through a purchase token, never a public link.",
     default: "r2_private_signed",
     options: [
-      opt("r2_private_signed", "Private storage with short-lived links", false, { recommended: true }),
-      opt("worker_stream_proxy", "Streamed through Peebee", false),
+      opt("r2_private_signed", "Private storage with short-lived links", true, { recommended: true, requires: { r2: true, columns: [["store_digital_products", "file_key"]], migration: "0136_digital_fulfillment.sql" } }),
+      opt("worker_stream_proxy", "Streamed through Peebee", true, { requires: { columns: [["store_digital_products", "file_key"]], migration: "0136_digital_fulfillment.sql" } }),
       opt("external_url_via_redirect", "Merchant-hosted file behind the token", true, { hint: "The previous behaviour: the token gates a redirect to the merchant's own URL." }),
     ],
   },
@@ -155,7 +157,7 @@ export const OPTION_SETTINGS: SettingDef[] = [
     default: ["on_screen", "sms_link"], min: 1,
     options: [
       opt("on_screen", "On the confirmation screen", true, { recommended: true }),
-      opt("sms_link", "SMS with a one-tap link", false, { recommended: true }),
+      opt("sms_link", "SMS with a one-tap link", true, { recommended: true, requires: { sms: true } }),
       opt("whatsapp_link", "WhatsApp message", false),
       opt("email_link", "Email", false),
     ],
@@ -167,9 +169,9 @@ export const OPTION_SETTINGS: SettingDef[] = [
     description: "What happens to a sale when the key pool is empty.",
     default: "block_sale",
     options: [
-      opt("block_sale", "Stop the sale", false, { recommended: true }),
-      opt("allow_backorder_manual_fulfil", "Take the order and let the merchant fulfil it", false),
-      opt("auto_hide_product", "Hide the product", false),
+      opt("block_sale", "Stop the sale", true, { recommended: true, requires: { tables: ["store_license_keys"], migration: "0136_digital_fulfillment.sql" } }),
+      opt("allow_backorder_manual_fulfil", "Take the order and let the merchant fulfil it", true, { requires: { tables: ["store_license_keys"], migration: "0136_digital_fulfillment.sql" } }),
+      opt("auto_hide_product", "Hide the product", true, { requires: { tables: ["store_license_keys"], migration: "0136_digital_fulfillment.sql" } }),
     ],
   },
   {
@@ -177,11 +179,14 @@ export const OPTION_SETTINGS: SettingDef[] = [
     description: "Keys are secrets; choose how they reach the buyer.",
     default: "after_phone_check",
     options: [
-      opt("after_phone_check", "On the download page after the buyer confirms their phone", false, { recommended: true }),
+      opt("after_phone_check", "On the download page after the buyer confirms their phone", true, { recommended: true, requires: { sms: true } }),
       opt("on_token_page", "On the download page for anyone with the link", true),
-      opt("sms_only", "By SMS only", false),
+      opt("sms_only", "By SMS only", true, { requires: { sms: true } }),
     ],
   },
+  { key: "digital_commission_percent", module: "digital", kind: "int", label: "Platform share of digital sales", description: "Percent Peebee keeps from each digital sale; the rest goes to the merchant.", default: 5, min: 0, max: 60, unit: "%" },
+  { key: "digital_max_file_mb", module: "digital", kind: "int", label: "Largest file a merchant can upload", description: "Per file.", default: 200, min: 1, max: 2000, unit: "MB" },
+  { key: "digital_allow_executables", module: "digital", kind: "bool", label: "Allow program files", description: "Installers and scripts (.exe, .msi, .sh, …) are blocked unless this is on, because a store can sell them to anyone.", default: false },
   { key: "digital_refund_revokes_access", module: "digital", kind: "bool", label: "Refunds revoke access", description: "A refunded purchase stops working immediately.", default: true },
   { key: "digital_max_products", module: "digital", kind: "int", label: "Digital products per store", description: "Upper limit per store.", default: 200, min: 1, max: 5000 },
   {
@@ -189,8 +194,8 @@ export const OPTION_SETTINGS: SettingDef[] = [
     description: "What is checked when a merchant adds a file.",
     default: "size_and_mime_check",
     options: [
-      opt("size_and_mime_check", "Size and file type", false, { recommended: true }),
-      opt("size_mime_and_scan_hook", "Size, type and a malware scan", false),
+      opt("size_and_mime_check", "Size and file type", true, { recommended: true }),
+      opt("size_mime_and_scan_hook", "Size, type and a malware scan", false, { hint: "Needs a malware-scanning service to be connected first." }),
       opt("off", "No checks", true),
     ],
   },
@@ -392,9 +397,9 @@ export function decodeValue(def: SettingDef, raw: string | undefined | null): Op
   }
 }
 
-export type Availability = { available: boolean; reason?: "not_built" | "migration_pending" | "sms_provider_pending" };
+export type Availability = { available: boolean; reason?: "not_built" | "migration_pending" | "sms_provider_pending" | "storage_pending" };
 /** Which database objects exist right now; supplied by the caller (see option-settings.ts). */
-export type SchemaProbe = { hasTable(name: string): boolean; hasColumn(table: string, column: string): boolean; smsReady?(): boolean };
+export type SchemaProbe = { hasTable(name: string): boolean; hasColumn(table: string, column: string): boolean; smsReady?(): boolean; r2Ready?(): boolean };
 
 export function choiceAvailability(choice: OptionChoice, schema: SchemaProbe): Availability {
   if (!choice.built) return { available: false, reason: "not_built" };
@@ -402,6 +407,7 @@ export function choiceAvailability(choice: OptionChoice, schema: SchemaProbe): A
   if (need?.tables?.some((t) => !schema.hasTable(t))) return { available: false, reason: "migration_pending" };
   if (need?.columns?.some(([t, c]) => !schema.hasColumn(t, c))) return { available: false, reason: "migration_pending" };
   if (need?.sms && !schema.smsReady?.()) return { available: false, reason: "sms_provider_pending" };
+  if (need?.r2 && !schema.r2Ready?.()) return { available: false, reason: "storage_pending" };
   return { available: true };
 }
 
@@ -442,7 +448,7 @@ export function validateValue(def: SettingDef, input: unknown, schema: SchemaPro
       const choice = def.options.find((o) => o.value === input);
       if (!choice) return { ok: false, message: `${def.label}: unknown option.` };
       const a = choiceAvailability(choice, schema);
-      if (!a.available) return { ok: false, message: `${def.label}: "${choice.label}" is ${a.reason === "not_built" ? "not available yet" : a.reason === "sms_provider_pending" ? "waiting for a real SMS provider (Admin → Marketplace → SMS provider, with its credentials set)" : `waiting for migration ${choice.requires?.migration ?? ""}`}.` };
+      if (!a.available) return { ok: false, message: `${def.label}: "${choice.label}" is ${a.reason === "not_built" ? "not available yet" : a.reason === "sms_provider_pending" ? "waiting for a real SMS provider (Admin → Marketplace → SMS provider, with its credentials set)" : a.reason === "storage_pending" ? "waiting for the private file storage to be connected" : `waiting for migration ${choice.requires?.migration ?? ""}`}.` };
       return { ok: true, value: choice.value };
     }
     case "multi": {
