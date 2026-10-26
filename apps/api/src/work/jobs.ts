@@ -2,6 +2,7 @@ import { db } from "../db/client.js";
 import type { PlatformEnvironment } from "../lib/settings.js";
 import type { WorkSettings } from "./settings.js";
 import { checkCancellation } from "./onsite.js";
+import { createLaundryRiderLeg, isLaundryJob, laundryOrderFor, planLaundryCancel, planLaundrySettlement } from "./laundry-orders.js";
 import {
   applyMoney, applyPendingMoney, chargeCustomer, dropUnpaidHold, fromDb, inMinutes, logEvent, notifyCustomer, notifyProviders, percentOf, publicProvider,
   splitHeld, toDb, transition, workExtrasReady, type ActorKind, type MoneyPlan, type Row,
@@ -56,6 +57,21 @@ export async function assignProvider(
       jobId: String(job.id), from: ["open"], to: "booked", set: { ...base, booked_at: now, expires_at: null },
       environment: env(job), actor: opts.actor, action: "assigned", detail: { providerId: provider.id },
     });
+        if (isLaundryJob(job)) {
+      const ord = await laundryOrderFor(String(job.id));
+      if (ord && Number(ord.pickup_ride_ugx) > 0) {
+        await createLaundryRiderLeg({
+          jobId: String(job.id),
+          leg: "pickup",
+          customerId: String(job.customer_id),
+          provider: { id: provider.id, name: provider.display_name, address: provider.address, lat: provider.lat, lng: provider.lng },
+          customerAddress: job.address,
+          customerLat: job.lat,
+          customerLng: job.lng,
+          rideFeeUgx: Number(ord.pickup_ride_ugx),
+        });
+      }
+    }
     return ok ? { ok: true } : fail(409, "not_open", "That job has already been taken or closed.");
   }
 
@@ -89,6 +105,21 @@ export async function assignProvider(
       jobId: String(job.id), from: ["open"], to: "booked", set: { ...base, booked_at: now, price_ugx: price, expires_at: null },
       environment: env(job), actor: opts.actor, action: "assigned", detail: { providerId: provider.id, priceUgx: price },
     });
+        if (isLaundryJob(job)) {
+      const ord = await laundryOrderFor(String(job.id));
+      if (ord && Number(ord.pickup_ride_ugx) > 0) {
+        await createLaundryRiderLeg({
+          jobId: String(job.id),
+          leg: "pickup",
+          customerId: String(job.customer_id),
+          provider: { id: provider.id, name: provider.display_name, address: provider.address, lat: provider.lat, lng: provider.lng },
+          customerAddress: job.address,
+          customerLat: job.lat,
+          customerLng: job.lng,
+          rideFeeUgx: Number(ord.pickup_ride_ugx),
+        });
+      }
+    }
     return ok ? { ok: true } : fail(409, "not_open", "That job has already been taken or closed.");
   }
 
@@ -97,7 +128,22 @@ export async function assignProvider(
     jobId: String(job.id), from: ["open"], to: "assigned", set: { ...base, expires_at: null },
     environment: env(job), actor: opts.actor, action: "assigned", detail: { providerId: provider.id },
   });
-  return ok ? { ok: true } : fail(409, "not_open", "That job has already been taken or closed.");
+      if (isLaundryJob(job)) {
+      const ord = await laundryOrderFor(String(job.id));
+      if (ord && Number(ord.pickup_ride_ugx) > 0) {
+        await createLaundryRiderLeg({
+          jobId: String(job.id),
+          leg: "pickup",
+          customerId: String(job.customer_id),
+          provider: { id: provider.id, name: provider.display_name, address: provider.address, lat: provider.lat, lng: provider.lng },
+          customerAddress: job.address,
+          customerLat: job.lat,
+          customerLng: job.lng,
+          rideFeeUgx: Number(ord.pickup_ride_ugx),
+        });
+      }
+    }
+    return ok ? { ok: true } : fail(409, "not_open", "That job has already been taken or closed.");
 }
 
 // ---------------------------------------------------------------------------
@@ -119,7 +165,13 @@ export async function cancelJob(job: Row, by: ActorKind, actorId: string | null,
       ? "This job has started. If something is wrong, report a problem instead." : "This job can't be cancelled now.");
   }
 
-  if (by === "customer" && status !== "open" && held > 0 && providerUser) {
+  // A laundry order follows its own money rules (rider share, tip, Peebee's fee), locked in when it was placed.
+  const laundry = isLaundryJob(job) ? await laundryOrderFor(String(job.id)) : null;
+  if (laundry) {
+    const plan = planLaundryCancel(job, laundry);
+    money.push(...plan.money);
+    commission = plan.platformUgx;
+  } else if (by === "customer" && status !== "open" && held > 0 && providerUser) {
     // After a provider is on the job, a late cancellation pays them a share.
     const sinceAssigned = job.assigned_at ? (Date.now() - fromDb(String(job.assigned_at)).getTime()) / 60_000 : Infinity;
     const free = sinceAssigned <= settings.freeCancelMinutes;
@@ -200,10 +252,12 @@ export async function settleJob(
 ): Promise<Done | Failure> {
   const provider = await getProvider(job.provider_id);
   if (!provider) return fail(409, "no_provider", "This job has no provider.");
+  const laundry = isLaundryJob(job) ? await laundryOrderFor(String(job.id)) : null;
+  const plan = laundry ? planLaundrySettlement(job, laundry, { userId: String(provider.user_id) }, { refundUgx: opts.refundUgx, to: opts.to, disputed: String(job.status) === "disputed" }) : null;
   const held = Number(job.held_ugx);
-  const split = splitHeld(held, Number(job.commission_percent), opts.refundUgx);
-  const money: MoneyPlan[] = [
-    { kind: "refund", userId: String(job.customer_id), amount: split.refund, note: `Peebee Work refund — ${job.service_name}` },
+  const split = plan ? { commission: plan.platformUgx, payout: plan.money.find((m) => m.kind === "payout")?.amount ?? 0 } : splitHeld(held, Number(job.commission_percent), opts.refundUgx);
+  const money: MoneyPlan[] = plan ? plan.money : [
+    { kind: "refund", userId: String(job.customer_id), amount: (split as ReturnType<typeof splitHeld>).refund, note: `Peebee Work refund — ${job.service_name}` },
     { kind: "payout", userId: String(provider.user_id), amount: split.payout, note: `Peebee Work earnings — ${job.service_name}` },
   ];
   const set: Record<string, unknown> = { settled_at: toDb(), commission_ugx: split.commission };
@@ -211,9 +265,11 @@ export async function settleJob(
   if (opts.resolvedBy) set.resolved_by = opts.resolvedBy;
   const ok = await transition({
     jobId: String(job.id), from: opts.from, to: opts.to, set, money, environment: env(job), actor: opts.actor, action: opts.action,
-    detail: { refundUgx: split.refund, payoutUgx: split.payout, commissionUgx: split.commission },
+    detail: { refundUgx: plan ? (plan.money.find((m) => m.kind === "refund")?.amount ?? 0) : (split as ReturnType<typeof splitHeld>).refund, payoutUgx: split.payout, commissionUgx: split.commission },
   });
   if (!ok) return fail(409, "already_settled", "This job was already paid out or changed.");
+  // The rider share of a laundry order is not the provider's: record it for the rider payout.
+  if (plan && plan.riderFeeUgx > 0) await db.execute({ sql: "UPDATE laundry_orders SET rider_fee_ugx = ? WHERE job_id = ?", args: [plan.riderFeeUgx, job.id] });
   if (split.payout > 0) {
     await db.execute({ sql: "UPDATE work_providers SET jobs_completed = jobs_completed + 1, updated_at = datetime('now') WHERE id = ?", args: [provider.id] });
   }
@@ -236,6 +292,16 @@ export async function jobView(job: Row, viewer: "customer" | "provider" | "admin
       ? ((await db.execute({ sql: "SELECT name, phone FROM users WHERE id = ?", args: [job.customer_id] })).rows[0] as Row | undefined)
       : undefined;
   // When the provider marked themselves as arrived (only meaningful while they are on the job).
+  let laundryDetail: Row | null = null;
+  let laundryLines: Row[] = [];
+  if (isLaundryJob(job)) {
+    const [ord, lns] = await Promise.all([
+      db.execute({ sql: "SELECT * FROM laundry_orders WHERE job_id = ?", args: [job.id] }),
+      db.execute({ sql: "SELECT * FROM laundry_order_lines WHERE job_id = ? ORDER BY id", args: [job.id] }),
+    ]);
+    laundryDetail = (ord.rows[0] as Row | undefined) ?? null;
+    laundryLines = lns.rows as Row[];
+  }
   const arrived = ["booked", "in_progress"].includes(String(job.status))
     ? ((await db.execute({ sql: "SELECT MIN(created_at) AS at FROM work_events WHERE job_id = ? AND action = 'arrived' AND created_at >= COALESCE(?, '')", args: [job.id, job.assigned_at ?? null] })).rows[0] as Row | undefined)
     : undefined;
@@ -278,6 +344,29 @@ export async function jobView(job: Row, viewer: "customer" | "provider" | "admin
     settledAt: job.settled_at ?? null,
     arrivedAt,
     rematchCount: Number(job.rematch_count ?? 0),
+    laundry: laundryDetail ? {
+      mode: laundryDetail.mode,
+      pricingMode: laundryDetail.pricing_mode,
+      frequency: laundryDetail.frequency,
+      detergent: laundryDetail.detergent,
+      contactless: Number(laundryDetail.contactless) === 1,
+      notes: laundryDetail.notes,
+      goodsUgx: Number(laundryDetail.goods_ugx),
+      tipKind: laundryDetail.tip_kind,
+      tipUgx: Number(laundryDetail.tip_ugx),
+      customerRideUgx: Number(laundryDetail.customer_ride_ugx),
+      providerRideUgx: Number(laundryDetail.provider_ride_ugx),
+      feeUgx: Number(laundryDetail.fee_ugx),
+      lines: laundryLines.map((l) => ({
+        id: l.id,
+        kind: l.kind,
+        name: l.name,
+        treatment: l.treatment ?? null,
+        count: Number(l.count),
+        unitPriceUgx: Number(l.unit_price_ugx),
+        lineTotalUgx: Number(l.line_total_ugx),
+      })),
+    } : null,
     // Where the provider is while the job is on (customer and staff only; the provider already knows).
     providerLocation:
       viewer !== "provider" && job.provider_lat != null && job.provider_lng != null && ["booked", "in_progress"].includes(String(job.status))

@@ -390,6 +390,392 @@ export type MarketplaceSettings = {
   deliveryBaseFeeUgx: number;
   /** A cart left this many hours is set aside as an earlier (retrievable) cart when a new one starts. */
   cartExpiryHours?: number;
+  /** Tier 3: Merchant Advanced Marketplace (Elite — Shopify / Shopify Pro level) */
+  eliteEnabled?: boolean;
+  elitePriceUgx?: number;
+  eliteCommissionPercent?: number;
+  proMaxProducts?: number;
+  eliteMaxProducts?: number;
+  proMaxCollections?: number;
+  eliteMaxCollections?: number;
+  proMaxDiscounts?: number;
+  eliteMaxDiscounts?: number;
+  eliteB2bEnabled?: boolean;
+  eliteMultiOutletInventoryEnabled?: boolean;
+  eliteCustomDomainEnabled?: boolean;
+  eliteLoyaltyEnabled?: boolean;
+  eliteMaxLoyaltyCashbackPercent?: number;
+  elitePosEnabled?: boolean;
+  eliteStockTransfersEnabled?: boolean;
+  eliteCrmEnabled?: boolean;
+  elitePurchaseOrdersEnabled?: boolean;
+  eliteBundlesEnabled?: boolean;
+  eliteWinbackEnabled?: boolean;
+  eliteStorefrontSectionsEnabled?: boolean;
+  eliteSmsAlertsEnabled?: boolean;
+  eliteSmsCostPerMessageUgx?: number;
+  smsProvider?: "simulator" | "africas_talking" | "twilio";
+  eliteDigitalProductsEnabled?: boolean;
+  eliteLmsSyncEnabled?: boolean;
+  eliteMaxCourses?: number;
+  eliteMaxDigitalProducts?: number;
+};
+
+export type StoreCollection = {
+  id: string;
+  store_id: string;
+  title: string;
+  slug: string;
+  description: string | null;
+  kind: "manual" | "smart";
+  rule_field: "category" | "price_lte" | "price_gte" | "badge" | "in_stock" | null;
+  rule_value: string | null;
+  pinned: number;
+  sort_order: number;
+  status: "active" | "draft" | "archived";
+  matching_products_count?: number;
+  created_at: string;
+};
+
+export type StoreDiscount = {
+  id: string;
+  store_id: string;
+  code: string;
+  title: string;
+  kind: "percent" | "fixed" | "free_delivery" | "bogo";
+  value: number;
+  min_order_amount: number;
+  max_uses: number | null;
+  uses_count: number;
+  is_automatic: number;
+  starts_at: string;
+  expires_at: string | null;
+  status: "active" | "paused" | "expired";
+  created_at: string;
+};
+
+export type StoreOutletInventoryRow = {
+  id?: string;
+  store_id: string;
+  product_id: string;
+  product_title?: string;
+  outlet_id: string;
+  outlet_name?: string;
+  quantity: number;
+  low_stock_threshold: number;
+  updated_at?: string;
+};
+
+export type StoreDraftOrderItem = {
+  productId: string;
+  title: string;
+  unitPrice: number;
+  quantity: number;
+};
+
+export type StoreDraftOrder = {
+  id: string;
+  store_id: string;
+  customer_name: string;
+  customer_phone: string | null;
+  customer_company: string | null;
+  items: StoreDraftOrderItem[];
+  subtotal_amount: number;
+  discount_amount: number;
+  total_amount: number;
+  payment_terms: "immediate" | "net_7" | "net_14" | "net_30";
+  notes: string | null;
+  status: "open" | "sent" | "paid" | "canceled";
+  created_at: string;
+};
+
+export type StorePosSaleItem = {
+  productId: string;
+  title: string;
+  unitPrice: number;
+  quantity: number;
+};
+
+export type StorePosSale = {
+  id: string;
+  store_id: string;
+  outlet_id: string | null;
+  outlet_name?: string | null;
+  customer_phone: string | null;
+  customer_name: string | null;
+  items: StorePosSaleItem[];
+  subtotal_amount: number;
+  discount_amount: number;
+  loyalty_redeemed_ugx: number;
+  loyalty_earned_ugx: number;
+  total_amount: number;
+  payment_method: "peebee_code" | "momo" | "cash";
+  receipt_code: string;
+  created_at: string;
+};
+
+export type StoreStockTransfer = {
+  id: string;
+  store_id: string;
+  product_id: string;
+  product_title?: string;
+  from_outlet_id: string;
+  from_outlet_name?: string;
+  to_outlet_id: string;
+  to_outlet_name?: string;
+  quantity: number;
+  note: string | null;
+  status: "completed" | "cancelled";
+  created_at: string;
+};
+
+export type StoreCustomerLoyalty = {
+  id: string;
+  store_id: string;
+  customer_phone: string;
+  customer_name: string | null;
+  points_balance_ugx: number;
+  total_earned_ugx: number;
+  total_redeemed_ugx: number;
+  orders_count: number;
+  total_spent_ugx: number;
+  tier: "standard" | "repeat" | "vip" | "b2b";
+  last_order_at: string;
+  created_at: string;
+};
+
+export type StoreSupplier = {
+  id: string;
+  store_id: string;
+  name: string;
+  contact_person: string | null;
+  phone: string | null;
+  email: string | null;
+  address: string | null;
+  created_at: string;
+};
+
+export type StorePurchaseOrderItem = {
+  productId: string;
+  title: string;
+  quantity: number;
+  unitCost: number;
+};
+
+export type StorePurchaseOrder = {
+  id: string;
+  store_id: string;
+  supplier_id: string | null;
+  supplier_name?: string | null;
+  outlet_id: string | null;
+  outlet_name?: string | null;
+  po_number: string;
+  items: StorePurchaseOrderItem[];
+  total_cost_ugx: number;
+  status: "draft" | "ordered" | "received" | "cancelled";
+  ordered_at: string | null;
+  received_at: string | null;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+};
+
+export type StoreBundleItem = {
+  productId: string;
+  title: string;
+  quantity: number;
+};
+
+export type StoreBundle = {
+  id: string;
+  store_id: string;
+  title: string;
+  description: string | null;
+  price: number;
+  compare_at_price: number | null;
+  items: StoreBundleItem[];
+  status: "active" | "draft" | "archived";
+  created_at: string;
+};
+
+export type StorefrontSectionType =
+  | "announcement"
+  | "hero"
+  | "bundles"
+  | "featured_collection"
+  | "video_spotlight"
+  | "testimonials"
+  | "trust_badges"
+  | "faq"
+  | "contact_strip"
+  | "digital_products"
+  | "lms_courses";
+
+export type StorefrontSection = {
+  id: string;
+  type: StorefrontSectionType;
+  title: string;
+  subtitle?: string;
+  enabled: boolean;
+  order: number;
+  settings?: Record<string, any>;
+};
+
+export type DigitalProductKind = "download" | "license_key" | "course" | "template" | "service";
+
+export type StoreDigitalProduct = {
+  id: string;
+  store_id: string;
+  title: string;
+  kind: DigitalProductKind;
+  description: string | null;
+  price_ugx: number;
+  compare_at_price_ugx?: number | null;
+  file_url?: string | null;
+  file_name?: string | null;
+  file_size_bytes?: number | null;
+  mime_type?: string | null;
+  max_downloads: number;
+  expiry_days: number;
+  license_keys_pool?: string[] | null;
+  delivery_instructions?: string | null;
+  cover_image_url?: string | null;
+  linked_course_id?: string | null;
+  status: "published" | "draft" | "archived";
+  downloads_count: number;
+  sales_count: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type StoreDigitalFulfillment = {
+  id: string;
+  store_id: string;
+  digital_product_id: string;
+  digital_product_title?: string;
+  order_id?: string | null;
+  customer_name: string | null;
+  customer_phone: string;
+  customer_email?: string | null;
+  access_token: string;
+  license_key_issued?: string | null;
+  download_count: number;
+  max_downloads: number;
+  download_url?: string;
+  expires_at?: string | null;
+  edu_enrollment_id?: string | null;
+  status: "active" | "revoked" | "expired";
+  created_at: string;
+};
+
+export type StoreLmsLesson = {
+  id: string;
+  title: string;
+  content_type: "video" | "audio" | "pdf_worksheet" | "quiz" | "article";
+  duration_minutes: number;
+  content_url?: string;
+  summary?: string;
+  quiz_questions_count?: number;
+};
+
+export type StoreLmsModule = {
+  id: string;
+  title: string;
+  description?: string;
+  position: number;
+  lessons: StoreLmsLesson[];
+};
+
+export type StoreLmsCourse = {
+  id: string;
+  store_id: string;
+  learn_course_id?: string;
+  learn_school_id?: string;
+  title: string;
+  slug?: string;
+  stream: "skills" | "academy" | "compass" | "sprouts" | "foundations";
+  summary: string;
+  price_ugx: number;
+  cover_url?: string;
+  certificate_enabled: boolean;
+  drip_schedule?: "all_at_once" | "daily" | "weekly";
+  status: "draft" | "published";
+  modules: StoreLmsModule[];
+  total_lessons: number;
+  total_duration_minutes: number;
+  enrolled_students_count: number;
+  completion_rate_percent: number;
+  learn_synced: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type StoreLmsEnrollment = {
+  id: string;
+  store_id: string;
+  course_id: string;
+  course_title?: string;
+  student_name: string;
+  student_phone: string;
+  student_email?: string;
+  progress_percent: number;
+  completed_lessons: number;
+  total_lessons: number;
+  quiz_average_score?: number | null;
+  certificate_issued: boolean;
+  certificate_url?: string | null;
+  enrolled_at: string;
+  last_active_at: string;
+  access_status: "active" | "completed" | "suspended";
+  learn_portal_url: string;
+};
+
+export type StoreSmsLog = {
+  id: string;
+  store_id: string;
+  recipient_phone: string;
+  recipient_name: string | null;
+  message_type: "pos_receipt" | "order_confirmation" | "dispatch_alert" | "abandoned_cart";
+  body: string;
+  status: "delivered" | "failed" | "simulated";
+  external_message_id?: string | null;
+  cost_ugx: number;
+  created_at: string;
+};
+
+export type StoreWinbackCampaign = {
+  id: string;
+  store_id: string;
+  customer_phone: string;
+  customer_name: string | null;
+  discount_code: string | null;
+  channel: "whatsapp" | "sms" | "push";
+  message: string;
+  status: "draft" | "sent" | "converted";
+  sent_at: string;
+};
+
+export type StoreEliteAnalytics = {
+  grossRevenueUgx: number;
+  estimatedCogsUgx: number;
+  platformCommissionUgx: number;
+  netMarginUgx: number;
+  netMarginPercent: number;
+  totalProducts: number;
+  totalStockUnits: number;
+  lowStockCount: number;
+  activeCollectionsCount: number;
+  activeDiscountsCount: number;
+  openDraftOrdersCount: number;
+  b2bPipelineUgx: number;
+  posSalesCount?: number;
+  posRevenueUgx?: number;
+  vipCustomersCount?: number;
+  loyaltyBalanceLiabilityUgx?: number;
+  stockTransfersCount?: number;
+  purchaseOrdersCount?: number;
+  bundlesCount?: number;
+  winbackCount?: number;
 };
 
 /** Admin-tunable delivery pricing/matching numbers (packages/shared/src/api-client.ts: getSettings/adminUpdateSettings). */
@@ -2372,6 +2758,14 @@ export type RentalVehicle = {
   features?: string[];
   photos?: string[];
   lastServiceDate?: string | null;
+  plate?: string | null;
+  modelNumber?: string | null;
+  isVip?: boolean;
+  townDailyUgx?: number | null;
+  upcountryDailyUgx?: number | null;
+  image?: string | null;
+  bodyType?: string | null;
+  driverPolicy?: "self_drive" | "with_driver_only";
 };
 
 export type RentalInspectionSlot = "front" | "rear" | "left" | "right" | "interior" | "odometer" | "fuel" | "damage_extra";
@@ -2483,6 +2877,12 @@ export type CarpoolTrip = {
   departAt: string;
   seatsLeft: number;
   seatPrice: number;
+  plate?: string | null;
+  modelNumber?: string | null;
+  isVip?: boolean;
+  image?: string | null;
+  townDailyUgx?: number | null;
+  upcountryDailyUgx?: number | null;
 };
 
 export type CarpoolPublishInput = {
@@ -2495,6 +2895,12 @@ export type CarpoolPublishInput = {
   departAt: string;
   seats: number;
   seatPrice: number;
+  plate?: string | null;
+  modelNumber?: string | null;
+  isVip?: boolean;
+  image?: string | null;
+  townDailyUgx?: number | null;
+  upcountryDailyUgx?: number | null;
   repeatWeeks?: number;
 };
 

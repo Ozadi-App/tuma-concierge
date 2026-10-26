@@ -1,5 +1,5 @@
 import type { PublicReceipt } from "./receipt.js";
-import type { TaxipressAdminQueueEntry, TaxipressAdminRoute, TaxipressBoardingResult, TaxipressBooking, TaxipressConfig, TaxipressDriverView, TaxipressLineEntry, TaxipressOutcome, TaxipressQueueView, TaxipressRelayRoute, TaxipressReport, TaxipressSettings, TaxipressTaxi } from "./taxipress.js";
+import type { TaxipressAssistance, TaxipressLanguage, TaxipressLuggageType, TaxipressTaxiProfile, TaxipressAdminQueueEntry, TaxipressAdminRoute, TaxipressBoardingResult, TaxipressBooking, TaxipressConfig, TaxipressDriverView, TaxipressLineEntry, TaxipressOutcome, TaxipressQueueView, TaxipressRelayRoute, TaxipressReport, TaxipressSettings, TaxipressTaxi } from "./taxipress.js";
 import type { BagTrip, RelayAdminOrder, RelayRouteStage, RelayMerchantOrder, RelayOpenLeg, RelayOperator, RelayOperatorParcels, RelayQuote, RelayRoute, RelaySettings, RelayStation, RelayStationParcels, RelayTrack } from "./relay.js";
 import type { AdminRole } from "./permissions.js";
 import { workMethods } from "./work-client.js";
@@ -77,6 +77,28 @@ import type {
   CustomerWalletsResponse,
   DeliverySettings,
   MarketplaceSettings,
+  StoreCollection,
+  StoreDiscount,
+  StoreOutletInventoryRow,
+  StoreDraftOrderItem,
+  StoreDraftOrder,
+  StorePosSaleItem,
+  StorePosSale,
+  StoreStockTransfer,
+  StoreCustomerLoyalty,
+  StoreSupplier,
+  StorePurchaseOrderItem,
+  StorePurchaseOrder,
+  StoreBundleItem,
+  StoreBundle,
+  StoreWinbackCampaign,
+  StorefrontSection,
+  StoreSmsLog,
+  StoreDigitalProduct,
+  StoreDigitalFulfillment,
+  StoreLmsCourse,
+  StoreLmsEnrollment,
+  StoreEliteAnalytics,
   GuestSettings,
   GuestConfig,
   GuestCheckoutInput,
@@ -566,6 +588,16 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
     },
 
     // Restaurant browsing + food checkout — see apps/api/src/restaurants/customer.ts.
+    /** Dishes from open food businesses within `radiusKm` (straight line) of the customer,
+     * featured first then nearest. Without lat/lng: open businesses' dishes, no distance. */
+    async foodNearbyItems(params: { lat?: number | null; lng?: number | null; radiusKm?: number; q?: string } = {}) {
+      const qs = new URLSearchParams();
+      if (params.lat != null && params.lng != null) { qs.set("lat", String(params.lat)); qs.set("lng", String(params.lng)); }
+      if (params.radiusKm != null) qs.set("radiusKm", String(params.radiusKm));
+      if (params.q) qs.set("q", params.q);
+      const query = qs.toString();
+      return request<{ items: FoodNearbyItem[]; located: boolean; radiusKm: number; paused?: boolean }>(`/v1/food/nearby-items${query ? `?${query}` : ""}`);
+    },
     async listRestaurants() {
       return request<{ restaurants: Restaurant[]; /** Food ordering is switched off by an admin. */ paused?: boolean }>("/v1/restaurants");
     },
@@ -775,8 +807,11 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
       return request<TaxipressQueueView>(`/v1/taxipress/routes/${encodeURIComponent(routeId)}/queue`);
     },
     /** Book seats on a taxi in the line. Pay next on the order's pay screen, or hand cash to the driver. */
-    async bookTaxipressSeats(input: { queueId: string; seats: number; payment: "app" | "cash" }) {
+    async bookTaxipressSeats(input: { queueId: string; seats?: number; payment?: "app" | "cash"; adults?: number; children?: number; luggage?: Partial<Record<TaxipressLuggageType, number>>; assistance?: TaxipressAssistance | null; language?: TaxipressLanguage | null; forSomeoneElse?: boolean; travellerName?: string | null; travellerPhone?: string | null; emergencyPhone?: string | null }) {
       return request<{ booking: TaxipressBooking; order: { id: string } }>("/v1/taxipress/bookings", { method: "POST", body: JSON.stringify(input) });
+    },
+    async getTaxipressTaxiProfile(queueId: string) {
+      return request<{ profile: TaxipressTaxiProfile }>(`/v1/taxipress/taxis/${encodeURIComponent(queueId)}/profile`);
     },
     async getMyTaxipressBookings() {
       return request<{ bookings: TaxipressBooking[] }>("/v1/taxipress/bookings/mine");
@@ -898,6 +933,8 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
         bundle?: { deliveryFee: number; orders: Array<{ id: string; restaurantName: string | null; itemsAndDelivery: number; deliveryFee: number }> };
         /** A relay that can be paid now, before any rider accepts it (admin setting). */
         payBeforeRider?: boolean;
+        /** A TaxiPress booking's order: its ticket, and whether cash is allowed (and why not). */
+        taxipress?: { bookingId: string; cashAllowed: boolean; cashReason: string | null } | null;
       } & Partial<CheckoutBreakdown>>(`/v1/orders/${orderId}/checkout`);
     },
     /** What the order page shows: items, subtotal and delivery for the whole combined delivery (or the order), at any stage. */
@@ -1151,6 +1188,11 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
       return json<{ rider: Rider }>(res);
     },
     /** Fetches a rider's profile photo as a Blob (not JSON — raw fetch; caller builds an object URL). */
+    async taxipressDriverPhotoBlob(path: string): Promise<Blob> {
+      const res = await f(`${root}${path}`, { headers: authHeaders() });
+      if (!res.ok) throw new Error(`API ${res.status}: failed to load driver photo`);
+      return res.blob();
+    },
     async riderPhotoBlob(userId: string): Promise<Blob> {
       const res = await f(`${root}/v1/riders/${userId}/photo`, { headers: authHeaders() });
       if (!res.ok) throw new Error(`API ${res.status}: failed to load rider photo`);
@@ -1975,10 +2017,36 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
       if (lat != null && !isNaN(lat)) params.set("lat", String(lat));
       if (lng != null && !isNaN(lng)) params.set("lng", String(lng));
       const q = params.toString() ? `?${params.toString()}` : "";
-      return request<{ store: any }>(`/v1/marketplace/stores/${id}${q}`);
+      return request<{
+        store: any;
+        collections?: StoreCollection[];
+        discounts?: StoreDiscount[];
+        outlets?: Array<{ id: string; name: string; code: string; address: string | null; lat?: number | null; lng?: number | null; status: string }>;
+        channels?: {
+          customerAppUrl: string;
+          dedicatedStorefrontUrl: string;
+          customDomainUrl: string | null;
+        };
+      }>(`/v1/marketplace/stores/${encodeURIComponent(id)}${q}`);
+    },
+    async submitStoreB2bInquiry(
+      storeIdOrSlug: string,
+      input: {
+        customer_name: string;
+        customer_phone: string;
+        customer_company?: string;
+        payment_terms?: "immediate" | "net_7" | "net_14" | "net_30";
+        notes?: string;
+        items: StoreDraftOrderItem[];
+      },
+    ) {
+      return request<{ ok: true; id: string; total: number }>(`/v1/marketplace/stores/${encodeURIComponent(storeIdOrSlug)}/b2b-inquiry`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      });
     },
     async getMarketplaceStoreProducts(id: string) {
-      return request<{ products: any[] }>(`/v1/marketplace/stores/${id}/products`);
+      return request<{ products: any[] }>(`/v1/marketplace/stores/${encodeURIComponent(id)}/products`);
     },
     async getMarketplaceProduct(id: string) {
       return request<{ product: any; store?: any }>(`/v1/marketplace/products/${id}`);
@@ -2011,6 +2079,8 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
       relayMeetStageId?: string;
       /** A long trip: by matatu relay (default when offered) or one rider all the way. */
       deliveryMode?: "rider" | "relay";
+      promoCode?: string;
+      salesChannel?: "customer_app" | "dedicated_storefront";
     }) {
       return request<{ ok: boolean; orders: OrderRow[]; order: OrderRow }>("/v1/marketplace/checkout", {
         method: "POST",
@@ -2025,9 +2095,23 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
       relayLastMile?: "door" | "collect" | "meet";
       relayMeetStageId?: string;
       deliveryMode?: "rider" | "relay";
+      promoCode?: string;
+      salesChannel?: "customer_app" | "dedicated_storefront";
     }) {
       return request<{
         itemsTotal: number;
+        rawItemsTotal?: number;
+        discountAmount?: number;
+        appliedDiscount?: {
+          id: string;
+          storeId: string;
+          code: string;
+          title: string;
+          kind: "percent" | "fixed" | "free_delivery" | "bogo";
+          discountAmount: number;
+          freeDelivery: boolean;
+        } | null;
+        loyaltyCashbackUgx?: number;
         deliveryFee: number;
         total: number;
         /** How this quote delivers; when a relay is offered the customer chooses (relay by default). */
@@ -2187,6 +2271,305 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
       return request<{ ok: boolean }>("/v1/merchants/me/store/live/end", {
         method: "POST",
       });
+    },
+    async upgradeMerchantStoreTier(input: { tier: "pro_store" | "pro_live" | "elite"; billingCycle?: "monthly" | "yearly" }) {
+      return request<{ ok: boolean; tier: string; expiresAt: string; amountPaid: number; store: any }>("/v1/merchants/me/store/tier", {
+        method: "POST",
+        body: JSON.stringify(input),
+      });
+    },
+    async getMerchantCollections() {
+      return request<{ collections: StoreCollection[] }>("/v1/merchants/me/collections");
+    },
+    async createMerchantCollection(input: {
+      title: string;
+      description?: string;
+      kind?: "manual" | "smart";
+      rule_field?: "category" | "price_lte" | "price_gte" | "badge" | "in_stock" | null;
+      rule_value?: string | null;
+      pinned?: boolean;
+    }) {
+      return request<{ ok: boolean; id: string }>("/v1/merchants/me/collections", {
+        method: "POST",
+        body: JSON.stringify(input),
+      });
+    },
+    async deleteMerchantCollection(id: string) {
+      return request<{ ok: boolean }>(`/v1/merchants/me/collections/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      });
+    },
+    async getMerchantDiscounts() {
+      return request<{ discounts: StoreDiscount[] }>("/v1/merchants/me/discounts");
+    },
+    async createMerchantDiscount(input: {
+      code: string;
+      title: string;
+      kind: "percent" | "fixed" | "free_delivery" | "bogo";
+      value?: number;
+      min_order_amount?: number;
+      max_uses?: number | null;
+      is_automatic?: boolean;
+    }) {
+      return request<{ ok: boolean; id: string }>("/v1/merchants/me/discounts", {
+        method: "POST",
+        body: JSON.stringify(input),
+      });
+    },
+    async deleteMerchantDiscount(id: string) {
+      return request<{ ok: boolean }>(`/v1/merchants/me/discounts/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      });
+    },
+    async getMerchantOutletInventory() {
+      return request<{ outlets: Array<{ id: string; name: string; code: string; address: string | null; status: string }>; inventory: StoreOutletInventoryRow[] }>("/v1/merchants/me/outlet-inventory");
+    },
+    async updateMerchantOutletInventory(input: {
+      productId: string;
+      outletId: string;
+      quantity: number;
+      lowStockThreshold?: number;
+    }) {
+      return request<{ ok: boolean; totalQuantity: number }>("/v1/merchants/me/outlet-inventory", {
+        method: "PUT",
+        body: JSON.stringify(input),
+      });
+    },
+    async getMerchantDraftOrders() {
+      return request<{ draftOrders: StoreDraftOrder[] }>("/v1/merchants/me/draft-orders");
+    },
+    async createMerchantDraftOrder(input: {
+      customer_name: string;
+      customer_phone?: string;
+      customer_company?: string;
+      items: StoreDraftOrderItem[];
+      discount_amount?: number;
+      payment_terms?: "immediate" | "net_7" | "net_14" | "net_30";
+      notes?: string;
+    }) {
+      return request<{ ok: boolean; id: string; total: number }>("/v1/merchants/me/draft-orders", {
+        method: "POST",
+        body: JSON.stringify(input),
+      });
+    },
+    async getMerchantEliteAnalytics() {
+      return request<{ analytics: StoreEliteAnalytics }>("/v1/merchants/me/elite-analytics");
+    },
+    async getMerchantPosSales() {
+      return request<{ sales: StorePosSale[] }>("/v1/merchants/me/pos-sales");
+    },
+    async createMerchantPosSale(input: {
+      outlet_id?: string | null;
+      customer_phone?: string;
+      customer_name?: string;
+      items: StorePosSaleItem[];
+      discount_amount?: number;
+      redeem_loyalty_ugx?: number;
+      payment_method: "peebee_code" | "momo" | "cash";
+    }) {
+      return request<{
+        ok: boolean;
+        saleId: string;
+        receiptCode: string;
+        total: number;
+        loyaltyRedeemedUgx: number;
+        loyaltyEarnedUgx: number;
+        loyaltyBalanceAfterUgx: number;
+      }>("/v1/merchants/me/pos-sales", {
+        method: "POST",
+        body: JSON.stringify(input),
+      });
+    },
+    async getMerchantStockTransfers() {
+      return request<{ transfers: StoreStockTransfer[] }>("/v1/merchants/me/stock-transfers");
+    },
+    async createMerchantStockTransfer(input: {
+      productId: string;
+      fromOutletId: string;
+      toOutletId: string;
+      quantity: number;
+      note?: string;
+    }) {
+      return request<{
+        ok: boolean;
+        transferId: string;
+        fromQuantityAfter: number;
+        toQuantityAfter: number;
+      }>("/v1/merchants/me/stock-transfers", {
+        method: "POST",
+        body: JSON.stringify(input),
+      });
+    },
+    async getMerchantCrmCustomers() {
+      return request<{
+        customers: StoreCustomerLoyalty[];
+        summary: {
+          totalCustomers: number;
+          vipCount: number;
+          repeatCount: number;
+          b2bCount: number;
+          totalLoyaltyBalanceUgx: number;
+        };
+      }>("/v1/merchants/me/crm-customers");
+    },
+    async getMerchantSuppliers() {
+      return request<{ suppliers: StoreSupplier[] }>("/v1/merchants/me/suppliers");
+    },
+    async createMerchantSupplier(input: {
+      name: string;
+      contact_person?: string;
+      phone?: string;
+      email?: string;
+      address?: string;
+    }) {
+      return request<{ ok: boolean; id: string }>("/v1/merchants/me/suppliers", {
+        method: "POST",
+        body: JSON.stringify(input),
+      });
+    },
+    async getMerchantPurchaseOrders() {
+      return request<{ purchaseOrders: StorePurchaseOrder[] }>("/v1/merchants/me/purchase-orders");
+    },
+    async createMerchantPurchaseOrder(input: {
+      supplier_id?: string | null;
+      outlet_id?: string | null;
+      items: StorePurchaseOrderItem[];
+      notes?: string;
+    }) {
+      return request<{ ok: boolean; id: string; poNumber: string; totalCost: number }>("/v1/merchants/me/purchase-orders", {
+        method: "POST",
+        body: JSON.stringify(input),
+      });
+    },
+    async receiveMerchantPurchaseOrder(id: string, outlet_id?: string | null) {
+      return request<{ ok: boolean; poId: string; status: "received"; itemsReceivedCount: number }>(
+        `/v1/merchants/me/purchase-orders/${encodeURIComponent(id)}/receive`,
+        {
+          method: "POST",
+          body: JSON.stringify({ outlet_id }),
+        }
+      );
+    },
+    async getMerchantBundles() {
+      return request<{ bundles: StoreBundle[] }>("/v1/merchants/me/bundles");
+    },
+    async createMerchantBundle(input: {
+      title: string;
+      description?: string;
+      price: number;
+      compare_at_price?: number;
+      items: StoreBundleItem[];
+    }) {
+      return request<{ ok: boolean; id: string }>("/v1/merchants/me/bundles", {
+        method: "POST",
+        body: JSON.stringify(input),
+      });
+    },
+    async deleteMerchantBundle(id: string) {
+      return request<{ ok: boolean }>(`/v1/merchants/me/bundles/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      });
+    },
+    async getMerchantWinbackCampaigns() {
+      return request<{
+        campaigns: StoreWinbackCampaign[];
+        inactiveCustomers: StoreCustomerLoyalty[];
+      }>("/v1/merchants/me/winback-campaigns");
+    },
+    async sendMerchantWinbackCampaign(input: {
+      customer_phone: string;
+      customer_name?: string;
+      discount_code?: string;
+      channel?: "whatsapp" | "sms" | "push";
+      message: string;
+    }) {
+      return request<{ ok: boolean; campaignId: string; whatsappUrl: string }>("/v1/merchants/me/winback-campaigns", {
+        method: "POST",
+        body: JSON.stringify(input),
+      });
+    },
+    async getMerchantStorefrontSections() {
+      return request<{ sections: StorefrontSection[] }>("/v1/merchants/me/storefront-sections");
+    },
+    async updateMerchantStorefrontSections(sections: StorefrontSection[]) {
+      return request<{ ok: boolean; sections: StorefrontSection[] }>("/v1/merchants/me/storefront-sections", {
+        method: "PUT",
+        body: JSON.stringify({ sections }),
+      });
+    },
+    async getMerchantSmsLogs() {
+      return request<{ logs: StoreSmsLog[] }>("/v1/merchants/me/sms-logs");
+    },
+    async sendMerchantSms(input: {
+      recipient_phone: string;
+      recipient_name?: string;
+      message_type: "pos_receipt" | "order_confirmation" | "dispatch_alert" | "abandoned_cart";
+      body: string;
+    }) {
+      return request<{ ok: boolean; logId: string; status: "delivered" | "simulated" | "failed"; costUgx: number; whatsappShareUrl?: string }>("/v1/merchants/me/send-sms", {
+        method: "POST",
+        body: JSON.stringify(input),
+      });
+    },
+    // Tier 3: Dynamic Digital Products Management
+    async getMerchantDigitalProducts() {
+      return request<{ products: StoreDigitalProduct[] }>("/v1/merchants/me/digital-products");
+    },
+    async createMerchantDigitalProduct(input: Partial<StoreDigitalProduct>) {
+      return request<{ ok: boolean; product: StoreDigitalProduct }>("/v1/merchants/me/digital-products", {
+        method: "POST",
+        body: JSON.stringify(input),
+      });
+    },
+    async deleteMerchantDigitalProduct(id: string) {
+      return request<{ ok: boolean }>(`/v1/merchants/me/digital-products/${id}`, {
+        method: "DELETE",
+      });
+    },
+    async getMerchantDigitalFulfillments() {
+      return request<{ fulfillments: StoreDigitalFulfillment[] }>("/v1/merchants/me/digital-fulfillments");
+    },
+    async revokeMerchantDigitalFulfillment(id: string) {
+      return request<{ ok: boolean }>(`/v1/merchants/me/digital-fulfillments/${id}/revoke`, {
+        method: "POST",
+      });
+    },
+
+    // Tier 3: Robust LMS & Course Management (synced with Peebee Learn)
+    async getMerchantLmsCourses() {
+      return request<{ courses: StoreLmsCourse[] }>("/v1/merchants/me/lms/courses");
+    },
+    async createMerchantLmsCourse(input: Partial<StoreLmsCourse>) {
+      return request<{ ok: boolean; course: StoreLmsCourse }>("/v1/merchants/me/lms/courses", {
+        method: "POST",
+        body: JSON.stringify(input),
+      });
+    },
+    async syncMerchantLmsFromLearn() {
+      return request<{ ok: boolean; importedCount: number; courses: StoreLmsCourse[] }>("/v1/merchants/me/lms/sync-from-learn", {
+        method: "POST",
+      });
+    },
+    async getMerchantLmsEnrollments() {
+      return request<{ enrollments: StoreLmsEnrollment[] }>("/v1/merchants/me/lms/enrollments");
+    },
+    async enrollMerchantLmsStudent(input: {
+      courseId: string;
+      studentName: string;
+      studentPhone: string;
+      studentEmail?: string;
+      sendSmsNotice?: boolean;
+    }) {
+      return request<{ ok: boolean; enrollment: StoreLmsEnrollment; learnPortalUrl: string }>("/v1/merchants/me/lms/enrollments", {
+        method: "POST",
+        body: JSON.stringify(input),
+      });
+    },
+    async getStoreDigitalProducts(storeId: string) {
+      return request<{ digitalProducts: StoreDigitalProduct[]; courses: StoreLmsCourse[] }>(`/v1/marketplace/stores/${storeId}/digital-products`);
+    },
+    async getDigitalFulfillment(accessToken: string) {
+      return request<{ ok: boolean; fulfillment: StoreDigitalFulfillment; downloadUrl?: string }>(`/v1/marketplace/digital-fulfillments/${accessToken}`);
     },
 
     // Peebee Car — customer
@@ -3097,3 +3480,12 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
 }
 
 export type ApiClient = ReturnType<typeof createApiClient>;
+
+/** One dish row from GET /v1/food/nearby-items. */
+export interface FoodNearbyItem {
+  id: string; restaurantId: string; restaurantName: string; businessType: string;
+  name: string; description: string | null; price: number; from: boolean;
+  photoKey: string | null; updatedAt: string | null; isFeatured: boolean;
+  prepTimeMinutes: number | null; badge: string | null; categoryName: string | null;
+  distanceKm: number | null; isDemo: boolean;
+}

@@ -1,6 +1,6 @@
 "use client";
 
-import type { TaxipressConfig } from "@peebee/shared";
+import { TAXIPRESS_DEFAULT_LUGGAGE_PRICES, type TaxipressConfig } from "@peebee/shared";
 import { useEffect, useState } from "react";
 import { api } from "./api";
 
@@ -18,7 +18,7 @@ function load(): Promise<TaxipressConfig> {
       cached = { at: Date.now(), value: cfg };
       return cfg;
     })
-    // Offline or not signed in: show nothing rather than a broken card.
+    // Offline or not signed in: show nothing rather than a broken card (not cached, so the next screen retries).
     .catch(() => NONE)
     .finally(() => { inflight = null; });
   return inflight;
@@ -33,4 +33,19 @@ export function useTaxipress(): TaxipressConfig {
     return () => { live = false; };
   }, []);
   return value;
+}
+
+/**
+ * Step 3 options: on with Fly Express defaults unless staff explicitly switched one off.
+ * A missing or failed config never hides them.
+ */
+export function taxipressOptions(cfg: TaxipressConfig) {
+  const prices = { ...TAXIPRESS_DEFAULT_LUGGAGE_PRICES, ...(cfg.luggagePrices ?? {}) };
+  return {
+    luggage: cfg.luggageEnabled !== false,
+    prices,
+    assistance: cfg.assistanceEnabled !== false,
+    language: cfg.languageEnabled !== false,
+    forOthers: cfg.bookForOthersEnabled !== false,
+  };
 }

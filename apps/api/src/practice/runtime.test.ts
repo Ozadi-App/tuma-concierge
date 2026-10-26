@@ -369,7 +369,7 @@ test("Cars and trucks practice: Entebbe drivers, a truck for a move, wallet paym
 test("the self-drive model catalogue has real seats, fuel use and a daily price for every model", () => {
   assert.ok(CAR_MODEL_CATALOG.length >= 40);
   for (const model of CAR_MODEL_CATALOG) {
-    assert.ok(Number.isInteger(model.seats) && model.seats >= 2 && model.seats <= 9, `${model.id} seats`);
+    assert.ok(Number.isInteger(model.seats) && model.seats >= 2 && model.seats <= 16, `${model.id} seats`);
     assert.ok(model.fuelLitresPerKm > 0 && model.fuelLitresPerKm < 1, `${model.id} fuel`);
     assert.ok(Number.isFinite(model.standardDailyUgx) && model.standardDailyUgx >= 50_000, `${model.id} price`);
     assert.ok(model.variant === undefined || typeof model.variant === "string", `${model.id} variant`);

@@ -275,7 +275,7 @@ export default function VideoAdsSettingsPage() {
           {!migrationApplied && (
             <div className="flex items-center gap-3 rounded-2xl bg-amber-50 p-4 text-sm text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
               <AlertCircle className="h-5 w-5 shrink-0" />
-              <p>The database update for video and ads has not been applied yet (0128_video_and_ads.sql). Settings can be saved, but nothing works until it is.</p>
+              <p>The database update for video and ads has not been applied yet (0134_video_and_ads.sql). Settings can be saved, but nothing works until it is.</p>
             </div>
           )}
           <form onSubmit={handleSave} className="space-y-6">

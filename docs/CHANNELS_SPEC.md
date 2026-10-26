@@ -178,7 +178,7 @@ Channel page (header, tabs: Posts / About / Causes, Follow, Subscribe). Studio (
 
 ## 14. Data model (planned)
 
-New tables, each added by an additive hand-applied migration with a fallback until applied: `channels`, `channel_follows`, `channel_tiers`, `channel_subscriptions`, `posts`, `post_media`, `post_access_grants`, `post_reactions`, `post_comments`, `post_reports`, `causes`, `cause_updates`, `donations`, `reward_rates`, `reward_points`, `creator_kyc`, `creator_payout_accounts`, `creator_balances`. Already added (migration 0128): `video_credentials`, `video_assets`, `ad_campaigns`, `ad_creatives`, `ad_events`.
+New tables, each added by an additive hand-applied migration with a fallback until applied: `channels`, `channel_follows`, `channel_tiers`, `channel_subscriptions`, `posts`, `post_media`, `post_access_grants`, `post_reactions`, `post_comments`, `post_reports`, `causes`, `cause_updates`, `donations`, `reward_rates`, `reward_points`, `creator_kyc`, `creator_payout_accounts`, `creator_balances`. Already added (migration 0134): `video_credentials`, `video_assets`, `ad_campaigns`, `ad_creatives`, `ad_events`.
 
 ## 15. Admin app (planned)
 

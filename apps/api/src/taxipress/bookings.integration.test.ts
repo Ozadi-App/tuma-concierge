@@ -201,8 +201,9 @@ test("taxipress: passengers book seats", async (t) => {
       assert.equal((await call("d1", "taxipress/driver/boarding", {})).status, 200);
       assert.equal((await call("d1", "taxipress/driver/walk-up", { delta: 3 })).status, 200);
       assert.equal(await code(await call("d1", "taxipress/driver/on-road", {})), "not_full");
-      assert.equal((await book("a", van1.id, 3, "app")).status, 201);
-      assert.equal((await call("d1", "taxipress/driver/on-road", {})).status, 200, "seats booked in the app fill the taxi");
+      assert.equal(await code(await book("a", van1.id, 3, "app")), "boarding_now", "the taxi Boarding Now is never bookable");
+      assert.equal((await call("d1", "taxipress/driver/walk-up", { delta: 3 })).status, 200);
+      assert.equal((await call("d1", "taxipress/driver/on-road", {})).status, 200, "walk-ups fill the taxi");
       assert.equal(await code(await book("a", van1.id, 1, "app")), "not_available");
     });
 

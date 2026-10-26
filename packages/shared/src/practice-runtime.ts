@@ -11,7 +11,7 @@ import {
   PRACTICE_ENTEBBE, PRACTICE_FOOD_RESTAURANTS as DEMO_FOOD_RESTAURANTS, PRACTICE_PRODUCTS as DEMO_MARKETPLACE_PRODUCTS,
   PRACTICE_SPOTLIGHT as DEMO_MARKETPLACE_SPOTLIGHT, PRACTICE_STORES as DEMO_MARKETPLACE_STORES, practiceFoodRestaurant as demoFoodRestaurant, practiceRider,
 } from "./practice-entebbe.js";
-import { CAR_MODEL_CATALOG } from "./car-model-catalog.js";
+import { CAR_MODEL_CATALOG, isVipRate } from "./car-model-catalog.js";
 import { EDUCATION_STREAMS } from "./education/types.js";
 import { handleStudioSandbox } from "./education/studio-sandbox.js";
 import {
@@ -80,14 +80,14 @@ const PRACTICE_SPECIAL_RIDERS = [
   { id: "practice-car-driver-amb-1", name: "Dr. Moses Opio", make: "Toyota", model: "HiAce Ambulance", size: "large", tier: "comfort", plate: "UBA 999A" },
 ] as const;
 const PRACTICE_CAR_RIDERS = [
-  { id: "practice-car-driver-01", name: "Daniel Kato", make: "Toyota", model: "Corolla", size: "normal", tier: "convenient", plate: "UBH 421K" },
-  { id: "practice-car-driver-02", name: "Sarah Namusoke", make: "Honda", model: "Civic", size: "normal", tier: "comfort", plate: "UBJ 305P" },
-  { id: "practice-car-driver-03", name: "Peter Okello", make: "Toyota", model: "Noah", size: "large", tier: "convenient", plate: "UAZ 778M" },
-  { id: "practice-car-driver-04", name: "Amina Nankya", make: "Toyota", model: "Voxy", size: "large", tier: "comfort", plate: "UBF 112T" },
-  { id: "practice-car-driver-05", name: "Mark Ssemanda", make: "Nissan", model: "Sylphy", size: "normal", tier: "convenient", plate: "UBK 690C" },
-  { id: "practice-car-driver-06", name: "Joyce Akello", make: "Mazda", model: "Axela", size: "normal", tier: "comfort", plate: "UBG 254R" },
-  { id: "practice-car-driver-07", name: "Isaac Mugisha", make: "Nissan", model: "Serena", size: "large", tier: "convenient", plate: "UBL 843D" },
-  { id: "practice-car-driver-08", name: "Ruth Atim", make: "Toyota", model: "Noah", size: "large", tier: "comfort", plate: "UBE 377N" },
+  { id: "practice-car-driver-01", name: "Daniel Kato", make: "Toyota", model: "Wish (2013 Model)", size: "normal", tier: "convenient", plate: "UBM 314A", isVip: false, image: "/vehicles/toyota-wish-2013.svg", townDailyUgx: 120000, upcountryDailyUgx: 180000 },
+  { id: "practice-car-driver-02", name: "Sarah Namusoke", make: "Range Rover", model: "Velar (2018 Model)", size: "normal", tier: "comfort", plate: "UBV 001V", isVip: true, image: "/vehicles/range-rover-velar-2018.svg", townDailyUgx: 1000000, upcountryDailyUgx: 1500000 },
+  { id: "practice-car-driver-03", name: "Peter Okello", make: "Toyota", model: "Land Cruiser TX Kaweesi", size: "large", tier: "convenient", plate: "UBA 777K", isVip: false, image: "/vehicles/toyota-land-cruiser-tx-kaweesi.svg", townDailyUgx: 450000, upcountryDailyUgx: 500000 },
+  { id: "practice-car-driver-04", name: "Amina Nankya", make: "Toyota", model: "Voxy (2014 Model)", size: "large", tier: "comfort", plate: "UBF 112T", isVip: true, image: "/vehicles/toyota-noah-2013.svg", townDailyUgx: 550000, upcountryDailyUgx: 650000 },
+  { id: "practice-car-driver-05", name: "Mark Ssemanda", make: "Toyota", model: "Prado (Ronaldo 2008)", size: "normal", tier: "convenient", plate: "UBK 404R", isVip: false, image: "/vehicles/toyota-prado-ronaldo-2008.svg", townDailyUgx: 300000, upcountryDailyUgx: 350000 },
+  { id: "practice-car-driver-06", name: "Joyce Akello", make: "Porsche", model: "Panamera (2013 Model)", size: "normal", tier: "comfort", plate: "UBP 911P", isVip: true, image: "/vehicles/porsche-panamera-2013.svg", townDailyUgx: 1200000, upcountryDailyUgx: 1500000 },
+  { id: "practice-car-driver-07", name: "Isaac Mugisha", make: "Mercedes-Benz", model: "Station Wagon (2024)", size: "large", tier: "convenient", plate: "UBW 024M", isVip: true, image: "/vehicles/mercedes-benz-station-wagon-2024.svg", townDailyUgx: 1700000, upcountryDailyUgx: 2500000 },
+  { id: "practice-car-driver-08", name: "Ruth Atim", make: "Toyota", model: "Noah (2013 Model)", size: "large", tier: "comfort", plate: "UBP 520B", isVip: true, image: "/vehicles/toyota-noah-2013.svg", townDailyUgx: 500000, upcountryDailyUgx: 600000 },
 ] as const;
 /** Entebbe truck and van drivers for Move / Cargo bookings, one per cargo type. */
 const PRACTICE_CARGO_RIDERS = [
@@ -229,7 +229,7 @@ function practiceRideshareTrips(query: URLSearchParams) {
       const id = `practice-rideshare-near-${day}-${locationKey}-${index}-${hour}`;
       const trip = practiceRideshareTrip(id, label);
       if (!trip) return [];
-      return [{ id, driverName: trip.driver.name, vehicle: `${trip.driver.make} ${trip.driver.model}`, originLabel: trip.from[0], destLabel: trip.to[0], departAt: trip.departure.toISOString(), seatsLeft: 3, seatPrice: trip.price }];
+      return [{ id, driverName: trip.driver.name, vehicle: `${trip.driver.make} ${trip.driver.model}`, originLabel: trip.from[0], destLabel: trip.to[0], departAt: trip.departure.toISOString(), seatsLeft: 3, seatPrice: trip.price, plate: (trip.driver as any).plate, isVip: (trip.driver as any).isVip ?? false, image: (trip.driver as any).image ?? null, townDailyUgx: (trip.driver as any).townDailyUgx ?? null, upcountryDailyUgx: (trip.driver as any).upcountryDailyUgx ?? null }];
     })));
   }
   const fromLat = Number(query.get("fromLat")), fromLng = Number(query.get("fromLng"));
@@ -241,16 +241,54 @@ function practiceRideshareTrips(query: URLSearchParams) {
   return days.flatMap((date) => PRACTICE_RIDESHARE_TRIPS.flatMap((route) => PRACTICE_RIDESHARE_HOURS.flatMap((hour) => {
     const trip = practiceRideshareTrip(`practice-rideshare-${date}-${route.route}-${hour}`);
     if (!trip || Math.abs(fromLat - route.from[1]) > .18 || Math.abs(fromLng - route.from[2]) > .18 || Math.abs(toLat - route.to[1]) > .18 || Math.abs(toLng - route.to[2]) > .18) return [];
-    return [{ id: trip.id, driverName: route.driver.name, vehicle: `${route.driver.make} ${route.driver.model}`, originLabel: route.from[0], destLabel: route.to[0], departAt: trip.departure.toISOString(), seatsLeft: 3, seatPrice: route.price }];
+    return [{ id: trip.id, driverName: route.driver.name, vehicle: `${route.driver.make} ${route.driver.model}`, originLabel: route.from[0], destLabel: route.to[0], departAt: trip.departure.toISOString(), seatsLeft: 3, seatPrice: route.price, plate: (route.driver as any).plate, isVip: (route.driver as any).isVip ?? false, image: (route.driver as any).image ?? null, townDailyUgx: (route.driver as any).townDailyUgx ?? null, upcountryDailyUgx: (route.driver as any).upcountryDailyUgx ?? null }];
   })));
 }
 const PRACTICE_RENTAL_PLATES = ["UBR 118A", "UBS 340B", "UBT 592C", "UBU 706D", "UBV 214E", "UBW 468F", "UBX 931G", "UAY 175H"] as const;
 const PRACTICE_RENTALS_KEY = "peebee_practice_selfdrive_rentals_v1";
 const PRACTICE_RENTAL_CARS = [
   ...CAR_MODEL_CATALOG.map((model, i) => {
-    const dailyPrice = model.standardDailyUgx;
-    const ownerName = ["Amina Car Rentals", "Entebbe Family Cars", "Lakeview Van Hire"][i % 3];
-    return { id: `practice-rent-${model.id}`, name: `${model.make} ${model.model}${model.variant ? ` ${model.variant}` : ""}`, category: model.seats >= 7 ? "Family MPV" : "Saloon", seats: model.seats, dailyPrice, deposit: Math.round(dailyPrice / 2), rent: dailyPrice, hourlyPrice: Math.round(dailyPrice * 1.2 / 24), halfDayPrice: Math.round(dailyPrice * .6), notes: `Owner · ${ownerName} · Entebbe pickup`, ownerName, hourlyEnabled: true, halfDayEnabled: true, fullDayEnabled: true, serviceClass: dailyPrice > 100_000 ? "comfort" as const : "convenient" as const, condition: dailyPrice > 100_000 ? "excellent" as const : "good" as const, fuelLitresPerKm: model.fuelLitresPerKm, luggageLitres: model.luggageLitres, luggageNote: model.luggageNote, standardDailyPrice: dailyPrice, features: dailyPrice > 100_000 ? ["Air conditioning", "Bluetooth"] : ["Air conditioning"], photos: [] as string[] };
+    const dailyPrice = model.townDailyUgx ?? model.standardDailyUgx;
+    const isVip = model.isVip ?? isVipRate(dailyPrice);
+    const townDailyUgx = model.townDailyUgx ?? dailyPrice;
+    const upcountryDailyUgx = model.upcountryDailyUgx ?? Math.round(dailyPrice * 1.3);
+    const plate = model.pseudoPlate ?? PRACTICE_RENTAL_PLATES[i % PRACTICE_RENTAL_PLATES.length];
+    const photos = model.image ? [model.image] : [];
+    const ownerName = isVip
+      ? ["Peebee VIP Fleet", "Entebbe VIP Chauffeurs", "Victoria Executive Cars"][i % 3]
+      : ["Amina Car Rentals", "Entebbe Family Cars", "Lakeview Van Hire"][i % 3];
+    return {
+      id: `practice-rent-${model.id}`,
+      name: `${model.make} ${model.model}${model.variant ? ` ${model.variant}` : ""}`,
+      category: model.bodyType ?? (model.seats >= 7 ? "Family MPV" : "Saloon"),
+      bodyType: model.bodyType,
+      seats: model.seats,
+      dailyPrice,
+      townDailyUgx,
+      upcountryDailyUgx,
+      deposit: Math.round(dailyPrice / 2),
+      rent: dailyPrice,
+      hourlyPrice: Math.round((dailyPrice * 1.2) / 24),
+      halfDayPrice: Math.round(dailyPrice * 0.6),
+      notes: `${isVip ? "VIP Fleet" : "Owner"} · ${ownerName} · Entebbe pickup`,
+      ownerName,
+      plate,
+      modelNumber: model.modelYear ? `${model.modelYear} Model` : undefined,
+      isVip,
+      hourlyEnabled: !isVip,
+      halfDayEnabled: !isVip,
+      fullDayEnabled: true,
+      serviceClass: isVip || dailyPrice > 100_000 ? ("comfort" as const) : ("convenient" as const),
+      condition: isVip || dailyPrice > 100_000 ? ("excellent" as const) : ("good" as const),
+      fuelLitresPerKm: model.fuelLitresPerKm,
+      luggageLitres: model.luggageLitres,
+      luggageNote: model.luggageNote,
+      standardDailyPrice: dailyPrice,
+      features: model.features ?? (dailyPrice > 100_000 ? ["Air conditioning", "Bluetooth"] : ["Air conditioning"]),
+      photos,
+      image: model.image,
+      driverPolicy: model.driverPolicy ?? "self_drive",
+    };
   }),
   { id: "practice-rent-hiace", name: "White Toyota Hiace 2019", category: "Minibus", seats: 14, dailyPrice: 200_000, deposit: 100_000, rent: 200_000, hourlyPrice: 10_000, halfDayPrice: 120_000, notes: "Owner · Lakeview Van Hire · Entebbe pickup", ownerName: "Lakeview Van Hire", hourlyEnabled: false, halfDayEnabled: false, fullDayEnabled: true },
   { id: "practice-rent-dmax", name: "White Isuzu D-Max Double Cab 2021", category: "Pickup", seats: 5, dailyPrice: 220_000, deposit: 110_000, rent: 220_000, hourlyPrice: 11_000, halfDayPrice: 132_000, notes: "Owner · Kitoro Movers · Entebbe pickup", ownerName: "Kitoro Movers", hourlyEnabled: false, halfDayEnabled: true, fullDayEnabled: true },

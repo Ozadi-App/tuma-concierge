@@ -116,7 +116,7 @@ export default function ChannelsSettingsPage() {
           {overview && !overview.migrationApplied && (
             <div className="flex items-center gap-3 rounded-2xl bg-amber-50 p-4 text-sm text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
               <AlertCircle className="h-5 w-5 shrink-0" />
-              <p>The database update for Channels has not been applied yet (0129_channels.sql, after 0128_video_and_ads.sql). Settings can be saved, but nothing works until it is.</p>
+              <p>The database update for Channels has not been applied yet (0135_channels.sql, after 0134_video_and_ads.sql). Settings can be saved, but nothing works until it is.</p>
             </div>
           )}
           {stats && (

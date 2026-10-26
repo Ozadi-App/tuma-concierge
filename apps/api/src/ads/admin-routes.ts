@@ -58,7 +58,7 @@ const campaignSchema = z.object({
 });
 
 adsAdminRoutes.post("/admin/ads/campaigns", ...gate, async (c) => {
-  if (!(await adsReady())) return c.json({ error: "not_ready", message: "Apply migration 0128_video_and_ads.sql first." }, 503);
+  if (!(await adsReady())) return c.json({ error: "not_ready", message: "Apply migration 0134_video_and_ads.sql first." }, 503);
   const body = campaignSchema.safeParse(await c.req.json().catch(() => ({})));
   if (!body.success) return c.json({ error: "invalid_body", issues: body.error.issues }, 400);
   const d = body.data;
