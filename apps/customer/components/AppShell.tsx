@@ -34,12 +34,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // screens take on full viewport view without top BrandHeader or bottom navigation bar.
   const isSingleStore = /^\/store\/[^/]+$/.test(pathname);
   const isSingleProduct = pathname.startsWith("/product/") || /^\/store\/[^/]+\/product\/[^/]+$/.test(pathname);
-  // Spotlight is an edge-to-edge immersive feed: no header, no bottom nav;
-  // the page overlays its own back affordance.
+  // Spotlight is an edge-to-edge immersive feed: no header. It keeps the bottom nav,
+  // which becomes Spotlight's own menu (Home button + five filters) floating over the feed.
   const isSpotlight = pathname === "/spotlight" || pathname.startsWith("/spotlight/");
-  const isImmersiveFullscreen = isSingleStore || isSingleProduct || isSpotlight;
+  const isImmersiveFullscreen = isSingleStore || isSingleProduct;
 
-  const showHeader = !isAuthPage && !isChatThread && !isFoodDetail && !isImmersiveFullscreen;
+  const showHeader = !isAuthPage && !isChatThread && !isFoodDetail && !isImmersiveFullscreen && !isSpotlight;
   const showNav = !isAuthPage && !isChatThread && !isFoodDetail && !navigationOverlayOpen && !isImmersiveFullscreen;
 
   return (
@@ -52,7 +52,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {!isAuthPage && <OfflineBanner />}
       {showHeader && <BrandHeader />}
       <main
-        className={`mx-auto max-w-lg ${showHeader ? "min-h-[calc(100dvh-4rem)]" : "min-h-dvh"} ${showNav ? "customer-nav-content-clearance" : ""}`}
+        className={`mx-auto max-w-lg ${showHeader ? "min-h-[calc(100dvh-4rem)]" : "min-h-dvh"} ${showNav && !isSpotlight ? "customer-nav-content-clearance" : ""}`}
       >
         {foodBusinessId ? <FoodBusinessTheme key={foodBusinessId} id={foodBusinessId}>{children}</FoodBusinessTheme> : children}
       </main>
