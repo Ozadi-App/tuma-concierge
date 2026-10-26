@@ -5,9 +5,9 @@
  * Ids start with `prac_`: nothing in the live database uses that prefix, and a practice token only ever reaches the
  * practice database, so the two can never be confused.
  */
-export type PracticeRole = "customer" | "rider" | "merchant" | "restaurant" | "pharmacy" | "gas" | "learner" | "educator" | "provider" | "worker";
+export type PracticeRole = "customer" | "rider" | "merchant" | "restaurant" | "pharmacy" | "gas" | "learner" | "educator" | "provider" | "worker" | "partner" | "sales" | "tv";
 
-export const PRACTICE_ROLES: readonly PracticeRole[] = ["customer", "rider", "merchant", "restaurant", "pharmacy", "gas", "learner", "educator", "provider", "worker"];
+export const PRACTICE_ROLES: readonly PracticeRole[] = ["customer", "rider", "merchant", "restaurant", "pharmacy", "gas", "learner", "educator", "provider", "worker", "partner", "sales", "tv"];
 
 export type PracticeCustomer = { id: string; name: string; phone: string; areaAddress: string; lat: number; lng: number; walletUgx: number };
 
@@ -36,6 +36,12 @@ export const PRACTICE_PERSONA_FOR_ROLE: Record<PracticeRole, string> = {
   /** Found when the session starts: the first demo Work provider and the first demo Hire worker. */
   provider: "",
   worker: "",
+  /** Owns cars, drives one, has a place in a shared-taxi line and runs a relay stop: the whole Partner app. */
+  partner: "prac_partner_1",
+  /** An approved sales agent with a book of businesses they signed up. */
+  sales: "prac_sales_1",
+  /** A TV is a paired screen, not a person: the living-room TV in the Learn demo, owned by the demo learner. */
+  tv: "prac_learn_1",
 };
 
 export const isPracticeId = (id: string): boolean => id.startsWith("prac_");

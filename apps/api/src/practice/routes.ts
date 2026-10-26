@@ -7,7 +7,7 @@ import { signToken } from "../auth/jwt.js";
 import { signGasToken } from "../gas/auth.js";
 import { db } from "../db/client.js";
 import { inPractice, runInPractice } from "../db/practice-context.js";
-import { clientIp } from "../lib/ratelimit.js";
+import { clientIp, consume } from "../lib/ratelimit.js";
 import { getPlatformEnvironment, getSetting } from "../lib/settings.js";
 import { placeStarterOrders, topUpDemoOrders } from "./demo-customers.js";
 import { moduleCoverage } from "./coverage.js";
@@ -26,15 +26,19 @@ practiceRoutes.get("/practice/world", requireAuth, async (c) => {
   return c.json({ available, seeded: available ? await isPracticeSeeded() : false });
 });
 
-const sessionSchema = z.object({ role: z.enum(["customer", "rider", "merchant", "restaurant", "pharmacy", "gas", "learner", "educator", "provider", "worker"]) });
+const sessionSchema = z.object({ role: z.enum(["customer", "rider", "merchant", "restaurant", "pharmacy", "gas", "learner", "educator", "provider", "worker", "partner", "sales", "tv"]) });
 
 /**
  * Starts a practice session: signs the caller in as the practice persona for their app. The caller's own account is not
  * used or changed. The first session lays the practice world down if an admin has not already.
  */
-practiceRoutes.post("/practice/session", requireAuth, async (c) => {
+practiceRoutes.post("/practice/session", async (c) => {
   if (inPractice()) return c.json({ error: "already_practising", message: "You are already in practice." }, 409);
   if (!(await modeOn())) return c.json({ error: "practice_off", message: "Practice is switched off right now." }, 403);
+  // Anyone may practise, signed in or not (a pharmacy or agent waiting for approval has no account to sign in with). The only
+  // thing handed out is a demo persona's session, which can reach nothing but the practice world.
+  const quota = await consume(`practice-session:${clientIp(c)}`, 240, 60 * 60);
+  if (!quota.allowed) return c.json({ error: "too_many_requests", message: "Too many practice sessions from here. Try again later." }, 429);
   const parsed = sessionSchema.safeParse(await c.req.json().catch(() => ({})));
   if (!parsed.success) return c.json({ error: "invalid_body", issues: parsed.error.issues }, 400);
   let personaId = PRACTICE_PERSONA_FOR_ROLE[parsed.data.role];
@@ -49,6 +53,7 @@ practiceRoutes.post("/practice/session", requireAuth, async (c) => {
     });
   }
   if (parsed.data.role === "gas") return gasSession(c, personaId);
+  if (parsed.data.role === "tv") return tvSession(c, personaId);
   const persona = await runInPractice(async () => {
     if (!(await isPracticeSeeded())) await seedPracticeWorld();
     // Demo customers keep ordering, so there is always something to take, prepare or sell.
@@ -75,6 +80,21 @@ async function gasSession(c: Context, attendantId: string) {
   if (!attendant) return c.json({ error: "practice_not_ready", message: "The practice world is missing its pump attendant." }, 503);
   const token = await signGasToken({ kind: "attendant", id: attendantId, outletId: String(attendant.outlet_id), practice: true });
   return c.json({ token, role: "gas", attendant: { id: attendantId, code: attendant.attendant_code, name: attendant.full_name, phone: attendant.phone, pump_lane: attendant.pump_lane ?? "", on_duty: attendant.status === "on_duty", outletId: attendant.outlet_id } });
+}
+
+/** A practice TV is the demo living-room screen, already paired to the demo learner. Starting practice re-keys it and hands the new secret to the TV. */
+async function tvSession(c: Context, ownerId: string) {
+  const owner = await runInPractice(async () => {
+    if (!(await isPracticeSeeded())) await seedPracticeWorld();
+    return (await db.execute({ sql: "SELECT id, name FROM users WHERE id = ?", args: [ownerId] })).rows[0];
+  });
+  if (!owner) return c.json({ error: "practice_not_ready", message: "The practice world is missing its demo learner." }, 503);
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  const secret = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+  const hash = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(secret))), (b) => b.toString(16).padStart(2, "0")).join("");
+  const keyed = await db.execute({ sql: "UPDATE tv_devices SET secret_hash = ?, status = 'paired', pair_code = NULL WHERE id = 'prac_tv_1' AND owner_id = ?", args: [hash, ownerId] });
+  if (!keyed.rowsAffected) return c.json({ error: "practice_not_ready", message: "The practice world is missing its demo TV." }, 503);
+  return c.json({ token: secret, role: "tv", user: { id: ownerId, name: owner.name, role: "learner", phone: null } });
 }
 
 const adminGuard = [requireAuth, requireRole("admin"), requirePermission("settings.manage")] as const;

@@ -18,7 +18,7 @@ export type PracticeSessionResult = {
 export type PracticeSessionApplier = (result: PracticeSessionResult) => Record<string, string | null>;
 
 type Config = { api: { startPracticeSession(role: ServerRole): Promise<PracticeSessionResult> }; apply: PracticeSessionApplier };
-export type ServerRole = "customer" | "rider" | "merchant" | "restaurant" | "pharmacy" | "gas" | "learner" | "educator" | "provider" | "worker";
+export type ServerRole = "customer" | "rider" | "merchant" | "restaurant" | "pharmacy" | "gas" | "learner" | "educator" | "provider" | "worker" | "partner" | "sales" | "tv";
 
 const SERVER_PRACTICE_KEY = "peebee_practice_server";
 let config: Config | null = null;
@@ -75,4 +75,24 @@ export function endServerPractice(): boolean {
     store.removeItem(PRACTICE_MODE_STORAGE_KEY);
   }
   return true;
+}
+
+/**
+ * Starts practice for an app that has no built-in sample (Partner, Pharmacy, Work, Sales, TV): it only works on the shared
+ * world. Returns the path to open, or throws when practice is off or the shared world can't be reached.
+ */
+export async function launchServerPractice(role: ServerRole): Promise<string> {
+  const store = storage();
+  if (!config || !store) throw new Error("Practice isn't available in this app yet.");
+  if (isServerPractice()) return "/";
+  const result = await config.api.startPracticeSession(role);
+  const values = config.apply(result);
+  const backup: Record<string, string | null> = {};
+  for (const key of Object.keys(values)) backup[key] = store.getItem(key);
+  store.setItem(SERVER_PRACTICE_KEY, JSON.stringify({ role, backup }));
+  store.setItem(PRACTICE_MODE_STORAGE_KEY, "1");
+  for (const [key, value] of Object.entries(values)) {
+    if (value == null) store.removeItem(key); else store.setItem(key, value);
+  }
+  return "/";
 }

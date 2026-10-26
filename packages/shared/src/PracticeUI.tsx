@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { endServerPractice, launchServerPractice, type ServerRole } from "./practice-server.js";
 import { isPracticeMode } from "./practice-runtime.js";
 
 /** The one Peebee practice blue (matches the "Start practice" button). Practice is blue. */
@@ -149,4 +150,43 @@ export function PracticePromptDialog({ id, title, body, icon, primaryLabel, onPr
     </>,
     document.body,
   );
+}
+
+/**
+ * The "Practise" card for apps whose practice runs on the shared world only (Partner, Pharmacy, Work, Sales, TV). It shows
+ * while the admin has practice on and the person isn't already practising, signed in or not.
+ */
+export function ServerPracticeCard({ role, api, title = "Practice mode", body, buttonLabel = "Start practice" }: {
+  role: ServerRole;
+  api: { getSettings(): Promise<{ settings: { practiceModeEnabled: boolean } }> };
+  title?: string;
+  body: string;
+  buttonLabel?: string;
+}) {
+  const [available, setAvailable] = useState<boolean | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => { api.getSettings().then(({ settings }) => setAvailable(settings.practiceModeEnabled)).catch(() => setAvailable(false)); }, [api]);
+  if (available == null || isPracticeMode()) return null;
+  async function start() {
+    setBusy(true); setError(null);
+    try { window.location.assign(await launchServerPractice(role)); } catch (err) { setError(err instanceof Error ? err.message : "Practice couldn't start."); setBusy(false); }
+  }
+  return (
+    <section data-practice-card={role} style={{ border: `2px solid ${PRACTICE_BLUE}`, borderRadius: 16, padding: 16, display: "grid", gap: 10 }}>
+      <div>
+        <h2 style={{ fontWeight: 700, margin: 0 }}>{title}</h2>
+        <p style={{ margin: "4px 0 0", fontSize: 13, opacity: 0.75 }}>{body}</p>
+      </div>
+      <button type="button" onClick={start} disabled={!available || busy} style={{ minHeight: 44, borderRadius: 999, border: 0, background: PRACTICE_BLUE, color: "#fff", fontWeight: 700, fontSize: 14, opacity: !available || busy ? 0.5 : 1 }}>
+        {busy ? "Opening…" : available ? buttonLabel : "Practice is off right now"}
+      </button>
+      {error ? <p role="alert" style={{ margin: 0, fontSize: 12, color: "#b91c1c" }}>{error}</p> : null}
+    </section>
+  );
+}
+
+/** The blue practice frame for those apps. Its X puts the person's own session back and goes to `exitPath`. */
+export function ServerPracticeFrame({ exitPath = "/login" }: { exitPath?: string }) {
+  return <PracticeModeFrame onExit={() => { endServerPractice(); window.location.replace(exitPath); }} />;
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { Qr } from "./JoinCard";
+import { DemoScreen } from "./DemoScreen";
 import { TrialPicker } from "./TrialPicker";
 
 const CUSTOMER_URL = (process.env.NEXT_PUBLIC_CUSTOMER_URL ?? "https://peebee.online").replace(/\/$/, "");
@@ -36,6 +37,9 @@ export function Pairing({ code, linkUrl }: { code: string | null; linkUrl: strin
       </div>
       <div className="w-full max-w-[84rem]">
         <TrialPicker />
+      </div>
+      <div className="w-full max-w-[84rem]">
+        <DemoScreen />
       </div>
     </main>
   );

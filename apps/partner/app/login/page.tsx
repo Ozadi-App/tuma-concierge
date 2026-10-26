@@ -4,7 +4,8 @@ import { AuthJourney } from "@peebee/shared/auth";
 
 import { useState } from "react";
 import { GoogleSignInButton } from "../../components/GoogleSignInButton";
-import { errorMessage } from "../../lib/api";
+import { api, errorMessage } from "../../lib/api";
+import { ServerPracticeCard } from "@peebee/shared/practice-ui";
 import { useAuth } from "../../lib/auth-context";
 
 export default function LoginPage() {
@@ -42,5 +43,6 @@ export default function LoginPage() {
     </form>
 
     <p className="text-center text-xs text-ink-500">One account can be an owner, a driver, or both.</p>
+    {mode === "login" && <ServerPracticeCard role="partner" api={api} body="Try Peebee Car as a demo partner: cars to own, rides to drive, a place in the taxi line and a relay stop. Nothing here is real." buttonLabel="Practise as a car partner" />}
   </AuthJourney>;
 }

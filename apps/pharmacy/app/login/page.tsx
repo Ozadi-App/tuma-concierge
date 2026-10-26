@@ -12,6 +12,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useAuth } from "../../lib/auth-context";
+import { ServerPracticeCard } from "@peebee/shared/practice-ui";
+import { api } from "../../lib/api";
 
 export default function PharmacyLoginPage() {
   const router = useRouter();
@@ -98,6 +100,8 @@ export default function PharmacyLoginPage() {
           <p>Supervising Pharmacist Credentials verified via National Drug Authority (NDA)</p>
         </div>
       </div>
+
+      <ServerPracticeCard role="pharmacy" api={api} body="Try the pharmacy console as a demo pharmacist: prescriptions to quote, orders to prepare and stock to manage. Nothing here is real." buttonLabel="Practise as a pharmacist" />
     </div>
   );
 }

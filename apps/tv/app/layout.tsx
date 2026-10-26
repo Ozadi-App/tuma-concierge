@@ -3,6 +3,7 @@ import "./globals.css";
 import { Shell } from "../components/Shell";
 import { ServiceWorkerRegister } from "../components/ServiceWorkerRegister";
 import { DataRefresh } from "@peebee/shared/data-refresh";
+import { ServerPracticeFrame } from "@peebee/shared/practice-ui";
 
 export const metadata: Metadata = {
   title: "Peebee TV",
@@ -15,7 +16,7 @@ export const viewport: Viewport = { themeColor: "#000000", width: "device-width"
 export default function RootLayout({ children }: { children: any }) {
   return (
     <html lang="en" data-theme="dark">
-      <body><ServiceWorkerRegister />
+      <body><ServiceWorkerRegister /><ServerPracticeFrame exitPath="/" />
         <Shell><DataRefresh>{children}</DataRefresh></Shell>
       </body>
     </html>
