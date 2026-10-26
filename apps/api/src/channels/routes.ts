@@ -49,6 +49,7 @@ export function publicConfig(cfg: ChannelsConfig) {
       maxCommentChars: cfg.publishing.maxCommentChars,
     },
     moderationMode: cfg.moderation.mode,
+    live: { enabled: cfg.live.enabled, commentsEnabled: cfg.live.commentsEnabled, helperEnabled: cfg.live.helperEnabled, maxMinutes: cfg.live.maxMinutes },
     monetization: {
       enabled: cfg.monetization.enabled,
       memberships: cfg.monetization.memberships,

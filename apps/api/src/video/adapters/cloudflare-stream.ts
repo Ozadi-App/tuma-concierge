@@ -98,6 +98,27 @@ export const cloudflareStreamAdapter: VideoAdapter = {
     return { hlsUrl: swap(asset.hlsUrl), posterUrl: swap(asset.posterUrl), expiresAt: new Date(exp * 1000).toISOString() };
   },
 
+  // Going live from a phone: Cloudflare gives each live input a WebRTC (WHIP) address the browser sends to, and
+  // the same id plays back as HLS. Recording is off, so nothing is kept (and billed for storage) after the stream.
+  supportsLive: true,
+
+  async createLiveInput(creds, input) {
+    need(P, creds, "accountId", "apiToken");
+    const res = await providerJson<CfEnvelope<{ uid: string; webRTC?: { url?: string } }>>(P, api(creds, "/live_inputs"), {
+      method: "POST",
+      headers: auth(creds),
+      body: JSON.stringify({ meta: { name: (input.title || "Peebee live").slice(0, 120) }, recording: { mode: "off" } }),
+    });
+    const r = res?.result;
+    if (!r?.uid || !r.webRTC?.url) throw new VideoProviderError(P, "unavailable", "The video provider could not start a live stream. Check that live streaming is turned on for the account.");
+    return { externalId: r.uid, publishUrl: r.webRTC.url, hlsUrl: `https://videodelivery.net/${r.uid}/manifest/video.m3u8`, posterUrl: `https://videodelivery.net/${r.uid}/thumbnails/thumbnail.jpg` };
+  },
+
+  async endLiveInput(creds, externalId) {
+    need(P, creds, "accountId", "apiToken");
+    await providerJson(P, api(creds, `/live_inputs/${encodeURIComponent(externalId)}`), { method: "DELETE", headers: auth(creds), allow404: true });
+  },
+
   async deleteAsset(creds, externalId) {
     need(P, creds, "accountId", "apiToken");
     await providerJson(P, api(creds, `/${encodeURIComponent(externalId)}`), { method: "DELETE", headers: auth(creds), allow404: true });
