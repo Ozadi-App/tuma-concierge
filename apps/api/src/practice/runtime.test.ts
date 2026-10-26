@@ -481,6 +481,7 @@ test("sandbox and practice are two switches over the same demo data: sandbox has
     const path = new URL(String(input), "https://customer.test").pathname;
     realCalls.push(path);
     if (path === "/v1/settings") return new Response(JSON.stringify({ settings: { platformEnvironment } }), { headers: { "Content-Type": "application/json" } });
+    if (path === "/v1/taxipress/config") return new Response(JSON.stringify({ real: true, path, luggageEnabled: false, languages: [{ code: "rw", name: "Kinyarwanda" }] }), { headers: { "Content-Type": "application/json" } });
     return new Response(JSON.stringify({ real: true, path }), { headers: { "Content-Type": "application/json" } });
   }) as typeof fetch;
   const fetcher = createPracticeFetch("customer", real);
@@ -503,9 +504,12 @@ test("sandbox and practice are two switches over the same demo data: sandbox has
   const config = await get("/v1/taxipress/config");
   assert.equal(config.enabled, true);
   assert.equal(config.routes[0].fromName, "Entebbe Stage");
+  assert.equal(config.luggageEnabled, false, "what staff switch off in admin is off in the demo too");
+  assert.deepEqual(config.languages, [{ code: "rw", name: "Kinyarwanda" }], "and so are the languages they chose");
   assert.equal((await get("/v1/wallet")).balance, 2_000_000, "the practice wallet is there");
   assert.ok((await get("/v1/marketplace/stores?lat=0.0612&lng=32.4637")).stores.some((s: { id: string }) => s.id.startsWith("pe_")), "the Entebbe shops");
-  assert.deepEqual(realCalls, [], "none of that touched the server");
+  // The only thing read from the server is the options staff control for Taxipress (luggage, languages, cash and limits).
+  assert.deepEqual(realCalls, ["/v1/taxipress/config"], "nothing else touched the server");
   assert.equal(isPracticeMode(), false, "this is sandbox, so no practice bar: the bar follows isPracticeMode only");
 
   // Signing in, the settings and the practice status stay real, so a developer still uses their own account.
