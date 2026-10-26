@@ -714,6 +714,13 @@ const DEFAULTS = {
   taxipress_language_enabled: "1",
   taxipress_book_for_others_enabled: "1",
   taxipress_show_stops: "1",
+  // Standalone Services Platform
+  services_platform_enabled: "1",
+  services_platform_commission_percent: "5",
+  services_platform_lead_time_hours: "2",
+  services_platform_max_services: "50",
+  services_platform_disallow_aggregator_intangibles: "1",
+  services_platform_virtual_enabled: "1",
 } as const;
 
 export type SettingKey = keyof typeof DEFAULTS;
