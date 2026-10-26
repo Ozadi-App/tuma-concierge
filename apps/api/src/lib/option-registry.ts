@@ -14,7 +14,7 @@
  * Pure data and helpers only (no database access) so it can be imported anywhere, including settings defaults.
  */
 
-export type OptionModule = "storefront" | "portal" | "digital" | "lms" | "services" | "platform";
+export type OptionModule = "storefront" | "portal" | "plans" | "digital" | "lms" | "services" | "platform";
 
 export type OptionRequirement = {
   tables?: string[];
@@ -184,6 +184,30 @@ export const OPTION_SETTINGS: SettingDef[] = [
       opt("immediately", "Straight away", true, { hint: "The store is public before any verification." }),
     ],
   },
+
+  // ------------------------------------------------------------------ Merchant plans
+  {
+    key: "merchant_plan_legacy_access", module: "plans", kind: "enum", label: "Stores that existed before plans",
+    description: "Stores registered before plans were enforced. Prices and the free launch period are set under Marketplace settings.",
+    default: "keep_access",
+    options: [
+      opt("keep_access", "Keep their current access", true, { recommended: true, requires: { columns: [["stores", "plan_legacy"]], migration: "0142_merchant_plans.sql" }, hint: "Nobody loses features. New stores follow the plan they chose." }),
+      opt("follow_plan", "Follow the plan they chose, like new stores", true, { requires: { columns: [["stores", "plan_legacy"]], migration: "0142_merchant_plans.sql" } }),
+    ],
+  },
+  {
+    key: "merchant_plan_payment", module: "plans", kind: "enum", label: "How a merchant pays for Pro or Elite",
+    description: "Where the money for an upgrade comes from.",
+    default: "wallet",
+    options: [
+      opt("wallet", "Their Peebee wallet", true, { recommended: true }),
+      opt("mobile_money", "Mobile money prompt", false, { hint: "Needs the payment-in-progress flow for plans; not built yet." }),
+    ],
+  },
+  { key: "merchant_plan_free_max_products", module: "plans", kind: "int", label: "Products on the Merchant plan", description: "Upper limit for a store with no active Pro or Elite plan.", default: 20, min: 0, max: 5000 },
+  { key: "merchant_plan_free_max_collections", module: "plans", kind: "int", label: "Collections on the Merchant plan", description: "Upper limit for a store with no active Pro or Elite plan.", default: 1, min: 0, max: 1000 },
+  { key: "merchant_plan_free_max_discounts", module: "plans", kind: "int", label: "Offers on the Merchant plan", description: "Upper limit for a store with no active Pro or Elite plan.", default: 1, min: 0, max: 1000 },
+  { key: "merchant_plan_warn_days", module: "plans", kind: "int", label: "Warn before a plan ends", description: "Days before expiry that the merchant app starts showing a renewal reminder.", default: 7, min: 0, max: 60, unit: "days" },
 
   // ------------------------------------------------------------------ Digital products
   {
