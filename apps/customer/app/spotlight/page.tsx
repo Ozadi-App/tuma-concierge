@@ -1,7 +1,7 @@
 "use client";
 
 import type { PostView, PublisherType } from "@peebee/shared";
-import { Plus, Volume2, VolumeX } from "lucide-react";
+import { Plus, Radio, Volume2, VolumeX } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, errorMessage } from "../../lib/api";
@@ -186,6 +186,11 @@ export default function SpotlightPage() {
 
   const topControls = (
     <div className="flex items-center justify-end gap-3 px-4">
+      {channelsOn && channelsConfig?.live?.enabled && (
+        <Link href="/live" aria-label="Go live" className="flex h-10 shrink-0 items-center gap-1.5 rounded-full bg-red-600 px-3.5 text-xs font-extrabold text-white transition active:scale-95">
+          <Radio className="h-4 w-4" aria-hidden /> Live
+        </Link>
+      )}
       {channelsOn && (
         <Link href="/studio/new" aria-label="Create a post" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gold text-ink-gold transition active:scale-95">
           <Plus className="h-5 w-5" aria-hidden />

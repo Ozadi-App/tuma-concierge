@@ -46,6 +46,14 @@ export async function getLive(id: string): Promise<LiveRow | null> {
   return (res.rows[0] as unknown as LiveRow | undefined) ?? null;
 }
 
+/** A viewer only knows the post they are watching, so a stream can be found by its own id or by its post's id. */
+export async function resolveLive(ref: string): Promise<LiveRow | null> {
+  const direct = await getLive(ref);
+  if (direct) return direct;
+  const res = await db.execute({ sql: "SELECT * FROM live_sessions WHERE post_id = ? AND status != 'ready' ORDER BY created_at DESC LIMIT 1", args: [ref] });
+  return (res.rows[0] as unknown as LiveRow | undefined) ?? null;
+}
+
 export type LiveRole = "host" | "helper" | "viewer";
 
 async function roleOf(session: LiveRow, userId: string | null): Promise<LiveRole> {
@@ -185,10 +193,11 @@ const commentView = (c: CommentRow, withHidden: boolean) => ({
  * What a poll returns: the stream's status, the viewer count, and comments since `after`. The host and helpers
  * also see hidden comments; the host's check-in keeps the stream open.
  */
-export async function liveState(id: string, viewer: { userId: string | null; key: string }, opts: { after: number; beat: boolean }) {
+export async function liveState(ref: string, viewer: { userId: string | null; key: string }, opts: { after: number; beat: boolean }) {
   const cfg = await requireChannels();
-  const s = await getLive(id);
+  const s = await resolveLive(ref);
   if (!s || s.status === "ready") throw new ChannelsError("not_found", "That stream was not found.", 404);
+  const id = s.id;
   const role = await roleOf(s, viewer.userId);
   const staff = role !== "viewer";
   const now = Date.now();
@@ -211,6 +220,7 @@ export async function liveState(id: string, viewer: { userId: string | null; key
   } else {
     comments = ((await db.execute({ sql: `SELECT * FROM live_comments WHERE session_id = ? ${hiddenClause} ORDER BY id DESC LIMIT 50`, args: [id] })).rows as unknown as CommentRow[]).reverse();
   }
+  const hiddenIds = ((await db.execute({ sql: "SELECT id FROM live_comments WHERE session_id = ? AND hidden = 1 ORDER BY id DESC LIMIT 100", args: [id] })).rows as unknown as Array<{ id: number }>).map((r) => Number(r.id));
   const pinnedRow = (await db.execute({ sql: "SELECT * FROM live_comments WHERE session_id = ? AND pinned = 1 AND hidden = 0 ORDER BY id DESC LIMIT 1", args: [id] })).rows[0] as unknown as CommentRow | undefined;
 
   return {
@@ -222,16 +232,18 @@ export async function liveState(id: string, viewer: { userId: string | null; key
     maxCommentChars: cfg.live.maxCommentChars,
     comments: comments.map((c) => commentView(c, staff)),
     cursor: comments.length ? comments[comments.length - 1]!.id : opts.after,
+    hiddenIds,
     pinned: pinnedRow ? commentView(pinnedRow, false) : null,
     canModerate: staff,
   };
 }
 
-export async function postLiveComment(user: { sub: string; name: string }, id: string, rawBody: string) {
+export async function postLiveComment(user: { sub: string; name: string }, ref: string, rawBody: string) {
   const cfg = await requireLive();
   if (!cfg.live.commentsEnabled) throw new ChannelsError("comments_off", "Comments are off for live streams.", 403);
-  const s = await getLive(id);
+  const s = await resolveLive(ref);
   if (!s || s.status !== "live") throw new ChannelsError("live_ended", "This stream is not live.", 409);
+  const id = s.id;
   const body = rawBody.replace(/\s+/g, " ").trim();
   if (!body) throw new ChannelsError("empty_comment", "Write something first.", 400);
   if (body.length > cfg.live.maxCommentChars) throw new ChannelsError("comment_too_long", `Comments can be up to ${cfg.live.maxCommentChars} characters.`, 400);

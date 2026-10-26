@@ -1,6 +1,6 @@
 "use client";
 
-import { BadgeCheck, HandCoins, PlusCircle } from "lucide-react";
+import { BadgeCheck, HandCoins, PlusCircle, Radio } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { OpenChannel } from "../../components/studio/OpenChannel";
@@ -47,6 +47,7 @@ export default function StudioHome() {
       {counts.review > 0 && <Notice tone="info">{counts.review} post{counts.review === 1 ? " is" : "s are"} waiting for review before showing.</Notice>}
 
       <Link href="/studio/new" className="flex items-center gap-3 rounded-[28px] bg-gold p-5 text-ink-gold shadow-sm"><PlusCircle className="h-7 w-7" aria-hidden /><span><span className="block text-base font-extrabold">Create a post</span><span className="text-xs opacity-80">Video, pictures, a carousel, text or a poll</span></span></Link>
+      {config?.live?.enabled && <Link href="/live" className="flex items-center gap-3 rounded-[28px] bg-red-600 p-5 text-white shadow-sm"><Radio className="h-7 w-7" aria-hidden /><span><span className="block text-base font-extrabold">Go live</span><span className="text-xs opacity-85">Use your phone camera. Followers watch and comment.</span></span></Link>}
 
       {earnings && (config?.monetization?.enabled || config?.rewards?.enabled) && (
         <Link href="/studio/money" className="flex items-center gap-3 rounded-[28px] bg-[rgb(var(--surface-card))] p-5 shadow-sm">
