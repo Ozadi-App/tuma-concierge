@@ -32,6 +32,7 @@ export default function BroadcastPage() {
   const [title, setTitle] = useState("");
   const [when, setWhen] = useState<"soon" | "pick">("soon");
   const [at, setAt] = useState("");
+  const [loops, setLoops] = useState(1);
   const [identityKey, setIdentityKey] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -48,6 +49,8 @@ export default function BroadcastPage() {
   const identity = usable.find((i) => `${i.type}:${i.id}` === identityKey) ?? usable[0] ?? null;
   const byId = useMemo(() => new Map((videos ?? []).map((v) => [v.id, v])), [videos]);
   const total = picked.reduce((n, id) => n + (byId.get(id)?.durationSeconds ?? 0), 0);
+  const maxLoops = Math.max(1, live?.maxLoops ?? 1);
+  const repeat = Math.min(loops, maxLoops);
 
   const loadAirings = useCallback(() => { api.myAirings().then((r) => setAirings(r.airings)).catch(() => setAirings([])); }, []);
   useEffect(() => {
@@ -79,10 +82,11 @@ export default function BroadcastPage() {
     setError(null);
     setDone(null);
     try {
-      const r = await api.createBroadcast({ publisherType: identity.type, publisherId: identity.id, title: title.trim(), assetIds: picked, startsAt: when === "pick" ? new Date(at).toISOString() : null });
+      const r = await api.createBroadcast({ publisherType: identity.type, publisherId: identity.id, title: title.trim(), assetIds: picked, startsAt: when === "pick" ? new Date(at).toISOString() : null, loops: repeat });
       setDone(`“${r.airing.title}” is set for ${whenText(r.airing.startsAt)}.`);
       setPicked([]);
       setTitle("");
+      setLoops(1);
       loadAirings();
     } catch (err) {
       setError(errorMessage(err));
@@ -150,7 +154,18 @@ export default function BroadcastPage() {
             )}
           </Card>
 
-          <Card title="3. When does it go on air?">
+          {maxLoops > 1 && (
+            <Card title="3. Repeat it?" hint={`Play the whole broadcast again, up to ${maxLoops} times in all.`}>
+              <div className="flex items-center gap-3">
+                <button type="button" aria-label="Fewer times" disabled={repeat <= 1} onClick={() => setLoops(repeat - 1)} className="flex h-10 w-10 items-center justify-center rounded-full bg-[rgb(var(--surface-muted))] text-lg font-extrabold text-ink disabled:opacity-30">−</button>
+                <span className="min-w-[8rem] text-center text-sm font-bold text-ink" aria-live="polite">{repeat === 1 ? "Plays once" : `Plays ${repeat} times`}</span>
+                <button type="button" aria-label="More times" disabled={repeat >= maxLoops} onClick={() => setLoops(repeat + 1)} className="flex h-10 w-10 items-center justify-center rounded-full bg-[rgb(var(--surface-muted))] text-lg font-extrabold text-ink disabled:opacity-30">+</button>
+              </div>
+              {total > 0 && repeat > 1 && <p className="text-xs text-ink-500">On air for {mmss(total * repeat)} in all.</p>}
+            </Card>
+          )}
+
+          <Card title={maxLoops > 1 ? "4. When does it go on air?" : "3. When does it go on air?"}>
             <div className="flex gap-2">
               <Chip active={when === "soon"} onClick={() => setWhen("soon")}>{live.minLeadMinutes ? `In ${live.minLeadMinutes} minutes` : "Right away"}</Chip>
               <Chip active={when === "pick"} onClick={() => setWhen("pick")}>Pick a time</Chip>
@@ -175,7 +190,7 @@ export default function BroadcastPage() {
                 <div className="flex items-start gap-2">
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-bold text-ink">{a.title}</p>
-                    <p className="text-xs text-ink-500">{KIND_LABEL[a.kind]} · {whenText(a.startsAt)} · {mmss(a.durationSeconds)}</p>
+                    <p className="text-xs text-ink-500">{KIND_LABEL[a.kind]} · {whenText(a.startsAt)} · {mmss(a.durationSeconds)}{a.loops > 1 ? ` × ${a.loops}` : ""}</p>
                     <p className="text-xs text-ink-500">
                       {a.status === "scheduled" ? `Starts in ${countdownText(left)} · ${a.reminders} reminder${a.reminders === 1 ? "" : "s"}` : a.status === "on_air" ? "On air now" : `Ended · most watching ${a.peakViewers}`}
                     </p>

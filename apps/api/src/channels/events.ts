@@ -25,7 +25,7 @@ type ProgramItem = { assetId: string; title: string; durationSeconds: number };
 
 type EventRow = Row & {
   id: string; post_id: string; host_id: string; publisher_type: string; publisher_id: string; title: string | null;
-  status: "ready" | "live" | "ended"; kind: EventKind; starts_at: string; max_ends_at: string; program_json: string;
+  status: "ready" | "live" | "ended"; kind: EventKind; starts_at: string; max_ends_at: string; program_json: string; loops?: number;
   started_at: string | null; ended_at: string | null; viewer_peak: number;
 };
 
@@ -49,11 +49,16 @@ function programOf(row: Pick<EventRow, "program_json">): ProgramItem[] {
 
 const totalSeconds = (items: ProgramItem[]) => items.reduce((n, i) => n + i.durationSeconds, 0);
 
-/** Which video is on, and how far into it, at a given moment. */
-export function positionAt(items: ProgramItem[], elapsedSeconds: number): { index: number; offsetSeconds: number } | null {
-  let t = elapsedSeconds;
+const loopsOf = (row: Pick<EventRow, "loops">) => Math.max(1, Number(row.loops ?? 1) || 1);
+
+/** Which video is on, how far into it, and which time round the programme is, at a given moment. */
+export function positionAt(items: ProgramItem[], elapsedSeconds: number, loops = 1): { index: number; offsetSeconds: number; loop: number } | null {
+  const pass = totalSeconds(items);
+  if (pass <= 0 || elapsedSeconds >= pass * loops) return null;
+  const loop = Math.floor(Math.max(0, elapsedSeconds) / pass);
+  let t = Math.max(0, elapsedSeconds) - loop * pass;
   for (let i = 0; i < items.length; i++) {
-    if (t < items[i]!.durationSeconds) return { index: i, offsetSeconds: Math.max(0, t) };
+    if (t < items[i]!.durationSeconds) return { index: i, offsetSeconds: t, loop: loop + 1 };
     t -= items[i]!.durationSeconds;
   }
   return null;
@@ -113,13 +118,13 @@ async function announceOnAir(row: EventRow) {
 // ------------------------------------------------------------------ viewing
 
 export type EventView = {
-  id: string; kind: EventKind; status: EventStatus; title: string | null; startsAt: string; endsAt: string; durationSeconds: number; items: number; reminders: number; remindMe: boolean;
+  id: string; kind: EventKind; status: EventStatus; title: string | null; startsAt: string; endsAt: string; durationSeconds: number; items: number; loops: number; reminders: number; remindMe: boolean;
 };
 
 function viewOf(row: EventRow, reminders: number, remindMe: boolean): EventView {
   return {
     id: row.id, kind: row.kind, status: statusOf(row), title: row.title ?? null, startsAt: new Date(toTime(row.starts_at)).toISOString(), endsAt: new Date(toTime(row.max_ends_at)).toISOString(),
-    durationSeconds: totalSeconds(programOf(row)), items: programOf(row).length, reminders, remindMe,
+    durationSeconds: totalSeconds(programOf(row)), items: programOf(row).length, loops: loopsOf(row), reminders, remindMe,
   };
 }
 
@@ -167,7 +172,8 @@ export async function eventPlay(viewerId: string | null, ref: string) {
   const now = Date.now();
   if (row.status === "ready") throw new ChannelsError("not_started", "It has not started yet.", 409, { startsAt: new Date(startsMs).toISOString(), serverNow: new Date(now).toISOString() });
   if (row.status === "ended") throw new ChannelsError("ended", "This airing has ended.", 410);
-  const pos = positionAt(items, (now - startsMs) / 1000);
+  const loops = loopsOf(row);
+  const pos = positionAt(items, (now - startsMs) / 1000, loops);
   if (!pos) throw new ChannelsError("ended", "This airing has ended.", 410);
   const item = items[pos.index]!;
   const asset = await getAsset(item.assetId);
@@ -182,8 +188,9 @@ export async function eventPlay(viewerId: string | null, ref: string) {
   }
   return {
     kind: row.kind, status: "on_air" as const, serverNow: new Date(now).toISOString(), startsAt: new Date(startsMs).toISOString(), endsAt: new Date(toTime(row.max_ends_at)).toISOString(),
-    item: { index: pos.index, count: items.length, title: item.title, durationSeconds: item.durationSeconds, offsetSeconds: pos.offsetSeconds, endsInSeconds: remaining },
-    upNext: items[pos.index + 1]?.title ?? null,
+    item: { index: pos.index, count: items.length, title: item.title, durationSeconds: item.durationSeconds, offsetSeconds: pos.offsetSeconds, endsInSeconds: remaining, loop: pos.loop, loops },
+    // The first video again, when this is the last one and the programme is going round once more.
+    upNext: items[pos.index + 1]?.title ?? (pos.loop < loops ? items[0]?.title ?? null : null),
     playback: sources,
   };
 }
@@ -232,20 +239,21 @@ async function readyAsset(userId: string, assetId: string): Promise<VideoAssetRo
   return a;
 }
 
-async function insertEvent(args: { kind: EventKind; user: { sub: string }; postId: string; publisherType: string; publisherId: string; title: string; items: ProgramItem[]; at: Date }) {
+async function insertEvent(args: { kind: EventKind; user: { sub: string }; postId: string; publisherType: string; publisherId: string; title: string; items: ProgramItem[]; at: Date; loops?: number }) {
   const id = newId("air");
-  const ends = new Date(args.at.getTime() + totalSeconds(args.items) * 1000 + 5_000);
+  const loops = args.loops ?? 1;
+  const ends = new Date(args.at.getTime() + totalSeconds(args.items) * loops * 1000 + 5_000);
   await db.execute({
-    sql: `INSERT INTO live_sessions (id, post_id, host_id, publisher_type, publisher_id, title, provider, status, kind, starts_at, program_json, max_ends_at, environment)
-          VALUES (?, ?, ?, ?, ?, ?, 'airing', 'ready', ?, ?, ?, ?, ?)`,
-    args: [id, args.postId, args.user.sub, args.publisherType, args.publisherId, args.title || null, args.kind, sqlTime(args.at), JSON.stringify(args.items), sqlTime(ends), await getPlatformEnvironment()],
+    sql: `INSERT INTO live_sessions (id, post_id, host_id, publisher_type, publisher_id, title, provider, status, kind, starts_at, program_json, loops, max_ends_at, environment)
+          VALUES (?, ?, ?, ?, ?, ?, 'airing', 'ready', ?, ?, ?, ?, ?, ?)`,
+    args: [id, args.postId, args.user.sub, args.publisherType, args.publisherId, args.title || null, args.kind, sqlTime(args.at), JSON.stringify(args.items), loops, sqlTime(ends), await getPlatformEnvironment()],
   });
   await db.execute({ sql: "UPDATE posts SET live_status = 'scheduled', updated_at = datetime('now') WHERE id = ?", args: [args.postId] });
   return (await findEvent(id))!;
 }
 
 /** A programme of the host's own ready videos, aired back to back from a start time. */
-export async function createBroadcast(user: { sub: string; role: string }, input: { publisherType: string; publisherId: string; title: string; assetIds: string[]; startsAt?: string | null }) {
+export async function createBroadcast(user: { sub: string; role: string }, input: { publisherType: string; publisherId: string; title: string; assetIds: string[]; startsAt?: string | null; loops?: number }) {
   const cfg = await requireEvents("broadcast");
   const identity = await checkPublisher(user, cfg, input.publisherType, input.publisherId);
   const title = input.title.trim().slice(0, 140);
@@ -260,12 +268,16 @@ export async function createBroadcast(user: { sub: string; role: string }, input
     items.push({ assetId: a.id, title: (a.title ?? "").trim() || `Video ${items.length + 1}`, durationSeconds: Math.round(Number(a.duration_seconds)) });
   }
   if (totalSeconds(items) > cfg.live.maxProgramMinutes * 60) throw new ChannelsError("too_long", `A broadcast can run up to ${cfg.live.maxProgramMinutes} minutes.`, 400);
+  const loops = Math.floor(Number(input.loops ?? 1));
+  if (!Number.isFinite(loops) || loops < 1) throw new ChannelsError("invalid_loops", "Choose how many times it plays, from 1.", 400);
+  if (loops > cfg.live.maxLoops) throw new ChannelsError("too_many_loops", cfg.live.maxLoops > 1 ? `A broadcast can play up to ${cfg.live.maxLoops} times.` : "Repeating is not available.", 400);
+  if (totalSeconds(items) * loops > cfg.live.maxAirtimeHours * 3600) throw new ChannelsError("too_long_on_air", `One airing can run for up to ${cfg.live.maxAirtimeHours} hours in all, counting every repeat.`, 400);
   const at = await checkWhen(cfg, input.startsAt);
 
   const post = await createPost(user, { publisherType: identity.type, publisherId: identity.id, type: "live", caption: title, publish: false, toSpotlight: cfg.live.showInSpotlight, toChannel: identity.type === "channel" }, { event: true });
   const first = await getAsset(items[0]!.assetId);
   await db.execute({ sql: "UPDATE posts SET status = 'published', published_at = datetime('now'), cover_url = ? WHERE id = ?", args: [first?.poster_url ?? null, post.id] });
-  return viewOf(await insertEvent({ kind: "broadcast", user, postId: post.id, publisherType: identity.type, publisherId: identity.id, title, items, at }), 0, false);
+  return viewOf(await insertEvent({ kind: "broadcast", user, postId: post.id, publisherType: identity.type, publisherId: identity.id, title, items, at, loops }), 0, false);
 }
 
 /** Turns a video post into a premiere: it goes public with a countdown, and plays for everyone together at the start time. */
@@ -308,7 +320,7 @@ export async function rescheduleEvent(user: { sub: string }, ref: string, starts
   if (!row || row.host_id !== user.sub) throw new ChannelsError("not_found", "That airing was not found.", 404);
   if (row.status !== "ready") throw new ChannelsError("already_started", "It has already started.", 409);
   const at = await checkWhen(cfg, startsAt);
-  const ends = new Date(at.getTime() + totalSeconds(programOf(row)) * 1000 + 5_000);
+  const ends = new Date(at.getTime() + totalSeconds(programOf(row)) * loopsOf(row) * 1000 + 5_000);
   await db.execute({ sql: "UPDATE live_sessions SET starts_at = ?, max_ends_at = ? WHERE id = ?", args: [sqlTime(at), sqlTime(ends), row.id] });
   return viewOf((await findEvent(row.id))!, 0, false);
 }

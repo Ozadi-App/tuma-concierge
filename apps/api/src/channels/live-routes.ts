@@ -104,7 +104,7 @@ liveRoutes.post("/live/:id/helper-code", requireAuth, async (c) => {
 
 const broadcastSchema = z.object({
   publisherType: z.string().max(20), publisherId: z.string().max(80), title: z.string().max(140),
-  assetIds: z.array(z.string().max(80)).max(100), startsAt: z.string().max(40).nullable().optional(),
+  assetIds: z.array(z.string().max(80)).max(100), startsAt: z.string().max(40).nullable().optional(), loops: z.number().int().min(1).max(1000).optional(),
 });
 
 liveRoutes.post("/airings/broadcast", requireAuth, async (c) => {

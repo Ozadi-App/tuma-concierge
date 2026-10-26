@@ -137,6 +137,8 @@ export type ChannelsConfig = {
     premieresEnabled: boolean;
     maxProgramItems: number;
     maxProgramMinutes: number;
+    maxLoops: number;
+    maxAirtimeHours: number;
     minLeadMinutes: number;
     maxLeadDays: number;
     maxUpcomingPerPublisher: number;
@@ -339,6 +341,8 @@ export const CHANNELS_FIELDS: ChannelsField[] = [
   B("live", "live.premieresEnabled", "Premieres", "A channel can premiere a video: a countdown, everyone watching it together the first time with live chat, then it stays up as a normal video.", false),
   N("live", "live.maxProgramItems", "Videos in one broadcast", "", 12, 1, 100),
   N("live", "live.maxProgramMinutes", "Longest broadcast", "Total running time of all its videos", 480, 5, 1440, "minutes"),
+  N("live", "live.maxLoops", "Most times a broadcast can repeat", "A host can choose to play their broadcast again, up to this many times in all. 1 turns repeating off.", 5, 1, 100),
+  N("live", "live.maxAirtimeHours", "Longest total airtime", "One airing, counting every repeat, can run this long at most", 24, 1, 168, "hours"),
   N("live", "live.minLeadMinutes", "Least notice before an airing", "A broadcast or premiere cannot start sooner than this. 0 allows starting straight away.", 2, 0, 1440, "minutes"),
   N("live", "live.maxLeadDays", "Furthest ahead an airing can be scheduled", "", 30, 1, 365, "days"),
   N("live", "live.maxUpcomingPerPublisher", "Upcoming airings per publisher", "Broadcasts and premieres waiting to start", 10, 1, 100),

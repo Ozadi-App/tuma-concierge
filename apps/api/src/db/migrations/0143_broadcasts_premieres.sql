@@ -7,6 +7,8 @@
 ALTER TABLE live_sessions ADD COLUMN kind TEXT NOT NULL DEFAULT 'camera';
 ALTER TABLE live_sessions ADD COLUMN starts_at TEXT;
 ALTER TABLE live_sessions ADD COLUMN program_json TEXT;
+-- How many times the whole programme plays (1 = once).
+ALTER TABLE live_sessions ADD COLUMN loops INTEGER NOT NULL DEFAULT 1;
 CREATE INDEX IF NOT EXISTS idx_live_sessions_kind ON live_sessions (kind, status, starts_at);
 
 -- People who asked to be reminded when an airing starts.

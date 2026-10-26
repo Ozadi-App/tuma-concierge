@@ -53,7 +53,7 @@ export function publicConfig(cfg: ChannelsConfig) {
     live: {
       enabled: cfg.live.enabled, commentsEnabled: cfg.live.commentsEnabled, helperEnabled: cfg.live.helperEnabled, maxMinutes: cfg.live.maxMinutes,
       broadcastsEnabled: cfg.live.broadcastsEnabled, premieresEnabled: cfg.live.premieresEnabled, minLeadMinutes: cfg.live.minLeadMinutes, maxLeadDays: cfg.live.maxLeadDays,
-      maxProgramItems: cfg.live.maxProgramItems, remindersEnabled: cfg.live.remindersEnabled,
+      maxProgramItems: cfg.live.maxProgramItems, maxLoops: cfg.live.maxLoops, remindersEnabled: cfg.live.remindersEnabled,
     },
     monetization: {
       enabled: cfg.monetization.enabled,

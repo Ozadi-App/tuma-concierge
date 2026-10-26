@@ -20,11 +20,11 @@ type W = Awaited<ReturnType<typeof world>>;
 
 /** Moves an airing's clock so that it started `secondsAgo` seconds ago. */
 async function startedAgo(w: W, ref: string, secondsAgo: number) {
-  const row = (await w.client.execute({ sql: "SELECT id, program_json FROM live_sessions WHERE id = ? OR post_id = ?", args: [ref, ref] })).rows[0]!;
+  const row = (await w.client.execute({ sql: "SELECT id, program_json, loops FROM live_sessions WHERE id = ? OR post_id = ?", args: [ref, ref] })).rows[0]!;
   const total = (JSON.parse(String(row.program_json)) as Array<{ durationSeconds: number }>).reduce((n, i) => n + i.durationSeconds, 0);
   const at = (ms: number) => new Date(ms).toISOString().slice(0, 19).replace("T", " ");
   const start = Date.now() - secondsAgo * 1000;
-  await w.client.execute({ sql: "UPDATE live_sessions SET starts_at = ?, max_ends_at = ? WHERE id = ?", args: [at(start), at(start + total * 1000 + 5000), row.id] });
+  await w.client.execute({ sql: "UPDATE live_sessions SET starts_at = ?, max_ends_at = ? WHERE id = ?", args: [at(start), at(start + total * Math.max(1, Number(row.loops ?? 1)) * 1000 + 5000), row.id] });
 }
 
 async function broadcast(w: W, body: Json = {}) {
@@ -201,4 +201,44 @@ test("airings: the cron puts them on air and ends them, and camera streams are u
   assert.equal(mine.json.live.id, cam.json.live.id, "the camera stream, not the airing");
   const air2 = (await w.client.execute({ sql: "SELECT status FROM live_sessions WHERE id = ?", args: [air3.id] })).rows[0]!;
   assert.equal(String(air2.status), "ready", "the scheduled airing was left alone");
+});
+
+test("broadcast: can repeat, up to what Admin allows", async () => {
+  const w = await world({ broadcastsEnabled: true, premieresEnabled: true, minLeadMinutes: 0, maxLoops: 3, maxAirtimeHours: 1 });
+  const later = new Date(Date.now() + 3_600_000).toISOString();
+  const send = (body: Json) => w.call("/airings/broadcast", { token: w.host, body: { publisherType: "channel", publisherId: w.channelId, title: "Rerun", assetIds: [w.videoA, w.videoB], startsAt: later, ...body } });
+  assert.equal((await send({ loops: 4 })).json.error, "too_many_loops", "Admin's limit holds");
+  assert.equal((await send({ loops: 0 })).status, 400);
+  const air = (await send({ loops: 3 })).json.airing as Json;
+  assert.equal(air.loops, 3);
+  assert.equal(air.durationSeconds, 150, "one pass is 150 seconds");
+  assert.equal(((await w.client.execute({ sql: "SELECT max_ends_at, starts_at FROM live_sessions WHERE id = ?", args: [air.id] })).rows.length), 1);
+
+  // 160 seconds in: the second time round, ten seconds into the first video again.
+  await startedAgo(w, air.id, 160);
+  const second = await w.call(`/airings/${air.id}/play`, { token: w.fan });
+  assert.equal(second.status, 200, JSON.stringify(second.json));
+  assert.equal(second.json.item.loop, 2);
+  assert.equal(second.json.item.loops, 3);
+  assert.equal(second.json.item.index, 0);
+  assert.ok(Math.abs(second.json.item.offsetSeconds - 10) < 2);
+  // The last video of a pass says the first is up next, until the final pass.
+  await startedAgo(w, air.id, 100);
+  assert.equal((await w.call(`/airings/${air.id}/play`, { token: w.fan })).json.upNext, "Video 1");
+  await startedAgo(w, air.id, 400);
+  const last = await w.call(`/airings/${air.id}/play`, { token: w.fan });
+  assert.equal(last.json.item.loop, 3);
+  assert.equal(last.json.upNext, null, "nothing follows the final pass");
+
+  // It ends only after the third pass (450 seconds), and leaves the feed.
+  await startedAgo(w, air.id, 460);
+  assert.equal((await w.call(`/airings/${air.id}/play`, { token: w.fan })).status, 410);
+
+  // The airtime rule counts every repeat.
+  const tight = await world({ broadcastsEnabled: true, minLeadMinutes: 0, maxLoops: 100, maxAirtimeHours: 1 });
+  const rr = await tight.call("/airings/broadcast", { token: tight.host, body: { publisherType: "channel", publisherId: tight.channelId, title: "Too long", assetIds: [tight.videoA, tight.videoB], startsAt: later, loops: 30 } });
+  assert.equal(rr.json.error, "too_long_on_air");
+  // Repeating off (max 1) refuses any repeat.
+  const off = await world({ broadcastsEnabled: true, minLeadMinutes: 0, maxLoops: 1 });
+  assert.equal((await off.call("/airings/broadcast", { token: off.host, body: { publisherType: "channel", publisherId: off.channelId, title: "Once", assetIds: [off.videoA], startsAt: later, loops: 2 } })).json.error, "too_many_loops");
 });

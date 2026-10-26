@@ -27,7 +27,7 @@ export type ChannelsPublicConfig = {
   moderationMode?: "after" | "before";
   live?: {
     enabled: boolean; commentsEnabled: boolean; helperEnabled: boolean; maxMinutes: number;
-    broadcastsEnabled?: boolean; premieresEnabled?: boolean; minLeadMinutes?: number; maxLeadDays?: number; maxProgramItems?: number; remindersEnabled?: boolean;
+    broadcastsEnabled?: boolean; premieresEnabled?: boolean; minLeadMinutes?: number; maxLeadDays?: number; maxProgramItems?: number; maxLoops?: number; remindersEnabled?: boolean;
   };
   monetization?: {
     enabled: boolean; memberships: boolean; payPerView: boolean; tips: boolean; gifts: boolean; giftOptions: string; maxTiers: number; minTierPriceUgx: number; maxTierPriceUgx: number;
@@ -124,11 +124,11 @@ export type LiveHostView = { id: string; postId: string; status: "ready" | "live
 /** A broadcast (videos aired back to back) or a premiere (a video's first showing). */
 export type AiringView = {
   id: string; kind: "broadcast" | "premiere"; status: "scheduled" | "on_air" | "ended"; title: string | null; startsAt: string; endsAt: string;
-  durationSeconds: number; items: number; reminders: number; remindMe: boolean;
+  durationSeconds: number; items: number; loops: number; reminders: number; remindMe: boolean;
 };
 export type AiringPlay = {
   kind: "broadcast" | "premiere"; status: "on_air"; serverNow: string; startsAt: string; endsAt: string;
-  item: { index: number; count: number; title: string; durationSeconds: number; offsetSeconds: number; endsInSeconds: number };
+  item: { index: number; count: number; title: string; durationSeconds: number; offsetSeconds: number; endsInSeconds: number; loop: number; loops: number };
   upNext: string | null;
   playback: { hlsUrl?: string; mp4Url?: string; posterUrl?: string; expiresAt?: string };
 };
@@ -151,7 +151,7 @@ export function channelsMethods(request: Request) {
   };
   return {
     // --- broadcasts and premieres
-    createBroadcast(input: { publisherType: string; publisherId: string; title: string; assetIds: string[]; startsAt?: string | null }) { return send<{ airing: AiringView }>("POST", "/v1/airings/broadcast", input); },
+    createBroadcast(input: { publisherType: string; publisherId: string; title: string; assetIds: string[]; startsAt?: string | null; loops?: number }) { return send<{ airing: AiringView }>("POST", "/v1/airings/broadcast", input); },
     createPremiere(input: { postId: string; startsAt?: string | null }) { return send<{ airing: AiringView }>("POST", "/v1/airings/premiere", input); },
     myAirings() { return request<{ airings: MyAiring[] }>("/v1/airings/mine"); },
     airingPlay(ref: string) { return request<AiringPlay>(`/v1/airings/${enc(ref)}/play`); },

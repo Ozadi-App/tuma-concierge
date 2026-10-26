@@ -93,6 +93,9 @@ export function AiringPlayer({ post, muted, fullscreen, onEnded }: { post: PostV
       {play && play.item.count > 1 && (
         <span className="absolute left-3 top-[4.6rem] max-w-[70%] truncate rounded-full bg-black/50 px-3 py-1 text-[11px] font-semibold text-white backdrop-blur-md">Now: {play.item.title}</span>
       )}
+      {play && play.item.loops > 1 && (
+        <span className="absolute right-3 top-[4.6rem] rounded-full bg-black/50 px-3 py-1 text-[11px] font-semibold text-white backdrop-blur-md">Replay {play.item.loop} of {play.item.loops}</span>
+      )}
       {play?.upNext && (
         <span className="absolute left-3 top-[6.6rem] max-w-[70%] truncate rounded-full bg-black/40 px-3 py-1 text-[10px] font-medium text-white/85">Up next: {play.upNext}</span>
       )}
