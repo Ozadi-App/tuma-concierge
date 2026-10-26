@@ -1,6 +1,7 @@
 import type { PublicReceipt } from "./receipt.js";
 import { applyModuleAvailability, rememberModuleAvailability, type ModuleSettingsUpdate, type ModuleSettings } from "./modules.js";
 import { isPracticeStorageOn } from "./practice.js";
+import { endServerPractice, isServerPractice, type PracticeSessionResult, type ServerRole } from "./practice-server.js";
 import type { TaxipressAdminQueueEntry, TaxipressAdminRoute, TaxipressBoardingResult, TaxipressBooking, TaxipressConfig, TaxipressDriverView, TaxipressLineEntry, TaxipressOutcome, TaxipressQueueView, TaxipressRelayRoute, TaxipressReport, TaxipressSettings, TaxipressTaxi } from "./taxipress.js";
 import type { BagTrip, RelayAdminOrder, RelayRouteStage, RelayMerchantOrder, RelayOpenLeg, RelayOperator, RelayOperatorParcels, RelayQuote, RelayRoute, RelaySettings, RelayStation, RelayStationParcels, RelayTrack } from "./relay.js";
 import type { AdminRole } from "./permissions.js";
@@ -348,7 +349,11 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized, 
 
   async function json<T>(res: Response): Promise<T> {
     if (!res.ok) {
-      if (res.status === 401 && getToken?.()) onUnauthorized?.();
+      // A practice session lasts a day. When it ends, the person goes back to their own session instead of being signed out.
+      if (res.status === 401 && isServerPractice() && typeof window !== "undefined") {
+        endServerPractice();
+        window.location.replace("/");
+      } else if (res.status === 401 && getToken?.()) onUnauthorized?.();
       const body = await res.json().catch(() => ({}));
       const code = (body as { error?: string }).error;
       const message = (body as { message?: string }).message ?? code ?? res.statusText;
@@ -1917,8 +1922,8 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized, 
       return request<{ available: boolean; seeded: boolean }>("/v1/practice/world");
     },
     /** Signs in as the demo persona for this app. The returned token makes every following request run as the sandbox. */
-    async startPracticeSession(role: "customer" | "rider" | "merchant" | "restaurant") {
-      return request<{ token: string; role: string; user: { id: string; name: string; role: string; phone: string | null } }>("/v1/practice/session", { method: "POST", body: JSON.stringify({ role }) });
+    async startPracticeSession(role: ServerRole) {
+      return request<PracticeSessionResult>("/v1/practice/session", { method: "POST", body: JSON.stringify({ role }) });
     },
     async adminPracticeWorld() {
       return request<PracticeWorldStatus>("/v1/admin/practice");

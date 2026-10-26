@@ -1,3 +1,4 @@
+import { endServerPractice, isServerPractice } from "./practice-server.js";
 import { practiceTalentRequest, resetPracticeTalent } from "./practice-talent.js";
 import { practiceTaxipressRequest, resetPracticeTaxipress } from "./practice-taxipress.js";
 import { practiceWalletView, practiceWalletBalance, practiceWalletSpend, practiceWalletRefund, resetPracticeWallet } from "./practice-wallet.js";
@@ -427,6 +428,7 @@ export function startPracticeMode(role: PracticeRole): string {
 
 export function exitPracticeMode(role: PracticeRole) {
   if (!canUseStorage()) return;
+  if (endServerPractice()) return;
   window.localStorage.removeItem(PRACTICE_MODE_STORAGE_KEY);
   window.localStorage.removeItem(stateKey(role));
   resetPracticeTalent();
@@ -1689,7 +1691,8 @@ function practiceEducationRequest(path: string, method: string, body: Record<str
  * browser-local sample state or rejected before leaving the device. */
 export function createPracticeFetch(role: PracticeRole, realFetch: typeof fetch = fetch): typeof fetch {
   return (async (input: RequestInfo | URL, init?: RequestInit) => {
-    if (!isPracticeMode()) return realFetch(input, init);
+    // Practising against the shared world: the server answers, nothing is simulated here.
+    if (!isPracticeMode() || isServerPractice()) return realFetch(input, init);
     const request = input instanceof Request ? input : null;
     const url = new URL(request?.url ?? String(input), typeof window !== "undefined" ? window.location.origin : "http://localhost");
     const method = (init?.method ?? request?.method ?? "GET").toUpperCase();

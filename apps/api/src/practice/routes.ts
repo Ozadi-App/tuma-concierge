@@ -65,7 +65,7 @@ practiceRoutes.post("/practice/session", requireAuth, async (c) => {
 async function gasSession(c: Context, attendantId: string) {
   const attendant = await runInPractice(async () => {
     if (!(await isPracticeSeeded())) await seedPracticeWorld();
-    const found = (await db.execute({ sql: "SELECT id, outlet_id, full_name FROM fuel_pump_attendants WHERE id = ?", args: [attendantId] })).rows[0];
+    const found = (await db.execute({ sql: "SELECT id, outlet_id, full_name, attendant_code, phone, pump_lane, status FROM fuel_pump_attendants WHERE id = ?", args: [attendantId] })).rows[0];
     if (found) {
       const open = await db.execute({ sql: "SELECT id FROM fuel_attendant_shifts WHERE attendant_id = ? AND status = 'open' AND date(opened_at) = date('now') LIMIT 1", args: [attendantId] });
       if (!open.rows[0]) await db.execute({ sql: "INSERT INTO fuel_attendant_shifts (id, attendant_id, outlet_id, status) VALUES (?, ?, ?, 'open')", args: [`prac_shift_${Date.now()}`, attendantId, found.outlet_id] });
@@ -74,7 +74,7 @@ async function gasSession(c: Context, attendantId: string) {
   });
   if (!attendant) return c.json({ error: "practice_not_ready", message: "The practice world is missing its pump attendant." }, 503);
   const token = await signGasToken({ kind: "attendant", id: attendantId, outletId: String(attendant.outlet_id), practice: true });
-  return c.json({ token, role: "gas", attendant: { id: attendantId, name: attendant.full_name, outletId: attendant.outlet_id } });
+  return c.json({ token, role: "gas", attendant: { id: attendantId, code: attendant.attendant_code, name: attendant.full_name, phone: attendant.phone, pump_lane: attendant.pump_lane ?? "", on_duty: attendant.status === "on_duty", outletId: attendant.outlet_id } });
 }
 
 const adminGuard = [requireAuth, requireRole("admin"), requirePermission("settings.manage")] as const;

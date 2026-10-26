@@ -1,6 +1,6 @@
 "use client";
 
-import { exitPracticeMode, isPracticeMode, startPracticeMode } from "@peebee/shared";
+import { exitPracticeMode, isPracticeMode, launchPractice } from "@peebee/shared";
 import { ChevronRight, FlaskConical, Laptop, LogOut, Moon, Sun } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -91,8 +91,7 @@ export default function AccountPage() {
             <Button
               variant="secondary"
               onClick={() => {
-                startPracticeMode("learner");
-                window.location.assign("/");
+                void launchPractice("learner").then((path) => window.location.assign(path));
               }}
             >
               Turn on sandbox

@@ -5,7 +5,7 @@ import {
   isPracticeJourneyComplete,
   isPracticeMode,
   practiceStartPath,
-  startPracticeMode,
+  launchPractice,
   type PracticeRole,
 } from "@peebee/shared";
 import { FlaskConical } from "lucide-react";
@@ -35,7 +35,7 @@ export function SandboxPracticeAuto({ role }: { role: PracticeRole }) {
     let live = true;
     api.getSettings().then(({ settings }) => {
       if (!live || isPracticeMode()) return;
-      if (settings.platformEnvironment === "sandbox" && settings.practiceModeEnabled && settings.practiceAutoInSandbox) window.location.replace(startPracticeMode(role));
+      if (settings.platformEnvironment === "sandbox" && settings.practiceModeEnabled && settings.practiceAutoInSandbox) void launchPractice(role).then((path) => window.location.replace(path));
     }).catch(() => undefined);
     return () => { live = false; };
   }, [role]);
@@ -52,7 +52,7 @@ export function PracticeModeCard({ role }: { role: PracticeRole }) {
     return <button type="button" onClick={exit} className="min-h-11 w-full rounded-full border border-[var(--border-faint)] px-4 text-sm font-bold text-ink">Exit practice</button>;
   }
   if (available == null) return null;
-  function start() { setSandboxOptOut(false); window.location.assign(startPracticeMode(role)); }
+  function start() { setSandboxOptOut(false); void launchPractice(role).then((path) => window.location.assign(path)); }
   return (
     <section data-practice-role={role} className="home-card space-y-3 border-2 border-sky-300 bg-sky-50/70 dark:border-sky-800 dark:bg-sky-950/30">
       <div className="flex items-start gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-sky-100 text-sky-700 dark:bg-sky-950/70 dark:text-sky-200"><FlaskConical className="h-5 w-5" strokeWidth={1.8} aria-hidden /></span><div><h2 className="text-sm font-bold text-ink">Practice Mode</h2><p className="mt-1 text-xs text-ink-500">Practise inside the real {ROLE_LABELS[role]} app with safe sample data.</p></div></div>
@@ -89,7 +89,7 @@ export function PracticeModePrompt({ role }: { role: PracticeRole }) {
     }).catch(() => undefined);
   }, [role]);
   if (!open) return null;
-  function start() { window.location.assign(startPracticeMode(role)); }
+  function start() { void launchPractice(role).then((path) => window.location.assign(path)); }
   async function neverRemind() { setBusy(true); await api.dismissPracticeReminder(role).catch(() => undefined); setOpen(false); setBusy(false); }
   return <PracticePromptDialog
     id={`practice-prompt-${role}`}
