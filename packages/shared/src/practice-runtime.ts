@@ -1,6 +1,6 @@
 import { endServerPractice, isServerPractice } from "./practice-server.js";
 import { practiceTalentRequest, resetPracticeTalent } from "./practice-talent.js";
-import { practiceTaxipressRequest, resetPracticeTaxipress } from "./practice-taxipress.js";
+import { practiceTaxipressRequest, rememberPracticeTaxipressOptions, resetPracticeTaxipress } from "./practice-taxipress.js";
 import { practiceWalletView, practiceWalletBalance, practiceWalletSpend, practiceWalletRefund, resetPracticeWallet } from "./practice-wallet.js";
 import { practiceWorkRequest, resetPracticeWork } from "./practice-work.js";
 import { PRACTICE_MODE_STORAGE_KEY, type PracticeRole } from "./practice.js";
@@ -1761,8 +1761,11 @@ async function overlayTaxipressSettings(sample: Response, real: () => Promise<Re
     const live = (await (await real()).json()) as Record<string, unknown>;
     const base = (await sample.clone().json()) as Record<string, unknown>;
     for (const key of TAXIPRESS_STAFF_SETTINGS) if (live[key] !== undefined) base[key] = live[key];
+    rememberPracticeTaxipressOptions(base);
     return jsonResponse(base);
   } catch {
+    // Offline or refused: the sample's own defaults apply.
+    rememberPracticeTaxipressOptions({});
     return sample;
   }
 }

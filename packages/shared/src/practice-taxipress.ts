@@ -15,6 +15,11 @@ const iso = (at = Date.now()) => new Date(at).toISOString();
 const FARE = 8_000;
 const MAX_SEATS = 4;
 
+/** The options staff set in admin, as the app last read them. Bookings here are priced and checked by the same rules the app showed. */
+let staffOptions: Record<string, any> = {};
+export function rememberPracticeTaxipressOptions(config: Record<string, unknown>) { staffOptions = config; }
+const LUGGAGE_DEFAULT: Record<string, number | null> = { personal: 0, standard: 2000, large: 4000, excess: 6000, fragile: 7000, commercial: null };
+
 type PracticeRoute = { id: string; fromName: string; toName: string; directionLabel: string; routeCode: string; fare?: number };
 /** Entebbe first: practice starts where the customer is. */
 const ROUTES: PracticeRoute[] = [
@@ -45,7 +50,8 @@ const TAXIS: PracticeTaxi[] = [
   { id: "practice-tp-q-bn2", routeId: ROUTES[5]!.id, plate: "UBR 122T", layout: "14", driver: "Martin Kawooya", others: 0 },
 ];
 
-type Booking = { id: string; queueId: string; seats: number; amount: number; method: "app" | "cash"; paid: boolean; code: string; at: number; cancelled?: { refunded: number; fee: number } };
+type Details = { adults: number; children: number; childSeats: number; luggage: Record<string, number>; luggageAmount: number; assistance: string | null; language: string | null; forSomeoneElse: boolean; travellerName: string | null; travellerPhone: string | null; emergencyPhone: string | null };
+type Booking = { id: string; queueId: string; seats: number; amount: number; method: "app" | "cash"; paid: boolean; code: string; at: number; details?: Details; cancelled?: { refunded: number; fee: number } };
 type State = { bookings: Booking[] };
 
 function load(): State {
@@ -116,7 +122,7 @@ function view(s: State, b: Booking) {
   return {
     id: b.id, orderId: `practice-tp-order-${b.id}`,
     status: b.cancelled ? "cancelled" : p === "arrived" ? "completed" : p === "boarded" || p === "on_road" ? "boarded" : "booked",
-    seats: b.seats, farePerSeat: fareOf(route.id), amount: b.amount, paymentMethod: b.method,
+    seats: b.seats, farePerSeat: fareOf(route.id), amount: b.amount, paymentMethod: b.method, details: b.details ?? null,
     paymentStatus: b.cancelled ? "cancelled" : b.paid ? "paid" : b.method === "cash" ? "pay_driver" : "unpaid",
     ticketCode: b.code, createdAt: iso(b.at), payBy: null,
     cancel: cancelTerms(b),
@@ -162,16 +168,42 @@ export function practiceTaxipressRequest(path: string, method: string, body: Jso
 
   if (method === "POST" && path === "/v1/taxipress/bookings") {
     const taxi = taxiById(String(body.queueId));
-    const seats = Math.floor(Number(body.seats));
+    // Newer apps send who travels (adults, children) and what they bring; older ones send a seat count.
+    const adults = Math.floor(Number(body.adults ?? body.seats));
+    const children = body.adults != null ? Math.max(0, Math.floor(Number(body.children ?? 0)) || 0) : 0;
+    const lap = Number.isFinite(Number(staffOptions.maxLapChildren)) ? Number(staffOptions.maxLapChildren) : 2;
+    const childSeats = Math.max(0, children - lap);
+    const seats = adults + childSeats;
+    const maxSeats = Number.isFinite(Number(staffOptions.maxSeatsPerBooking)) && Number(staffOptions.maxSeatsPerBooking) > 0 ? Number(staffOptions.maxSeatsPerBooking) : MAX_SEATS;
     const method_ = body.payment === "cash" ? "cash" : "app";
     if (!taxi || taxiStatus(s, taxi) === "on_road") return err(409, "not_available", "That taxi isn't taking seats any more. Choose another.");
-    if (!Number.isFinite(seats) || seats < 1 || seats > MAX_SEATS) return err(400, "invalid_seats", `You can book 1 to ${MAX_SEATS} seats at a time.`);
+    if (!Number.isFinite(adults) || adults < 1) return err(400, "invalid_passengers", "At least one adult travels on a booking.");
+    if (seats > maxSeats) return err(400, "too_many_seats", `You can book up to ${maxSeats} seat${maxSeats === 1 ? "" : "s"} at a time. This booking needs ${seats}.`);
     if (seats > Number(taxi.layout) - taken(s, taxi)) return err(409, "not_available", "There aren't that many seats left on this taxi.");
-    const amount = seats * fareOf(taxi.routeId);
+    const fare = fareOf(taxi.routeId);
+    const childFare = Math.round((fare * (Number.isFinite(Number(staffOptions.childSeatFarePercent)) ? Number(staffOptions.childSeatFarePercent) : 100)) / 100);
+    const offered: string[] = Array.isArray(staffOptions.luggageTypes) ? staffOptions.luggageTypes : Object.keys(LUGGAGE_DEFAULT);
+    const prices: Record<string, number | null> = { ...LUGGAGE_DEFAULT, ...(staffOptions.luggagePrices ?? {}) };
+    const luggage: Record<string, number> = {};
+    let luggageAmount = 0;
+    if (staffOptions.luggageEnabled !== false && body.luggage && typeof body.luggage === "object") {
+      for (const [type, qty] of Object.entries(body.luggage as Record<string, unknown>)) {
+        const n = Math.max(0, Math.min(10, Math.floor(Number(qty)) || 0));
+        if (!n || !offered.includes(type)) continue;
+        luggage[type] = n;
+        luggageAmount += (prices[type] ?? 0) * n;
+      }
+    }
+    const amount = fare * adults + childFare * childSeats + luggageAmount;
     if (method_ === "app" && !practiceWalletSpend(amount, `Taxipress ${routeOf(taxi.routeId).directionLabel} · ${taxi.plate} · ${seats} seat${seats === 1 ? "" : "s"}`)) {
       return err(409, "insufficient_funds", `Your practice wallet has UGX ${practiceWalletBalance().toLocaleString("en-UG")}. This booking needs UGX ${amount.toLocaleString("en-UG")}.`);
     }
-    const b: Booking = { id: `practice-tp-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, queueId: taxi.id, seats, amount, method: method_, paid: method_ === "app", code: newCode(), at: Date.now() };
+    const b: Booking = { id: `practice-tp-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, queueId: taxi.id, seats, amount, method: method_, paid: method_ === "app", code: newCode(), at: Date.now(),
+      details: body.adults != null ? {
+        adults, children, childSeats, luggage, luggageAmount, assistance: typeof body.assistance === "string" ? body.assistance : null, language: typeof body.language === "string" ? body.language : null,
+        forSomeoneElse: body.forSomeoneElse === true, travellerName: typeof body.travellerName === "string" ? body.travellerName : null,
+        travellerPhone: typeof body.travellerPhone === "string" ? body.travellerPhone : null, emergencyPhone: typeof body.emergencyPhone === "string" ? body.emergencyPhone : null,
+      } : undefined };
     s.bookings.push(b);
     save(s);
     return ok({ booking: view(s, b), order: { id: `practice-tp-order-${b.id}` } }, 201);

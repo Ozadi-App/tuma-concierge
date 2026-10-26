@@ -534,3 +534,34 @@ test("sandbox and practice are two switches over the same demo data: sandbox has
   win.localStorage.removeItem("peebee_practice_mode");
   assert.equal((await get("/v1/taxipress/config")).real, true, "no sandbox, no practice: the server");
 });
+
+
+test("Taxipress demo books the way the app does: who travels and what they bring, not a seat count", async (t) => {
+  installStorage();
+  const fetcher = createPracticeFetch("customer", (async () => { throw new Error("Must not access live Taxipress"); }) as typeof fetch);
+  startPracticeMode("customer");
+  const get = async (path: string) => (await fetcher(`https://api.test${path}`)).json() as Promise<any>;
+  const post = (path: string, body: object = {}) => fetcher(`https://api.test${path}`, { method: "POST", body: JSON.stringify(body) });
+  const config = await get("/v1/taxipress/config");
+  const route = config.routes.find((r: { toName: string }) => r.toName === "Ntinda Stage");
+  const line = await get(`/v1/taxipress/routes/${route.id}/queue`);
+
+  const one = await post("/v1/taxipress/bookings", { queueId: line.line[0].id, adults: 1, children: 0, luggage: { fragile: 1 }, assistance: "none", language: "lg", payment: "cash" });
+  assert.equal(one.status, 201, "one adult is never refused as too many seats");
+  const { booking } = (await one.json()) as { booking: any };
+  assert.equal(booking.seats, 1);
+  assert.equal(booking.amount, route.farePerSeat + 7_000, "the fare plus the fragile bag");
+  assert.equal(booking.details.language, "lg");
+  assert.deepEqual(booking.details.luggage, { fragile: 1 });
+
+  const crowd = await post("/v1/taxipress/bookings", { queueId: line.line[1].id, adults: 5, children: 0 });
+  assert.equal(crowd.status, 400, "five adults are over the limit");
+  assert.match(((await crowd.json()) as { message: string }).message, /up to 4 seats/);
+
+  const family = await post("/v1/taxipress/bookings", { queueId: line.line[1].id, adults: 2, children: 3, payment: "cash" });
+  assert.equal(family.status, 201);
+  const fam = ((await family.json()) as { booking: any }).booking;
+  assert.equal(fam.seats, 3, "two children ride on laps, the third needs a seat");
+  assert.equal(fam.amount, route.farePerSeat * 3);
+  t.mock.restoreAll();
+});
