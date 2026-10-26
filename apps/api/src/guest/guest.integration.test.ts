@@ -7,6 +7,7 @@ import { Hono } from "hono";
 import { setD1Binding, type D1Database } from "../db/client.js";
 import { splitSqlStatements } from "../db/split-sql.js";
 import { DEMO_MARKETPLACE_PRODUCTS, marketplaceRoutes } from "../marketplace/routes.js";
+import { allowDemoCatalog } from "../test-support/db.js";
 import { orderRoutes } from "../orders/routes.js";
 import { guestRoutes } from "./routes.js";
 
@@ -37,6 +38,7 @@ test("a guest buys from a shared product link, pays first, and is told about it"
     for (const sql of splitSqlStatements(readFileSync(join(process.cwd(), "src/db/migrations", file), "utf8"))) await client.execute(sql);
   }
   bindDatabase(client);
+  await allowDemoCatalog(client);
   await client.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('payments_demo_mode', '1')");
   const app = new Hono().route("/v1", guestRoutes).route("/v1", marketplaceRoutes).route("/v1", orderRoutes);
   const json = (path: string, init: { method?: string; token?: string; body?: object } = {}) =>

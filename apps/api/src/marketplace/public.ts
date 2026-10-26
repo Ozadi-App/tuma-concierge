@@ -1,6 +1,7 @@
 import { db } from "../db/client.js";
 import { getPlatformEnvironment } from "../lib/settings.js";
 import { hasColumn } from "../lib/schema.js";
+import { getOptions } from "../lib/option-settings.js";
 
 type Row = Record<string, unknown>;
 
@@ -57,4 +58,14 @@ export async function findPublicStore(idOrSlug: string): Promise<Row | null> {
     if (byDomain.rows[0]) return byDomain.rows[0] as Row;
   }
   return null;
+}
+
+/**
+ * Whether the built-in demo catalogue may be browsed or ordered from. Admin setting `marketplace_demo_catalog`:
+ * by default only while the platform is in sandbox, so a live shopper never sees (or pays for) fake stores.
+ * Practice mode does not come through here — it runs on the simulator inside the app.
+ */
+export async function demoCatalogAllowed(): Promise<boolean> {
+  const mode = (await getOptions(["marketplace_demo_catalog"])).marketplace_demo_catalog;
+  return mode === "always" || (await getPlatformEnvironment()) === "sandbox";
 }

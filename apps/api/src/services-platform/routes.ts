@@ -1,9 +1,15 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { requireAuth, requireRole } from "../auth/middleware.js";
+import { logActivity } from "../admin/activity.js";
+import { requirePermission } from "../admin/permissions.js";
+import { clientIp } from "../lib/ratelimit.js";
 import { db } from "../db/client.js";
 import { newId } from "../lib/ids.js";
-import { hasTable } from "../lib/schema.js";
+import { hasColumn, hasTable } from "../lib/schema.js";
+import { getOptions } from "../lib/option-settings.js";
+import { migrationPending, publicRateLimit } from "../lib/guards.js";
+import { dateString, eatInstant, httpsUrl, phoneString, timeString } from "../lib/validation.js";
 import { getServicesPlatformSettings, setServicesPlatformSettings } from "./settings.js";
 import type {
   ServiceBusinessProfile,
@@ -265,20 +271,22 @@ const createBusinessSchema = z.object({
   ]),
   tagline: z.string().max(200).optional().default(""),
   description: z.string().max(2000).optional().default(""),
-  phone: z.string().min(6).max(30),
+  phone: phoneString,
   whatsapp: z.string().max(30).optional().default(""),
   email: z.string().email().optional().or(z.literal("")),
   address: z.string().max(200).optional().default(""),
   city: z.string().max(80).default("Kampala"),
   service_area: z.string().max(200).default("Greater Kampala"),
-  logo_url: z.string().max(1000).optional().default(""),
-  banner_url: z.string().max(1000).optional().default(""),
+  logo_url: httpsUrl().optional().default(""),
+  banner_url: httpsUrl().optional().default(""),
   cancellation_policy: z.string().max(500).optional().default("Free cancellation up to 24 hours prior to appointment"),
   allowed_payment_rails: z.array(z.enum(["momo_mtn", "momo_airtel", "cash_at_venue", "bank_wire"])).default(["momo_mtn", "momo_airtel", "cash_at_venue"]),
 });
 
 servicesPlatformRoutes.post("/my-business", requireAuth, async (c) => {
   const user = c.get("user");
+  const pending = await migrationPending(c, "0134_standalone_services_platform.sql", "service_businesses");
+  if (pending) return pending;
   const existing = await getServiceBusinessForUser(user.sub);
   if (existing) {
     return c.json({ error: "already_exists", message: "You already have an active service business profile." }, 400);
@@ -292,6 +300,13 @@ servicesPlatformRoutes.post("/my-business", requireAuth, async (c) => {
 
   const data = parsed.data;
   const businessId = newId("sbiz");
+  const { services_business_approval: approval } = await getOptions(["services_business_approval"]);
+  let verifiedUser = false;
+  if (await hasColumn("users", "phone_verified_at")) {
+    const u = await db.execute({ sql: "SELECT phone_verified_at FROM users WHERE id = ?", args: [user.sub] });
+    verifiedUser = Boolean(u.rows[0]?.phone_verified_at);
+  }
+  const businessStatus = approval === "auto_approve_all" || (approval === "auto_approve_verified_users" && verifiedUser) ? "active" : "pending_review";
   const slug = data.name
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
@@ -305,7 +320,7 @@ servicesPlatformRoutes.post("/my-business", requireAuth, async (c) => {
         phone, whatsapp, email, address, city, service_area,
         logo_url, banner_url, cancellation_policy, allowed_payment_rails,
         is_open, status, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
       args: [
         businessId,
         user.sub,
@@ -324,6 +339,7 @@ servicesPlatformRoutes.post("/my-business", requireAuth, async (c) => {
         data.banner_url || "",
         data.cancellation_policy,
         JSON.stringify(data.allowed_payment_rails),
+        businessStatus,
       ],
     });
   }
@@ -336,7 +352,7 @@ servicesPlatformRoutes.post("/my-business", requireAuth, async (c) => {
       slug,
       ...data,
       is_open: true,
-      status: "active",
+      status: businessStatus,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     },
@@ -434,12 +450,14 @@ const createOfferingSchema = z.object({
   duration_minutes: z.number().int().positive().default(60),
   buffer_minutes: z.number().int().nonnegative().default(15),
   location_type: z.enum(["in_facility", "client_site", "virtual"]).default("in_facility"),
-  virtual_meeting_url: z.string().max(500).optional().default(""),
-  deliverables: z.array(z.string()).default([]),
+  virtual_meeting_url: httpsUrl(500).optional().default(""),
+  deliverables: z.array(z.string().max(200)).max(20).default([]),
 });
 
 servicesPlatformRoutes.post("/offerings", requireAuth, async (c) => {
   const user = c.get("user");
+  const pending = await migrationPending(c, "0134_standalone_services_platform.sql", "service_businesses", "service_offerings");
+  if (pending) return pending;
   const biz = await getServiceBusinessForUser(user.sub);
   if (!biz) return c.json({ error: "no_business", message: "Launch a service business first." }, 404);
 
@@ -450,6 +468,14 @@ servicesPlatformRoutes.post("/offerings", requireAuth, async (c) => {
   }
 
   const data = parsed.data;
+  const platform = await getServicesPlatformSettings();
+  if (data.location_type === "virtual" && !platform.virtualConsultationsEnabled) {
+    return c.json({ error: "virtual_disabled", message: "Virtual consultations are switched off on this platform." }, 403);
+  }
+  const countRes = await db.execute({ sql: "SELECT COUNT(*) AS n FROM service_offerings WHERE business_id = ? AND is_active = 1", args: [String(biz.id)] });
+  if (Number(countRes.rows[0]?.n) >= platform.maxServicesPerBusiness) {
+    return c.json({ error: "service_limit", message: `A business can list up to ${platform.maxServicesPerBusiness} services.` }, 403);
+  }
   const offeringId = newId("sofr");
   const slug = data.title
     .toLowerCase()
@@ -508,8 +534,9 @@ servicesPlatformRoutes.delete("/offerings/:id", requireAuth, async (c) => {
 
   const offeringId = c.req.param("id")!;
   if (await hasTable("service_offerings")) {
+    // Archive rather than delete: past bookings keep pointing at the service they were made for.
     await db.execute({
-      sql: "DELETE FROM service_offerings WHERE id = ? AND business_id = ?",
+      sql: "UPDATE service_offerings SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND business_id = ?",
       args: [offeringId, String(biz.id)],
     });
   }
@@ -543,12 +570,14 @@ servicesPlatformRoutes.get("/staff", requireAuth, async (c) => {
 const createStaffMemberSchema = z.object({
   name: z.string().min(2).max(100),
   role: z.string().min(2).max(100).default("Specialist"),
-  phone: z.string().min(6).max(30),
+  phone: phoneString,
   email: z.string().email().optional().or(z.literal("")),
 });
 
 servicesPlatformRoutes.post("/staff", requireAuth, async (c) => {
   const user = c.get("user");
+  const pending = await migrationPending(c, "0134_standalone_services_platform.sql", "service_businesses", "service_staff_members");
+  if (pending) return pending;
   const biz = await getServiceBusinessForUser(user.sub);
   if (!biz) return c.json({ error: "no_business" }, 404);
 
@@ -626,10 +655,10 @@ servicesPlatformRoutes.get("/bookings", requireAuth, async (c) => {
 const createManualBookingSchema = z.object({
   service_id: z.string(),
   customer_name: z.string().min(2).max(120),
-  customer_phone: z.string().min(6).max(30),
+  customer_phone: phoneString,
   customer_email: z.string().email().optional().or(z.literal("")),
-  scheduled_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  scheduled_time: z.string().regex(/^\d{2}:\d{2}$/),
+  scheduled_date: dateString,
+  scheduled_time: timeString,
   location_type: z.enum(["in_facility", "client_site", "virtual"]).default("in_facility"),
   address: z.string().max(300).optional().default(""),
   notes: z.string().max(1000).optional().default(""),
@@ -639,6 +668,8 @@ const createManualBookingSchema = z.object({
 
 servicesPlatformRoutes.post("/bookings", requireAuth, async (c) => {
   const user = c.get("user");
+  const pending = await migrationPending(c, "0134_standalone_services_platform.sql", "service_businesses", "service_offerings", "service_bookings");
+  if (pending) return pending;
   const biz = await getServiceBusinessForUser(user.sub);
   if (!biz) return c.json({ error: "no_business" }, 404);
 
@@ -741,12 +772,14 @@ const updateBookingStatusSchema = z.object({
   status: z.enum(["pending", "confirmed", "in_progress", "completed", "cancelled"]).optional(),
   payment_status: z.enum(["unpaid", "deposit_paid", "paid_full", "waived"]).optional(),
   staff_id: z.string().optional().nullable(),
-  rescheduled_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  rescheduled_time: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+  rescheduled_date: dateString.optional(),
+  rescheduled_time: timeString.optional(),
 });
 
 servicesPlatformRoutes.patch("/bookings/:id/status", requireAuth, async (c) => {
   const user = c.get("user");
+  const pending = await migrationPending(c, "0134_standalone_services_platform.sql", "service_businesses", "service_bookings");
+  if (pending) return pending;
   const biz = await getServiceBusinessForUser(user.sub);
   if (!biz) return c.json({ error: "no_business" }, 404);
 
@@ -875,10 +908,10 @@ servicesPlatformRoutes.get("/public/:slug", async (c) => {
 const publicCustomerBookingSchema = z.object({
   service_id: z.string(),
   customer_name: z.string().min(2).max(120),
-  customer_phone: z.string().min(6).max(30),
+  customer_phone: phoneString,
   customer_email: z.string().email().optional().or(z.literal("")),
-  scheduled_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  scheduled_time: z.string().regex(/^\d{2}:\d{2}$/),
+  scheduled_date: dateString,
+  scheduled_time: timeString,
   location_type: z.enum(["in_facility", "client_site", "virtual"]).default("in_facility"),
   address: z.string().max(300).optional().default(""),
   notes: z.string().max(1000).optional().default(""),
@@ -887,6 +920,8 @@ const publicCustomerBookingSchema = z.object({
 
 servicesPlatformRoutes.post("/public/:slug/book", async (c) => {
   const slug = c.req.param("slug")!;
+  const pending = await migrationPending(c, "0134_standalone_services_platform.sql", "service_businesses", "service_offerings", "service_bookings");
+  if (pending) return pending;
 
   const platformSettings = await getServicesPlatformSettings();
   if (!platformSettings.enabled) {
@@ -918,6 +953,19 @@ servicesPlatformRoutes.post("/public/:slug/book", async (c) => {
 
   const data = parsed.data;
 
+  const limited = await publicRateLimit(c, "svc-book", data.customer_phone, "rate_limit_public_booking_per_hour", 3600);
+  if (limited) return limited;
+
+  const platform = await getServicesPlatformSettings();
+  const opts = await getOptions(["services_enabled_rails", "services_booking_confirmation"]);
+  if (data.location_type === "virtual" && !platform.virtualConsultationsEnabled) {
+    return c.json({ error: "virtual_disabled", message: "Virtual consultations are not available right now." }, 403);
+  }
+  const startsAt = eatInstant(data.scheduled_date, data.scheduled_time);
+  if (startsAt == null || startsAt < Date.now() + platform.leadTimeHours * 3600_000) {
+    return c.json({ error: "too_soon", message: `Bookings need at least ${platform.leadTimeHours} hour(s) notice.` }, 400);
+  }
+
   // Enforce Aggregator Isolation Rule:
   // Strictly prevent Stripe/credit card aggregators from handling intangible service payments
   // to avoid dispute-related account holds on the main product commerce accounts!
@@ -926,6 +974,9 @@ servicesPlatformRoutes.post("/public/:slug/book", async (c) => {
     allowedRails = JSON.parse(String(biz.allowed_payment_rails || "[]"));
   } catch {}
 
+  // Only methods admin allows for services AND the business accepts. Cards are not a services rail at all.
+  const platformRails = opts.services_enabled_rails as string[];
+  allowedRails = allowedRails.filter((rail) => platformRails.includes(rail));
   if (!allowedRails.includes(data.payment_rail)) {
     return c.json({
       error: "unsupported_service_rail",
@@ -961,7 +1012,7 @@ servicesPlatformRoutes.post("/public/:slug/book", async (c) => {
   // provider confirms money (or the provider records it), so a new booking is always unpaid.
   const bookingId = newId("sbk");
   const initialPaymentStatus = "unpaid";
-  const initialStatus = "pending";
+  const initialStatus = opts.services_booking_confirmation === "auto_confirm" ? "confirmed" : "pending";
 
   if (await hasTable("service_bookings")) {
     await db.execute({
@@ -971,7 +1022,7 @@ servicesPlatformRoutes.post("/public/:slug/book", async (c) => {
         address, virtual_meeting_url, notes, pricing_type, total_price_ugx,
         deposit_ugx, payment_rail, payment_status, status, staff_id, staff_name,
         created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', NULL, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
       args: [
         bookingId,
         String(biz.id),
@@ -991,6 +1042,7 @@ servicesPlatformRoutes.post("/public/:slug/book", async (c) => {
         depositUgx,
         data.payment_rail,
         initialPaymentStatus,
+        initialStatus,
       ],
     });
 
@@ -1015,7 +1067,9 @@ servicesPlatformRoutes.post("/public/:slug/book", async (c) => {
       payment_rail: data.payment_rail,
       payment_status: initialPaymentStatus,
       status: initialStatus,
-      instructions: "Your request has been sent. The provider will confirm your booking and tell you how to pay.",
+      instructions: initialStatus === "confirmed"
+        ? "Your booking is confirmed. The provider will tell you how to pay."
+        : "Your request has been sent. The provider will confirm your booking and tell you how to pay.",
     },
   });
 });
@@ -1024,7 +1078,7 @@ servicesPlatformRoutes.post("/public/:slug/book", async (c) => {
 // 6. ADMIN PLATFORM SETTINGS
 // -----------------------------------------------------------------
 
-servicesPlatformRoutes.get("/admin/settings", requireRole("admin"), async (c) => {
+servicesPlatformRoutes.get("/admin/settings", requireAuth, requireRole("admin"), requirePermission("settings.view"), async (c) => {
   const settings = await getServicesPlatformSettings();
   return c.json({ settings });
 });
@@ -1038,14 +1092,51 @@ const adminSettingsSchema = z.object({
   virtualConsultationsEnabled: z.boolean().optional(),
 });
 
-servicesPlatformRoutes.put("/admin/settings", requireRole("admin"), async (c) => {
+servicesPlatformRoutes.put("/admin/settings", requireAuth, requireRole("admin"), requirePermission("settings.manage"), async (c) => {
   const body = await c.req.json().catch(() => null);
   const parsed = adminSettingsSchema.safeParse(body);
   if (!parsed.success) {
     return c.json({ error: "invalid_body", details: parsed.error.issues }, 400);
   }
 
+  const before = await getServicesPlatformSettings();
   await setServicesPlatformSettings(parsed.data);
   const updated = await getServicesPlatformSettings();
+  await logActivity({
+    actor: c.get("user"), action: "settings.update", entityType: "settings",
+    summary: "Updated Services Platform settings", before: { services: before }, after: { services: updated }, ip: clientIp(c),
+  });
   return c.json({ ok: true, settings: updated });
+});
+
+// Reviewing service businesses (see the `services_business_approval` option).
+servicesPlatformRoutes.get("/admin/businesses", requireAuth, requireRole("admin"), requirePermission("settings.view"), async (c) => {
+  if (!(await hasTable("service_businesses"))) return c.json({ businesses: [] });
+  const status = c.req.query("status");
+  const res = await db.execute({
+    sql: `SELECT id, owner_id, name, slug, category, phone, city, status, created_at FROM service_businesses
+          ${status ? "WHERE status = ?" : ""} ORDER BY created_at DESC LIMIT 200`,
+    args: status ? [status] : [],
+  });
+  return c.json({ businesses: res.rows });
+});
+
+const reviewBusinessSchema = z.object({ decision: z.enum(["approve", "pause", "reactivate"]), note: z.string().max(500).optional() });
+
+servicesPlatformRoutes.post("/admin/businesses/:id/review", requireAuth, requireRole("admin"), requirePermission("settings.manage"), async (c) => {
+  const parsed = reviewBusinessSchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ error: "invalid_body", details: parsed.error.issues }, 400);
+  if (!(await hasTable("service_businesses"))) return c.json({ error: "not_found" }, 404);
+  const id = c.req.param("id")!;
+  const found = await db.execute({ sql: "SELECT id, name, status FROM service_businesses WHERE id = ?", args: [id] });
+  const biz = found.rows[0];
+  if (!biz) return c.json({ error: "not_found" }, 404);
+  const next = parsed.data.decision === "pause" ? "paused" : "active";
+  await db.execute({ sql: "UPDATE service_businesses SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", args: [next, id] });
+  await logActivity({
+    actor: c.get("user"), action: `services.business_${parsed.data.decision}`, entityType: "service_business", entityId: id,
+    summary: `${parsed.data.decision === "pause" ? "Paused" : "Approved"} service business ${String(biz.name)}${parsed.data.note ? ` — ${parsed.data.note}` : ""}`,
+    before: { status: biz.status }, after: { status: next }, ip: clientIp(c),
+  });
+  return c.json({ ok: true, id, status: next });
 });

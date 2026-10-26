@@ -5,6 +5,7 @@ import test from "node:test";
 import { createClient, type Client, type InArgs } from "@libsql/client/node";
 import app from "../app.js";
 import { signToken } from "../auth/jwt.js";
+import { allowDemoCatalog } from "../test-support/db.js";
 import { setD1Binding, type D1Database } from "../db/client.js";
 import { splitSqlStatements } from "../db/split-sql.js";
 import { resetSchemaCache } from "../lib/schema.js";
@@ -58,6 +59,7 @@ test("a bag's delivery is the rider's whole road trip, and a long one offers a r
     for (const sql of splitSqlStatements(readFileSync(join(process.cwd(), "src/db/migrations", file), "utf8"))) await client.execute(sql);
   }
   bindDatabase(client);
+  await allowDemoCatalog(client);
   const previousSecret = process.env.JWT_SECRET;
   process.env.JWT_SECRET = "bag-relay-tests-only";
   try {

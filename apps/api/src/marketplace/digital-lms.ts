@@ -5,7 +5,10 @@ import { db } from "../db/client.js";
 import { newId } from "../lib/ids.js";
 import { getMarketplaceSettings } from "../lib/settings.js";
 import { hasColumn, hasTable } from "../lib/schema.js";
-import { findPublicStore } from "./public.js";
+import { demoCatalogAllowed, findPublicStore } from "./public.js";
+import { migrationPending, publicRateLimit } from "../lib/guards.js";
+import { getOptions } from "../lib/option-settings.js";
+import { enrollmentSchema, parseCourse, parseDigitalProduct } from "./digital-input.js";
 import type {
   StoreDigitalProduct,
   StoreDigitalFulfillment,
@@ -149,7 +152,7 @@ async function getMerchantStore(userId: string): Promise<Row | null> {
   let merchantId = userId;
   if (await hasTable("merchant_members")) {
     const memRes = await db.execute({
-      sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+      sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' ORDER BY CASE role WHEN 'owner' THEN 0 WHEN 'manager' THEN 1 WHEN 'finance' THEN 2 ELSE 3 END LIMIT 1",
       args: [userId],
     });
     if (memRes.rows[0]?.merchant_id) {
@@ -226,105 +229,86 @@ digitalLmsRoutes.post("/merchants/me/digital-products", requireAuth, async (c) =
   if (!settings.eliteDigitalProductsEnabled) {
     return c.json({ error: "feature_disabled", message: "Digital products feature is currently disabled by admin." }, 403);
   }
+  const pending = await migrationPending(c, "0133_merchant_tier3_digital_products_lms.sql", "store_digital_products");
+  if (pending) return pending;
 
-  const body = await c.req.json().catch(() => ({}));
-  const id = body.id || newId("dig");
-  if (body.id && (await hasTable("store_digital_products"))) {
-    const owned = await db.execute({ sql: "SELECT store_id FROM store_digital_products WHERE id = ?", args: [String(body.id)] });
-    if (owned.rows[0] && String(owned.rows[0].store_id) !== String(store.id)) {
-      return c.json({ error: "forbidden", message: "That product belongs to another store." }, 403);
+  const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+  const parsed = parseDigitalProduct(body);
+  if (!parsed.ok) return c.json({ error: "invalid_body", message: parsed.issues[0]?.message ?? "Check the product details.", issues: parsed.issues }, 400);
+  const d = parsed.data;
+
+  const id = body.id ? String(body.id) : newId("dig");
+  const existing = await db.execute({ sql: "SELECT store_id FROM store_digital_products WHERE id = ?", args: [id] });
+  if (existing.rows[0] && String(existing.rows[0].store_id) !== String(store.id)) {
+    return c.json({ error: "forbidden", message: "That product belongs to another store." }, 403);
+  }
+  if (!existing.rows[0]) {
+    const { digital_max_products: cap } = await getOptions(["digital_max_products"]);
+    const count = await db.execute({ sql: "SELECT COUNT(*) AS n FROM store_digital_products WHERE store_id = ? AND status != 'archived'", args: [String(store.id)] });
+    if (Number(count.rows[0]?.n) >= Number(cap)) {
+      return c.json({ error: "product_limit", message: `A store can list up to ${cap} digital products.` }, 403);
     }
   }
-  const title = String(body.title || "").trim();
-  if (!title) return c.json({ error: "missing_title", message: "Digital product title is required." }, 400);
 
-  const kind = body.kind || "download";
-  const priceUgx = Math.max(0, Number(body.price_ugx ?? body.priceUgx) || 0);
-  const compareAt = (body.compare_at_price_ugx ?? body.compareAtPriceUgx) != null ? Number(body.compare_at_price_ugx ?? body.compareAtPriceUgx) : null;
-  const description = body.description ? String(body.description).trim() : "";
-  const fileUrl = (body.file_url ?? body.fileUrl) ? String(body.file_url ?? body.fileUrl).trim() : "";
-  const fileName = (body.file_name ?? body.fileName) ? String(body.file_name ?? body.fileName).trim() : (fileUrl ? fileUrl.split("/").pop() || "download.pdf" : "");
-  const fileSizeBytes = Number(body.file_size_bytes ?? body.fileSizeBytes) || 0;
-  const mimeType = (body.mime_type ?? body.mimeType) ? String(body.mime_type ?? body.mimeType).trim() : "application/octet-stream";
-  const maxDownloads = Number(body.max_downloads ?? body.maxDownloads ?? 5);
-  const expiryDays = Number(body.expiry_days ?? body.expiryDays ?? 30);
-  const licenseKeysPool = Array.isArray(body.license_keys_pool) ? JSON.stringify(body.license_keys_pool) : "[]";
-  const deliveryInstructions = body.delivery_instructions ? String(body.delivery_instructions).trim() : "";
-  const coverImageUrl = body.cover_image_url ? String(body.cover_image_url).trim() : "";
-  const linkedCourseId = body.linked_course_id ? String(body.linked_course_id).trim() : null;
-  const status = body.status || "published";
+  const defaults = await getOptions(["digital_default_max_downloads", "digital_default_expiry_days"]);
+  const maxDownloads = d.max_downloads ?? Number(defaults.digital_default_max_downloads);
+  const expiryDays = d.expiry_days ?? Number(defaults.digital_default_expiry_days);
+  const fileName = d.file_name || (d.file_url ? d.file_url.split("/").pop() || "download" : "");
 
-  if (await hasTable("store_digital_products")) {
-    await db.execute({
-      sql: `INSERT INTO store_digital_products (
-              id, store_id, title, kind, description, price_ugx, compare_at_price_ugx,
-              file_url, file_name, file_size_bytes, mime_type, max_downloads, expiry_days,
-              license_keys_pool, delivery_instructions, cover_image_url, linked_course_id,
-              status, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-            ON CONFLICT(id) DO UPDATE SET
-              title = excluded.title,
-              kind = excluded.kind,
-              description = excluded.description,
-              price_ugx = excluded.price_ugx,
-              compare_at_price_ugx = excluded.compare_at_price_ugx,
-              file_url = excluded.file_url,
-              file_name = excluded.file_name,
-              file_size_bytes = excluded.file_size_bytes,
-              mime_type = excluded.mime_type,
-              max_downloads = excluded.max_downloads,
-              expiry_days = excluded.expiry_days,
-              license_keys_pool = excluded.license_keys_pool,
-              delivery_instructions = excluded.delivery_instructions,
-              cover_image_url = excluded.cover_image_url,
-              linked_course_id = excluded.linked_course_id,
-              status = excluded.status,
-              updated_at = datetime('now')
-            WHERE store_digital_products.store_id = excluded.store_id`,
-      args: [
-        id,
-        String(store.id),
-        title,
-        kind,
-        description,
-        priceUgx,
-        compareAt,
-        fileUrl,
-        fileName,
-        fileSizeBytes,
-        mimeType,
-        maxDownloads,
-        expiryDays,
-        licenseKeysPool,
-        deliveryInstructions,
-        coverImageUrl,
-        linkedCourseId,
-        status,
-      ],
-    });
-  }
+  await db.execute({
+    sql: `INSERT INTO store_digital_products (
+            id, store_id, title, kind, description, price_ugx, compare_at_price_ugx,
+            file_url, file_name, file_size_bytes, mime_type, max_downloads, expiry_days,
+            license_keys_pool, delivery_instructions, cover_image_url, linked_course_id,
+            status, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+          ON CONFLICT(id) DO UPDATE SET
+            title = excluded.title,
+            kind = excluded.kind,
+            description = excluded.description,
+            price_ugx = excluded.price_ugx,
+            compare_at_price_ugx = excluded.compare_at_price_ugx,
+            file_url = excluded.file_url,
+            file_name = excluded.file_name,
+            file_size_bytes = excluded.file_size_bytes,
+            mime_type = excluded.mime_type,
+            max_downloads = excluded.max_downloads,
+            expiry_days = excluded.expiry_days,
+            license_keys_pool = excluded.license_keys_pool,
+            delivery_instructions = excluded.delivery_instructions,
+            cover_image_url = excluded.cover_image_url,
+            linked_course_id = excluded.linked_course_id,
+            status = excluded.status,
+            updated_at = datetime('now')
+          WHERE store_digital_products.store_id = excluded.store_id`,
+    args: [
+      id, String(store.id), d.title, d.kind, d.description, d.price_ugx, d.compare_at_price_ugx,
+      d.file_url, fileName, d.file_size_bytes, d.mime_type, maxDownloads, expiryDays,
+      JSON.stringify(d.license_keys_pool), d.delivery_instructions, d.cover_image_url, d.linked_course_id, d.status,
+    ],
+  });
 
   return c.json({
     ok: true,
     product: {
       id,
       store_id: String(store.id),
-      title,
-      kind,
-      description,
-      price_ugx: priceUgx,
-      compare_at_price_ugx: compareAt,
-      file_url: fileUrl,
+      title: d.title,
+      kind: d.kind,
+      description: d.description,
+      price_ugx: d.price_ugx,
+      compare_at_price_ugx: d.compare_at_price_ugx,
+      file_url: d.file_url,
       file_name: fileName,
-      file_size_bytes: fileSizeBytes,
-      mime_type: mimeType,
+      file_size_bytes: d.file_size_bytes,
+      mime_type: d.mime_type,
       max_downloads: maxDownloads,
       expiry_days: expiryDays,
-      license_keys_pool: Array.isArray(body.license_keys_pool) ? body.license_keys_pool : [],
-      delivery_instructions: deliveryInstructions,
-      cover_image_url: coverImageUrl,
-      linked_course_id: linkedCourseId,
-      status,
+      license_keys_pool: d.license_keys_pool,
+      delivery_instructions: d.delivery_instructions,
+      cover_image_url: d.cover_image_url,
+      linked_course_id: d.linked_course_id,
+      status: d.status,
       downloads_count: 0,
       sales_count: 0,
       created_at: new Date().toISOString(),
@@ -553,56 +537,69 @@ digitalLmsRoutes.post("/merchants/me/lms/courses", requireAuth, async (c) => {
   if (!settings.eliteLmsSyncEnabled) {
     return c.json({ error: "feature_disabled", message: "LMS course management is currently disabled by admin." }, 403);
   }
+  const pending = await migrationPending(c, "0109_education_studio.sql", "edu_schools", "edu_classes", "edu_courses", "edu_modules", "edu_lessons");
+  if (pending) return pending;
 
-  const body = await c.req.json().catch(() => ({}));
-  const title = String(body.title || "").trim();
-  if (!title) return c.json({ error: "missing_title", message: "Course title is required." }, 400);
+  const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+  const parsed = parseCourse(body);
+  if (!parsed.ok) return c.json({ error: "invalid_body", message: parsed.issues[0]?.message ?? "Check the course details.", issues: parsed.issues }, 400);
+  const d = parsed.data;
 
   const storeId = String(store.id);
-  const courseId = body.id || newId("crs");
-  const stream = body.stream || "skills";
-  const summary = body.summary ? String(body.summary).trim() : "";
-  const priceUgx = Math.max(0, Number(body.price_ugx) || 0);
+  const courseId = d.id ?? newId("crs");
+  const modulesInput = d.modules ?? [];
+
+  // An id the client supplies may only update something this store already owns.
+  const existingCourse = d.id ? (await db.execute({ sql: "SELECT school_id FROM edu_courses WHERE id = ?", args: [courseId] })).rows[0] : undefined;
+  if (!existingCourse) {
+    const { lms_max_courses: cap } = await getOptions(["lms_max_courses"]);
+    const count = await db.execute({
+      sql: "SELECT COUNT(*) AS n FROM edu_courses WHERE store_id = ?",
+      args: [storeId],
+    }).catch(() => null);
+    if (count && Number(count.rows[0]?.n) >= Number(cap)) {
+      return c.json({ error: "course_limit", message: `A store can offer up to ${cap} courses.` }, 403);
+    }
+  }
 
   // 1. Ensure Learn school exists for this store
   let schoolId = store.learn_school_id ? String(store.learn_school_id) : null;
-  if (!schoolId && (await hasTable("edu_schools"))) {
+  if (existingCourse && schoolId && String(existingCourse.school_id) !== schoolId) {
+    return c.json({ error: "forbidden", message: "That course belongs to another school." }, 403);
+  }
+  if (!schoolId) {
     schoolId = newId("sch");
     const schoolSlug = `${String(store.slug || "store")}-academy-${Date.now().toString(36)}`;
-    await db.execute({
-      sql: `INSERT INTO edu_schools (id, owner_id, name, slug, kind, streams, tagline, status, created_at, updated_at)
-            VALUES (?, ?, ?, ?, 'training_centre', 'skills,academy', ?, 'active', datetime('now'), datetime('now'))`,
-      args: [schoolId, user.sub, `${String(store.name || "Store")} Academy`, schoolSlug, `Official Training & LMS Portal for ${String(store.name)}`],
-    });
-    if (await hasColumn("stores", "learn_school_id")) {
+    if (existingCourse) {
+      // A course that already exists must sit in a school this account owns.
+      const own = await db.execute({ sql: "SELECT id FROM edu_schools WHERE id = ? AND owner_id = ?", args: [String(existingCourse.school_id), user.sub] });
+      if (!own.rows[0]) return c.json({ error: "forbidden", message: "That course belongs to another school." }, 403);
+      schoolId = String(existingCourse.school_id);
+    } else {
       await db.execute({
-        sql: "UPDATE stores SET learn_school_id = ? WHERE id = ?",
-        args: [schoolId, storeId],
+        sql: `INSERT INTO edu_schools (id, owner_id, name, slug, kind, streams, tagline, status, created_at, updated_at)
+              VALUES (?, ?, ?, ?, 'training_centre', 'skills,academy', ?, 'active', datetime('now'), datetime('now'))`,
+        args: [schoolId, user.sub, `${String(store.name || "Store")} Academy`, schoolSlug, `Official Training & LMS Portal for ${String(store.name)}`],
       });
+      if (await hasColumn("stores", "learn_school_id")) {
+        await db.execute({ sql: "UPDATE stores SET learn_school_id = ? WHERE id = ?", args: [schoolId, storeId] });
+      }
     }
   }
 
-  // A client-supplied id may only update something this store already owns.
-  if (body.id && (await hasTable("edu_courses"))) {
-    const owned = await db.execute({ sql: "SELECT school_id FROM edu_courses WHERE id = ?", args: [String(body.id)] });
-    if (owned.rows[0] && String(owned.rows[0].school_id) !== String(schoolId)) {
-      return c.json({ error: "forbidden", message: "That course belongs to another school." }, 403);
-    }
-  }
-  if (Array.isArray(body.modules) && (await hasTable("edu_modules"))) {
-    for (const mod of body.modules) {
-      if (mod?.id) {
-        const owned = await db.execute({ sql: "SELECT course_id FROM edu_modules WHERE id = ?", args: [String(mod.id)] });
-        if (owned.rows[0] && String(owned.rows[0].course_id) !== String(courseId)) {
-          return c.json({ error: "forbidden", message: "That module belongs to another course." }, 403);
-        }
+  // Every module and lesson id the client sends must already belong to this course (or be new).
+  for (const mod of modulesInput) {
+    if (mod.id) {
+      const owned = await db.execute({ sql: "SELECT course_id FROM edu_modules WHERE id = ?", args: [mod.id] });
+      if (owned.rows[0] && String(owned.rows[0].course_id) !== courseId) {
+        return c.json({ error: "forbidden", message: "That module belongs to another course." }, 403);
       }
-      for (const les of Array.isArray(mod?.lessons) ? mod.lessons : []) {
-        if (les?.id && (await hasTable("edu_lessons"))) {
-          const owned = await db.execute({ sql: "SELECT course_id FROM edu_lessons WHERE id = ?", args: [String(les.id)] });
-          if (owned.rows[0] && String(owned.rows[0].course_id) !== String(courseId)) {
-            return c.json({ error: "forbidden", message: "That lesson belongs to another course." }, 403);
-          }
+    }
+    for (const les of mod.lessons) {
+      if (les.id) {
+        const owned = await db.execute({ sql: "SELECT course_id FROM edu_lessons WHERE id = ?", args: [les.id] });
+        if (owned.rows[0] && String(owned.rows[0].course_id) !== courseId) {
+          return c.json({ error: "forbidden", message: "That lesson belongs to another course." }, 403);
         }
       }
     }
@@ -610,123 +607,71 @@ digitalLmsRoutes.post("/merchants/me/lms/courses", requireAuth, async (c) => {
 
   // 2. Ensure default class exists
   let classId = newId("cls");
-  if (schoolId && (await hasTable("edu_classes"))) {
-    const clsRes = await db.execute({
-      sql: "SELECT id FROM edu_classes WHERE school_id = ? LIMIT 1",
-      args: [schoolId],
+  const clsRes = await db.execute({ sql: "SELECT id FROM edu_classes WHERE school_id = ? LIMIT 1", args: [schoolId] });
+  if (clsRes.rows.length > 0) {
+    classId = String(clsRes.rows[0].id);
+  } else {
+    await db.execute({
+      sql: `INSERT INTO edu_classes (id, school_id, stream, kind, name, teacher_name, status, created_at, updated_at)
+            VALUES (?, ?, ?, 'masterclass', 'Professional Certification Class', ?, 'published', datetime('now'), datetime('now'))`,
+      args: [classId, schoolId, d.stream, String(store.name || "Lead Instructor")],
     });
-    if (clsRes.rows.length > 0) {
-      classId = String(clsRes.rows[0].id);
-    } else {
-      await db.execute({
-        sql: `INSERT INTO edu_classes (id, school_id, stream, kind, name, teacher_name, status, created_at, updated_at)
-              VALUES (?, ?, ?, 'masterclass', 'Professional Certification Class', ?, 'published', datetime('now'), datetime('now'))`,
-        args: [classId, schoolId, stream, String(store.name || "Lead Instructor")],
-      });
-    }
   }
 
-  // 3. Insert or update course in edu_courses
-  if (schoolId && (await hasTable("edu_courses"))) {
-    const hasStoreCol = await hasColumn("edu_courses", "store_id");
-    if (hasStoreCol) {
+  // A brand-new course with no syllabus yet stays a draft: nothing is invented for the public catalogue.
+  const status = !existingCourse && modulesInput.length === 0 && !body.status ? "draft" : d.status;
+
+  // 3. Insert or update the course in edu_courses (the Learn catalogue's own table)
+  const hasStoreCol = await hasColumn("edu_courses", "store_id");
+  await db.execute({
+    sql: `INSERT INTO edu_courses (id, school_id, class_id, stream, title, summary, price_ugx, ${hasStoreCol ? "store_id, " : ""}status, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ${hasStoreCol ? "?, " : ""}?, datetime('now'), datetime('now'))
+          ON CONFLICT(id) DO UPDATE SET
+            title = excluded.title,
+            summary = excluded.summary,
+            price_ugx = excluded.price_ugx,
+            stream = excluded.stream,
+            status = excluded.status,
+            ${hasStoreCol ? "store_id = excluded.store_id," : ""}
+            updated_at = datetime('now')
+          WHERE edu_courses.school_id = excluded.school_id`,
+    args: [courseId, schoolId, classId, d.stream, d.title, d.summary, d.price_ugx, ...(hasStoreCol ? [storeId] : []), status],
+  });
+
+  // 4. Save modules and lessons
+  for (const [mIndex, mod] of modulesInput.entries()) {
+    const modId = mod.id ?? newId("mod");
+    await db.execute({
+      sql: `INSERT INTO edu_modules (id, course_id, title, description, position, created_at)
+            VALUES (?, ?, ?, ?, ?, datetime('now'))
+            ON CONFLICT(id) DO UPDATE SET title = excluded.title, description = excluded.description, position = excluded.position
+            WHERE edu_modules.course_id = excluded.course_id`,
+      args: [modId, courseId, mod.title, mod.description, mIndex + 1],
+    });
+    for (const [lIndex, les] of mod.lessons.entries()) {
       await db.execute({
-        sql: `INSERT INTO edu_courses (id, school_id, class_id, stream, title, summary, price_ugx, store_id, status, created_at, updated_at)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'published', datetime('now'), datetime('now'))
+        sql: `INSERT INTO edu_lessons (id, module_id, course_id, title, content_type, duration_minutes, summary, content_url, position, created_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
               ON CONFLICT(id) DO UPDATE SET
                 title = excluded.title,
+                content_type = excluded.content_type,
+                duration_minutes = excluded.duration_minutes,
                 summary = excluded.summary,
-                price_ugx = excluded.price_ugx,
-                stream = excluded.stream,
-                store_id = excluded.store_id,
-                updated_at = datetime('now')
-              WHERE edu_courses.school_id = excluded.school_id`,
-        args: [courseId, schoolId, classId, stream, title, summary, priceUgx, storeId],
-      });
-    } else {
-      await db.execute({
-        sql: `INSERT INTO edu_courses (id, school_id, class_id, stream, title, summary, price_ugx, status, created_at, updated_at)
-              VALUES (?, ?, ?, ?, ?, ?, ?, 'published', datetime('now'), datetime('now'))
-              ON CONFLICT(id) DO UPDATE SET
-                title = excluded.title,
-                summary = excluded.summary,
-                price_ugx = excluded.price_ugx,
-                stream = excluded.stream,
-                updated_at = datetime('now')
-              WHERE edu_courses.school_id = excluded.school_id`,
-        args: [courseId, schoolId, classId, stream, title, summary, priceUgx],
+                content_url = excluded.content_url,
+                position = excluded.position
+              WHERE edu_lessons.course_id = excluded.course_id`,
+        args: [les.id ?? newId("les"), modId, courseId, les.title, les.content_type, les.duration_minutes, les.summary, les.content_url, lIndex + 1],
       });
     }
   }
 
-  // 4. Save Modules and Lessons if provided
-  const modulesInput = Array.isArray(body.modules) && body.modules.length > 0 ? body.modules : [
-    {
-      title: "Module 1: Orientation & Foundations",
-      lessons: [
-        { title: "Course Introduction & Syllabus Overview", content_type: "video", duration_minutes: 10 },
-        { title: "Key Principles & Best Practices", content_type: "video", duration_minutes: 20 },
-      ],
-    },
-    {
-      title: "Module 2: Practical Implementation & Certification",
-      lessons: [
-        { title: "Hands-on Project Walkthrough", content_type: "video", duration_minutes: 30 },
-        { title: "Final Certification Assessment", content_type: "quiz", duration_minutes: 15 },
-      ],
-    },
-  ];
-
-  if (await hasTable("edu_modules") && (await hasTable("edu_lessons"))) {
-    for (const [mIndex, mod] of modulesInput.entries()) {
-      const modId = mod.id || newId("mod");
-      await db.execute({
-        sql: `INSERT INTO edu_modules (id, course_id, title, description, position, created_at)
-              VALUES (?, ?, ?, ?, ?, datetime('now'))
-              ON CONFLICT(id) DO UPDATE SET title = excluded.title, position = excluded.position
-              WHERE edu_modules.course_id = excluded.course_id`,
-        args: [modId, courseId, String(mod.title || `Module ${mIndex + 1}`), String(mod.description || ""), mIndex + 1],
-      });
-
-      if (Array.isArray(mod.lessons)) {
-        for (const [lIndex, les] of mod.lessons.entries()) {
-          const lesId = les.id || newId("les");
-          await db.execute({
-            sql: `INSERT INTO edu_lessons (id, module_id, course_id, title, content_type, duration_minutes, summary, content_url, position, created_at)
-                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-                  ON CONFLICT(id) DO UPDATE SET
-                    title = excluded.title,
-                    content_type = excluded.content_type,
-                    duration_minutes = excluded.duration_minutes,
-                    summary = excluded.summary,
-                    content_url = excluded.content_url,
-                    position = excluded.position
-                  WHERE edu_lessons.course_id = excluded.course_id`,
-            args: [
-              lesId,
-              modId,
-              courseId,
-              String(les.title || `Lesson ${lIndex + 1}`),
-              String(les.content_type || "video"),
-              Number(les.duration_minutes) || 15,
-              String(les.summary || ""),
-              String(les.content_url || ""),
-              lIndex + 1,
-            ],
-          });
-        }
-      }
-    }
-  }
-
-  // 5. Create or sync matching digital product so it can be bought on store
+  // 5. Create or sync the matching digital product so the course can be bought on the store
   if (await hasTable("store_digital_products")) {
-    const digId = `dig_crs_${courseId}`;
     await db.execute({
       sql: `INSERT INTO store_digital_products (
               id, store_id, title, kind, description, price_ugx, max_downloads,
               expiry_days, linked_course_id, status, updated_at
-            ) VALUES (?, ?, ?, 'course', ?, ?, 0, 0, ?, 'published', datetime('now'))
+            ) VALUES (?, ?, ?, 'course', ?, ?, 0, 0, ?, ?, datetime('now'))
             ON CONFLICT(id) DO UPDATE SET
               title = excluded.title,
               price_ugx = excluded.price_ugx,
@@ -735,27 +680,29 @@ digitalLmsRoutes.post("/merchants/me/lms/courses", requireAuth, async (c) => {
               status = excluded.status,
               updated_at = datetime('now')
             WHERE store_digital_products.store_id = excluded.store_id`,
-      args: [digId, storeId, title, summary, priceUgx, courseId],
+      args: [`dig_crs_${courseId}`, storeId, d.title, d.summary, d.price_ugx, courseId, status === "published" ? "published" : "draft"],
     });
   }
 
+  const totalLessons = modulesInput.reduce((sum, m) => sum + m.lessons.length, 0);
+  const totalMinutes = modulesInput.reduce((sum, m) => sum + m.lessons.reduce((t, l) => t + l.duration_minutes, 0), 0);
   return c.json({
     ok: true,
     course: {
       id: courseId,
       store_id: storeId,
       learn_course_id: courseId,
-      learn_school_id: schoolId || null,
-      title,
-      stream,
-      summary,
-      price_ugx: priceUgx,
+      learn_school_id: schoolId,
+      title: d.title,
+      stream: d.stream,
+      summary: d.summary,
+      price_ugx: d.price_ugx,
       certificate_enabled: true,
       drip_schedule: "all_at_once",
-      status: "published",
+      status,
       modules: modulesInput,
-      total_lessons: 4,
-      total_duration_minutes: 75,
+      total_lessons: totalLessons,
+      total_duration_minutes: totalMinutes,
       enrolled_students_count: 0,
       completion_rate_percent: 0,
       learn_synced: true,
@@ -912,16 +859,14 @@ digitalLmsRoutes.post("/merchants/me/lms/enrollments", requireAuth, async (c) =>
   const store = await getMerchantStore(user.sub);
   if (!store) return c.json({ error: "no_store" }, 404);
 
-  const body = await c.req.json().catch(() => ({}));
-  const courseId = String(body.courseId || "").trim();
-  const studentName = String(body.studentName || "").trim();
-  const studentPhone = String(body.studentPhone || "").trim();
-  const studentEmail = body.studentEmail ? String(body.studentEmail).trim() : "";
-  const sendSmsNotice = Boolean(body.sendSmsNotice);
-
-  if (!courseId || !studentName || !studentPhone) {
-    return c.json({ error: "invalid_input", message: "Course, student name and phone are required." }, 400);
+  const parsedEnrol = enrollmentSchema.safeParse(await c.req.json().catch(() => ({})));
+  if (!parsedEnrol.success) {
+    return c.json({ error: "invalid_input", message: "Course, student name and a valid phone are required.", issues: parsedEnrol.error.issues }, 400);
   }
+  const { courseId, studentName, studentPhone, sendSmsNotice = false } = parsedEnrol.data;
+  const studentEmail = parsedEnrol.data.studentEmail ?? "";
+  const pendingEnrol = await migrationPending(c, "0133_merchant_tier3_digital_products_lms.sql", "store_lms_enrollments");
+  if (pendingEnrol) return pendingEnrol;
 
   const enrollmentId = newId("enr");
   const storeId = String(store.id);
@@ -968,7 +913,7 @@ digitalLmsRoutes.post("/merchants/me/lms/enrollments", requireAuth, async (c) =>
     const smsBody = `Hi ${studentName}! You've been enrolled in ${String(store.name)} Academy. Access your lessons here: ${portalUrl}`;
     await db.execute({
       sql: `INSERT INTO store_sms_logs (id, store_id, recipient_phone, recipient_name, message_type, body, status, cost_ugx)
-            VALUES (?, ?, ?, ?, 'order_confirmation', ?, 'delivered', 35)`,
+            VALUES (?, ?, ?, ?, 'order_confirmation', ?, 'simulated', 0)`,
       args: [newId("sms"), storeId, "+" + cleanPhone, studentName, smsBody],
     });
   }
@@ -1003,7 +948,7 @@ digitalLmsRoutes.post("/merchants/me/lms/enrollments", requireAuth, async (c) =>
 digitalLmsRoutes.get("/marketplace/stores/:id/digital-products", async (c) => {
   const requested = c.req.param("id")!;
   const publicStore = await findPublicStore(requested);
-  const demoStore = !publicStore && DEMO_DIGITAL_PRODUCTS.some((p) => p.store_id === requested);
+  const demoStore = !publicStore && (await demoCatalogAllowed()) && DEMO_DIGITAL_PRODUCTS.some((p) => p.store_id === requested);
   if (!publicStore && !demoStore) return c.json({ digitalProducts: [], courses: [] });
   const storeId = publicStore ? String(publicStore.id) : requested;
 
@@ -1061,6 +1006,8 @@ digitalLmsRoutes.get("/marketplace/stores/:id/digital-products", async (c) => {
 
 digitalLmsRoutes.get("/marketplace/digital-fulfillments/:token", async (c) => {
   const token = c.req.param("token");
+  const limited = await publicRateLimit(c, "dl", token, "rate_limit_token_download_per_minute", 60);
+  if (limited) return limited;
 
   if (!(await hasTable("store_digital_fulfillments"))) {
     return c.json({ error: "not_found", message: "Fulfillment token not found or expired." }, 404);

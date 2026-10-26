@@ -120,7 +120,7 @@ test("merchant tier 3: digital products CRUD, downloads, LMS curriculum builder,
     category: "Agribusiness & Farming",
     level: "Intermediate",
     durationMinutes: 180,
-    stream: "agribusiness",
+    stream: "skills",
     modules: [
       {
         title: "Module 1: Brooding Architecture & Temperature Control",

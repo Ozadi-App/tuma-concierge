@@ -15,9 +15,13 @@ import { getRelaySettings } from "../relay/settings.js";
 
 import { digitalLmsRoutes } from "./digital-lms.js";
 import { priceCheckoutItems } from "./pricing.js";
-import { findPublicStore, toPublicProduct, toPublicStore } from "./public.js";
+import { demoCatalogAllowed, findPublicStore, toPublicProduct, toPublicStore } from "./public.js";
+import { merchantRoleGuard, publicRateLimit } from "../lib/guards.js";
+import { getOptions } from "../lib/option-settings.js";
 
 export const marketplaceRoutes = new Hono();
+// Team roles are checked before any merchant route (including the digital and learning ones mounted below) runs.
+marketplaceRoutes.use("/merchants/me/*", merchantRoleGuard);
 marketplaceRoutes.route("/", digitalLmsRoutes);
 
 type Row = Record<string, unknown>;
@@ -967,7 +971,7 @@ marketplaceRoutes.get("/merchants/me/store", requireAuth, async (c) => {
   const user = c.get("user");
   // Find merchant linked to this user
   const memberRes = await db.execute({
-    sql: "SELECT merchant_id, role FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    sql: "SELECT merchant_id, role FROM merchant_members WHERE user_id = ? AND status = 'active' ORDER BY CASE role WHEN 'owner' THEN 0 WHEN 'manager' THEN 1 WHEN 'finance' THEN 2 ELSE 3 END LIMIT 1",
     args: [user.sub],
   });
   const member = memberRes.rows[0] as Row | undefined;
@@ -1034,7 +1038,7 @@ const createStoreSchema = z.object({
 marketplaceRoutes.post("/merchants/me/store", requireAuth, async (c) => {
   const user = c.get("user");
   const memberRes = await db.execute({
-    sql: "SELECT merchant_id, role FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    sql: "SELECT merchant_id, role FROM merchant_members WHERE user_id = ? AND status = 'active' ORDER BY CASE role WHEN 'owner' THEN 0 WHEN 'manager' THEN 1 WHEN 'finance' THEN 2 ELSE 3 END LIMIT 1",
     args: [user.sub],
   });
   const member = memberRes.rows[0] as Row | undefined;
@@ -1090,7 +1094,7 @@ marketplaceRoutes.post("/merchants/me/store", requireAuth, async (c) => {
 marketplaceRoutes.put("/merchants/me/store", requireAuth, async (c) => {
   const user = c.get("user");
   const memberRes = await db.execute({
-    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' ORDER BY CASE role WHEN 'owner' THEN 0 WHEN 'manager' THEN 1 WHEN 'finance' THEN 2 ELSE 3 END LIMIT 1",
     args: [user.sub],
   });
   const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
@@ -1196,7 +1200,7 @@ const upgradeTierSchema = z.object({
 marketplaceRoutes.post("/merchants/me/store/tier", requireAuth, async (c) => {
   const user = c.get("user");
   const memberRes = await db.execute({
-    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' ORDER BY CASE role WHEN 'owner' THEN 0 WHEN 'manager' THEN 1 WHEN 'finance' THEN 2 ELSE 3 END LIMIT 1",
     args: [user.sub],
   });
   const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
@@ -1276,7 +1280,7 @@ marketplaceRoutes.post("/merchants/me/store/tier", requireAuth, async (c) => {
 marketplaceRoutes.get("/merchants/me/products", requireAuth, async (c) => {
   const user = c.get("user");
   const memberRes = await db.execute({
-    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' ORDER BY CASE role WHEN 'owner' THEN 0 WHEN 'manager' THEN 1 WHEN 'finance' THEN 2 ELSE 3 END LIMIT 1",
     args: [user.sub],
   });
   const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
@@ -1343,7 +1347,7 @@ const productSchema = z.object({
 marketplaceRoutes.post("/merchants/me/products", requireAuth, async (c) => {
   const user = c.get("user");
   const memberRes = await db.execute({
-    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' ORDER BY CASE role WHEN 'owner' THEN 0 WHEN 'manager' THEN 1 WHEN 'finance' THEN 2 ELSE 3 END LIMIT 1",
     args: [user.sub],
   });
   const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
@@ -1428,7 +1432,7 @@ marketplaceRoutes.post("/merchants/me/products", requireAuth, async (c) => {
 marketplaceRoutes.post("/merchants/me/products/starter-pack", requireAuth, async (c) => {
   const user = c.get("user");
   const memberRes = await db.execute({
-    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' ORDER BY CASE role WHEN 'owner' THEN 0 WHEN 'manager' THEN 1 WHEN 'finance' THEN 2 ELSE 3 END LIMIT 1",
     args: [user.sub],
   });
   const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
@@ -1570,7 +1574,7 @@ marketplaceRoutes.post("/merchants/me/products/starter-pack", requireAuth, async
 marketplaceRoutes.post("/merchants/me/store/live/start", requireAuth, async (c) => {
   const user = c.get("user");
   const memberRes = await db.execute({
-    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' ORDER BY CASE role WHEN 'owner' THEN 0 WHEN 'manager' THEN 1 WHEN 'finance' THEN 2 ELSE 3 END LIMIT 1",
     args: [user.sub],
   });
   const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
@@ -1609,7 +1613,7 @@ marketplaceRoutes.post("/merchants/me/store/live/start", requireAuth, async (c) 
 marketplaceRoutes.post("/merchants/me/store/live/end", requireAuth, async (c) => {
   const user = c.get("user");
   const memberRes = await db.execute({
-    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' ORDER BY CASE role WHEN 'owner' THEN 0 WHEN 'manager' THEN 1 WHEN 'finance' THEN 2 ELSE 3 END LIMIT 1",
     args: [user.sub],
   });
   const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
@@ -1641,7 +1645,7 @@ marketplaceRoutes.post("/merchants/me/store/live/end", requireAuth, async (c) =>
 marketplaceRoutes.get("/merchants/me/collections", requireAuth, async (c) => {
   const user = c.get("user");
   const memberRes = await db.execute({
-    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' ORDER BY CASE role WHEN 'owner' THEN 0 WHEN 'manager' THEN 1 WHEN 'finance' THEN 2 ELSE 3 END LIMIT 1",
     args: [user.sub],
   });
   const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
@@ -1693,7 +1697,7 @@ const collectionSchema = z.object({
 marketplaceRoutes.post("/merchants/me/collections", requireAuth, async (c) => {
   const user = c.get("user");
   const memberRes = await db.execute({
-    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' ORDER BY CASE role WHEN 'owner' THEN 0 WHEN 'manager' THEN 1 WHEN 'finance' THEN 2 ELSE 3 END LIMIT 1",
     args: [user.sub],
   });
   const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
@@ -1747,7 +1751,7 @@ marketplaceRoutes.post("/merchants/me/collections", requireAuth, async (c) => {
 marketplaceRoutes.delete("/merchants/me/collections/:id", requireAuth, async (c) => {
   const user = c.get("user");
   const memberRes = await db.execute({
-    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' ORDER BY CASE role WHEN 'owner' THEN 0 WHEN 'manager' THEN 1 WHEN 'finance' THEN 2 ELSE 3 END LIMIT 1",
     args: [user.sub],
   });
   const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
@@ -1766,7 +1770,7 @@ marketplaceRoutes.delete("/merchants/me/collections/:id", requireAuth, async (c)
 marketplaceRoutes.get("/merchants/me/discounts", requireAuth, async (c) => {
   const user = c.get("user");
   const memberRes = await db.execute({
-    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' ORDER BY CASE role WHEN 'owner' THEN 0 WHEN 'manager' THEN 1 WHEN 'finance' THEN 2 ELSE 3 END LIMIT 1",
     args: [user.sub],
   });
   const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
@@ -1795,7 +1799,7 @@ const discountSchema = z.object({
 marketplaceRoutes.post("/merchants/me/discounts", requireAuth, async (c) => {
   const user = c.get("user");
   const memberRes = await db.execute({
-    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' ORDER BY CASE role WHEN 'owner' THEN 0 WHEN 'manager' THEN 1 WHEN 'finance' THEN 2 ELSE 3 END LIMIT 1",
     args: [user.sub],
   });
   const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
@@ -1851,7 +1855,7 @@ marketplaceRoutes.post("/merchants/me/discounts", requireAuth, async (c) => {
 marketplaceRoutes.delete("/merchants/me/discounts/:id", requireAuth, async (c) => {
   const user = c.get("user");
   const memberRes = await db.execute({
-    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' ORDER BY CASE role WHEN 'owner' THEN 0 WHEN 'manager' THEN 1 WHEN 'finance' THEN 2 ELSE 3 END LIMIT 1",
     args: [user.sub],
   });
   const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
@@ -1870,7 +1874,7 @@ marketplaceRoutes.delete("/merchants/me/discounts/:id", requireAuth, async (c) =
 marketplaceRoutes.get("/merchants/me/outlet-inventory", requireAuth, async (c) => {
   const user = c.get("user");
   const memberRes = await db.execute({
-    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' ORDER BY CASE role WHEN 'owner' THEN 0 WHEN 'manager' THEN 1 WHEN 'finance' THEN 2 ELSE 3 END LIMIT 1",
     args: [user.sub],
   });
   const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
@@ -1910,7 +1914,7 @@ const outletInventorySchema = z.object({
 marketplaceRoutes.put("/merchants/me/outlet-inventory", requireAuth, async (c) => {
   const user = c.get("user");
   const memberRes = await db.execute({
-    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' ORDER BY CASE role WHEN 'owner' THEN 0 WHEN 'manager' THEN 1 WHEN 'finance' THEN 2 ELSE 3 END LIMIT 1",
     args: [user.sub],
   });
   const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
@@ -1960,7 +1964,7 @@ marketplaceRoutes.put("/merchants/me/outlet-inventory", requireAuth, async (c) =
 marketplaceRoutes.get("/merchants/me/draft-orders", requireAuth, async (c) => {
   const user = c.get("user");
   const memberRes = await db.execute({
-    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' ORDER BY CASE role WHEN 'owner' THEN 0 WHEN 'manager' THEN 1 WHEN 'finance' THEN 2 ELSE 3 END LIMIT 1",
     args: [user.sub],
   });
   const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
@@ -2007,7 +2011,7 @@ const draftOrderSchema = z.object({
 marketplaceRoutes.post("/merchants/me/draft-orders", requireAuth, async (c) => {
   const user = c.get("user");
   const memberRes = await db.execute({
-    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' ORDER BY CASE role WHEN 'owner' THEN 0 WHEN 'manager' THEN 1 WHEN 'finance' THEN 2 ELSE 3 END LIMIT 1",
     args: [user.sub],
   });
   const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
@@ -2060,7 +2064,7 @@ marketplaceRoutes.post("/merchants/me/draft-orders", requireAuth, async (c) => {
 marketplaceRoutes.get("/merchants/me/elite-analytics", requireAuth, async (c) => {
   const user = c.get("user");
   const memberRes = await db.execute({
-    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' ORDER BY CASE role WHEN 'owner' THEN 0 WHEN 'manager' THEN 1 WHEN 'finance' THEN 2 ELSE 3 END LIMIT 1",
     args: [user.sub],
   });
   const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
@@ -2200,7 +2204,7 @@ marketplaceRoutes.get("/merchants/me/elite-analytics", requireAuth, async (c) =>
 marketplaceRoutes.get("/merchants/me/pos-sales", requireAuth, async (c) => {
   const user = c.get("user");
   const memberRes = await db.execute({
-    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' ORDER BY CASE role WHEN 'owner' THEN 0 WHEN 'manager' THEN 1 WHEN 'finance' THEN 2 ELSE 3 END LIMIT 1",
     args: [user.sub],
   });
   const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
@@ -2253,7 +2257,7 @@ const posSaleSchema = z.object({
 marketplaceRoutes.post("/merchants/me/pos-sales", requireAuth, async (c) => {
   const user = c.get("user");
   const memberRes = await db.execute({
-    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' ORDER BY CASE role WHEN 'owner' THEN 0 WHEN 'manager' THEN 1 WHEN 'finance' THEN 2 ELSE 3 END LIMIT 1",
     args: [user.sub],
   });
   const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
@@ -2419,7 +2423,7 @@ marketplaceRoutes.post("/merchants/me/pos-sales", requireAuth, async (c) => {
 marketplaceRoutes.get("/merchants/me/stock-transfers", requireAuth, async (c) => {
   const user = c.get("user");
   const memberRes = await db.execute({
-    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' ORDER BY CASE role WHEN 'owner' THEN 0 WHEN 'manager' THEN 1 WHEN 'finance' THEN 2 ELSE 3 END LIMIT 1",
     args: [user.sub],
   });
   const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
@@ -2453,7 +2457,7 @@ const stockTransferSchema = z.object({
 marketplaceRoutes.post("/merchants/me/stock-transfers", requireAuth, async (c) => {
   const user = c.get("user");
   const memberRes = await db.execute({
-    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' ORDER BY CASE role WHEN 'owner' THEN 0 WHEN 'manager' THEN 1 WHEN 'finance' THEN 2 ELSE 3 END LIMIT 1",
     args: [user.sub],
   });
   const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
@@ -2543,7 +2547,7 @@ marketplaceRoutes.post("/merchants/me/stock-transfers", requireAuth, async (c) =
 marketplaceRoutes.get("/merchants/me/crm-customers", requireAuth, async (c) => {
   const user = c.get("user");
   const memberRes = await db.execute({
-    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' ORDER BY CASE role WHEN 'owner' THEN 0 WHEN 'manager' THEN 1 WHEN 'finance' THEN 2 ELSE 3 END LIMIT 1",
     args: [user.sub],
   });
   const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
@@ -2586,7 +2590,7 @@ marketplaceRoutes.get("/merchants/me/crm-customers", requireAuth, async (c) => {
 marketplaceRoutes.get("/merchants/me/suppliers", requireAuth, async (c) => {
   const user = c.get("user");
   const memberRes = await db.execute({
-    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' ORDER BY CASE role WHEN 'owner' THEN 0 WHEN 'manager' THEN 1 WHEN 'finance' THEN 2 ELSE 3 END LIMIT 1",
     args: [user.sub],
   });
   const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
@@ -2608,7 +2612,7 @@ marketplaceRoutes.get("/merchants/me/suppliers", requireAuth, async (c) => {
 marketplaceRoutes.post("/merchants/me/suppliers", requireAuth, async (c) => {
   const user = c.get("user");
   const memberRes = await db.execute({
-    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' ORDER BY CASE role WHEN 'owner' THEN 0 WHEN 'manager' THEN 1 WHEN 'finance' THEN 2 ELSE 3 END LIMIT 1",
     args: [user.sub],
   });
   const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
@@ -2644,7 +2648,7 @@ marketplaceRoutes.post("/merchants/me/suppliers", requireAuth, async (c) => {
 marketplaceRoutes.get("/merchants/me/purchase-orders", requireAuth, async (c) => {
   const user = c.get("user");
   const memberRes = await db.execute({
-    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' ORDER BY CASE role WHEN 'owner' THEN 0 WHEN 'manager' THEN 1 WHEN 'finance' THEN 2 ELSE 3 END LIMIT 1",
     args: [user.sub],
   });
   const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
@@ -2685,7 +2689,7 @@ marketplaceRoutes.get("/merchants/me/purchase-orders", requireAuth, async (c) =>
 marketplaceRoutes.post("/merchants/me/purchase-orders", requireAuth, async (c) => {
   const user = c.get("user");
   const memberRes = await db.execute({
-    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' ORDER BY CASE role WHEN 'owner' THEN 0 WHEN 'manager' THEN 1 WHEN 'finance' THEN 2 ELSE 3 END LIMIT 1",
     args: [user.sub],
   });
   const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
@@ -2739,7 +2743,7 @@ marketplaceRoutes.post("/merchants/me/purchase-orders", requireAuth, async (c) =
 marketplaceRoutes.post("/merchants/me/purchase-orders/:id/receive", requireAuth, async (c) => {
   const user = c.get("user");
   const memberRes = await db.execute({
-    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' ORDER BY CASE role WHEN 'owner' THEN 0 WHEN 'manager' THEN 1 WHEN 'finance' THEN 2 ELSE 3 END LIMIT 1",
     args: [user.sub],
   });
   const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
@@ -2814,7 +2818,7 @@ marketplaceRoutes.post("/merchants/me/purchase-orders/:id/receive", requireAuth,
 marketplaceRoutes.get("/merchants/me/bundles", requireAuth, async (c) => {
   const user = c.get("user");
   const memberRes = await db.execute({
-    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' ORDER BY CASE role WHEN 'owner' THEN 0 WHEN 'manager' THEN 1 WHEN 'finance' THEN 2 ELSE 3 END LIMIT 1",
     args: [user.sub],
   });
   const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
@@ -2849,7 +2853,7 @@ marketplaceRoutes.get("/merchants/me/bundles", requireAuth, async (c) => {
 marketplaceRoutes.post("/merchants/me/bundles", requireAuth, async (c) => {
   const user = c.get("user");
   const memberRes = await db.execute({
-    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' ORDER BY CASE role WHEN 'owner' THEN 0 WHEN 'manager' THEN 1 WHEN 'finance' THEN 2 ELSE 3 END LIMIT 1",
     args: [user.sub],
   });
   const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
@@ -2900,7 +2904,7 @@ marketplaceRoutes.post("/merchants/me/bundles", requireAuth, async (c) => {
 marketplaceRoutes.delete("/merchants/me/bundles/:id", requireAuth, async (c) => {
   const user = c.get("user");
   const memberRes = await db.execute({
-    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' ORDER BY CASE role WHEN 'owner' THEN 0 WHEN 'manager' THEN 1 WHEN 'finance' THEN 2 ELSE 3 END LIMIT 1",
     args: [user.sub],
   });
   const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
@@ -2923,7 +2927,7 @@ marketplaceRoutes.delete("/merchants/me/bundles/:id", requireAuth, async (c) => 
 marketplaceRoutes.get("/merchants/me/winback-campaigns", requireAuth, async (c) => {
   const user = c.get("user");
   const memberRes = await db.execute({
-    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' ORDER BY CASE role WHEN 'owner' THEN 0 WHEN 'manager' THEN 1 WHEN 'finance' THEN 2 ELSE 3 END LIMIT 1",
     args: [user.sub],
   });
   const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
@@ -2957,7 +2961,7 @@ marketplaceRoutes.get("/merchants/me/winback-campaigns", requireAuth, async (c) 
 marketplaceRoutes.post("/merchants/me/winback-campaigns", requireAuth, async (c) => {
   const user = c.get("user");
   const memberRes = await db.execute({
-    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' ORDER BY CASE role WHEN 'owner' THEN 0 WHEN 'manager' THEN 1 WHEN 'finance' THEN 2 ELSE 3 END LIMIT 1",
     args: [user.sub],
   });
   const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
@@ -3015,7 +3019,7 @@ export const DEFAULT_STOREFRONT_SECTIONS = [
 marketplaceRoutes.get("/merchants/me/storefront-sections", requireAuth, async (c) => {
   const user = c.get("user");
   const memberRes = await db.execute({
-    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' ORDER BY CASE role WHEN 'owner' THEN 0 WHEN 'manager' THEN 1 WHEN 'finance' THEN 2 ELSE 3 END LIMIT 1",
     args: [user.sub],
   });
   const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
@@ -3040,7 +3044,7 @@ marketplaceRoutes.get("/merchants/me/storefront-sections", requireAuth, async (c
 marketplaceRoutes.put("/merchants/me/storefront-sections", requireAuth, async (c) => {
   const user = c.get("user");
   const memberRes = await db.execute({
-    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' ORDER BY CASE role WHEN 'owner' THEN 0 WHEN 'manager' THEN 1 WHEN 'finance' THEN 2 ELSE 3 END LIMIT 1",
     args: [user.sub],
   });
   const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
@@ -3073,7 +3077,7 @@ marketplaceRoutes.put("/merchants/me/storefront-sections", requireAuth, async (c
 marketplaceRoutes.get("/merchants/me/sms-logs", requireAuth, async (c) => {
   const user = c.get("user");
   const memberRes = await db.execute({
-    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' ORDER BY CASE role WHEN 'owner' THEN 0 WHEN 'manager' THEN 1 WHEN 'finance' THEN 2 ELSE 3 END LIMIT 1",
     args: [user.sub],
   });
   const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
@@ -3095,7 +3099,7 @@ marketplaceRoutes.get("/merchants/me/sms-logs", requireAuth, async (c) => {
 marketplaceRoutes.post("/merchants/me/send-sms", requireAuth, async (c) => {
   const user = c.get("user");
   const memberRes = await db.execute({
-    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' ORDER BY CASE role WHEN 'owner' THEN 0 WHEN 'manager' THEN 1 WHEN 'finance' THEN 2 ELSE 3 END LIMIT 1",
     args: [user.sub],
   });
   const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
@@ -3182,8 +3186,8 @@ marketplaceRoutes.get("/marketplace/stores", async (c) => {
   const res = await db.execute({ sql: query, args });
 
   let stores = res.rows as Row[];
-  if (stores.length === 0) {
-    // Fallback to demo stores so browsing and testing works immediately!
+  if (stores.length === 0 && (await demoCatalogAllowed())) {
+    // Sandbox only: demo stores so browsing and testing works immediately.
     stores = DEMO_MARKETPLACE_STORES.filter((s) => !category || s.category === category);
   }
 
@@ -3218,7 +3222,7 @@ marketplaceRoutes.get("/marketplace/stores/:id", async (c) => {
   const userLng = lngParam != null && lngParam !== "" ? parseFloat(lngParam) : null;
 
   let store = await findPublicStore(id);
-  if (!store) {
+  if (!store && (await demoCatalogAllowed())) {
     store = DEMO_MARKETPLACE_STORES.find((s) => s.id === id || s.slug === id) || null;
   }
 
@@ -3255,7 +3259,8 @@ marketplaceRoutes.get("/marketplace/stores/:id", async (c) => {
   }
 
   let discounts: Row[] = [];
-  if (await hasTable("store_discounts")) {
+  const { storefront_promo_visibility: promoVisibility } = await getOptions(["storefront_promo_visibility"]);
+  if (promoVisibility !== "none_public" && (await hasTable("store_discounts"))) {
     const discRes = await db.execute({
       sql: "SELECT id, code, title, kind, value, min_order_amount, is_automatic FROM store_discounts WHERE store_id = ? AND status = 'active' AND is_automatic = 1 ORDER BY created_at DESC",
       args: [storeId],
@@ -3363,10 +3368,13 @@ marketplaceRoutes.post("/marketplace/stores/:id/b2b-inquiry", async (c) => {
   const parsed = publicB2bInquirySchema.safeParse(await c.req.json().catch(() => ({})));
   if (!parsed.success) return c.json({ error: "invalid_body", issues: parsed.error.issues }, 400);
 
+  const limited = await publicRateLimit(c, "b2b", parsed.data.customer_phone, "rate_limit_public_inquiry_per_hour", 3600);
+  if (limited) return limited;
+
   // The merchant sees catalogue prices, whatever the form sent.
   const priced = await priceCheckoutItems(
     parsed.data.items.map((it) => ({ productId: it.productId, storeId: String(store.id), title: it.title, price: it.unitPrice, quantity: it.quantity })),
-    DEMO_MARKETPLACE_PRODUCTS,
+    (await demoCatalogAllowed()) ? DEMO_MARKETPLACE_PRODUCTS : {},
   );
   if (!priced.ok) return c.json({ error: priced.error, message: priced.message, productId: priced.productId }, priced.status);
   parsed.data.items = priced.items.map((it) => ({ productId: it.productId, title: it.title, unitPrice: it.price, quantity: it.quantity }));
@@ -3407,7 +3415,8 @@ marketplaceRoutes.post("/marketplace/stores/:id/b2b-inquiry", async (c) => {
 marketplaceRoutes.get("/marketplace/stores/:id/products", async (c) => {
   const id = c.req.param("id")!;
   const publicStore = await findPublicStore(id);
-  const realStoreId = publicStore ? String(publicStore.id) : DEMO_MARKETPLACE_PRODUCTS[id] ? id : null;
+  const demoOk = await demoCatalogAllowed();
+  const realStoreId = publicStore ? String(publicStore.id) : demoOk && DEMO_MARKETPLACE_PRODUCTS[id] ? id : null;
   if (!realStoreId) return c.json({ products: [] });
 
   const productsRes = await db.execute({
@@ -3416,7 +3425,7 @@ marketplaceRoutes.get("/marketplace/stores/:id/products", async (c) => {
   });
 
   let products = productsRes.rows as Row[];
-  if (products.length === 0 && DEMO_MARKETPLACE_PRODUCTS[realStoreId]) {
+  if (products.length === 0 && demoOk && DEMO_MARKETPLACE_PRODUCTS[realStoreId]) {
     products = DEMO_MARKETPLACE_PRODUCTS[realStoreId];
   }
 
@@ -3468,8 +3477,8 @@ marketplaceRoutes.get("/marketplace/products/:id", async (c) => {
       args: [String(product.store_id)],
     });
     store = (storeRes.rows[0] as Row | undefined) || null;
-  } else {
-    // 2. Fall back to demo products
+  } else if (await demoCatalogAllowed()) {
+    // 2. Sandbox only: fall back to demo products
     for (const [storeId, prods] of Object.entries(DEMO_MARKETPLACE_PRODUCTS)) {
       const match = prods.find((p: any) => p.id === id || p.slug === id);
       if (match) {
@@ -3502,7 +3511,7 @@ marketplaceRoutes.get("/marketplace/live", async (c) => {
   });
 
   let liveChannels = res.rows as Row[];
-  if (liveChannels.length === 0) {
+  if (liveChannels.length === 0 && (await demoCatalogAllowed())) {
     liveChannels = DEMO_MARKETPLACE_STORES.filter((s) => s.is_live === 1);
   }
 
@@ -3512,7 +3521,8 @@ marketplaceRoutes.get("/marketplace/live", async (c) => {
 // Spotlight Endless Feed (TikTok / Reels / Shorts style)
 marketplaceRoutes.get("/marketplace/spotlight", async (c) => {
   const category = c.req.query("category"); // 'all' | 'groceries' | 'stores' | 'live'
-  let items = DEMO_MARKETPLACE_SPOTLIGHT;
+  // The spotlight feed is built from the demo catalogue, so a live platform shows none of it.
+  let items = (await demoCatalogAllowed()) ? DEMO_MARKETPLACE_SPOTLIGHT : [];
 
   if (category && category !== "all") {
     if (category === "live") {
@@ -3728,7 +3738,7 @@ marketplaceRoutes.post("/marketplace/checkout", requireAuth, async (c) => {
   const paymentRail = d.paymentRail ?? (d.paymentMethod === "cod" ? "float" : "escrow");
   const stage = paymentRail === "float" ? "Match" : "Create";
 
-  const pricing = await priceCheckoutItems(d.items, DEMO_MARKETPLACE_PRODUCTS);
+  const pricing = await priceCheckoutItems(d.items, (await demoCatalogAllowed()) ? DEMO_MARKETPLACE_PRODUCTS : {});
   if (!pricing.ok) return c.json({ error: pricing.error, message: pricing.message, productId: pricing.productId }, pricing.status);
   const bag = await planMarketplaceDelivery(pricing.items, d, environment);
   const stops = bag.stops;
@@ -3930,7 +3940,7 @@ const quoteSchema = marketplaceCheckoutSchema.pick({ items: true, destinationLat
 marketplaceRoutes.post("/marketplace/checkout/quote", requireAuth, async (c) => {
   const parsed = quoteSchema.safeParse(await c.req.json().catch(() => ({})));
   if (!parsed.success) return c.json({ error: "invalid_body", issues: parsed.error.issues }, 400);
-  const pricing = await priceCheckoutItems(parsed.data.items, DEMO_MARKETPLACE_PRODUCTS);
+  const pricing = await priceCheckoutItems(parsed.data.items, (await demoCatalogAllowed()) ? DEMO_MARKETPLACE_PRODUCTS : {});
   if (!pricing.ok) return c.json({ error: pricing.error, message: pricing.message, productId: pricing.productId }, pricing.status);
   const bag = await planMarketplaceDelivery(pricing.items, parsed.data, await getPlatformEnvironment());
   const { stops, trip } = bag;
@@ -4018,7 +4028,7 @@ async function planMarketplaceDelivery(
 
   let stops: DeliveryStop[] = [];
   for (const [storeId, storeItems] of byStore.entries()) {
-    await ensureDemoStoreInDb(storeId, environment);
+    if (await demoCatalogAllowed()) await ensureDemoStoreInDb(storeId, environment);
     let storeName = "Marketplace Store";
     let storeAddress: string | null = null;
     let lat: number | null = null;

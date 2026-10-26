@@ -31,6 +31,8 @@ function bindDatabase(client: Client) {
   } as unknown as D1Database);
 }
 
+const FUTURE_DATE = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
+
 test("standalone services platform: business onboarding, offerings, aggregator isolation, public site and booking flow", async () => {
   process.env.JWT_SECRET = "services-test-secret";
   resetSchemaCache();
@@ -91,6 +93,20 @@ test("standalone services platform: business onboarding, offerings, aggregator i
   assert.ok(launchJson.business.id.startsWith("sbiz_"));
   const bizSlug = launchJson.business.slug;
 
+  // A new business waits for admin review (default option) and is not public until approved.
+  assert.equal(launchJson.business.status, "pending_review");
+  assert.equal((await app.request(`/v1/services-platform/public/${bizSlug}`)).status, 404);
+  await client.execute("INSERT INTO users (id, phone, name, password_hash, role, status, admin_role) VALUES ('usr_srv_admin', '+256700000777', 'Staff', 'hash', 'admin', 'active', 'super_admin')");
+  const adminJwt = await signToken({ sub: "usr_srv_admin", role: "admin" });
+  const approve = await app.request(`/v1/services-platform/admin/businesses/${launchJson.business.id}/review`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${adminJwt}` },
+    body: JSON.stringify({ decision: "approve" }),
+  });
+  assert.equal(approve.status, 200);
+  const logged = await client.execute("SELECT summary FROM admin_activity_log WHERE action = 'services.business_approve'");
+  assert.equal(logged.rows.length, 1, "approving a business is in the activity log");
+
   // 3. Create Service Offering
   const addOffRes = await req("/services-platform/offerings", "POST", {
     title: "Full 3-Phase Inverter & Solar Terminal Diagnostic",
@@ -139,7 +155,7 @@ test("standalone services platform: business onboarding, offerings, aggregator i
       service_id: serviceId,
       customer_name: "Baker Lubega",
       customer_phone: "+256 752 000 111",
-      scheduled_date: "2026-11-05",
+      scheduled_date: FUTURE_DATE,
       scheduled_time: "10:30",
       location_type: "client_site",
       address: "Plot 8, Ntinda Ministers Village",
@@ -159,7 +175,7 @@ test("standalone services platform: business onboarding, offerings, aggregator i
       customer_name: "Baker Lubega",
       customer_phone: "+256 752 000 111",
       customer_email: "baker@lubega.com",
-      scheduled_date: "2026-11-05",
+      scheduled_date: FUTURE_DATE,
       scheduled_time: "10:30",
       location_type: "client_site",
       address: "Plot 8, Ntinda Ministers Village",

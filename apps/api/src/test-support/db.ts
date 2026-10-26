@@ -6,6 +6,7 @@ import { setD1Binding, type D1Database } from "../db/client.js";
 import { splitSqlStatements } from "../db/split-sql.js";
 import { resetSchemaCache } from "../lib/schema.js";
 import { signToken } from "../auth/jwt.js";
+import { invalidateSettingsCache } from "../lib/settings.js";
 
 /** A fresh in-memory database with every migration applied, bound as the API's D1. */
 export async function freshDatabase(): Promise<Client> {
@@ -74,3 +75,9 @@ export const anonymous = (path: string, method = "GET", body?: object, headers: 
   });
 
 export { app };
+
+/** Allow the built-in demo catalogue to be ordered from (tests that shop the demo stores while the platform is live). */
+export async function allowDemoCatalog(client: Client): Promise<void> {
+  await client.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('marketplace_demo_catalog', 'always')");
+  invalidateSettingsCache();
+}

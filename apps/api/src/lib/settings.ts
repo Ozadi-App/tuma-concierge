@@ -2013,3 +2013,17 @@ export async function setMarketplaceSettings(next: Partial<MarketplaceSettings>)
 }
 
 
+
+/** Raw read/write for the option registry (keys that are not part of the typed DEFAULTS). */
+export async function getRawSetting(key: string): Promise<string | undefined> {
+  return (await loadSettings()).get(key);
+}
+
+export async function setRawSetting(key: string, value: string): Promise<void> {
+  await db.execute({
+    sql: `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, datetime('now'))
+          ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`,
+    args: [key, value],
+  });
+  invalidateSettingsCache();
+}

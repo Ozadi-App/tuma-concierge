@@ -93,6 +93,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/settings/home-menu", label: "Home menu", icon: Home, hint: "Names and Hive shortcuts", visible: can("settings.manage") },
       { href: "/settings/marketplace", label: "Marketplace", icon: Store, hint: "Pro stores, live and ads" },
       { href: "/settings/services-platform", label: "Services Platform", icon: Briefcase, hint: "Standalone services & aggregator isolation" },
+      { href: "/settings/commerce-options", label: "Store & services options", icon: Store, hint: "Web store, digital products, courses, services", keywords: "checkout domain promo storage licence refund approval rate limit roles demo" },
       { href: "/settings/learn", label: "Peebee Learn", icon: GraduationCap, hint: "Schools and courses" },
       { href: "/settings/guest", label: "Guest checkout", icon: UserRound, hint: "Shared links and alerts" },
       { href: "/settings/shopping-units", label: "Shopping units", icon: Ruler, hint: "Measures and matching", visible: can("settings.manage") },

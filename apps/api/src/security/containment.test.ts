@@ -147,6 +147,7 @@ test("service bookings: tenant-scoped, never paid on request, public site is an 
   const biz = (name: string) => ({ name, category: "consultation", phone: "+256700123456" });
   const bizA = (await json(await a("/services-platform/my-business", "POST", biz("Alpha Advisory")))).business;
   const bizB = (await json(await b("/services-platform/my-business", "POST", biz("Beta Advisory")))).business;
+  await client.execute("UPDATE service_businesses SET status = 'active'");
   const offerB = (await json(await b("/services-platform/offerings", "POST", { title: "Beta Call", price_ugx: 90000, deposit_ugx: 30000 }))).offering;
   const offerA = (await json(await a("/services-platform/offerings", "POST", { title: "Alpha Call", price_ugx: 40000 }))).offering;
   const staffB = (await json(await b("/services-platform/staff", "POST", { name: "Bea Specialist", phone: "+256700555555" }))).staff;

@@ -8,6 +8,7 @@ import { setD1Binding, type D1Database } from "../db/client.js";
 import { splitSqlStatements } from "../db/split-sql.js";
 import { resetSchemaCache } from "../lib/schema.js";
 import { signToken } from "../auth/jwt.js";
+import { allowDemoCatalog } from "../test-support/db.js";
 
 function bindDatabase(client: Client) {
   const prepare = (sql: string) => ({
@@ -41,6 +42,7 @@ test("marketplace routes: public browsing is accessible without authentication",
     }
   }
   bindDatabase(client);
+  await allowDemoCatalog(client);
 
   // 1. Public stores list
   const storesRes = await app.request("/v1/marketplace/stores");
@@ -113,6 +115,7 @@ test("marketplace checkout: links orders to delivery system and alerts boda ride
     }
   }
   bindDatabase(client);
+  await allowDemoCatalog(client);
 
   // Setup user and rider
   await client.execute("INSERT INTO users (id, phone, name, password_hash, role, status) VALUES ('cust_1', '+256700111222', 'Alice Mukasa', 'hash', 'customer', 'active')");
@@ -215,6 +218,7 @@ test("marketplace checkout: a bag from several stores is one delivery, priced ex
     for (const sql of splitSqlStatements(readFileSync(join(migrations, file), "utf8"))) await client.execute(sql);
   }
   bindDatabase(client);
+  await allowDemoCatalog(client);
   const previousSecret = process.env.JWT_SECRET;
   process.env.JWT_SECRET = "marketplace-bag-tests-only";
   try {
@@ -270,6 +274,7 @@ test("marketplace checkout: a long delivery from one store is relayed by matatu"
     for (const sql of splitSqlStatements(readFileSync(join(migrations, file), "utf8"))) await client.execute(sql);
   }
   bindDatabase(client);
+  await allowDemoCatalog(client);
   const previousSecret = process.env.JWT_SECRET;
   process.env.JWT_SECRET = "marketplace-relay-tests-only";
   try {
