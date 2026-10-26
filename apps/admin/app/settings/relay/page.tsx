@@ -1,5 +1,6 @@
 "use client";
 
+import { ModuleState } from "../../../components/ModuleState";
 import { Switch } from "../../../components/ui/Switch";
 import { ApiError, hasPermission, type RelayAdminOrder, type RelayDropMode, type RelayOperator, type RelayRoute, type RelayRouteStage, type RelaySettings, type RelayStation } from "@peebee/shared";
 import { Select } from "../../../components/ui/Select";
@@ -203,7 +204,7 @@ function SettingsTab() {
       {ready && !stagesReady && <StagesNotice />}
       <section className="home-card space-y-3">
         <label className="flex items-center gap-2 text-sm font-bold text-ink">
-          <Switch checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
+          <ModuleState on={enabled} />
           Relay delivery is on
         </label>
         <p className="text-xs text-ink-500">Off means every parcel goes the whole way by boda, however long.</p>

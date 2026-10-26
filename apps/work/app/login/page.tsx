@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useState } from "react";
 import { GoogleSignInButton } from "../../components/GoogleSignInButton";
 import { PasswordInput } from "../../components/PasswordInput";
-import { errorMessage } from "../../lib/api";
+import { api, errorMessage } from "../../lib/api";
+import { ServerPracticeCard } from "@peebee/shared/practice-ui";
 import { useAuth } from "../../lib/auth-context";
 
 type Identifier = "email" | "phone";
@@ -154,6 +155,8 @@ export default function LoginPage() {
         </form>
 
 
+
+        {mode === "login" && <ServerPracticeCard role="provider" api={api} body="Try Peebee Work as a demo service provider: jobs to quote, bookings to run and earnings to collect. Nothing here is real." buttonLabel="Practise as a provider" />}
 
         {mode === "register" && (
           <p className="text-center text-xs text-ink-500">

@@ -1,3 +1,4 @@
+import { visibleInWorld } from "../practice/people.js";
 import { Hono } from "hono";
 import { z } from "zod";
 import { db } from "../db/client.js";
@@ -410,7 +411,7 @@ gasRoutes.get("/stations", async (c) => {
         o.address, o.lat, o.lng, o.phone, o.active_pumps, o.status
       FROM fuel_station_outlets o
       JOIN fuel_stations s ON s.id = o.station_id
-      WHERE o.status = 'active'
+      WHERE o.status = 'active' AND ${visibleInWorld(await getPlatformEnvironment(), "o.id")}
       ORDER BY s.brand_name, o.name
     `;
     const res = await db.execute(query);

@@ -1,3 +1,4 @@
+import { demoPeopleFilter } from "../practice/people.js";
 import { isRiderProfileComplete, type MobileMoneyNetwork, type Rider } from "@peebee/shared";
 import { Hono } from "hono";
 import { z } from "zod";
@@ -1185,9 +1186,11 @@ riderRoutes.get("/riders/me/pro-subscription/payments/:id/refresh", requireAuth,
 // ---------------------------------------------------------------------------
 
 riderRoutes.get("/admin/riders", requireAuth, requireRole("admin"), requirePermission("riders.view"), async (c) => {
+  const requested = c.req.query("environment");
+  const viewing = requested === "live" || requested === "sandbox" ? requested : await getPlatformEnvironment();
   const res = await db.execute(
     `SELECT u.id, u.name, u.phone, u.email, u.status, r.*
-     FROM riders r JOIN users u ON u.id = r.user_id ORDER BY r.created_at DESC`,
+     FROM riders r JOIN users u ON u.id = r.user_id WHERE ${demoPeopleFilter(viewing, "r.user_id")} ORDER BY r.created_at DESC`,
   );
   return c.json({ riders: res.rows });
 });

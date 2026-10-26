@@ -9,7 +9,7 @@ import { bookingFor, bookSeats, manifestFor, myBookings, releaseStaleBookings } 
 import { activeQueue, applyTaxi, arrive, driverView, goOnRoad, joinLine, leaveLine, lineOf, listTaxis, onRoadOf, removeFromLine, startBoarding, TaxipressError, updateLocation, updateTaxi, walkUp } from "./queue.js";
 import { decorateLine, detailsColumnsReady, detailsReady, stopsFor, taxiProfile } from "./details.js";
 import { getR2Bucket, uploadResponseHeaders } from "../storage/r2.js";
-import { getTaxipressSettings, LUGGAGE_TYPES, setTaxipressSettings } from "./settings.js";
+import { getTaxipressSettings, LANGUAGE_CODE, LUGGAGE_TYPES, MAX_LANGUAGES, offeredLanguages, offeredLuggageTypes, setTaxipressSettings } from "./settings.js";
 import { cancelBooking, markNoShow } from "./cancellation.js";
 import { confirmBoarding, settlementReport } from "./settlement.js";
 import { getTaxipressRoute, listActiveTaxipressRoutes, listTaxipressRoutes, taxipressReady } from "./service.js";
@@ -73,9 +73,11 @@ taxipressRoutes.get("/taxipress/config", async (c) => {
     maxLapChildren: settings.maxLapChildren,
     childSeatFarePercent: settings.childSeatFarePercent,
     luggageEnabled: settings.luggageEnabled,
+    luggageTypes: offeredLuggageTypes(settings),
     luggagePrices: settings.luggagePrices,
     assistanceEnabled: settings.assistanceEnabled,
     languageEnabled: settings.languageEnabled,
+    languages: offeredLanguages(settings).map((l) => ({ code: l.code, name: l.name })),
     bookForOthersEnabled: settings.bookForOthersEnabled,
     cashEnabled: settings.cashEnabled,
     seatChoiceFeeUgx: settings.seatChoiceFeeUgx,
@@ -207,7 +209,7 @@ const bookSchema = z.object({
   children: z.number().int().min(0).max(17).optional(),
   luggage: z.record(z.enum(LUGGAGE_TYPES as [string, ...string[]]), z.number().int().min(0).max(10)).optional(),
   assistance: z.enum(["none", "boarding", "priority", "mobility"]).nullable().optional(),
-  language: z.enum(["en", "lg", "sw"]).nullable().optional(),
+  language: z.string().trim().min(2).max(20).nullable().optional(),
   forSomeoneElse: z.boolean().optional(),
   travellerName: z.string().trim().min(2).max(80).nullable().optional(),
   travellerPhone: phone.nullable().optional(),
@@ -273,9 +275,12 @@ const settingsSchema = z.object({
   maxLapChildren: z.number().int().min(0).max(10),
   childSeatFarePercent: z.number().min(0).max(100),
   luggageEnabled: z.boolean(),
+  luggageOptionsShown: z.number().int().min(1).max(LUGGAGE_TYPES.length),
   luggagePrices: z.object(Object.fromEntries(LUGGAGE_TYPES.map((t) => [t, z.number().int().min(0).max(1_000_000).nullable()])) as Record<(typeof LUGGAGE_TYPES)[number], z.ZodNullable<z.ZodNumber>>),
   assistanceEnabled: z.boolean(),
   languageEnabled: z.boolean(),
+  languages: z.array(z.object({ code: z.string().trim().toLowerCase().regex(LANGUAGE_CODE), name: z.string().trim().min(1).max(40), enabled: z.boolean() })).max(MAX_LANGUAGES)
+    .refine((list) => new Set(list.map((l) => l.code)).size === list.length, { message: "Each language can be listed once." }),
   bookForOthersEnabled: z.boolean(),
   showStops: z.boolean(),
 }).partial();

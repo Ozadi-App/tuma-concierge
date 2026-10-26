@@ -1,3 +1,4 @@
+import { configurePracticeSession, type PracticeSessionResult, type ServerRole } from '@peebee/shared';
 export const API_URL=process.env.NEXT_PUBLIC_API_URL??'http://localhost:10000';
 export const TOKEN_KEY='peebee_sales_token';
 export async function request<T>(path:string,options:RequestInit={}):Promise<T>{
@@ -6,3 +7,11 @@ export async function request<T>(path:string,options:RequestInit={}):Promise<T>{
   const data=await res.json();if(!res.ok)throw new Error(data.message??({invalid_code:'The recovery code is incorrect.',code_expired:'The recovery code has expired. Request a new one.',no_pending_code:'Request a new recovery code.',too_many_attempts:'Too many attempts. Request a new recovery code.'} as Record<string,string>)[data.error]??(res.status===401?'Please sign in again.':'This request could not be completed.'));
   return data as T;
 }
+
+/** Sales has no shared API client, so practice gets the two calls it needs. */
+export const practiceApi={
+  getSettings:()=>request<{settings:{practiceModeEnabled:boolean}}>('/settings'),
+  startPracticeSession:(role:ServerRole)=>request<PracticeSessionResult>('/practice/session',{method:'POST',body:JSON.stringify({role})}),
+};
+/** Practice signs in as the demo sales agent on the shared practice world; the real session is put back on exit. */
+configurePracticeSession({api:practiceApi,apply:r=>({[TOKEN_KEY]:r.token})});

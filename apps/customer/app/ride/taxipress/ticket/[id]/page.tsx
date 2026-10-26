@@ -107,7 +107,7 @@ export default function TaxipressTicketPage() {
             {booking.details?.emergencyPhone && <Row label="Emergency contact" value={booking.details.emergencyPhone} />}
             {luggageText(booking) && <Row label="Luggage" value={luggageText(booking)!} />}
             {booking.details?.assistance && booking.details.assistance !== "none" && <Row label="Assistance" value={{ boarding: "Boarding help", priority: "Priority seating", mobility: "Mobility support" }[booking.details.assistance]} />}
-            {booking.details?.language && <Row label="Language" value={{ en: "English", lg: "Luganda", sw: "Swahili" }[booking.details.language]} />}
+            {booking.details?.language && <Row label="Language" value={({ en: "English", lg: "Luganda", sw: "Swahili" } as Record<string, string>)[booking.details.language] ?? booking.details.language.toUpperCase()} />}
             <Row label="Total" value={ugx(booking.amount)} />
             <Row label="Payment" value={booking.status === "boarded" || booking.status === "completed" ? "Settled" : PAYMENT[booking.paymentStatus]} />
             {!cancelled && booking.status === "booked" && (

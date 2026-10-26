@@ -17,6 +17,9 @@ import { onboardingSettings, saveOnboardingSettings, settingsSchema } from './me
 import { isAwaitingActivation } from './state.js';
 import { salesAccess } from './access.js';
 import { ensureAccountCode } from '../lib/profile-codes.js';
+import { inPractice } from '../db/practice-context.js';
+import { realPeopleOnly } from '../practice/people.js';
+import { practiceEnroll, practiceResend } from '../practice/sales.js';
 
 export const onboardingRoutes=new Hono();
 onboardingRoutes.onError((error,c)=>{
@@ -82,10 +85,11 @@ onboardingRoutes.get('/sales/onboarding',async c=>{
   const result=await db.execute({sql:`SELECT a.id,a.user_id,a.account_type,a.created_at,a.activated_at,u.name,u.email,u.phone,
     (SELECT status FROM onboarding_deliveries WHERE account_id=a.id ORDER BY created_at DESC,rowid DESC LIMIT 1) AS delivery_status,
     (SELECT channel FROM onboarding_deliveries WHERE account_id=a.id ORDER BY created_at DESC,rowid DESC LIMIT 1) AS delivery_channel
-    FROM onboarding_accounts a JOIN users u ON u.id=a.user_id WHERE a.account_type<>'agent' AND (?=1 OR a.agent_id=?) ORDER BY a.created_at DESC LIMIT 100`,args:[user.adminRole==='super_admin'?1:0,user.sub]});
+    FROM onboarding_accounts a JOIN users u ON u.id=a.user_id WHERE a.account_type<>'agent' AND (?=1 OR a.agent_id=?) AND (${inPractice()?'1=1':realPeopleOnly('a.agent_id')}) ORDER BY a.created_at DESC LIMIT 100`,args:[user.adminRole==='super_admin'?1:0,user.sub]});
   return c.json({records:result.rows});
 });
 onboardingRoutes.post('/sales/onboarding',bodyLimit({maxSize:30*1024*1024}),async c=>{
+  if(inPractice())return practiceEnroll(c);
   if(!(await onboardingSettings()).enabled)return c.json({error:'onboarding_disabled',message:'Onboarding is paused by Admin.'},403);
   let data:unknown;let form:FormData|undefined;
   if((c.req.header('Content-Type')??'').includes('multipart/form-data')) {
@@ -130,6 +134,7 @@ onboardingRoutes.post('/sales/onboarding',bodyLimit({maxSize:30*1024*1024}),asyn
 });
 onboardingRoutes.post('/sales/onboarding/:id/resend',async c=>{
   const id=c.req.param('id'),u=c.get('user');
+  if(inPractice())return practiceResend(c,id);
   const result=await db.execute({sql:"SELECT id FROM onboarding_accounts WHERE id=? AND account_type<>'agent' AND (?=1 OR agent_id=?)",args:[id,u.adminRole==='super_admin'?1:0,u.sub]});
   if(!result.rows[0])return c.json({error:'not_found'},404);
   const delivery=await invite(id);
@@ -160,7 +165,7 @@ onboardingRoutes.put('/admin/onboarding/settings',async c=>{
   await logActivity({actor:c.get('user'),action:'onboarding.settings',summary:'Updated onboarding policy and messaging configuration',ip:clientIp(c)});
   return c.json(await onboardingSettings());
 });
-onboardingRoutes.get('/admin/onboarding/agents',async c=>c.json({agents:(await db.execute(`SELECT s.user_id,s.enabled,u.name,u.email,u.phone,CASE WHEN a.id IS NULL THEN u.created_at ELSE a.activated_at END AS activated_at FROM sales_agents s JOIN users u ON u.id=s.user_id LEFT JOIN onboarding_accounts a ON a.user_id=u.id ORDER BY s.created_at DESC`)).rows}));
+onboardingRoutes.get('/admin/onboarding/agents',async c=>c.json({agents:(await db.execute(`SELECT s.user_id,s.enabled,u.name,u.email,u.phone,CASE WHEN a.id IS NULL THEN u.created_at ELSE a.activated_at END AS activated_at FROM sales_agents s JOIN users u ON u.id=s.user_id LEFT JOIN onboarding_accounts a ON a.user_id=u.id WHERE ${realPeopleOnly('s.user_id')} ORDER BY s.created_at DESC`)).rows}));
 onboardingRoutes.post('/admin/onboarding/agents',async c=>{
   const parsed=z.object({name:z.string().trim().min(2).max(80),email:z.string().trim().email().transform(v=>v.toLowerCase()),phone:z.string().optional().transform(v=>v?.trim()?normalizePhone(v):undefined).refine(v=>!v||/^\+[1-9]\d{7,14}$/.test(v)),consent:z.literal(true)}).safeParse(await c.req.json().catch(()=>null));
   if(!parsed.success)return c.json({error:'invalid_body',message:'Add the agent name, email and a valid phone number.'},400);

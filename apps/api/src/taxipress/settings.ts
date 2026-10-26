@@ -56,18 +56,55 @@ export type TaxipressSettings = {
   /** A child's seat costs this share of the adult fare. */
   childSeatFarePercent: number;
   luggageEnabled: boolean;
+  /** How many luggage options passengers are shown: the first this many of LUGGAGE_TYPES. */
+  luggageOptionsShown: number;
   /** Price per item by luggage type; null = assessed at the stage. */
   luggagePrices: Record<LuggageType, number | null>;
   assistanceEnabled: boolean;
   languageEnabled: boolean;
+  /** The languages a passenger may ask the driver to use. Staff add and remove them and choose which are displayed. */
+  languages: LanguageOption[];
   bookForOthersEnabled: boolean;
   showStops: boolean;
 };
+
+export type LanguageOption = { code: string; name: string; enabled: boolean };
+export const DEFAULT_LANGUAGES: LanguageOption[] = [
+  { code: "en", name: "English", enabled: true },
+  { code: "lg", name: "Luganda", enabled: true },
+  { code: "sw", name: "Swahili", enabled: true },
+];
+export const LANGUAGE_CODE = /^[a-z]{2,8}(-[A-Za-z0-9]{2,8})?$/;
+export const MAX_LANGUAGES = 20;
+
+/** The list staff saved, cleaned: valid unique codes, named, at most MAX_LANGUAGES. A missing or broken list is the default. */
+export function cleanLanguages(value: unknown): LanguageOption[] {
+  if (!Array.isArray(value)) return DEFAULT_LANGUAGES.map((l) => ({ ...l }));
+  const seen = new Set<string>();
+  const out: LanguageOption[] = [];
+  for (const item of value as Array<Record<string, unknown>>) {
+    const code = typeof item?.code === "string" ? item.code.trim().toLowerCase() : "";
+    const name = typeof item?.name === "string" ? item.name.trim().slice(0, 40) : "";
+    if (!LANGUAGE_CODE.test(code) || !name || seen.has(code)) continue;
+    seen.add(code);
+    out.push({ code, name, enabled: item.enabled !== false });
+    if (out.length >= MAX_LANGUAGES) break;
+  }
+  return out;
+}
 
 export type LuggageType = "personal" | "standard" | "large" | "excess" | "fragile" | "commercial";
 export const LUGGAGE_TYPES: LuggageType[] = ["personal", "standard", "large", "excess", "fragile", "commercial"];
 /** Fly Express defaults (xristo7/flyexpress script.js, luggage options). */
 export const DEFAULT_LUGGAGE_PRICES: Record<LuggageType, number | null> = { personal: 0, standard: 2000, large: 4000, excess: 6000, fragile: 7000, commercial: null };
+
+/** The luggage types passengers are offered right now: none when luggage is off, otherwise the first `luggageOptionsShown`. */
+export const offeredLuggageTypes = (settings: Pick<TaxipressSettings, "luggageEnabled" | "luggageOptionsShown">): LuggageType[] =>
+  settings.luggageEnabled ? LUGGAGE_TYPES.slice(0, Math.max(1, Math.min(LUGGAGE_TYPES.length, settings.luggageOptionsShown))) : [];
+
+/** The languages shown to passengers. */
+export const offeredLanguages = (settings: Pick<TaxipressSettings, "languageEnabled" | "languages">): LanguageOption[] =>
+  settings.languageEnabled ? settings.languages.filter((l) => l.enabled) : [];
 
 function luggagePrices(value: string | null): Record<LuggageType, number | null> {
   const out = { ...DEFAULT_LUGGAGE_PRICES };
@@ -135,7 +172,7 @@ export async function getTaxipressSettings(): Promise<TaxipressSettings> {
     getSetting("taxipress_no_show_fee_percent"),
     getSetting("taxipress_rebook_on_removal"),
   ]);
-  const [bookable, lap, childPct, luggageOn, prices, assistOn, langOn, othersOn, stopsOn] = await Promise.all([
+  const [bookable, lap, childPct, luggageOn, prices, assistOn, langOn, othersOn, stopsOn, luggageShown, languageList] = await Promise.all([
     getSetting("taxipress_bookable_taxis"),
     getSetting("taxipress_max_lap_children"),
     getSetting("taxipress_child_seat_fare_percent"),
@@ -145,6 +182,8 @@ export async function getTaxipressSettings(): Promise<TaxipressSettings> {
     getSetting("taxipress_language_enabled"),
     getSetting("taxipress_book_for_others_enabled"),
     getSetting("taxipress_show_stops"),
+    getSetting("taxipress_luggage_options_shown"),
+    getSetting("taxipress_languages"),
   ]);
   return {
     enabled: enabled === "1",
@@ -179,9 +218,11 @@ export async function getTaxipressSettings(): Promise<TaxipressSettings> {
     maxLapChildren: whole(lap, 2, 10),
     childSeatFarePercent: childPct == null ? 100 : percent(childPct),
     luggageEnabled: bool(luggageOn, true),
+    luggageOptionsShown: luggageShown == null ? LUGGAGE_TYPES.length : Math.max(1, whole(luggageShown, LUGGAGE_TYPES.length, LUGGAGE_TYPES.length)),
     luggagePrices: luggagePrices(prices),
     assistanceEnabled: bool(assistOn, true),
     languageEnabled: bool(langOn, true),
+    languages: languageList == null ? DEFAULT_LANGUAGES.map((l) => ({ ...l })) : cleanLanguages((() => { try { return JSON.parse(languageList); } catch { return null; } })()),
     bookForOthersEnabled: bool(othersOn, true),
     showStops: bool(stopsOn, true),
   };
@@ -221,6 +262,8 @@ export async function setTaxipressSettings(next: Partial<TaxipressSettings>): Pr
   if (next.maxLapChildren != null) await setSetting("taxipress_max_lap_children", String(next.maxLapChildren));
   if (next.childSeatFarePercent != null) await setSetting("taxipress_child_seat_fare_percent", String(next.childSeatFarePercent));
   if (next.luggageEnabled != null) await setSetting("taxipress_luggage_enabled", flag(next.luggageEnabled));
+  if (next.luggageOptionsShown != null) await setSetting("taxipress_luggage_options_shown", String(next.luggageOptionsShown));
+  if (next.languages != null) await setSetting("taxipress_languages", JSON.stringify(cleanLanguages(next.languages)));
   if (next.luggagePrices != null) await setSetting("taxipress_luggage_prices", JSON.stringify(next.luggagePrices));
   if (next.assistanceEnabled != null) await setSetting("taxipress_assistance_enabled", flag(next.assistanceEnabled));
   if (next.languageEnabled != null) await setSetting("taxipress_language_enabled", flag(next.languageEnabled));

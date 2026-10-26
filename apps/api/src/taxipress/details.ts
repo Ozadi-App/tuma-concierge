@@ -1,7 +1,7 @@
 import { db } from "../db/client.js";
 import { hasColumn, hasTable } from "../lib/schema.js";
 import type { LineEntry } from "./queue.js";
-import { LUGGAGE_TYPES, type LuggageType, type TaxipressSettings } from "./settings.js";
+import { LUGGAGE_TYPES, offeredLuggageTypes, type LuggageType, type TaxipressSettings } from "./settings.js";
 
 type Row = Record<string, unknown>;
 
@@ -25,7 +25,8 @@ export const detailsListId = (bookingId: string) => `tpdetails_${bookingId}`;
 
 
 export type Assistance = "none" | "boarding" | "priority" | "mobility";
-export type Language = "en" | "lg" | "sw";
+/** A language code staff have set up for passengers (en, lg, sw and whatever else they add). */
+export type Language = string;
 
 export type BookingDetailsInput = {
   adults: number;
@@ -55,7 +56,7 @@ export function priceBooking(input: Pick<BookingDetailsInput, "adults" | "childr
   const fareAmount = farePerSeat * input.adults + childFare * childSeats;
   let luggageAmount = 0;
   if (settings.luggageEnabled) {
-    for (const type of LUGGAGE_TYPES) {
+    for (const type of offeredLuggageTypes(settings)) {
       const qty = Math.max(0, Math.round(input.luggage[type] ?? 0));
       const price = settings.luggagePrices[type];
       if (qty > 0 && price != null) luggageAmount += price * qty;

@@ -1,5 +1,6 @@
 "use client";
 
+import { ModuleState } from "../../../components/ModuleState";
 import { Switch } from "../../../components/ui/Switch";
 import { Select } from "../../../components/ui/Select";
 
@@ -187,10 +188,7 @@ export default function RiderMatchingPage() {
         </section>
         <section className="home-card space-y-3">
           <label className="flex items-center gap-2 text-sm font-bold text-ink">
-            <Switch
-              checked={biddingEnabled}
-              onChange={(e) => setBiddingEnabled(e.target.checked)}
-            />
+            <ModuleState on={biddingEnabled} />
             Let riders and drivers bid on rides and parcels
           </label>
           <div className="grid grid-cols-2 gap-3">

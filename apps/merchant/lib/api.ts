@@ -1,4 +1,4 @@
-import { createApiClient, createPracticeFetch, friendlyErrorMessage } from "@peebee/shared";
+import { configurePracticeSession, createApiClient, createPracticeFetch, friendlyErrorMessage } from "@peebee/shared";
 
 export const TOKEN_KEY = "peebee_merchant_token";
 export const USER_KEY = "peebee_merchant_user";
@@ -20,3 +20,6 @@ export const api = createApiClient({
 });
 
 export const errorMessage = friendlyErrorMessage;
+
+/** Practice signs in as a demo persona on the shared practice world; the real session is put back on exit. */
+configurePracticeSession({ api, apply: (r) => ({ [TOKEN_KEY]: r.token, [USER_KEY]: JSON.stringify(r.user) }) });

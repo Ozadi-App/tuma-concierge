@@ -1,5 +1,6 @@
 "use client";
 
+import { ModuleState } from "../../../components/ModuleState";
 import { hasPermission, type GuestSettings } from "@peebee/shared";
 import { AlertCircle, CheckCircle2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
@@ -7,17 +8,19 @@ import { SettingsPageShell } from "../../../components/SettingsPageShell";
 import { api, errorMessage } from "../../../lib/api";
 import { useAuth } from "../../../lib/auth-context";
 
-function Row({ label, hint, checked, disabled, onChange }: { label: string; hint: string; checked: boolean; disabled: boolean; onChange: (v: boolean) => void }) {
+function Row({ label, hint, checked, disabled, onChange, managed }: { label: string; hint: string; checked: boolean; disabled: boolean; onChange: (v: boolean) => void; managed?: boolean }) {
   return (
     <div className="flex items-center justify-between gap-4 border-t border-[var(--border-faint)] pt-4 first:border-t-0 first:pt-0">
       <div>
         <span className="block text-sm font-bold text-ink">{label}</span>
         <span className="text-xs text-ink-500">{hint}</span>
       </div>
-      <button type="button" role="switch" aria-checked={checked} aria-label={label} disabled={disabled} onClick={() => onChange(!checked)}
+      {managed ? <ModuleState on={checked} /> : (
+        <button type="button" role="switch" aria-checked={checked} aria-label={label} disabled={disabled} onClick={() => onChange(!checked)}
         className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${checked ? "bg-gold" : "bg-neutral-300 dark:bg-neutral-700"}`}>
         <span className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${checked ? "translate-x-5" : "translate-x-0"}`} />
       </button>
+      )}
     </div>
   );
 }
@@ -62,7 +65,7 @@ export default function GuestSettingsPage() {
               <h2 className="text-base font-bold text-ink">Guest checkout</h2>
               <p className="text-xs text-ink-500">People opening a shared product link can buy without an account. They always pay first, by mobile money (or card when Flutterwave is the active provider), and get a tracking code.</p>
             </div>
-            <Row label="Allow guest checkout" hint="Shows “Buy as a guest” on shared product links" checked={form.enabled} disabled={off} onChange={(v) => set("enabled", v)} />
+            <Row managed label="Allow guest checkout" hint="Shows “Buy as a guest” on shared product links" checked={form.enabled} disabled={off} onChange={(v) => set("enabled", v)} />
             <Row label="Offer card payment" hint="Only shown while Flutterwave is the active collection provider" checked={form.cardEnabled} disabled={off} onChange={(v) => set("cardEnabled", v)} />
             <Row label="Suggest creating an account" hint="A checkbox, ticked by default, that makes an account from the details the guest gave" checked={form.suggestAccount} disabled={off} onChange={(v) => set("suggestAccount", v)} />
             <Row label="Show status to anyone with the tracking code" hint="Off: guests must sign in (create an account) to track, or wait for messages" checked={form.codeStatusEnabled} disabled={off} onChange={(v) => set("codeStatusEnabled", v)} />

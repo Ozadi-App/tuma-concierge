@@ -1,3 +1,4 @@
+import { ridersForThisWorld } from "../practice/people.js";
 import { settleLoyalty } from "../marketplace/loyalty.js";
 import { Hono, type Context } from "hono";
 import { roadKm } from "../lib/road-distance.js";
@@ -23,6 +24,7 @@ import {
   type ServiceKey,
 } from "../lib/settings.js";
 import { servicePaused } from "../lib/service-gate.js";
+import { isModuleLive } from "../lib/modules.js";
 import { getRideTrackingSettings } from "../settings/ride-tracking.js";
 import { computeCheckoutFees, isCashDepositOk, riderPayout } from "../lib/monetization.js";
 import { notifyUser } from "../lib/webpush.js";
@@ -371,6 +373,8 @@ export async function createOrderFromInput(
   // (anything already in flight carries on).
   const service: ServiceKey = d.type === "shopping" ? "shopping" : d.isRide ? "ride" : "parcel";
   if (!(await isServiceEnabled(service))) return servicePaused(c, service);
+  // A boda ride (not a car booking) also needs the Boda module on.
+  if (d.isRide && !car && !(await isModuleLive("ride.boda"))) return servicePaused(c, "ride");
 
   const list = await db.execute({
     sql: "SELECT * FROM lists WHERE id = ?",
@@ -1104,7 +1108,7 @@ async function findAutoMatchCandidate(
     : "";
   const eligible = await db.execute({
     sql: `SELECT u.id, u.name, r.stage_lat, r.stage_lng, r.area${ownRangeColumn} FROM riders r JOIN users u ON u.id = r.user_id
-          WHERE r.verified = 1 AND r.is_online = 1
+          WHERE r.verified = 1 AND r.is_online = 1 AND ${ridersForThisWorld("r.user_id")}
           ${subscriptionGate}
           AND u.id NOT IN (
             SELECT rider_id FROM orders WHERE rider_id IS NOT NULL AND stage NOT IN ('Settle', 'Cancelled') AND environment = ?

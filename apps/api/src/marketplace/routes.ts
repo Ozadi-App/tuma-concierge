@@ -1,3 +1,4 @@
+import { ridersForThisWorld } from "../practice/people.js";
 import { Hono } from "hono";
 import { z } from "zod";
 import { requireAuth, requireRole } from "../auth/middleware.js";
@@ -3993,7 +3994,7 @@ marketplaceRoutes.post("/marketplace/checkout", requireAuth, async (c) => {
 
   // One notice per delivery, not one per store.
   try {
-    const onlineRiders = await db.execute("SELECT u.id FROM riders r JOIN users u ON u.id = r.user_id WHERE r.verified = 1 AND r.is_online = 1");
+    const onlineRiders = await db.execute(`SELECT u.id FROM riders r JOIN users u ON u.id = r.user_id WHERE r.verified = 1 AND r.is_online = 1 AND ${ridersForThisWorld("r.user_id")}`);
     const deliveryFee = stops.reduce((sum, stop) => sum + stop.deliveryFee, 0);
     const where = stops.map((stop) => stop.storeName).join(", ");
     for (const rider of onlineRiders.rows as Row[]) {

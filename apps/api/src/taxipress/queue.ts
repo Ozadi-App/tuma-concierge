@@ -1,3 +1,4 @@
+import { visibleHere } from "../practice/people.js";
 import { db } from "../db/client.js";
 import { haversineKm } from "../lib/geo.js";
 import { newId } from "../lib/ids.js";
@@ -459,9 +460,10 @@ export async function driverView(driverId: string) {
       }))
     : [];
   // Routes a driver can apply for: relay routes that run a Taxipress route.
+  const world = await getPlatformEnvironment();
   const applyRoutes = ready
     ? ((await db.execute(`SELECT DISTINCT rr.id, rr.name FROM taxipress_routes t JOIN relay_routes rr ON rr.id = t.relay_route_id
-        WHERE t.active = 1 AND rr.active = 1 ORDER BY rr.name`)).rows as Row[]).map((r) => ({ id: String(r.id), name: String(r.name) }))
+        WHERE t.active = 1 AND rr.active = 1 ORDER BY rr.name`)).rows as Row[]).filter((r) => visibleHere(world, String(r.id))).map((r) => ({ id: String(r.id), name: String(r.name) }))
     : [];
   return {
     ready,

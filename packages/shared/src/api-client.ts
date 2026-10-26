@@ -1,4 +1,7 @@
 import type { PublicReceipt } from "./receipt.js";
+import { applyModuleAvailability, rememberModuleAvailability, type ModuleSettingsUpdate, type ModuleSettings } from "./modules.js";
+import { isPracticeStorageOn } from "./practice.js";
+import { endServerPractice, isServerPractice, type PracticeSessionResult, type ServerRole } from "./practice-server.js";
 import type { TaxipressAssistance, TaxipressLanguage, TaxipressLuggageType, TaxipressTaxiProfile, TaxipressAdminQueueEntry, TaxipressAdminRoute, TaxipressBoardingResult, TaxipressBooking, TaxipressConfig, TaxipressDriverView, TaxipressLineEntry, TaxipressOutcome, TaxipressQueueView, TaxipressRelayRoute, TaxipressReport, TaxipressSettings, TaxipressTaxi } from "./taxipress.js";
 import type { BagTrip, RelayAdminOrder, RelayRouteStage, RelayMerchantOrder, RelayOpenLeg, RelayOperator, RelayOperatorParcels, RelayQuote, RelayRoute, RelaySettings, RelayStation, RelayStationParcels, RelayTrack } from "./relay.js";
 import type { AdminRole } from "./permissions.js";
@@ -197,8 +200,14 @@ import type {
   WalletUsageReport,
 } from "./domain.js";
 
+export type PracticeWorldCounts = { customers: number; riders: number; merchants: number; stores: number; products: number; restaurants: number; menuItems: number; orders: number };
+/** `coverage` is how many demo rows each module has, by module key; a module at 0 has nothing to practise with. */
+export type PracticeWorldStatus = { seeded: boolean; counts: PracticeWorldCounts; coverage?: Record<string, number>; platformEnvironment?: "live" | "sandbox" };
+
 export type CreateApiClientOptions = {
   baseUrl: string;
+  /** The admin app edits the raw settings; every other app gets them narrowed to what the Live or Practice switches allow. */
+  rawSettings?: boolean;
   /** Optional fetch override (tests). */
   fetchImpl?: typeof fetch;
   /** Bearer token for authenticated requests. */
@@ -358,7 +367,7 @@ export type PharmacyPrescription = {
   updatedAt: string;
 };
 
-export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }: CreateApiClientOptions) {
+export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized, rawSettings }: CreateApiClientOptions) {
   const root = baseUrl.replace(/\/$/, "");
   const f = fetchImpl ?? fetch;
 
@@ -369,7 +378,11 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
 
   async function json<T>(res: Response): Promise<T> {
     if (!res.ok) {
-      if (res.status === 401 && getToken?.()) onUnauthorized?.();
+      // A practice session lasts a day. When it ends, the person goes back to their own session instead of being signed out.
+      if (res.status === 401 && isServerPractice() && typeof window !== "undefined") {
+        endServerPractice();
+        window.location.replace("/");
+      } else if (res.status === 401 && getToken?.()) onUnauthorized?.();
       const body = await res.json().catch(() => ({}));
       const code = (body as { error?: string }).error;
       const message = (body as { message?: string }).message ?? code ?? res.statusText;
@@ -1947,7 +1960,38 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
 
     // Delivery pricing settings (rate per km, service range) — public read, admin write.
     async getSettings() {
-      return request<{ settings: DeliverySettings }>("/v1/settings");
+      const res = await request<{ settings: DeliverySettings }>("/v1/settings");
+      const available = res.settings.modules?.available;
+      rememberModuleAvailability(available);
+      if (rawSettings || !available) return res;
+      return { settings: applyModuleAvailability(res.settings, available, isPracticeStorageOn() ? "practice" : "live") };
+    },
+    /** Is the shared practice world on offer, and is it laid down yet? */
+    async practiceWorld() {
+      return request<{ available: boolean; seeded: boolean }>("/v1/practice/world");
+    },
+    /** Signs in as the demo persona for this app. The returned token makes every following request run as the sandbox. */
+    async startPracticeSession(role: ServerRole) {
+      return request<PracticeSessionResult>("/v1/practice/session", { method: "POST", body: JSON.stringify({ role }) });
+    },
+    async adminPracticeWorld() {
+      return request<PracticeWorldStatus>("/v1/admin/practice");
+    },
+    async adminSeedPractice() {
+      return request<PracticeWorldStatus>("/v1/admin/practice/seed", { method: "POST" });
+    },
+    async adminResetPractice() {
+      return request<PracticeWorldStatus>("/v1/admin/practice/reset", { method: "POST" });
+    },
+    async adminPracticeOrders() {
+      return request<{ placed: number }>("/v1/admin/practice/orders", { method: "POST" });
+    },
+    /** Admin: change Live and/or Practice switches for any modules. */
+    async adminUpdateModules(input: ModuleSettingsUpdate & { practiceModeEnabled?: boolean}) {
+      return request<{ modules: ModuleSettings; practiceModeEnabled: boolean }>("/v1/admin/modules", { method: "PUT", body: JSON.stringify(input) });
+    },
+    async adminGetModules() {
+      return request<{ modules: ModuleSettings; practiceModeEnabled: boolean }>("/v1/admin/modules");
     },
     async getPracticeStatus(experience: PracticeRole) {
       return request<{ practice: { experience: PracticeRole; available: boolean; completed: boolean; optedOut: boolean; lastPromptedAt: string | null; shouldPrompt: boolean; reminderDays: number } }>(`/v1/practice/${experience}/status`);

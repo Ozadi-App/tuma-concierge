@@ -1,5 +1,6 @@
 "use client";
 
+import { ModuleState } from "../../../components/ModuleState";
 import { Select } from "../../../components/ui/Select";
 import { Switch } from "../../../components/ui/Switch";
 import {
@@ -66,10 +67,10 @@ const DEFAULTS: WorkAdminSettings = {
 type Form = Required<WorkAdminSettings>;
 const withDefaults = (w: Partial<WorkAdminSettings> | undefined): Form => ({ ...DEFAULTS, ...(w ?? {}) }) as Form;
 
-function Toggle({ label: text, hint, checked, disabled, onChange }: { label: string; hint?: string; checked: boolean; disabled: boolean; onChange: (v: boolean) => void }) {
+function Toggle({ label: text, hint, checked, disabled, onChange, managed }: { label: string; hint?: string; managed?: boolean; checked: boolean; disabled: boolean; onChange: (v: boolean) => void }) {
   return (
     <label className="flex items-start gap-3">
-      <Switch checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />
+      {managed ? <ModuleState on={checked} /> : <Switch checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />}
       <span>
         <span className="block text-sm font-semibold text-ink">{text}</span>
         {hint && <span className="block text-xs text-ink-500">{hint}</span>}
@@ -195,7 +196,7 @@ export default function WorkSettingsPage() {
 
       <section className="home-card space-y-3">
         <h2 className="text-sm font-bold text-ink">Availability</h2>
-        <Toggle label="Peebee Work is on" hint="Master switch for customers and providers. Staff keep access to finish open jobs." checked={form.enabled} disabled={ro} onChange={(v) => setBool("enabled", v)} />
+        <Toggle managed label="Peebee Work is on" hint="Master switch for customers and providers. Staff keep access to finish open jobs." checked={form.enabled} disabled={ro} onChange={(v) => setBool("enabled", v)} />
         <div className="space-y-1.5">
           <p className="text-xs font-semibold text-ink-500">Kinds of work customers can book</p>
           <Chips options={TYPES} value={form.serviceTypes} disabled={ro} onChange={(v) => setList("serviceTypes", v)} />
@@ -245,13 +246,13 @@ export default function WorkSettingsPage() {
           onChange={(v) => setBool("rematchOnProviderCancel", v)}
         />
         {numField("maxRematches")}
-        <Toggle label="Photos on jobs" checked={form.photosEnabled} disabled={ro} onChange={(v) => setBool("photosEnabled", v)} />
+        <Toggle managed label="Photos on jobs" checked={form.photosEnabled} disabled={ro} onChange={(v) => setBool("photosEnabled", v)} />
         <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2">
           {numField("maxPhotosPerJob")}
           {numField("maxPhotoKb")}
         </div>
-        <Toggle label="Chat" hint="Customer and provider can message about a job." checked={form.chatEnabled} disabled={ro} onChange={(v) => setBool("chatEnabled", v)} />
-        <Toggle label="Live tracking" hint="Customer sees the provider's location while the job is on." checked={form.trackingEnabled} disabled={ro} onChange={(v) => setBool("trackingEnabled", v)} />
+        <Toggle managed label="Chat" hint="Customer and provider can message about a job." checked={form.chatEnabled} disabled={ro} onChange={(v) => setBool("chatEnabled", v)} />
+        <Toggle managed label="Live tracking" hint="Customer sees the provider's location while the job is on." checked={form.trackingEnabled} disabled={ro} onChange={(v) => setBool("trackingEnabled", v)} />
       </section>
 
       <section className="home-card space-y-3">
@@ -260,7 +261,7 @@ export default function WorkSettingsPage() {
         <Field label="Minutes from now" hint="Up to four durations in minutes, from 5 to 4320 (3 days), separated by commas. 60 shows as “In 1 hour”, 180 as “In 3 hours”. Leave empty for none.">
           <input disabled={ro} value={quick} onChange={(e) => { setSaved(false); setQuick(e.target.value.replace(/[^\d,\s]/g, "")); }} className={inputCls} inputMode="numeric" />
         </Field>
-        <Toggle label="Offer “Tomorrow”" hint="The following day, at the time below (the customer's local time)." checked={form.scheduleTomorrowEnabled} disabled={ro} onChange={(v) => setBool("scheduleTomorrowEnabled", v)} />
+        <Toggle managed label="Offer “Tomorrow”" hint="The following day, at the time below (the customer's local time)." checked={form.scheduleTomorrowEnabled} disabled={ro} onChange={(v) => setBool("scheduleTomorrowEnabled", v)} />
         <Field label="Tomorrow at" hint="Shown to customers with the time, like “Tomorrow 9:00 am”.">
           <input type="time" disabled={ro} value={form.scheduleTomorrowTime} onChange={(e) => { setSaved(false); setForm({ ...form, scheduleTomorrowTime: e.target.value }); }} className={inputCls} />
         </Field>
@@ -272,7 +273,7 @@ export default function WorkSettingsPage() {
           Records where a provider is during a job, and flags a cancellation that comes after a long stay at the customer&apos;s address, so staff can look into possible off-app cash deals.
           A flag is a reason to look, not proof. Providers are told their location is recorded.
         </p>
-        <Toggle label="On-site checks" hint="Off by default. Needs migration 0100 and live tracking to be on." checked={form.onsiteCheckEnabled} disabled={ro} onChange={(v) => setBool("onsiteCheckEnabled", v)} />
+        <Toggle managed label="On-site checks" hint="Off by default. Needs migration 0100 and live tracking to be on." checked={form.onsiteCheckEnabled} disabled={ro} onChange={(v) => setBool("onsiteCheckEnabled", v)} />
         <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2">
           {numField("onsiteRadiusM")}
           {numField("onsiteMinMinutes")}
