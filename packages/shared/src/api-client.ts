@@ -10,6 +10,8 @@ import { workAdminMethods } from "./work-admin-client.js";
 import { talentMethods } from "./talent-client.js";
 import { talentAdminMethods } from "./talent-admin-client.js";
 import { educationMethods } from "./education-client.js";
+import { videoAdsMethods } from "./video-ads-client.js";
+import { channelsMethods } from "./channels-client.js";
 import type { PracticeRole } from "./practice.js";
 import type {
   FareCounter,
@@ -314,6 +316,11 @@ export function friendlyErrorMessage(err: unknown): string {
         return field ? `${field}: ${issue.message}` : issue.message;
       });
       return `Please check: ${parts.join("; ")}`;
+    }
+    // A "not available yet" or a provider problem is written for the person, so say it instead of a blanket apology.
+    if (err.status === 503 || (err.status === 502 && err.code?.startsWith("provider_"))) {
+      const written = err.message.replace(/^API \d+: /, "");
+      if (written && written !== err.code && !/^[a-z0-9_]+$/.test(written)) return written;
     }
     if (err.status >= 500) return "Something went wrong on our end. Please try again in a moment.";
     // The server's own message, when it wrote one — most 4xx handlers in
@@ -2283,6 +2290,14 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized, 
         body: JSON.stringify(input),
       });
     },
+    async verifyMerchantStoreDomain() {
+      return request<{
+        verified: boolean;
+        domain: string;
+        record: { type: "TXT"; name: string; value: string };
+        message: string;
+      }>("/v1/merchants/me/store/domain/verify", { method: "POST", body: JSON.stringify({}) });
+    },
     async updateMerchantProStore(input: any) {
       return request<{ store: any }>("/v1/merchants/me/store", {
         method: "PUT",
@@ -2352,6 +2367,8 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized, 
       min_order_amount?: number;
       max_uses?: number | null;
       is_automatic?: boolean;
+      is_public?: boolean;
+      expires_at?: string | null;
     }) {
       return request<{ ok: boolean; id: string }>("/v1/merchants/me/discounts", {
         method: "POST",
@@ -2576,6 +2593,37 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized, 
         method: "POST",
       });
     },
+    async refundMerchantDigitalFulfillment(id: string) {
+      return request<{ ok: boolean }>(`/v1/merchants/me/digital-fulfillments/${id}/refund`, { method: "POST", body: JSON.stringify({}) });
+    },
+    async resendMerchantDigitalFulfillment(id: string) {
+      return request<{ ok: boolean; sms: string; error?: string }>(`/v1/merchants/me/digital-fulfillments/${id}/resend`, { method: "POST", body: JSON.stringify({}) });
+    },
+    async fulfillMerchantDigitalLicense(id: string, licenseKey: string) {
+      return request<{ ok: boolean }>(`/v1/merchants/me/digital-fulfillments/${id}/license`, { method: "POST", body: JSON.stringify({ license_key: licenseKey }) });
+    },
+    /** Sends the file itself (streamed) to the product's private storage. */
+    async uploadMerchantDigitalFile(productId: string, file: File) {
+      const res = await f(`${root}/v1/merchants/me/digital-products/${encodeURIComponent(productId)}/file`, {
+        method: "PUT",
+        headers: { ...authHeaders(), "content-type": file.type || "application/octet-stream", "x-file-name": encodeURIComponent(file.name) },
+        body: file,
+      });
+      return json<{ ok: boolean; file: { name: string; sizeBytes: number; contentType: string } }>(res);
+    },
+    /** A shopper buys a digital product or course from their wallet. */
+    async buyDigitalProduct(productId: string) {
+      return request<{
+        ok: boolean; fulfillmentId: string; accessUrl: string; token: string; licenseKey: string | null;
+        expiresAt: string | null; maxDownloads: number; pricePaidUgx: number; sms: { status: string } | null; needsManualFulfilment: boolean;
+      }>(`/v1/marketplace/digital/${encodeURIComponent(productId)}/buy`, { method: "POST", body: JSON.stringify({}) });
+    },
+    async getMyDigitalPurchases() {
+      return request<{ purchases: Array<{ id: string; status: string; title: string; kind: string; store_name: string; download_count: number; max_downloads: number; expires_at: string | null; price_paid_ugx: number; created_at: string }> }>("/v1/me/digital-purchases");
+    },
+    async newDigitalPurchaseLink(id: string) {
+      return request<{ ok: boolean; accessUrl: string }>(`/v1/me/digital-purchases/${encodeURIComponent(id)}/link`, { method: "POST", body: JSON.stringify({}) });
+    },
 
     // Tier 3: Robust LMS & Course Management (synced with Peebee Learn)
     async getMerchantLmsCourses() {
@@ -2588,9 +2636,15 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized, 
       });
     },
     async syncMerchantLmsFromLearn() {
-      return request<{ ok: boolean; importedCount: number; courses: StoreLmsCourse[] }>("/v1/merchants/me/lms/sync-from-learn", {
+      return request<{ ok: boolean; importedCount: number }>("/v1/merchants/me/lms/sync-from-learn", {
         method: "POST",
       });
+    },
+    async listMerchantCourseInLearn(courseId: string, listed: boolean) {
+      return request<{ ok: boolean; listed: boolean }>(`/v1/merchants/me/lms/courses/${encodeURIComponent(courseId)}/${listed ? "publish-to-learn" : "unlist-from-learn"}`, { method: "POST", body: JSON.stringify({}) });
+    },
+    async issueMerchantCertificate(enrollmentId: string) {
+      return request<{ ok: boolean }>(`/v1/merchants/me/lms/enrollments/${encodeURIComponent(enrollmentId)}/certificate`, { method: "POST", body: JSON.stringify({}) });
     },
     async getMerchantLmsEnrollments() {
       return request<{ enrollments: StoreLmsEnrollment[] }>("/v1/merchants/me/lms/enrollments");
@@ -2602,7 +2656,7 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized, 
       studentEmail?: string;
       sendSmsNotice?: boolean;
     }) {
-      return request<{ ok: boolean; enrollment: StoreLmsEnrollment; learnPortalUrl: string }>("/v1/merchants/me/lms/enrollments", {
+      return request<{ ok: boolean; enrollment: StoreLmsEnrollment; learnPortalUrl: string; accountCreated?: boolean; notice?: { channel: string; status: string; error?: string } | null }>("/v1/merchants/me/lms/enrollments", {
         method: "POST",
         body: JSON.stringify(input),
       });
@@ -3510,6 +3564,8 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized, 
     ...talentMethods(request),
     ...talentAdminMethods(request),
     ...educationMethods(request),
+    ...videoAdsMethods(request),
+    ...channelsMethods(request),
     /** A job photo as a Blob (private: the request carries the sign-in header, so it can't be a plain image URL). */
     async workPhotoBlob(photoId: string): Promise<Blob> {
       const res = await f(`${root}/v1/work/photos/${encodeURIComponent(photoId)}`, { headers: authHeaders() });

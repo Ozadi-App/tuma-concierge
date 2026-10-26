@@ -60,6 +60,8 @@ catalogRoutes.get("/courses", async (c) => {
   // Demo schools are marked in the database once migration 0113 is applied; until then everything is treated as real.
   const marked = await hasColumn("edu_schools", "is_demo");
   const hideDemo = marked && !(await getLearnSettings()).demoContentVisible;
+  // A store can sell a course without listing it here (admin option); the column arrives with migration 0137.
+  const listedCol = await hasColumn("edu_courses", "catalog_listed");
   const res = await db.execute({
     sql: `SELECT c.id, c.stream, c.title, c.summary, c.price_ugx, c.framework, c.outcomes_json,
                  ${marked ? "s.is_demo AS is_demo," : ""}
@@ -68,7 +70,7 @@ catalogRoutes.get("/courses", async (c) => {
           FROM edu_courses c
           JOIN edu_schools s ON s.id = c.school_id AND s.status = 'active'
           JOIN edu_classes k ON k.id = c.class_id
-          WHERE c.status = 'published' ${hideDemo ? "AND s.is_demo = 0" : ""} ${filtered ? "AND c.stream = ?" : ""}
+          WHERE c.status = 'published' ${listedCol ? "AND c.catalog_listed = 1" : ""} ${hideDemo ? "AND s.is_demo = 0" : ""} ${filtered ? "AND c.stream = ?" : ""}
           ORDER BY ${marked ? "s.is_demo ASC, " : ""}c.updated_at DESC LIMIT ?`,
     args: (filtered ? [stream, limit] : [limit]) as never,
   });

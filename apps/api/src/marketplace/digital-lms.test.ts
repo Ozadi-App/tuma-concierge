@@ -120,7 +120,7 @@ test("merchant tier 3: digital products CRUD, downloads, LMS curriculum builder,
     category: "Agribusiness & Farming",
     level: "Intermediate",
     durationMinutes: 180,
-    stream: "agribusiness",
+    stream: "skills",
     modules: [
       {
         title: "Module 1: Brooding Architecture & Temperature Control",
@@ -167,7 +167,9 @@ test("merchant tier 3: digital products CRUD, downloads, LMS curriculum builder,
   assert.equal(dbDigitalCourseRes.rows.length, 1);
   assert.equal(dbDigitalCourseRes.rows[0].kind, "course");
 
-  // 6. Manual Student Enrollment CRM with SMS dispatch
+  // 6. Manual Student Enrollment CRM. The student has a Peebee account (the platform default without a real SMS
+  // provider is "must already be registered"); the seat is theirs.
+  await client.execute("INSERT INTO users (id, phone, name, password_hash, role, status) VALUES ('usr_grace', '+256701234567', 'Grace Nakato', 'hash', 'customer', 'active')");
   const enrollRes = await req("/merchants/me/lms/enrollments", "POST", {
     courseId: createdCourseData.course.id,
     studentName: "Grace Nakato",
@@ -183,6 +185,8 @@ test("merchant tier 3: digital products CRUD, downloads, LMS curriculum builder,
   assert.ok(enrollData.enrollment.id);
   assert.equal(enrollData.enrollment.student_name, "Grace Nakato");
   assert.ok(enrollData.learnPortalUrl.includes("/learn/course/"));
+  const seat = await client.execute({ sql: "SELECT user_id, status FROM edu_enrollments WHERE course_id = ?", args: [createdCourseData.course.id] });
+  assert.equal(seat.rows[0].user_id, "usr_grace", "the Learn seat is the student's, not the merchant's");
 
   // 7. Merchant queries student progress CRM ledger
   const enrollListRes = await req("/merchants/me/lms/enrollments");

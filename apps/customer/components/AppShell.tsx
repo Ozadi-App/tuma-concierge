@@ -3,6 +3,7 @@
 import { useEffect, useSyncExternalStore } from "react";
 import { noteInAppNavigation } from "../lib/nav-primary-action";
 import { usePathname } from "next/navigation";
+import { useAuth } from "../lib/auth-context";
 import { AuthGate } from "./AuthGate";
 import { BottomNav } from "./BottomNav";
 import { BrandHeader } from "./BrandHeader";
@@ -14,12 +15,15 @@ import { isNavigationOverlayOpen, subscribeToNavigationOverlay } from "../lib/lo
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const { user } = useAuth();
   // Lets the nav's Back use router.back() only when there is an in-app screen to return to.
   useEffect(() => { noteInAppNavigation(); }, [pathname]);
   const navigationOverlayOpen = useSyncExternalStore(subscribeToNavigationOverlay, isNavigationOverlayOpen, () => false);
   const foodBusinessId=/^\/restaurants\/([^/]+)(?:\/items\/[^/]+)?$/.exec(pathname)?.[1];
   const isFoodDetail=/^\/restaurants\/[^/]+\/items\/[^/]+$/.test(pathname);
-  const isAuthPage = pathname === "/login" || pathname === "/activate" || pathname === "/forgot-password" || pathname.startsWith("/verify") || pathname.startsWith("/trip/") || pathname.startsWith("/guest/") || pathname.startsWith("/receipt/");
+  // A shared channel, cause or post link: signed out, it is a clean public page with its own top bar.
+  const isPublicChannelPage = !user && /^\/(c|give|post)\/[^/]+\/?$/.test(pathname);
+  const isAuthPage = isPublicChannelPage || pathname === "/login" || pathname === "/activate" || pathname === "/forgot-password" || pathname.startsWith("/verify") || pathname.startsWith("/trip/") || pathname.startsWith("/guest/") || pathname.startsWith("/receipt/");
   // "/chat" itself is a normal list screen (conversations) with the usual
   // header + nav; a specific thread ("/chat/<counterpartId>" for order
   // chat, or "/restaurants/<id>/chat" for restaurant chat) takes over the
@@ -30,12 +34,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // screens take on full viewport view without top BrandHeader or bottom navigation bar.
   const isSingleStore = /^\/store\/[^/]+$/.test(pathname);
   const isSingleProduct = pathname.startsWith("/product/") || /^\/store\/[^/]+\/product\/[^/]+$/.test(pathname);
-  // Spotlight is an edge-to-edge immersive feed: no header, no bottom nav;
-  // the page overlays its own back affordance.
+  // Spotlight is an edge-to-edge immersive feed: no header. It keeps the bottom nav,
+  // which becomes Spotlight's own menu (Home button + five filters) floating over the feed.
   const isSpotlight = pathname === "/spotlight" || pathname.startsWith("/spotlight/");
-  const isImmersiveFullscreen = isSingleStore || isSingleProduct || isSpotlight;
+  // Going live (the camera, or a helper device) takes the whole screen, like Spotlight, with no header or menu.
+  const isGoLive = pathname === "/live" || pathname.startsWith("/live/");
+  const isImmersiveFullscreen = isSingleStore || isSingleProduct || isGoLive;
 
-  const showHeader = !isAuthPage && !isChatThread && !isFoodDetail && !isImmersiveFullscreen;
+  const showHeader = !isAuthPage && !isChatThread && !isFoodDetail && !isImmersiveFullscreen && !isSpotlight;
   const showNav = !isAuthPage && !isChatThread && !isFoodDetail && !navigationOverlayOpen && !isImmersiveFullscreen;
 
   return (
@@ -48,7 +54,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {!isAuthPage && <OfflineBanner />}
       {showHeader && <BrandHeader />}
       <main
-        className={`mx-auto max-w-lg ${showHeader ? "min-h-[calc(100dvh-4rem)]" : "min-h-dvh"} ${showNav ? "customer-nav-content-clearance" : ""}`}
+        className={`mx-auto max-w-lg ${showHeader ? "min-h-[calc(100dvh-4rem)]" : "min-h-dvh"} ${showNav && !isSpotlight ? "customer-nav-content-clearance" : ""}`}
       >
         {foodBusinessId ? <FoodBusinessTheme key={foodBusinessId} id={foodBusinessId}>{children}</FoodBusinessTheme> : children}
       </main>

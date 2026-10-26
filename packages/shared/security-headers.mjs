@@ -43,15 +43,35 @@ const TILE_PROVIDERS = [
 ];
 
 /**
+ * Creator video (apps/api/src/video). Playlists and segments are fetched by script (hls.js), and
+ * uploads go straight from the device to the provider, so these hosts need connect-src. Every provider
+ * an admin can switch on has to be listed here up front, for the same reason as the map providers.
+ * Pictures and playback of plain files (an .mp4, an ad) may come from any https host: neither can run
+ * code, and creators and advertisers bring their own addresses.
+ */
+const VIDEO_PROVIDERS = [
+  "https://*.cloudflarestream.com", "https://videodelivery.net", "https://upload.videodelivery.net",
+  "https://stream.mux.com", "https://*.mux.com", "https://storage.googleapis.com",
+  "https://res.cloudinary.com", "https://api.cloudinary.com",
+  "https://video.bunnycdn.com", "https://*.b-cdn.net",
+];
+
+/**
  * @param {object} [options]
  * @param {string} [options.apiUrl] Origin of the Peebee API (NEXT_PUBLIC_API_URL).
  * @param {boolean} [options.dev] Relax the policy for `next dev`.
+ * @param {boolean} [options.adPixels] Allow the Meta and TikTok pixel scripts. Only the public web storefront turns
+ *   this on, because a merchant may connect their own pixel there; the signed-in apps never need it.
  */
-export function buildSecurityHeaders({ apiUrl = "", dev = false } = {}) {
+export function buildSecurityHeaders({ apiUrl = "", dev = false, adPixels = false } = {}) {
   const api = apiUrl.trim().replace(/\/$/, "");
-  const connect = ["'self'", api, OSM_GEOCODER, OSRM_ROUTER, GOOGLE_SIGNIN, ...MAPBOX, ...GOOGLE_MAPS_DATA].filter(Boolean);
+  const connect = ["'self'", api, OSM_GEOCODER, OSRM_ROUTER, GOOGLE_SIGNIN, ...MAPBOX, ...GOOGLE_MAPS_DATA, ...VIDEO_PROVIDERS].filter(Boolean);
   // `next dev` talks to its hot-reload server over a websocket.
   if (dev) connect.push("ws://localhost:*", "ws://127.0.0.1:*");
+
+  const pixelScripts = adPixels ? " https://connect.facebook.net https://analytics.tiktok.com" : "";
+  const pixelConnect = adPixels ? " https://www.facebook.com https://analytics.tiktok.com https://*.tiktok.com" : "";
+  const pixelImg = adPixels ? " https://www.facebook.com https://analytics.tiktok.com https://*.tiktok.com" : "";
 
   const csp = [
     "default-src 'self'",
@@ -64,16 +84,16 @@ export function buildSecurityHeaders({ apiUrl = "", dev = false } = {}) {
     // someone into clicking "Settle" or "Suspend".
     "frame-ancestors 'none'",
     "form-action 'self'",
-    `script-src 'self' 'unsafe-inline'${dev ? " 'unsafe-eval'" : ""} ${GOOGLE_SIGNIN} ${MAPBOX[0]} ${GOOGLE_MAPS_SCRIPTS.join(" ")}`,
+    `script-src 'self' 'unsafe-inline'${dev ? " 'unsafe-eval'" : ""} ${GOOGLE_SIGNIN} ${MAPBOX[0]} ${GOOGLE_MAPS_SCRIPTS.join(" ")}${pixelScripts}`,
     // Sign in with Google pulls its button stylesheet from accounts.google.com
     // — leave it out and the button renders unstyled.
     // Mapbox GL and Google Maps load their own stylesheets/web fonts too.
     `style-src 'self' 'unsafe-inline' ${GOOGLE_SIGNIN} ${MAPBOX[0]} https://fonts.googleapis.com`,
     // The API's own origin serves the Learn thumbnails and uploaded cover pictures.
-    `img-src 'self' data: blob: https://images.unsplash.com https://*.unsplash.com ${OSM_TILES} https://*.openstreetmap.org ${GOOGLE_AVATARS} ${TILE_PROVIDERS.join(" ")} ${MAPBOX[0]} ${GOOGLE_MAPS_DATA.join(" ")} ${api}`.trim(),
+    `img-src 'self' data: blob: https://images.unsplash.com https://*.unsplash.com ${OSM_TILES} https://*.openstreetmap.org ${GOOGLE_AVATARS} ${TILE_PROVIDERS.join(" ")} ${MAPBOX[0]} ${GOOGLE_MAPS_DATA.join(" ")} ${VIDEO_PROVIDERS.join(" ")} https: ${api}${pixelImg}`.trim(),
     "font-src 'self' data: https://fonts.gstatic.com",
-    `media-src 'self' blob: https://commondatastorage.googleapis.com ${api}`.trim(),
-    `connect-src ${connect.join(" ")}`,
+    `media-src 'self' blob: https: ${api}`.trim(),
+    `connect-src ${connect.join(" ")}${pixelConnect}`,
     `frame-src ${GOOGLE_SIGNIN}`,
     // Service worker (the PWA) and any blob-backed worker.
     "worker-src 'self' blob:",
@@ -92,11 +112,11 @@ export function buildSecurityHeaders({ apiUrl = "", dev = false } = {}) {
     // Don't leak the path someone was on (which can name an order or a
     // rider) to third-party sites they click through to.
     { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-    // Geolocation and microphone are used by the apps themselves — the rest
+    // Geolocation, microphone and camera (going live) are used by the apps themselves — the rest
     // is switched off so an injected frame can't reach for them.
     {
       key: "Permissions-Policy",
-      value: "geolocation=(self), microphone=(self), camera=(), payment=(), usb=(), interest-cohort=()",
+      value: "geolocation=(self), microphone=(self), camera=(self), payment=(), usb=(), interest-cohort=()",
     },
     // Two years, subdomains included: after the first visit the browser
     // refuses to speak plain HTTP to this host at all.

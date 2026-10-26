@@ -56,3 +56,8 @@ export function getR2Bucket(): R2Bucket {
   }
   return r2Binding;
 }
+
+/** Whether private file storage is connected in this runtime (the Worker binding exists). */
+export function r2IsReady(): boolean {
+  return r2Binding !== null;
+}

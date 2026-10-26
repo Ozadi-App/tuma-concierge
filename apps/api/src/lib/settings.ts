@@ -83,6 +83,16 @@ const DEFAULTS = {
    * nobody's been assigned by this long after the order was created, the
    * app auto-assigns rather than leaving the customer waiting indefinitely. */
   max_assignment_minutes: "5",
+  /** Channels: every switch, limit, percentage and window for creator channels, the shared Spotlight,
+   * memberships, verification, causes and rewards. JSON, read through ../channels/settings.ts, which
+   * validates against the field list in @peebee/shared. Off until an admin turns it on. */
+  channels_config: "{}",
+  /** Creator video: which providers are on offer and the limits on uploads. JSON, read through
+   * ../video/settings.ts, which clamps every field. Off until an admin turns it on. */
+  video_config: "{}",
+  /** Ads over videos: the switches, timing, frequency and the creator revenue share. JSON, read
+   * through ../ads/settings.ts, which clamps every field. Off until an admin turns it on. */
+  ads_config: "{}",
   /** Which payment aggregators are on offer, in priority order — the first
    * entry is primary, each later entry is a fallback tried once everything
    * ahead of it has no working credentials. JSON array of "yo" |
@@ -722,6 +732,13 @@ const DEFAULTS = {
   taxipress_show_stops: "1",
   taxipress_luggage_options_shown: "6",
   taxipress_languages: JSON.stringify([{ code: "en", name: "English", enabled: true }, { code: "lg", name: "Luganda", enabled: true }, { code: "sw", name: "Swahili", enabled: true }]),
+  // Standalone Services Platform
+  services_platform_enabled: "1",
+  services_platform_commission_percent: "5",
+  services_platform_lead_time_hours: "2",
+  services_platform_max_services: "50",
+  services_platform_disallow_aggregator_intangibles: "1",
+  services_platform_virtual_enabled: "1",
 } as const;
 
 export type SettingKey = keyof typeof DEFAULTS;
@@ -2081,3 +2098,17 @@ export async function setMarketplaceSettings(next: Partial<MarketplaceSettings>)
 }
 
 
+
+/** Raw read/write for the option registry (keys that are not part of the typed DEFAULTS). */
+export async function getRawSetting(key: string): Promise<string | undefined> {
+  return (await loadSettings()).get(key);
+}
+
+export async function setRawSetting(key: string, value: string): Promise<void> {
+  await db.execute({
+    sql: `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, datetime('now'))
+          ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`,
+    args: [key, value],
+  });
+  invalidateSettingsCache();
+}

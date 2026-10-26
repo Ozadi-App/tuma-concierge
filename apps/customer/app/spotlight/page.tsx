@@ -1,30 +1,65 @@
 "use client";
 
-import { ArrowLeft, Volume2, VolumeX } from "lucide-react";
-import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import type { PostView, PublisherType } from "@peebee/shared";
+import { Plus, Radio, Volume2, VolumeX } from "lucide-react";
+import Link from "next/link";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api, errorMessage } from "../../lib/api";
 import { useCart } from "../../lib/cart";
 import { addSpotlightItemToCart } from "../../lib/spotlight-cart";
 import { CartDrawer } from "../../components/CartDrawer";
 import { SpotlightCard, type SpotlightItem } from "../../components/spotlight/SpotlightCard";
+import { PostSpotlightCard } from "../../components/channels/PostSpotlightCard";
+import { useAuth } from "../../lib/auth-context";
+import { useChannelsConfig } from "../../lib/channels";
+import { setSpotlightFilter, useSpotlightFilter, type SpotlightFilter } from "../../lib/spotlight-filter";
 import "../../components/spotlight/spotlight.css";
 
 const ugx = (val: number) => `UGX ${Number(val).toLocaleString()}`;
 
-const FILTERS = [
-  { id: "all", label: "All" },
-  { id: "live", label: "Live" },
-  { id: "groceries", label: "Groceries" },
-  { id: "stores", label: "Stores" },
-] as const;
+/** Room the floating menu takes at the bottom of each card. */
+const NAV_CLEARANCE = 96;
+
+/** Which publishers each menu button shows. "For you" shows everyone; the rest are narrower. */
+const PUBLISHERS: Record<SpotlightFilter, PublisherType[] | null> = {
+  foryou: null,
+  following: null,
+  creators: ["channel", "personal"],
+  market: ["store", "restaurant"],
+  learn: ["learn"],
+};
+/** Store products (with a Buy button) belong to For you and Market. */
+const SHOWS_STORE_ITEMS: Record<SpotlightFilter, boolean> = { foryou: true, following: false, creators: false, market: true, learn: false };
+/** A filtered feed is cut from ranked pages, so it keeps reading pages until it has enough to fill the screen. */
+const MIN_POSTS = 6;
+const MAX_PAGES = 5;
+
+/** One thing in the feed: a store's post (with a product to buy) or a post from anyone else on Peebee. */
+type FeedEntry = { kind: "store"; item: SpotlightItem } | { kind: "post"; post: PostView };
+
+/** Shows creators' posts and store posts one after the other, so neither crowds out the other. */
+function interleave(posts: PostView[], stores: SpotlightItem[]): FeedEntry[] {
+  const out: FeedEntry[] = [];
+  const max = Math.max(posts.length, stores.length);
+  for (let i = 0; i < max; i++) {
+    if (posts[i]) out.push({ kind: "post", post: posts[i]! });
+    if (stores[i]) out.push({ kind: "store", item: stores[i]! });
+  }
+  return out;
+}
 
 export default function SpotlightPage() {
-  const router = useRouter();
   const [items, setItems] = useState<SpotlightItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState<"all" | "live" | "groceries" | "stores">("all");
+  const filter = useSpotlightFilter();
+  const { user } = useAuth();
+  const { config: channelsConfig } = useChannelsConfig();
+  const channelsOn = channelsConfig?.enabled === true;
+  const [posts, setPosts] = useState<PostView[]>([]);
+  const [nextCursor, setNextCursor] = useState<number | null>(null);
+  const [followed, setFollowed] = useState<Set<string>>(new Set());
+  const loadingMore = useRef(false);
   const [isMuted, setIsMuted] = useState(true);
 
   // Likes and comments state per item
@@ -45,13 +80,51 @@ export default function SpotlightPage() {
 
   useEffect(() => {
     loadSpotlight();
-  }, [categoryFilter]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filter, channelsOn]);
+
+  // Who the viewer already follows, so the follow button only shows for new channels.
+  useEffect(() => {
+    if (!channelsOn || !user) return;
+    api.followingChannels().then((r) => setFollowed(new Set(r.channels.map((c) => c.id)))).catch(() => undefined);
+  }, [channelsOn, user]);
+
+  const loadMorePosts = useCallback(async () => {
+    if (nextCursor === null || loadingMore.current) return;
+    loadingMore.current = true;
+    try {
+      const more = await readPosts(filter, nextCursor, 2);
+      setPosts((prev) => [...prev, ...more.posts.filter((p) => !prev.some((x) => x.id === p.id))]);
+      setNextCursor(more.nextCursor);
+    } finally {
+      loadingMore.current = false;
+    }
+  }, [nextCursor, filter]);
+
+  /** Reads feed pages for one menu button, keeping only that button's publishers, until there is enough to show. */
+  async function readPosts(which: SpotlightFilter, from: number, maxPages: number): Promise<{ posts: PostView[]; nextCursor: number | null }> {
+    const allowed = PUBLISHERS[which];
+    const out: PostView[] = [];
+    let cursor: number | null = from;
+    for (let page = 0; page < maxPages && cursor !== null; page++) {
+      const feed = await api.spotlightFeed(which === "following" ? "following" : "all", cursor);
+      out.push(...feed.posts.filter((p) => !allowed || (p.publisher !== null && allowed.includes(p.publisher.type))));
+      cursor = feed.nextCursor;
+      if (out.length >= MIN_POSTS) break;
+    }
+    return { posts: out, nextCursor: cursor };
+  }
 
   async function loadSpotlight() {
     setLoading(true);
     setError("");
     try {
-      const res = await api.getMarketplaceSpotlight(categoryFilter);
+      // Posts from creators and every other publisher come from the shared feed; stores keep their own.
+      const feedPromise = channelsOn ? readPosts(filter, 0, MAX_PAGES).catch(() => null) : Promise.resolve(null);
+      const res = SHOWS_STORE_ITEMS[filter] ? await api.getMarketplaceSpotlight("all") : { spotlight: [] as SpotlightItem[] };
+      const feed = await feedPromise;
+      setPosts(feed ? feed.posts : []);
+      setNextCursor(feed ? feed.nextCursor : null);
       const list: SpotlightItem[] = res.spotlight || [];
       setItems(list);
 
@@ -107,39 +180,22 @@ export default function SpotlightPage() {
   }
 
   // Room reserved at the bottom of each card for the floating cart pill.
-  const bottomPad = cartItemCount > 0 ? 72 : 0;
+  const bottomPad = NAV_CLEARANCE + (cartItemCount > 0 ? 72 : 0);
 
-  function leave() {
-    if (window.history.length > 1) router.back();
-    else router.push("/shopping");
-  }
+  const entries: FeedEntry[] = SHOWS_STORE_ITEMS[filter] ? interleave(posts, items) : posts.map((post) => ({ kind: "post" as const, post }));
 
   const topControls = (
-    <div className="flex items-center justify-between gap-3 px-4">
-      <button
-        type="button"
-        onClick={leave}
-        aria-label="Leave Spotlight"
-        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-black/30 text-white backdrop-blur-md transition active:scale-95"
-      >
-        <ArrowLeft className="h-5 w-5" aria-hidden />
-      </button>
-      <div role="tablist" aria-label="Spotlight filter" className="flex items-center gap-0.5 rounded-full bg-black/30 p-1 backdrop-blur-md">
-        {FILTERS.map((f) => (
-          <button
-            key={f.id}
-            type="button"
-            role="tab"
-            aria-selected={categoryFilter === f.id}
-            onClick={() => { setActiveCommentsId(null); setCategoryFilter(f.id); }}
-            className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
-              categoryFilter === f.id ? "bg-gold text-ink-gold" : "text-white/75 hover:text-white"
-            }`}
-          >
-            {f.label}
-          </button>
-        ))}
-      </div>
+    <div className="flex items-center justify-end gap-3 px-4">
+      {channelsOn && channelsConfig?.live?.enabled && (
+        <Link href="/live" aria-label="Go live" className="flex h-10 shrink-0 items-center gap-1.5 rounded-full bg-red-600 px-3.5 text-xs font-extrabold text-white transition active:scale-95">
+          <Radio className="h-4 w-4" aria-hidden /> Live
+        </Link>
+      )}
+      {channelsOn && (
+        <Link href="/studio/new" aria-label="Create a post" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gold text-ink-gold transition active:scale-95">
+          <Plus className="h-5 w-5" aria-hidden />
+        </Link>
+      )}
       <button
         type="button"
         onClick={() => setIsMuted((prev) => !prev)}
@@ -166,45 +222,63 @@ export default function SpotlightPage() {
             <p className="text-xs text-white/60">Loading Spotlight…</p>
           </div>
         </div>
-      ) : items.length === 0 ? (
+      ) : entries.length === 0 ? (
         <div className="flex h-full w-full flex-col">
           <div className="pt-3">{topControls}</div>
           <div className="flex flex-1 flex-col items-center justify-center space-y-3 p-6 text-center">
             <h2 className="text-base font-semibold">Nothing in Spotlight yet</h2>
             <p className="max-w-xs text-xs text-white/60">
-              {error || "Try another filter or check back shortly for new videos and live streams."}
+              {error || "Try another button on the menu or check back shortly for new posts."}
             </p>
-            <button type="button" onClick={() => setCategoryFilter("all")} className="rounded-full bg-gold px-5 py-2.5 text-xs font-semibold text-ink-gold">
+            <button type="button" onClick={() => setSpotlightFilter("foryou")} className="rounded-full bg-gold px-5 py-2.5 text-xs font-semibold text-ink-gold">
               Show everything
             </button>
           </div>
         </div>
       ) : (
-        <div className={`no-scrollbar h-full w-full snap-y snap-mandatory ${activeCommentsId ? "overflow-hidden" : "overflow-y-scroll"}`}>
-          {items.map((item) => (
-            <SpotlightCard
-              key={item.id}
-              item={item}
-              isMuted={isMuted}
-              liked={!!likedMap[item.id]}
-              likeCount={likeCounts[item.id] || 0}
-              comments={itemComments[item.id] || []}
-              carouselIdx={carouselIndices[item.id] || 0}
-              drawerOpen={activeCommentsId === item.id}
-              topInset={topControls}
-              bottomPad={bottomPad}
-              onToggleLike={() => handleToggleLike(item.id)}
-              onCarouselNav={(dir, total) => handleCarouselNav(item.id, dir, total)}
-              onQuickBuy={() => void handleQuickBuy(item)}
-              onAddComment={(text) => handleAddComment(item.id, text)}
-              onDrawerChange={(open) => setActiveCommentsId(open ? item.id : null)}
-            />
-          ))}
+        <div
+          className={`no-scrollbar h-full w-full snap-y snap-mandatory ${activeCommentsId ? "overflow-hidden" : "overflow-y-scroll"}`}
+          onScroll={(e) => {
+            const el = e.currentTarget;
+            if (el.scrollTop + el.clientHeight * 2.5 >= el.scrollHeight) void loadMorePosts();
+          }}
+        >
+          {entries.map((entry) =>
+            entry.kind === "post" ? (
+              <PostSpotlightCard
+                key={`post-${entry.post.id}`}
+                post={entry.post}
+                muted={isMuted}
+                topInset={topControls}
+                bottomPad={bottomPad}
+                following={entry.post.publisher?.type === "channel" && followed.has(entry.post.publisher.id)}
+                onFollowChange={(id, now) => setFollowed((prev) => { const next = new Set(prev); if (now) next.add(id); else next.delete(id); return next; })}
+              />
+            ) : (
+              <SpotlightCard
+                key={entry.item.id}
+                item={entry.item}
+                isMuted={isMuted}
+                liked={!!likedMap[entry.item.id]}
+                likeCount={likeCounts[entry.item.id] || 0}
+                comments={itemComments[entry.item.id] || []}
+                carouselIdx={carouselIndices[entry.item.id] || 0}
+                drawerOpen={activeCommentsId === entry.item.id}
+                topInset={topControls}
+                bottomPad={bottomPad}
+                onToggleLike={() => handleToggleLike(entry.item.id)}
+                onCarouselNav={(dir, total) => handleCarouselNav(entry.item.id, dir, total)}
+                onQuickBuy={() => void handleQuickBuy(entry.item)}
+                onAddComment={(text) => handleAddComment(entry.item.id, text)}
+                onDrawerChange={(open) => setActiveCommentsId(open ? entry.item.id : null)}
+              />
+            ),
+          )}
         </div>
       )}
 
       {cartItemCount > 0 && !activeCommentsId && (
-        <div className="absolute inset-x-4 z-40 mx-auto max-w-md animate-slide-up" style={{ bottom: "max(1rem, env(safe-area-inset-bottom))" }}>
+        <div className="absolute inset-x-4 z-40 mx-auto max-w-md animate-slide-up" style={{ bottom: `calc(env(safe-area-inset-bottom, 0px) + ${NAV_CLEARANCE + 12}px)` }}>
           <button
             type="button"
             onClick={() => setCartOpen(true)}

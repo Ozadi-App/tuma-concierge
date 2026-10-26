@@ -1,4 +1,5 @@
 import { ridersForThisWorld } from "../practice/people.js";
+import { settleLoyalty } from "../marketplace/loyalty.js";
 import { Hono, type Context } from "hono";
 import { roadKm } from "../lib/road-distance.js";
 import { z } from "zod";
@@ -3070,6 +3071,8 @@ orderRoutes.post("/orders/:id/settle", async (c) => {
   }
 
   await touchOrder(id, { stage: "Settle", final_total: total });
+  // Store loyalty cashback waiting on this delivery is credited now (admin option `loyalty_credit_trigger`).
+  await settleLoyalty(id).catch((err) => console.error("loyalty settle failed", err));
   await db.execute({
     sql: "UPDATE lists SET status = 'delivered', updated_at = datetime('now') WHERE id = ?",
     args: [order.list_id as string],

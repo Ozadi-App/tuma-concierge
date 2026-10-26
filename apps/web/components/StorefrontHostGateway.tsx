@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
-import DedicatedStorefrontPage from "../app/site/[slug]/page";
+import StorefrontClient from "./storefront/StorefrontClient";
 
 const RESERVED_SUBDOMAINS = new Set([
   "www",
@@ -20,6 +20,8 @@ const RESERVED_SUBDOMAINS = new Set([
   "learn",
   "tv",
   "preview",
+  "stores",
+  "portal",
 ]);
 
 /**
@@ -40,6 +42,11 @@ export function StorefrontHostGateway({ children }: { children: ReactNode }) {
       setStoreHostSlug(queryStore);
       return;
     }
+    if (host === "stores.peebee.online") {
+      // The merchant sign-up site. The server normally rewrites this host to /portal; this covers the case where it didn't.
+      window.location.replace("/portal");
+      return;
+    }
     if (host === "localhost" || host === "127.0.0.1" || host === "peebee.online" || host === "www.peebee.online") {
       return;
     }
@@ -57,7 +64,7 @@ export function StorefrontHostGateway({ children }: { children: ReactNode }) {
   }, []);
 
   if (storeHostSlug) {
-    return <DedicatedStorefrontPage overrideSlug={storeHostSlug} />;
+    return <StorefrontClient overrideSlug={storeHostSlug} />;
   }
 
   return <>{children}</>;
