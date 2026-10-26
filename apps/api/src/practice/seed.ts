@@ -11,6 +11,7 @@ import { seedLearn } from "./seed-learn.js";
 import { seedMoney } from "./seed-money.js";
 import { seedPartners } from "./seed-partners.js";
 import { seedRide } from "./seed-ride.js";
+import { seedWorkers } from "./seed-workers.js";
 
 /** Practice accounts cannot be signed into with a password: a session token is the only way in. */
 const NO_PASSWORD = "practice-account-no-password";
@@ -147,6 +148,7 @@ export async function seedPracticeWorld(): Promise<PracticeCounts> {
   await seedMoney();
   await seedElite();
   await seedPartners();
+  await seedWorkers();
   return practiceCounts();
 }
 
@@ -172,6 +174,23 @@ export async function resetPracticeWorld(): Promise<void> {
   for (const table of COUNTERS) statements.push({ sql: `DELETE FROM "${table}" WHERE rider_id LIKE ${PRAC}`, args: [] });
   // Merchant money lives beside the business rows; the seed puts the empty ones back.
   for (const table of ["merchant_payments", "merchant_settlements", "merchant_settlement_quotes", "merchant_balances"]) statements.push({ sql: `DELETE FROM "${table}" WHERE merchant_id LIKE ${PRAC}`, args: [] });
+  // Work booked and Hire jobs posted while practising go too (the seeded ones have `prac_` ids and stay).
+  const bookedWork = `SELECT id FROM work_jobs WHERE customer_id LIKE ${PRAC} AND id NOT LIKE ${PRAC}`;
+  for (const table of (await withColumn("job_id")).filter((t) => t.startsWith("work_") && t !== "work_jobs")) statements.push({ sql: `DELETE FROM "${table}" WHERE job_id IN (${bookedWork})`, args: [] });
+  statements.push({ sql: `DELETE FROM work_jobs WHERE customer_id LIKE ${PRAC} AND id NOT LIKE ${PRAC}`, args: [] });
+  const postedJobs = `SELECT id FROM talent_jobs WHERE employer_id LIKE ${PRAC} AND id NOT LIKE ${PRAC}`;
+  const postedContracts = `SELECT id FROM talent_contracts WHERE job_id IN (${postedJobs})`;
+  const postedApplications = `SELECT id FROM talent_applications WHERE job_id IN (${postedJobs})`;
+  const talentTables = (await withColumn("job_id")).filter((t) => t.startsWith("talent_"));
+  for (const table of talentTables.filter((t) => !["talent_jobs", "talent_contracts", "talent_applications"].includes(t))) statements.push({ sql: `DELETE FROM "${table}" WHERE job_id IN (${postedJobs})`, args: [] });
+  for (const table of (await withColumn("contract_id")).filter((t) => t.startsWith("talent_") && t !== "talent_contracts")) statements.push({ sql: `DELETE FROM "${table}" WHERE contract_id IN (${postedContracts})`, args: [] });
+  for (const table of (await withColumn("application_id")).filter((t) => t.startsWith("talent_") && t !== "talent_applications")) statements.push({ sql: `DELETE FROM "${table}" WHERE application_id IN (${postedApplications})`, args: [] });
+  statements.push(
+    { sql: `DELETE FROM talent_contracts WHERE job_id IN (${postedJobs})`, args: [] },
+    { sql: `DELETE FROM talent_applications WHERE job_id IN (${postedJobs})`, args: [] },
+    { sql: `DELETE FROM talent_jobs WHERE employer_id LIKE ${PRAC} AND id NOT LIKE ${PRAC}`, args: [] },
+    { sql: "UPDATE users SET wallet_balance_sandbox = 0 WHERE id LIKE 'prac\\_wk\\_%' ESCAPE '\\'", args: [] },
+  );
   PRACTICE_CUSTOMERS.forEach((c) => statements.push({ sql: "UPDATE users SET wallet_balance_sandbox = ? WHERE id = ?", args: [c.walletUgx, c.id] }));
   PRACTICE_RIDERS.forEach((_r, i) => {
     statements.push({ sql: "UPDATE users SET wallet_balance_sandbox = ? WHERE id = ?", args: [60_000 + i * 15_000, `prac_rider_${i + 1}`] });

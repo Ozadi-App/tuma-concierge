@@ -43,6 +43,6 @@ export default function LoginPage() {
     </form>
 
     <p className="text-center text-xs text-ink-500">One account can be an owner, a driver, or both.</p>
-    {mode === "login" && <ServerPracticeCard role="partner" api={api} body="Try Peebee Car as a demo partner: cars to own, rides to drive, a place in the taxi line and a relay stop. Nothing here is real." buttonLabel="Practise as a car partner" />}
+    {mode === "login" && <ServerPracticeCard role="partner" api={api} body="Try Peebee Car as a demo partner: cars to own, rides to drive, a shared taxi and a relay stop. Nothing here is real." buttonLabel="Practise as a car partner" />}
   </AuthJourney>;
 }

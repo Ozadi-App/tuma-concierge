@@ -36,7 +36,7 @@ export const PRACTICE_PERSONA_FOR_ROLE: Record<PracticeRole, string> = {
   /** Found when the session starts: the first demo Work provider and the first demo Hire worker. */
   provider: "",
   worker: "",
-  /** Owns cars, drives one, has a place in a shared-taxi line and runs a relay stop: the whole Partner app. */
+  /** Owns cars, drives one, has an approved shared taxi and runs a relay stop: the whole Partner app. */
   partner: "prac_partner_1",
   /** An approved sales agent with a book of businesses they signed up. */
   sales: "prac_sales_1",

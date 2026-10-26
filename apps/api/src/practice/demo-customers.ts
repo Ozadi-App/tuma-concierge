@@ -80,6 +80,7 @@ async function waiting(): Promise<{ forRiders: number; forRestaurants: number }>
  */
 export async function topUpDemoOrders(target = 4, foodTarget = 2): Promise<number> {
   await runDemoCustomerAutopilot().catch((err) => console.error("Practice autopilot failed:", err));
+  await import("./demo-workers.js").then(async (m) => { await m.runDemoWorkerAutopilot(); await m.runDemoProviderAutopilot(); }).catch((err) => console.error("Practice worker autopilot failed:", err));
   let placed = 0;
   for (let attempt = 0; attempt < (target + foodTarget) * 2; attempt++) {
     const { forRiders, forRestaurants } = await waiting();
@@ -98,14 +99,19 @@ export async function topUpDemoOrders(target = 4, foodTarget = 2): Promise<numbe
 
 /** Car drivers and owners always have a couple of ride requests to look at: demo customers ask for a normal car or a comfort minivan. */
 async function topUpCarRides(target: number): Promise<number> {
-  const open = Number((await db.execute(`SELECT COUNT(*) AS n FROM car_bookings b JOIN orders o ON o.id = b.order_id
-    WHERE b.status = 'requested' AND o.rider_id IS NULL AND o.stage IN ('Create', 'Match') AND b.customer_id LIKE 'prac\\_%' ESCAPE '\\'`)).rows[0]?.n ?? 0);
+  const counts = (await db.execute(`SELECT COUNT(*) AS n, SUM(CASE WHEN COALESCE(b.vehicle_size, 'normal') = 'normal' THEN 1 ELSE 0 END) AS normal
+    FROM car_bookings b JOIN orders o ON o.id = b.order_id
+    WHERE b.status = 'requested' AND o.rider_id IS NULL AND o.stage IN ('Create', 'Match') AND b.customer_id LIKE 'prac\\_%' ESCAPE '\\'`)).rows[0];
+  const open = Number(counts?.n ?? 0);
+  // There is always at least one ordinary car ride, which every sedan can take; the rest may be minivans.
+  let normalOpen = Number(counts?.normal ?? 0);
   const { carNow, carComfortLarge } = await import("./scenarios-ride.js");
   let placed = 0;
   for (let i = open; i < target; i++) {
     const customer = PRACTICE_CUSTOMERS[Math.floor(Math.random() * PRACTICE_CUSTOMERS.length)]!;
     try {
-      if (await (Math.random() < 0.5 ? carNow : carComfortLarge)(customer, await actAs(customer))) placed++;
+      const scenario = normalOpen === 0 || Math.random() < 0.5 ? carNow : carComfortLarge;
+      if (await scenario(customer, await actAs(customer))) { placed++; if (scenario === carNow) normalOpen++; }
     } catch (err) {
       console.error("Practice demo car ride failed:", err);
     }
@@ -131,6 +137,24 @@ export async function runDemoCustomerAutopilot(limit = 20): Promise<number> {
     args: [limit],
   });
   let steps = 0;
+  // Rides where the customer picks the driver: the first driver who offered to take it is chosen.
+  const offered = await db.execute({
+    sql: `SELECT o.id, o.customer_id, (SELECT a.rider_id FROM order_applications a WHERE a.order_id = o.id AND a.status = 'pending' ORDER BY a.created_at, a.rowid LIMIT 1) AS applicant
+          FROM orders o WHERE o.customer_id LIKE 'prac\\_%' ESCAPE '\\' AND o.rider_id IS NULL AND o.stage IN ('Create', 'Match')
+            AND EXISTS (SELECT 1 FROM order_applications a WHERE a.order_id = o.id AND a.status = 'pending') LIMIT ?`,
+    args: [limit],
+  });
+  for (const row of offered.rows) {
+    const customer = PRACTICE_CUSTOMERS.find((c) => c.id === row.customer_id);
+    if (!customer || !row.applicant) continue;
+    try {
+      const picked = await (await actAs(customer))("POST", `/orders/${String(row.id)}/applicants/${String(row.applicant)}/select`, {});
+      if (picked.status < 300) steps++;
+      else console.error("Practice demo customer could not pick a driver:", picked.status, JSON.stringify(picked.body));
+    } catch (err) {
+      console.error("Practice demo customer pick failed:", err);
+    }
+  }
   for (const row of res.rows) {
     const customer = PRACTICE_CUSTOMERS.find((c) => c.id === row.customer_id);
     if (!customer) continue;

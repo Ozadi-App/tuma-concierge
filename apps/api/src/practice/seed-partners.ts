@@ -4,7 +4,7 @@ import { runSeed } from "./batch.js";
 
 /**
  * The people behind the Partner, Sales and TV apps. Each is one persona that sees the whole app: the partner owns cars,
- * drives one, takes a place in a shared-taxi line and runs a relay stop; the sales agent has a book of businesses they
+ * drives one, takes an approved shared taxi they can join the line with and runs a relay stop; the sales agent has a book of businesses they
  * signed up, some activated and some still waiting.
  */
 const E = PRACTICE_ENTEBBE;
@@ -45,7 +45,7 @@ export async function seedPartners(): Promise<void> {
   for (const v of cars) {
     s.push({
       sql: `INSERT OR IGNORE INTO vehicles (id, owner_id, category_id, plate, make, model, year, colour, status, reviewed_at, service_class, condition_grade, seat_capacity, features_json, accepts_convenient)
-            VALUES (?, ?, ?, ?, ?, ?, 2019, 'Silver', 'approved', datetime('now'), 'convenient', 'excellent', ?, '["Air conditioning","Bluetooth"]', 1)`,
+            VALUES (?, ?, ?, ?, ?, ?, 2019, 'Silver', 'approved', datetime('now'), 'comfort', 'excellent', ?, '["Air conditioning","Bluetooth"]', 1)`,
       args: [v.id, me, v.category, v.plate, v.make, v.model, v.seats],
     });
     s.push({ sql: "INSERT OR IGNORE INTO vehicle_assignments (id, vehicle_id, driver_id, status, assigned_by) VALUES (?, ?, ?, 'active', ?)", args: [`${v.id}_asg`, v.id, v.driver, me] });
@@ -67,13 +67,9 @@ export async function seedPartners(): Promise<void> {
           VALUES ('prac_trip_pp1', ?, 'prac_veh_pp1', 'peebee-car-normal', 'Entebbe Town', 0.0612, 32.4637, 'Kampala (Garden City)', 0.3209, 32.5917, 38, ?, 3, 0, 12000, 'open', 'sandbox')`,
     args: [me, inHours(4)],
   });
-  // A place in the Entebbe → Kampala line, and a relay stop on the Masaka road.
+  // An approved shared taxi (not in the line: a driver is either in the line or taking car rides, never both) and a relay stop on the Masaka road.
   s.push({
     sql: `INSERT OR IGNORE INTO taxipress_taxis (id, user_id, relay_route_id, plate, seat_layout, seats, status, approved_at) VALUES ('prac_taxi_pp', ?, 'prac_rr_kampala', 'UBR 190T', '14', 14, 'approved', datetime('now'))`,
-    args: [me],
-  });
-  s.push({
-    sql: `INSERT OR IGNORE INTO taxipress_queue (id, taxipress_route_id, taxi_id, driver_id, status, seats_total, seats_booked) VALUES ('prac_q_pp', 'prac_rr_kampala_a_to_b', 'prac_taxi_pp', ?, 'in_line', 14, 0)`,
     args: [me],
   });
   s.push({ sql: "INSERT OR IGNORE INTO relay_operators (user_id, route_id, vehicle_plate, phone, status) VALUES (?, 'prac_rr_masaka', 'UBS 412M', '0000008001', 'approved')", args: [me] });

@@ -11,7 +11,7 @@ export function CarPracticeDemo({ mode }: { mode: "owner" | "driver" }) {
       api={api}
       body={mode === "owner"
         ? "See the app as a demo owner: cars to manage, drivers, rentals and earnings, with demo customers booking rides. Your own account isn't touched."
-        : "See the app as a demo driver: ride requests from demo customers, carpool trips and a place in the taxi line. Your own account isn't touched."}
+        : "See the app as a demo driver: ride requests from demo customers, carpool trips and a shared taxi. Your own account isn't touched."}
       buttonLabel={`Practise as ${mode === "owner" ? "an owner" : "a driver"}`}
     />
   );

@@ -73,3 +73,118 @@ test("the partner always has ride requests to look at", async () => {
   const jobs = await json<{ jobs: unknown[] }>(await call(partner.token, "/car/driver/jobs"));
   assert.ok(jobs.jobs.length >= 1, "a demo customer's ride request reaches the partner driver");
 });
+
+test("a partner drives a demo customer's ride all the way: offer, be chosen, be paid for, drive, hand over, settle, be rated and paid out", async () => {
+  const { db, call, json, start } = await practiceHarness();
+  const { actAs, runDemoCustomerAutopilot } = await import("./demo-customers.js");
+  const { carNow } = await import("./scenarios-ride.js");
+  const { PRACTICE_CUSTOMERS } = await import("./personas.js");
+  const { runInPractice } = await import("../db/practice-context.js");
+  await start("customer");
+  const rider = PRACTICE_CUSTOMERS[2]!;
+  const orderId = await runInPractice(async () => String(await carNow(rider, await actAs(rider))));
+  assert.ok(orderId.startsWith("ord"), `a ride was requested (${orderId})`);
+  const autopilot = () => runInPractice(() => runDemoCustomerAutopilot());
+  const stage = async () => String((await db.execute({ sql: "SELECT stage FROM orders WHERE id = ?", args: [orderId] })).rows[0]!.stage);
+  const partner = await start("partner");
+  const act = async (path: string, body: unknown = {}) => { const res = await call(partner.token, path, { method: "POST", body: JSON.stringify(body) }); assert.ok(res.status < 300, `${path} ${res.status} ${JSON.stringify(await res.clone().json().catch(() => ({})))}`); };
+
+  await act("/car/driver/online", { online: true, vehicleId: "prac_veh_pp1", position: { lat: 0.0612, lng: 32.4637 } });
+  const jobs = await json<{ jobs: Array<{ id: string }> }>(await call(partner.token, "/car/driver/jobs"));
+  assert.ok(jobs.jobs.some((j) => j.id === orderId), "the ride is on the partner's list");
+  await act(`/car/orders/${orderId}/apply`);
+  assert.ok(await autopilot() >= 1, "the customer picks the partner");
+  assert.equal((await db.execute({ sql: "SELECT rider_id FROM orders WHERE id = ?", args: [orderId] })).rows[0]!.rider_id, "prac_partner_1");
+  assert.ok(await autopilot() >= 1, "the customer pays");
+  assert.equal(await stage(), "Shop");
+  await act(`/orders/${orderId}/deliver`, { etaMinutes: 8 });
+  assert.ok(await autopilot() >= 1, "the customer gives the PIN");
+  assert.equal(await stage(), "Handover");
+  await act(`/orders/${orderId}/settle`);
+  assert.equal(await stage(), "Settle");
+  assert.ok(await autopilot() >= 1, "the customer rates the driver");
+  const booking = (await db.execute({ sql: "SELECT status, driver_amount, owner_amount FROM car_bookings WHERE order_id = ?", args: [orderId] })).rows[0]!;
+  assert.equal(booking.status, "completed");
+  assert.ok(Number(booking.driver_amount) + Number(booking.owner_amount) > 0, "the fare was shared out");
+  const wallet = await json(await call(partner.token, "/car/wallet"));
+  assert.ok(JSON.stringify(wallet).length > 2, "the partner can see their earnings");
+  const active = await json<{ recent: unknown[]; totalEarned: number }>(await call(partner.token, "/car/driver/active"));
+  assert.ok(active.recent.length >= 1 && active.totalEarned > 0, "the finished ride shows in the driver's history");
+});
+
+test("a customer hires a demo worker: post, invite, be answered, hire, work handed in, pay, review", async () => {
+  const { db, call, json, post, start } = await practiceHarness();
+  const { runDemoWorkerAutopilot } = await import("./demo-workers.js");
+  const { runInPractice } = await import("../db/practice-context.js");
+  const customer = await start("customer");
+
+  const workers = await json<{ workers: Array<{ id: string; name: string }> }>(await call(customer.token, "/talent/workers"));
+  assert.ok(workers.workers.filter((w) => w.id.startsWith("prac_wk_")).length >= 10, "Entebbe's own workers are listed");
+  const plumber = workers.workers.find((w) => w.id === "prac_wk_plumber")!;
+  assert.ok(plumber, "the plumber can be found");
+
+  const posted = await post(customer.token, "/talent/jobs", {
+    type: "gig", title: "Fix a leaking kitchen tap", description: "The tap under the sink drips all day. Please replace the washer or the tap.", categoryId: "tcat_repairs",
+    area: "Kitoro", remote: false, budgetMinUgx: 40_000, budgetMaxUgx: 60_000, paymentMode: "escrow", acceptRules: true,
+  });
+  assert.equal(posted.status, 201, JSON.stringify(await posted.clone().json()));
+  const jobId = String((await posted.json() as any).job.id);
+  const job = (await db.execute({ sql: "SELECT status FROM talent_jobs WHERE id = ?", args: [jobId] })).rows[0]!;
+  assert.equal(job.status, "open", "the job is live straight away");
+  assert.equal((await post(customer.token, `/talent/jobs/${jobId}/invite`, { workerId: plumber.id })).status, 200);
+
+  const autopilot = () => runInPractice(() => runDemoWorkerAutopilot());
+  assert.ok(await autopilot() >= 1, "the plumber answers the invitation");
+  const apps = await json<{ applicants: unknown[] }>(await call(customer.token, `/talent/jobs/${jobId}/applications`));
+  assert.ok(apps.applicants.length >= 1, "applications arrived");
+  const application = (await db.execute({ sql: "SELECT id FROM talent_applications WHERE job_id = ? AND worker_id = ?", args: [jobId, plumber.id] })).rows[0];
+  assert.ok(application, "the plumber applied");
+
+  const accepted = await post(customer.token, `/talent/applications/${String(application!.id)}/accept`, {});
+  assert.equal(accepted.status, 201, JSON.stringify(await accepted.clone().json()));
+  const contractId = String((await db.execute({ sql: "SELECT id FROM talent_contracts WHERE job_id = ?", args: [jobId] })).rows[0]!.id);
+
+  assert.ok(await autopilot() >= 1, "the plumber does the work and hands it in");
+  const submitted = (await db.execute({ sql: "SELECT status FROM talent_milestones WHERE contract_id = ?", args: [contractId] })).rows.map((r) => r.status);
+  assert.ok(submitted.includes("submitted"), `work was handed in (${submitted})`);
+
+  const released = await post(customer.token, `/talent/contracts/${contractId}/release`, {});
+  assert.equal(released.status, 200, JSON.stringify(await released.clone().json()));
+  assert.equal(String((await db.execute({ sql: "SELECT status FROM talent_contracts WHERE id = ?", args: [contractId] })).rows[0]!.status), "settled");
+  assert.equal((await post(customer.token, `/talent/contracts/${contractId}/review`, { rating: 5, comment: "Fixed it the same day." })).status, 200);
+
+  const { resetPracticeWorld } = await import("./seed.js");
+  await runInPractice(resetPracticeWorld);
+  assert.equal(Number((await db.execute({ sql: "SELECT COUNT(*) n FROM talent_jobs WHERE id = ?", args: [jobId] })).rows[0]!.n), 0, "a reset clears jobs posted while practising");
+  assert.ok(Number((await db.execute("SELECT COUNT(*) n FROM talent_jobs WHERE id LIKE 'prac\\_tj\\_%' ESCAPE '\\'")).rows[0]!.n) >= 2, "and keeps the seeded ones");
+});
+
+test("a customer books a Work service and a demo provider takes it all the way", async () => {
+  const { db, call, json, post, start } = await practiceHarness();
+  const { runDemoProviderAutopilot } = await import("./demo-workers.js");
+  const { runInPractice } = await import("../db/practice-context.js");
+  const customer = await start("customer");
+  const catalog = await json<{ services: Array<{ id: string; name: string; pricingMode?: string; pricing_mode?: string }> }>(await call(customer.token, "/work/catalog"));
+  const service = catalog.services.find((s) => (s.pricingMode ?? s.pricing_mode) === "fixed") ?? catalog.services[0]!;
+  assert.ok(service, "services are on offer");
+  const booked = await post(customer.token, "/work/jobs", { serviceId: service.id, address: "Kitoro, Entebbe", area: "Kitoro", lat: 0.0558, lng: 32.4692, details: "Please come this afternoon." });
+  assert.equal(booked.status, 201, JSON.stringify(await booked.clone().json()));
+  const jobId = String((await booked.json() as any).job.id);
+  const status = async () => String((await db.execute({ sql: "SELECT status FROM work_jobs WHERE id = ?", args: [jobId] })).rows[0]!.status);
+  const autopilot = () => runInPractice(() => runDemoProviderAutopilot());
+  const seen: string[] = [await status()];
+  for (let i = 0; i < 6 && !["completed", "settled"].includes(await status()); i++) {
+    await autopilot();
+    const now = await status();
+    if (now !== seen[seen.length - 1]) seen.push(now);
+    if (now === "quoted") assert.equal((await post(customer.token, `/work/jobs/${jobId}/quote/accept`, {})).status, 200);
+    if (now === "open" && (await db.execute({ sql: "SELECT COUNT(*) n FROM work_offers WHERE job_id = ?", args: [jobId] })).rows[0]!.n) {
+      const offer = (await db.execute({ sql: "SELECT id FROM work_offers WHERE job_id = ? LIMIT 1", args: [jobId] })).rows[0]!;
+      assert.equal((await post(customer.token, `/work/jobs/${jobId}/offers/${String(offer.id)}/select`, {})).status, 200);
+    }
+  }
+  assert.ok(seen.includes("booked") || seen.includes("assigned"), `a provider took the job (${seen.join(" > ")})`);
+  assert.equal(await status(), "completed", `the provider finished the work (${seen.join(" > ")})`);
+  assert.equal((await post(customer.token, `/work/jobs/${jobId}/confirm`, {})).status, 200);
+  assert.equal((await post(customer.token, `/work/jobs/${jobId}/rate`, { rating: 5, comment: "On time and tidy." })).status, 200);
+});
