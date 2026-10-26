@@ -36,7 +36,7 @@ test("video config: bad values fall back and limits are clamped", () => {
   assert.equal(c.maxVideosPerDay, 1);
   assert.deepEqual(c.platformProviders, ["mux"], "mock, link and unknown names are never platform providers");
   assert.deepEqual(c.byoProviders, ["bunny"], "the demo provider is never offered");
-  assert.deepEqual(parseVideoConfig("garbage").platformProviders, ["cloudflare_stream"]);
+  assert.deepEqual(parseVideoConfig("garbage").platformProviders, ["cloudinary", "cloudflare_stream"]);
 });
 
 test("provider signatures match their documented recipes", () => {

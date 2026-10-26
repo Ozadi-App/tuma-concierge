@@ -51,7 +51,7 @@ test("channels: every setting is validated and clamped, and changes are logged",
   const log = await w.client.execute("SELECT COUNT(*) AS n FROM admin_activity_log WHERE action = 'channels.config.update'");
   assert.ok(Number(log.rows[0]!.n) >= 2);
   const cfg = await w.call("/admin/channels/config", { token: w.admin });
-  assert.ok(cfg.json.fields.length > 80 && cfg.json.sections.length === 8, "the Admin screen is drawn from the field list");
+  assert.ok(cfg.json.fields.length > 80 && cfg.json.sections.length === 9, "the Admin screen is drawn from the field list");
 });
 
 test("channels: anyone can open or convert, no ID asked, handle rules hold", async () => {

@@ -42,4 +42,12 @@ export const mockAdapter: VideoAdapter = {
   },
 
   async deleteAsset() {},
+
+  // Sandbox and tests: the app skips the camera connection when it sees this address.
+  supportsLive: true,
+  async createLiveInput() {
+    const id = `mock_live_${Date.now()}_${randomBytes(3).toString("hex")}`;
+    return { externalId: id, publishUrl: "https://mock.invalid/whip", hlsUrl: `${SAMPLE}.m3u8`, posterUrl: `${SAMPLE}.jpg` };
+  },
+  async endLiveInput() {},
 };

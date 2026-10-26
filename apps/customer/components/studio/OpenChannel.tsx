@@ -1,6 +1,8 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { ApiError } from "@peebee/shared";
 import { api, errorMessage } from "../../lib/api";
 import { useAuth } from "../../lib/auth-context";
 import { uploadPicture } from "../../lib/channels";
@@ -13,6 +15,7 @@ const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "").slice(0, 
 /** Opens a channel, or converts the account into one. Nothing here asks for ID: that only happens when you withdraw money. */
 export function OpenChannel({ config, onOpened }: { config: ChannelsPublicConfig; onOpened: () => void }) {
   const { user } = useAuth();
+  const router = useRouter();
   const [displayName, setDisplayName] = useState(user?.name ?? "");
   const [handle, setHandle] = useState("");
   const [touched, setTouched] = useState(false);
@@ -35,9 +38,19 @@ export function OpenChannel({ config, onOpened }: { config: ChannelsPublicConfig
     setBusy(true);
     setError(null);
     try {
-      await api.openChannel({ handle, displayName, bio, avatarPath: avatar?.path ?? null, ageConfirmed: age });
+      const { channel } = await api.openChannel({ handle, displayName, bio, avatarPath: avatar?.path ?? null, ageConfirmed: age });
       onOpened();
+      // Straight to the new channel, so the person sees what they just made.
+      router.push(`/c/${channel.handle}`);
+      return;
     } catch (err) {
+      // A second tap, or a slow first one: the channel already exists, so go to it instead of showing an error.
+      if (err instanceof ApiError && err.code === "already_has_channel") {
+        try {
+          const mine = await api.myChannel();
+          if (mine.channel) { onOpened(); router.push(`/c/${mine.channel.handle}`); return; }
+        } catch { /* fall through to the message */ }
+      }
       setError(errorMessage(err));
     } finally {
       setBusy(false);

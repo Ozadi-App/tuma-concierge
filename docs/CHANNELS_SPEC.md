@@ -2,7 +2,7 @@
 
 **Status: v1.0. All phases below are built, and every feature ships switched off.**
 The owner approved the recommended defaults and asked for everything to be built, with every option switchable from Admin so features that need a licence stay off until the business has one. Admin → Settings → Channels holds every option; its screen is drawn from `packages/shared/src/channels-config.ts`.
-Migrations to apply by hand, in order: `0135_video_and_ads.sql`, then `0136_channels.sql`.
+Migrations to apply by hand, in order: `0135_video_and_ads.sql`, then `0136_channels.sql`, then `0142_live_streams.sql` (Go live).
 
 How to read this: **Decided** items come from the product owner and are binding. **Default** items are the recommendation used if no one objects. **[OPEN Qn]** items need an answer before the phase that depends on them starts. Section 17 lists every open question in one place.
 
@@ -203,7 +203,7 @@ One "Channels" area: switches (channels, each publisher type, each post type), l
 | 3 | Creator KYC (at withdrawal only), balances, payout accounts, withdrawal | **Built** |
 | 4 | Causes: approval, public give pages (guests too), held funds, release, refunds | **Built** |
 | 5 | Rewards: counted views, dated rate table, cash-out, ad-share payout | **Built** |
-| 6 | Live (stream address) and audio posts, gifts | **Built, off by default.** Not built: collaborations, advertiser self-serve, auction between campaigns, in-app live ingest |
+| 6 | Live and audio posts, gifts | **Built, off by default.** Going live from a phone camera is built (see "Go live" below). Not built: collaborations, advertiser self-serve, auction between campaigns |
 
 Each phase is its own branch from current `origin/main`, its own pull request, lists any migration to apply by hand, and ships dark.
 
@@ -239,3 +239,18 @@ Numbering is stable; answers move into §18.
 | Q13 | KYC: which documents, and any withdrawal limit before approval? | National ID photo, ID number, selfie, matching payout account; no withdrawals before approval |
 | Q14 | Who reviews KYC and causes — one team or two? | Two permissions, assignable to the same people |
 | Q15 | Minimum ages to open a channel and to withdraw? | 13 and 18 |
+
+
+## Go live (from a phone camera)
+
+Anyone who can post can go live from the customer app at `/live`: the camera opens, they type what is happening and tap **Go live**. No stream address, encoder or other app.
+
+- **How it works.** The API asks the video provider for a live input and returns a private WebRTC (WHIP) address to the host only. The phone sends its camera straight to the provider; viewers watch the same stream as HLS in the Spotlight. Cloudflare Stream is the provider that supports this today (recording is off, so nothing is stored). The demo provider is used in sandbox.
+- **Viewers.** The Spotlight shows a live stream first, with the number watching and live comments. Viewers and the host poll every few seconds; there is no always-open connection. A viewer counts while their heartbeat is under 35 seconds old.
+- **Host controls.** Viewer count, comments, reply, flip camera, mute, end. Hide or pin any comment. Leaving the screen does not end the stream: reopening `/live` offers "Carry on" or "End it".
+- **Helper device.** The host's own second phone opens `/live/helper` and gets the same stream with no camera. Someone else can help with a 6-digit code (valid for a time set in Admin). Helpers can read, reply, hide and pin; only the host can end.
+- **Safety rails.** One stream per host at a time; a stream ends by itself at the time limit, or 3 minutes after the host stops checking in; a stream set up but never started is cleared after 15 minutes. Posting rules (identity, drivers on a job, blocked words) apply. Going live is refused while every post needs approval first.
+- **Admin controls** (Channels → Go live, all default off or safe): on/off, followers needed, longest stream, streams per day, comments on/off and their length and spacing, helper device and code lifetime, who sees the viewer count, whether streams appear in the Spotlight, verified publishers only.
+- **Needs** migration `0142_live_streams.sql`, a Cloudflare Stream account with the Stream API token saved in Admin → Video and ads (platform account), and the camera permission (the app's security headers now allow `camera=(self)`).
+- **Cost.** Cloudflare bills live streaming by minutes delivered to viewers. Watch the daily limit and time limit settings until usage is known.
+- **Not built.** Replays of finished streams, gifts and tips inside the live screen beyond what the post already offers, guests joining on camera, stream notifications to followers.

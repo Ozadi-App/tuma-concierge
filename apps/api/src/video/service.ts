@@ -11,7 +11,7 @@ import { getPlatformEnvironment } from "../lib/settings.js";
 import { VIDEO_ADAPTERS } from "./adapters/index.js";
 import { hasRequiredFields, loadCredentials, PLATFORM } from "./credentials.js";
 import { getVideoConfig } from "./settings.js";
-import { VIDEO_PROVIDERS, VideoProviderError, type AssetInfo, type PlaybackSources, type UploadInstructions, type VideoProviderKey, type VideoSource } from "./types.js";
+import { VIDEO_PROVIDERS, VideoProviderError, type AssetInfo, type LiveInput, type PlaybackSources, type UploadInstructions, type VideoProviderKey, type VideoSource } from "./types.js";
 
 type Row = Record<string, unknown>;
 
@@ -298,4 +298,38 @@ export async function providerCatalogue(userId: string) {
     });
   }
   return rows;
+}
+
+
+/**
+ * Starts a live input for going live from a phone. Live is always on Peebee's own account (never a creator's),
+ * on the first platform provider that can do it; the sandbox uses the demo provider.
+ */
+export async function startLiveInput(input: { title?: string; maxDurationSeconds: number }): Promise<{ provider: VideoProviderKey; live: LiveInput }> {
+  try {
+    if ((await getPlatformEnvironment()) === "sandbox") return { provider: "mock", live: await VIDEO_ADAPTERS.mock.createLiveInput!({}, input) };
+    const config = await getVideoConfig();
+    for (const provider of config.platformProviders) {
+      const adapter = VIDEO_ADAPTERS[provider];
+      if (!adapter.supportsLive || !adapter.createLiveInput) continue;
+      const creds = await loadCredentials(PLATFORM, provider);
+      if (!hasRequiredFields(provider, creds)) continue;
+      return { provider, live: await adapter.createLiveInput(creds, input) };
+    }
+    throw new VideoRequestError("no_live_provider", "Going live is not set up yet.", 503);
+  } catch (err) {
+    wrap(err);
+  }
+}
+
+/** Switches a live input off. Never throws: the stream is over either way. */
+export async function endLiveInput(provider: string, externalId: string): Promise<void> {
+  try {
+    if (!isProviderKey(provider)) return;
+    const adapter = VIDEO_ADAPTERS[provider];
+    if (!adapter.endLiveInput) return;
+    await adapter.endLiveInput(provider === "mock" ? {} : await loadCredentials(PLATFORM, provider), externalId);
+  } catch (err) {
+    console.error("could not end live input:", err);
+  }
 }

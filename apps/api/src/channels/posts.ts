@@ -86,7 +86,8 @@ type Cleaned = {
 /** Checks a post's content against the type, the Admin limits and the access rules. */
 async function validateContent(userId: string, input: PostInput, cfg: ChannelsConfig, publisherType: string, publisherId: string): Promise<Cleaned> {
   const type = input.type;
-  if (!POST_TYPES.includes(type) || !cfg.publishing.postTypes.includes(type)) throw new ChannelsError("post_type_unavailable", "That kind of post is not available.", 400);
+  // Going live from the phone has its own Admin switch (Go live), so it does not also need "live" in the post types.
+  if (!POST_TYPES.includes(type) || !(cfg.publishing.postTypes.includes(type) || (type === "live" && cfg.live.enabled))) throw new ChannelsError("post_type_unavailable", "That kind of post is not available.", 400);
   const caption = (input.caption ?? "").trim();
   if (caption.length > cfg.publishing.maxCaptionChars) throw new ChannelsError("caption_too_long", `Captions can be up to ${cfg.publishing.maxCaptionChars} characters.`, 400);
   const tags = [...new Set((input.tags ?? []).map((t) => t.trim().toLowerCase().replace(/^#/, "")).filter((t) => /^[\p{L}\p{N}_]{1,30}$/u.test(t)))].slice(0, cfg.publishing.maxTags);
@@ -459,6 +460,7 @@ export async function spotlightFeed(viewerId: string | null, cfg: ChannelsConfig
   const rows = (await db.execute({
     sql: `SELECT p.* FROM posts p LEFT JOIN channels ch ON p.publisher_type = 'channel' AND ch.id = p.publisher_id
           WHERE p.status = 'published' AND p.to_spotlight = 1 AND p.environment = ? AND (p.publisher_type != 'channel' OR ch.status = 'active')
+            AND NOT (p.type = 'live' AND COALESCE(p.live_status, '') = 'ended')
           ORDER BY p.published_at DESC LIMIT 300`,
     args: [env],
   })).rows as unknown as PostRow[];
@@ -478,7 +480,9 @@ export async function spotlightFeed(viewerId: string | null, cfg: ChannelsConfig
     const eng = Math.min(1, Math.log10(1 + Number(p.like_count) + 2 * Number(p.comment_count) + Number(p.view_count) / 10) / 3) * r.engagementWeight;
     const follow = p.publisher_type === "channel" && following.has(p.publisher_id) ? r.followedBoost : 0;
     const mult = (p.publisher_type === "store" ? r.storeWeight : p.publisher_type === "channel" ? r.channelWeight : r.otherWeight) / 100;
-    return { p, score: (recency + eng + follow) * mult };
+    // A stream that is on right now goes to the top.
+    const liveNow = p.type === "live" && p.live_status === "live" ? 10 : 0;
+    return { p, score: (recency + eng + follow + liveNow) * mult };
   });
   scored.sort((a, b) => b.score - a.score || String(b.p.published_at).localeCompare(String(a.p.published_at)));
 
@@ -491,6 +495,7 @@ export async function spotlightFeed(viewerId: string | null, cfg: ChannelsConfig
 export async function channelPosts(channelId: string, cursor: number, pageSize: number): Promise<{ posts: PostRow[]; nextCursor: number | null }> {
   const rows = (await db.execute({
     sql: `SELECT * FROM posts WHERE publisher_type = 'channel' AND publisher_id = ? AND status = 'published' AND to_channel = 1
+            AND NOT (type = 'live' AND COALESCE(live_status, '') = 'ended')
           ORDER BY published_at DESC LIMIT ? OFFSET ?`,
     args: [channelId, pageSize + 1, cursor],
   })).rows as unknown as PostRow[];
