@@ -10,7 +10,7 @@ export type MobileMoneyNetwork = "mtn_momo" | "airtel_money";
 const MTN_PREFIXES = ["77", "78", "76", "39"];
 const AIRTEL_PREFIXES = ["70", "75", "74", "20", "25"];
 
-function normalizeUgandaMsisdn(raw: string): string | null {
+export function normalizeUgandaMsisdn(raw: string): string | null {
   const digits = raw.replace(/[^\d]/g, "");
   if (digits.startsWith("256") && digits.length === 12) return digits;
   if (digits.startsWith("0") && digits.length === 10) return `256${digits.slice(1)}`;

@@ -22,7 +22,7 @@ type Row = Record<string, unknown>;
 
 export const serviceBookingRoutes = new Hono();
 
-const MIGRATION = "0138_services_hardening.sql";
+const MIGRATION = "0140_services_hardening.sql";
 
 async function ready(): Promise<boolean> {
   return (await hasColumn("service_bookings", "booking_code")) && (await hasTable("service_payments"));

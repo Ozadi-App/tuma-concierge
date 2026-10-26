@@ -1236,7 +1236,7 @@ marketplaceRoutes.post("/merchants/me/store/domain/verify", requireAuth, async (
   const store = await getMerchantStore(merchantId);
   if (!store) return c.json({ error: "no_store" }, 404);
   if (!(await hasColumn("stores", "domain_verified"))) {
-    return c.json({ error: "migration_pending", message: "Custom domains are being set up (0135_storefront_hardening.sql is not applied yet)." }, 503);
+    return c.json({ error: "migration_pending", message: "Custom domains are being set up (0137_storefront_hardening.sql is not applied yet)." }, 503);
   }
   const domain = String(store.custom_domain ?? "");
   const token = String(store.domain_verify_token ?? "");

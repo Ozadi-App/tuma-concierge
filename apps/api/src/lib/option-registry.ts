@@ -79,7 +79,7 @@ export const OPTION_SETTINGS: SettingDef[] = [
       opt("subdomain_only", "Peebee subdomain only", true, { recommended: true, hint: "[store].peebee.online" }),
       opt("subdomain_plus_verified_custom_domains", "Subdomain and verified custom domains", true, {
         hint: "Merchants can connect their own domain after proving they own it (DNS check).",
-        requires: { columns: [["stores", "domain_verified"]], migration: "0135_storefront_hardening.sql" },
+        requires: { columns: [["stores", "domain_verified"]], migration: "0137_storefront_hardening.sql" },
       }),
     ],
   },
@@ -95,7 +95,7 @@ export const OPTION_SETTINGS: SettingDef[] = [
     default: "automatic_only_public",
     options: [
       opt("automatic_only_public", "Automatic offers only", true, { recommended: true }),
-      opt("flagged_public", "Automatic offers and codes the merchant marks public", true, { requires: { columns: [["store_discounts", "is_public"]], migration: "0135_storefront_hardening.sql" } }),
+      opt("flagged_public", "Automatic offers and codes the merchant marks public", true, { requires: { columns: [["store_discounts", "is_public"]], migration: "0137_storefront_hardening.sql" } }),
       opt("none_public", "Nothing listed", true),
     ],
   },
@@ -132,8 +132,8 @@ export const OPTION_SETTINGS: SettingDef[] = [
     description: "Cashback is only credited once the chosen event happens, and reversed on a refund.",
     default: "on_delivery_or_paid",
     options: [
-      opt("on_delivery_or_paid", "Once the order is delivered and settled", true, { recommended: true, requires: { tables: ["store_loyalty_events"], migration: "0135_storefront_hardening.sql" } }),
-      opt("on_payment_confirmed", "Once payment is confirmed", true, { requires: { tables: ["store_loyalty_events"], migration: "0135_storefront_hardening.sql" } }),
+      opt("on_delivery_or_paid", "Once the order is delivered and settled", true, { recommended: true, requires: { tables: ["store_loyalty_events"], migration: "0137_storefront_hardening.sql" } }),
+      opt("on_payment_confirmed", "Once payment is confirmed", true, { requires: { tables: ["store_loyalty_events"], migration: "0137_storefront_hardening.sql" } }),
       opt("on_order_placed", "As soon as the order is placed", true, { hint: "The previous behaviour. Not recommended: cancelled orders keep the points." }),
     ],
   },
@@ -148,8 +148,8 @@ export const OPTION_SETTINGS: SettingDef[] = [
     description: "Files are only ever reached through a purchase token, never a public link.",
     default: "r2_private_signed",
     options: [
-      opt("r2_private_signed", "Private storage with short-lived links", true, { recommended: true, requires: { r2: true, columns: [["store_digital_products", "file_key"]], migration: "0136_digital_fulfillment.sql" } }),
-      opt("worker_stream_proxy", "Streamed through Peebee", true, { requires: { columns: [["store_digital_products", "file_key"]], migration: "0136_digital_fulfillment.sql" } }),
+      opt("r2_private_signed", "Private storage with short-lived links", true, { recommended: true, requires: { r2: true, columns: [["store_digital_products", "file_key"]], migration: "0138_digital_fulfillment.sql" } }),
+      opt("worker_stream_proxy", "Streamed through Peebee", true, { requires: { columns: [["store_digital_products", "file_key"]], migration: "0138_digital_fulfillment.sql" } }),
       opt("external_url_via_redirect", "Merchant-hosted file behind the token", true, { hint: "The previous behaviour: the token gates a redirect to the merchant's own URL." }),
     ],
   },
@@ -171,9 +171,9 @@ export const OPTION_SETTINGS: SettingDef[] = [
     description: "What happens to a sale when the key pool is empty.",
     default: "block_sale",
     options: [
-      opt("block_sale", "Stop the sale", true, { recommended: true, requires: { tables: ["store_license_keys"], migration: "0136_digital_fulfillment.sql" } }),
-      opt("allow_backorder_manual_fulfil", "Take the order and let the merchant fulfil it", true, { requires: { tables: ["store_license_keys"], migration: "0136_digital_fulfillment.sql" } }),
-      opt("auto_hide_product", "Hide the product", true, { requires: { tables: ["store_license_keys"], migration: "0136_digital_fulfillment.sql" } }),
+      opt("block_sale", "Stop the sale", true, { recommended: true, requires: { tables: ["store_license_keys"], migration: "0138_digital_fulfillment.sql" } }),
+      opt("allow_backorder_manual_fulfil", "Take the order and let the merchant fulfil it", true, { requires: { tables: ["store_license_keys"], migration: "0138_digital_fulfillment.sql" } }),
+      opt("auto_hide_product", "Hide the product", true, { requires: { tables: ["store_license_keys"], migration: "0138_digital_fulfillment.sql" } }),
     ],
   },
   {
@@ -209,8 +209,8 @@ export const OPTION_SETTINGS: SettingDef[] = [
     default: "two_way_auto",
     options: [
       opt("two_way_auto", "Automatic two-way sync", true, { recommended: true }),
-      opt("publish_to_learn_manual", "Merchant publishes to Learn manually", true, { requires: { columns: [["edu_courses", "catalog_listed"]], migration: "0137_lms_hardening.sql" } }),
-      opt("store_only", "Store only, not listed in Learn", true, { requires: { columns: [["edu_courses", "catalog_listed"]], migration: "0137_lms_hardening.sql" } }),
+      opt("publish_to_learn_manual", "Merchant publishes to Learn manually", true, { requires: { columns: [["edu_courses", "catalog_listed"]], migration: "0139_lms_hardening.sql" } }),
+      opt("store_only", "Store only, not listed in Learn", true, { requires: { columns: [["edu_courses", "catalog_listed"]], migration: "0139_lms_hardening.sql" } }),
     ],
   },
   {
@@ -276,9 +276,9 @@ export const OPTION_SETTINGS: SettingDef[] = [
     description: "Service money moves on mobile money, cash and bank rails only — never cards.",
     default: "momo_escrow",
     options: [
-      opt("momo_escrow", "Mobile money held until the service is done", true, { recommended: true, requires: { tables: ["service_payments"], migration: "0138_services_hardening.sql" } }),
-      opt("momo_direct", "Mobile money straight to the provider", true, { requires: { tables: ["service_payments"], migration: "0138_services_hardening.sql" } }),
-      opt("deposit_online_balance_at_venue", "Deposit online, balance at the venue", true, { requires: { tables: ["service_payments"], migration: "0138_services_hardening.sql" } }),
+      opt("momo_escrow", "Mobile money held until the service is done", true, { recommended: true, requires: { tables: ["service_payments"], migration: "0140_services_hardening.sql" } }),
+      opt("momo_direct", "Mobile money straight to the provider", true, { requires: { tables: ["service_payments"], migration: "0140_services_hardening.sql" } }),
+      opt("deposit_online_balance_at_venue", "Deposit online, balance at the venue", true, { requires: { tables: ["service_payments"], migration: "0140_services_hardening.sql" } }),
       opt("pay_at_venue_only", "Pay at the venue only", true, { hint: "No online collection. Bookings are never marked paid by the customer." }),
     ],
   },
@@ -300,7 +300,7 @@ export const OPTION_SETTINGS: SettingDef[] = [
     options: [
       opt("provider_confirms", "The provider confirms each booking", true, { recommended: true }),
       opt("auto_confirm", "Confirm automatically", true),
-      opt("auto_confirm_when_paid", "Confirm automatically once paid", true, { requires: { tables: ["service_payments"], migration: "0138_services_hardening.sql" } }),
+      opt("auto_confirm_when_paid", "Confirm automatically once paid", true, { requires: { tables: ["service_payments"], migration: "0140_services_hardening.sql" } }),
     ],
   },
   {
@@ -308,10 +308,10 @@ export const OPTION_SETTINGS: SettingDef[] = [
     description: "How refunds are decided when a customer cancels.",
     default: "policy_based",
     options: [
-      opt("policy_based", "Follow the business's own free-cancellation window", true, { recommended: true, requires: { tables: ["service_payments"], migration: "0138_services_hardening.sql" } }),
-      opt("full_refund_until_x_hours", "Full refund until the platform window below", true, { requires: { tables: ["service_payments"], migration: "0138_services_hardening.sql" } }),
-      opt("no_refund", "No refunds", true, { requires: { tables: ["service_payments"], migration: "0138_services_hardening.sql" } }),
-      opt("manual_review", "Provider decides each time", true, { requires: { tables: ["service_payments"], migration: "0138_services_hardening.sql" } }),
+      opt("policy_based", "Follow the business's own free-cancellation window", true, { recommended: true, requires: { tables: ["service_payments"], migration: "0140_services_hardening.sql" } }),
+      opt("full_refund_until_x_hours", "Full refund until the platform window below", true, { requires: { tables: ["service_payments"], migration: "0140_services_hardening.sql" } }),
+      opt("no_refund", "No refunds", true, { requires: { tables: ["service_payments"], migration: "0140_services_hardening.sql" } }),
+      opt("manual_review", "Provider decides each time", true, { requires: { tables: ["service_payments"], migration: "0140_services_hardening.sql" } }),
     ],
   },
   { key: "services_cancellation_window_hours", module: "services", kind: "int", label: "Free-cancellation window", description: "Hours before the appointment a customer may cancel for a full refund.", default: 24, min: 0, max: 720, unit: "hours" },
@@ -340,7 +340,7 @@ export const OPTION_SETTINGS: SettingDef[] = [
     description: "How customers pick when they want the service.",
     default: "free_text_request",
     options: [
-      opt("weekly_schedule_with_slots", "Pick from the provider's open slots", true, { recommended: true, requires: { tables: ["service_hours", "service_blackouts"], migration: "0138_services_hardening.sql" } }),
+      opt("weekly_schedule_with_slots", "Pick from the provider's open slots", true, { recommended: true, requires: { tables: ["service_hours", "service_blackouts"], migration: "0140_services_hardening.sql" } }),
       opt("free_text_request", "Request a date and time, the provider confirms", true),
     ],
   },

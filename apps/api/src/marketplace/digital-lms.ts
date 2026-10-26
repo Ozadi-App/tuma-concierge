@@ -791,7 +791,7 @@ async function setListing(c: any, listed: boolean) {
   const store = await getMerchantStore(user.sub);
   if (!store) return c.json({ error: "no_store" }, 404);
   if (!(await hasColumn("edu_courses", "catalog_listed"))) {
-    return c.json({ error: "migration_pending", message: "Catalogue listing is being set up (0137_lms_hardening.sql is not applied yet)." }, 503);
+    return c.json({ error: "migration_pending", message: "Catalogue listing is being set up (0139_lms_hardening.sql is not applied yet)." }, 503);
   }
   const { lms_learn_sync_mode: mode } = await getOptions(["lms_learn_sync_mode"]);
   if (listed && mode === "store_only") return c.json({ error: "store_only", message: "This platform keeps store courses out of the Peebee Learn catalogue." }, 409);
@@ -948,7 +948,7 @@ digitalLmsRoutes.post("/merchants/me/lms/enrollments/:id/certificate", requireAu
   if (!store) return c.json({ error: "no_store" }, 404);
   const { lms_certificates: mode } = await getOptions(["lms_certificates"]);
   if (mode !== "manual_issue") return c.json({ error: "not_manual", message: mode === "off" ? "Certificates are switched off on this platform." : "Certificates are issued automatically when a student finishes." }, 409);
-  if (!(await hasColumn("store_lms_enrollments", "user_id"))) return c.json({ error: "migration_pending", message: "Needs 0137_lms_hardening.sql." }, 503);
+  if (!(await hasColumn("store_lms_enrollments", "user_id"))) return c.json({ error: "migration_pending", message: "Needs 0139_lms_hardening.sql." }, 503);
   const row = (await db.execute({ sql: "SELECT * FROM store_lms_enrollments WHERE id = ? AND store_id = ?", args: [c.req.param("id")!, String(store.id)] })).rows[0] as Row | undefined;
   if (!row || !row.user_id) return c.json({ error: "not_found", message: "That student isn't in your records." }, 404);
   if (!(await courseFinished(String(row.user_id), String(row.course_id)))) return c.json({ error: "not_finished", message: "The student hasn't finished every lesson yet." }, 409);

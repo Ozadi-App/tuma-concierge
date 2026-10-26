@@ -16,5 +16,5 @@ test("migration numbers are not reused, and the Tier 3 hardening migrations are 
   for (const f of files) seen.set(f.slice(0, 4), [...(seen.get(f.slice(0, 4)) ?? []), f]);
   const reused = [...seen.entries()].filter(([n, list]) => list.length > 1 && !KNOWN_SHARED.has(n)).map(([n]) => n);
   assert.deepEqual(reused, [], "pick the next free migration number");
-  for (const n of ["0135", "0136", "0137", "0138"]) assert.equal(seen.get(n)?.length, 1, `${n} exists once`);
+  for (const n of ["0137", "0138", "0139", "0140"]) assert.equal(seen.get(n)?.length, 1, `${n} exists once`);
 });

@@ -258,9 +258,9 @@ function looksExecutable(head: Uint8Array): boolean {
 digitalDeliveryRoutes.put("/merchants/me/digital-products/:id/file", requireAuth, async (c) => {
   const store = await getMerchantStore(c.get("user").sub);
   if (!store) return c.json({ error: "no_store" }, 404);
-  const pending = await migrationPending(c, "0136_digital_fulfillment.sql", "store_digital_products");
+  const pending = await migrationPending(c, "0138_digital_fulfillment.sql", "store_digital_products");
   if (pending) return pending;
-  if (!(await hasColumn("store_digital_products", "file_key"))) return c.json({ error: "migration_pending", message: "File uploads are being set up (0136_digital_fulfillment.sql is not applied yet)." }, 503);
+  if (!(await hasColumn("store_digital_products", "file_key"))) return c.json({ error: "migration_pending", message: "File uploads are being set up (0138_digital_fulfillment.sql is not applied yet)." }, 503);
   if (!r2IsReady()) return c.json({ error: "storage_unavailable", message: "File storage is not connected on this platform yet." }, 503);
 
   const product = (await db.execute({ sql: "SELECT id, file_key FROM store_digital_products WHERE id = ? AND store_id = ?", args: [c.req.param("id")!, String(store.id)] })).rows[0] as Row | undefined;

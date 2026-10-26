@@ -138,7 +138,7 @@ export async function purchaseDigitalProduct(input: {
 }): Promise<PurchaseFailure | PurchaseSuccess> {
   const fail = (status: PurchaseFailure["status"], error: string, message: string): PurchaseFailure => ({ ok: false, status, error, message });
   if (!(await hasTable("store_digital_fulfillments")) || !(await hasColumn("store_digital_fulfillments", "buyer_user_id")) || !(await hasTable("store_license_keys"))) {
-    return fail(503, "migration_pending", "Digital purchases are being set up (0136_digital_fulfillment.sql is not applied yet).");
+    return fail(503, "migration_pending", "Digital purchases are being set up (0138_digital_fulfillment.sql is not applied yet).");
   }
   const found = await db.execute({ sql: "SELECT * FROM store_digital_products WHERE id = ? AND store_id = ? AND status = 'published'", args: [input.productId, String(input.store.id)] });
   const product = found.rows[0] as Row | undefined;
