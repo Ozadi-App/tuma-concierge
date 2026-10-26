@@ -7,14 +7,14 @@ export { DEFAULT_TIME_FEES, timeFeePolicy, timeFeeNotice } from "./time-fees.js"
 export type { TimeFeeSettings, TimeFeePolicy, OrderTimeFees } from "./time-fees.js";
 export type { PaymentRail as PaymentRailValue } from "./payment-rail.js";
 export { createApiClient, ApiError, friendlyErrorMessage } from "./api-client.js";
-export type { ApiValidationIssue, PharmacyPrescription, PharmacyQuoteItem, PracticeWorldStatus, PracticeWorldCounts } from "./api-client.js";
+export type { ApiValidationIssue, PharmacyPrescription, PharmacyQuoteItem, FoodNearbyItem, PracticeWorldStatus, PracticeWorldCounts } from "./api-client.js";
 export type { CreateApiClientOptions, ApiClient } from "./api-client.js";
 export { CallEngine } from "./call-engine.js";
 export type { CallEngineState, CallEnginePhase, CallEngineOptions } from "./call-engine.js";
 export { isRiderProfileComplete, isUserVerified, isProSubscriptionCurrent, MATCHING_MODE_LABELS, MATCHING_MODE_DESCRIPTIONS, GEMINI_TTS_VOICES, DEFAULT_GEMINI_VOICE } from "./domain.js";
 export { UGANDA_DISTRICTS } from "./uganda-locations.js";
-export { CAR_MODEL_CATALOG } from "./car-model-catalog.js";
-export type { CarModel } from "./car-model-catalog.js";
+export { CAR_MODEL_CATALOG, isVipRate, getCarBodyType, getCarDefaults } from "./car-model-catalog.js";
+export type { CarModel, CarBodyType } from "./car-model-catalog.js";
 export * from "./shopping-units.js";
 export * from "./home-menu.js";
 export * from "./modules.js";
@@ -48,6 +48,7 @@ export {
   exitPracticeMode,
   isPracticeJourneyComplete,
   isPracticeMode,
+  isSandboxDemo,
   practicePaymentCode,
   practiceStartPath,
   startPracticeMode,
@@ -97,6 +98,32 @@ export type {
   AdminOrderRow,
   DeliverySettings,
   MarketplaceSettings,
+  StoreCollection,
+  StoreDiscount,
+  StoreOutletInventoryRow,
+  StoreDraftOrderItem,
+  StoreDraftOrder,
+  StorePosSaleItem,
+  StorePosSale,
+  StoreStockTransfer,
+  StoreCustomerLoyalty,
+  StoreSupplier,
+  StorePurchaseOrderItem,
+  StorePurchaseOrder,
+  StoreBundleItem,
+  StoreBundle,
+  StoreWinbackCampaign,
+  StorefrontSectionType,
+  StorefrontSection,
+  StoreSmsLog,
+  DigitalProductKind,
+  StoreDigitalProduct,
+  StoreDigitalFulfillment,
+  StoreLmsLesson,
+  StoreLmsModule,
+  StoreLmsCourse,
+  StoreLmsEnrollment,
+  StoreEliteAnalytics,
   GuestSettings,
   GuestConfig,
   GuestCheckoutInput,

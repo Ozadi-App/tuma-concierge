@@ -14,7 +14,10 @@ import { notifyUser } from "../lib/webpush.js";
 import { insertRelayLegs, planRelay, relayChargeFor, resolveLastMile, type RelayLastMile, type RelayMeet, type RelayPlan } from "../relay/service.js";
 import { getRelaySettings } from "../relay/settings.js";
 
+import { digitalLmsRoutes } from "./digital-lms.js";
+
 export const marketplaceRoutes = new Hono();
+marketplaceRoutes.route("/", digitalLmsRoutes);
 
 type Row = Record<string, unknown>;
 
@@ -950,7 +953,12 @@ async function getMerchantStore(merchantId: string): Promise<Row | null> {
     sql: "SELECT * FROM stores WHERE merchant_id = ? LIMIT 1",
     args: [merchantId],
   });
-  return (res.rows[0] as Row | undefined) ?? null;
+  const row = (res.rows[0] as Row | undefined) ?? null;
+  if (!row) return null;
+  if (Number(row.elite_tier || 0) === 1) {
+    return { ...row, pro_tier: "elite" };
+  }
+  return row;
 }
 
 // 1. Get Merchant's Store Profile & Status
@@ -977,8 +985,11 @@ marketplaceRoutes.get("/merchants/me/store", requireAuth, async (c) => {
         proPricingMode: settings.proPricingMode,
         proStoreUgx: settings.proStorePriceUgx,
         proLiveUgx: settings.proLivePriceUgx,
+        eliteUgx: settings.elitePriceUgx,
+        eliteEnabled: settings.eliteEnabled,
         isProFree: settings.proPricingMode === "free",
       },
+      settings,
     });
   }
 
@@ -990,12 +1001,15 @@ marketplaceRoutes.get("/merchants/me/store", requireAuth, async (c) => {
   const productCount = Number((countRes.rows[0] as Row)?.count || 0);
 
   const isProFree = settings.proPricingMode === "free";
-  const effectiveProTier = isProFree ? "pro_live" : (store.pro_tier as string || "free");
+  const hasEliteCol = await hasColumn("stores", "elite_tier");
+  const isEliteActive = isProFree ? Boolean(settings.eliteEnabled) : hasEliteCol ? Number(store.elite_tier || 0) === 1 : false;
+  const effectiveProTier = isEliteActive ? "elite" : isProFree ? "pro_live" : (store.pro_tier as string || "free");
 
   return c.json({
     store: {
       ...store,
       pro_tier: effectiveProTier,
+      elite_tier: isEliteActive ? 1 : 0,
       is_pro_free: isProFree,
       productCount,
     },
@@ -1071,7 +1085,7 @@ marketplaceRoutes.post("/merchants/me/store", requireAuth, async (c) => {
   return c.json({ store: created, trialActive: true });
 });
 
-// 3. Update Store Settings
+// 3. Update Store Settings & Elite Theme / Custom Domain / Loyalty / B2B Settings
 marketplaceRoutes.put("/merchants/me/store", requireAuth, async (c) => {
   const user = c.get("user");
   const memberRes = await db.execute({
@@ -1098,10 +1112,33 @@ marketplaceRoutes.put("/merchants/me/store", requireAuth, async (c) => {
     delivery_enabled: z.boolean().optional(),
     pickup_enabled: z.boolean().optional(),
     min_order_amount: z.number().int().nonnegative().optional(),
+    // Elite Storefront 2.0 & Commerce OS fields
+    custom_domain: z.string().max(120).optional(),
+    theme_layout: z.enum(["grid", "editorial", "compact"]).optional(),
+    theme_accent: z.enum(["gold", "ink", "cream"]).optional(),
+    hero_headline: z.string().max(120).optional(),
+    hero_subheadline: z.string().max(240).optional(),
+    hero_cta_text: z.string().max(40).optional(),
+    seo_title: z.string().max(120).optional(),
+    seo_description: z.string().max(240).optional(),
+    meta_pixel_id: z.string().max(60).optional(),
+    tiktok_pixel_id: z.string().max(60).optional(),
+    loyalty_enabled: z.boolean().optional(),
+    loyalty_cashback_percent: z.number().min(0).max(50).optional(),
+    b2b_wholesale_enabled: z.boolean().optional(),
+    b2b_min_order_amount: z.number().int().nonnegative().optional(),
   });
 
   const parsed = updateSchema.safeParse(body);
   if (!parsed.success) return c.json({ error: "invalid_body", issues: parsed.error.issues }, 400);
+
+  const settings = await getMarketplaceSettings();
+  if (parsed.data.loyalty_cashback_percent != null && parsed.data.loyalty_cashback_percent > settings.eliteMaxLoyaltyCashbackPercent) {
+    return c.json({
+      error: "loyalty_cashback_exceeds_max",
+      message: `Loyalty cashback cannot exceed the platform maximum of ${settings.eliteMaxLoyaltyCashbackPercent}%.`,
+    }, 400);
+  }
 
   const updates: string[] = [];
   const args: (string | number)[] = [];
@@ -1119,6 +1156,23 @@ marketplaceRoutes.put("/merchants/me/store", requireAuth, async (c) => {
   if (parsed.data.pickup_enabled != null) { updates.push("pickup_enabled = ?"); args.push(parsed.data.pickup_enabled ? 1 : 0); }
   if (parsed.data.min_order_amount != null) { updates.push("min_order_amount = ?"); args.push(parsed.data.min_order_amount); }
 
+  if (await hasColumn("stores", "custom_domain")) {
+    if (parsed.data.custom_domain != null) { updates.push("custom_domain = ?"); args.push(parsed.data.custom_domain.trim().toLowerCase()); }
+    if (parsed.data.theme_layout != null) { updates.push("theme_layout = ?"); args.push(parsed.data.theme_layout); }
+    if (parsed.data.theme_accent != null) { updates.push("theme_accent = ?"); args.push(parsed.data.theme_accent); }
+    if (parsed.data.hero_headline != null) { updates.push("hero_headline = ?"); args.push(parsed.data.hero_headline); }
+    if (parsed.data.hero_subheadline != null) { updates.push("hero_subheadline = ?"); args.push(parsed.data.hero_subheadline); }
+    if (parsed.data.hero_cta_text != null) { updates.push("hero_cta_text = ?"); args.push(parsed.data.hero_cta_text); }
+    if (parsed.data.seo_title != null) { updates.push("seo_title = ?"); args.push(parsed.data.seo_title); }
+    if (parsed.data.seo_description != null) { updates.push("seo_description = ?"); args.push(parsed.data.seo_description); }
+    if (parsed.data.meta_pixel_id != null) { updates.push("meta_pixel_id = ?"); args.push(parsed.data.meta_pixel_id); }
+    if (parsed.data.tiktok_pixel_id != null) { updates.push("tiktok_pixel_id = ?"); args.push(parsed.data.tiktok_pixel_id); }
+    if (parsed.data.loyalty_enabled != null) { updates.push("loyalty_enabled = ?"); args.push(parsed.data.loyalty_enabled ? 1 : 0); }
+    if (parsed.data.loyalty_cashback_percent != null) { updates.push("loyalty_cashback_percent = ?"); args.push(parsed.data.loyalty_cashback_percent); }
+    if (parsed.data.b2b_wholesale_enabled != null) { updates.push("b2b_wholesale_enabled = ?"); args.push(parsed.data.b2b_wholesale_enabled ? 1 : 0); }
+    if (parsed.data.b2b_min_order_amount != null) { updates.push("b2b_min_order_amount = ?"); args.push(parsed.data.b2b_min_order_amount); }
+  }
+
   if (updates.length > 0) {
     updates.push("updated_at = datetime('now')");
     args.push(String(store.id));
@@ -1130,6 +1184,91 @@ marketplaceRoutes.put("/merchants/me/store", requireAuth, async (c) => {
 
   const updated = await getMerchantStore(merchantId);
   return c.json({ store: updated });
+});
+
+// 3b. Upgrade Store Tier (Pro Store / Pro Live / Elite Shopify Plus)
+const upgradeTierSchema = z.object({
+  tier: z.enum(["pro_store", "pro_live", "elite"]),
+  billingCycle: z.enum(["monthly", "yearly"]).default("monthly"),
+});
+
+marketplaceRoutes.post("/merchants/me/store/tier", requireAuth, async (c) => {
+  const user = c.get("user");
+  const memberRes = await db.execute({
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    args: [user.sub],
+  });
+  const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
+  if (!merchantId) return c.json({ error: "no_merchant_membership" }, 403);
+
+  const store = await getMerchantStore(merchantId);
+  if (!store) return c.json({ error: "no_store" }, 404);
+
+  const parsed = upgradeTierSchema.safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) return c.json({ error: "invalid_body", issues: parsed.error.issues }, 400);
+
+  const settings = await getMarketplaceSettings();
+  if (parsed.data.tier === "elite" && !settings.eliteEnabled) {
+    return c.json({ error: "elite_tier_disabled", message: "Merchant Elite tier is currently paused by platform admin." }, 403);
+  }
+
+  const days = parsed.data.billingCycle === "yearly" ? 365 : 30;
+  const expiresAt = new Date(Date.now() + days * 86400000).toISOString();
+  const basePrice =
+    parsed.data.tier === "elite"
+      ? settings.elitePriceUgx
+      : parsed.data.tier === "pro_live"
+        ? settings.proLivePriceUgx
+        : settings.proStorePriceUgx;
+  const amountPaid = settings.proPricingMode === "free" ? 0 : parsed.data.billingCycle === "yearly" ? basePrice * 10 : basePrice;
+
+  const hasEliteCol = await hasColumn("stores", "elite_tier");
+  if (parsed.data.tier === "elite") {
+    if (hasEliteCol) {
+      await db.execute({
+        sql: "UPDATE stores SET pro_tier = 'pro_live', elite_tier = 1, elite_expires_at = ?, updated_at = datetime('now') WHERE id = ?",
+        args: [expiresAt, String(store.id)],
+      });
+    } else {
+      await db.execute({
+        sql: "UPDATE stores SET pro_tier = 'pro_live', pro_expires_at = ?, updated_at = datetime('now') WHERE id = ?",
+        args: [expiresAt, String(store.id)],
+      });
+    }
+  } else {
+    if (hasEliteCol) {
+      await db.execute({
+        sql: "UPDATE stores SET pro_tier = ?, elite_tier = 0, pro_expires_at = ?, updated_at = datetime('now') WHERE id = ?",
+        args: [parsed.data.tier, expiresAt, String(store.id)],
+      });
+    } else {
+      await db.execute({
+        sql: "UPDATE stores SET pro_tier = ?, pro_expires_at = ?, updated_at = datetime('now') WHERE id = ?",
+        args: [parsed.data.tier, expiresAt, String(store.id)],
+      });
+    }
+  }
+
+  // Record in store_subscriptions (uses pro_live for elite if DB check constraint hasn't been relaxed)
+  const subTier = parsed.data.tier === "elite" ? "pro_live" : parsed.data.tier;
+  await db.execute({
+    sql: `INSERT INTO store_subscriptions (id, store_id, merchant_id, tier, amount_paid, billing_cycle, status, expires_at)
+          VALUES (?, ?, ?, ?, ?, ?, 'active', ?)`,
+    args: [newId("sub"), String(store.id), merchantId, subTier, amountPaid, parsed.data.billingCycle, expiresAt],
+  }).catch(() => {});
+
+  const updated = await getMerchantStore(merchantId);
+  return c.json({
+    ok: true,
+    tier: parsed.data.tier,
+    expiresAt,
+    amountPaid,
+    store: {
+      ...updated,
+      pro_tier: parsed.data.tier,
+      elite_tier: parsed.data.tier === "elite" ? 1 : 0,
+    },
+  });
 });
 
 // 4. Products Management
@@ -1216,6 +1355,22 @@ marketplaceRoutes.post("/merchants/me/products", requireAuth, async (c) => {
   const parsed = productSchema.safeParse(body);
   if (!parsed.success) return c.json({ error: "invalid_body", issues: parsed.error.issues }, 400);
 
+  // Enforce admin-configured product limit per tier
+  const settings = await getMarketplaceSettings();
+  const hasEliteCol = await hasColumn("stores", "elite_tier");
+  const isElite = settings.proPricingMode === "free" || (hasEliteCol && Number(store.elite_tier || 0) === 1);
+  const maxProducts = isElite ? settings.eliteMaxProducts : settings.proMaxProducts;
+  const countRes = await db.execute({
+    sql: "SELECT COUNT(*) AS n FROM store_products WHERE store_id = ? AND status != 'archived'",
+    args: [String(store.id)],
+  });
+  if (Number((countRes.rows[0] as Row)?.n || 0) >= maxProducts) {
+    return c.json({
+      error: "product_limit_reached",
+      message: `Your current plan allows up to ${maxProducts} products. Upgrade to Merchant Elite for up to ${settings.eliteMaxProducts} products.`,
+    }, 409);
+  }
+
   const productId = newId("prod");
   const slug = slugify(parsed.data.title);
 
@@ -1290,6 +1445,7 @@ marketplaceRoutes.post("/merchants/me/products/starter-pack", requireAuth, async
             category: "Dairy & Eggs",
             price: 3500,
             compare_at_price: 4000,
+            cost_price: 2600,
             badge: "Fresh Daily",
             image_url: "https://images.unsplash.com/photo-1550583724-b2692b85b150?auto=format&fit=crop&w=600&q=80",
           },
@@ -1298,6 +1454,7 @@ marketplaceRoutes.post("/merchants/me/products/starter-pack", requireAuth, async
             category: "Dairy & Eggs",
             price: 13500,
             compare_at_price: 15000,
+            cost_price: 10500,
             badge: "Popular",
             image_url: "https://images.unsplash.com/photo-1582722872445-44dc5f7e3c8f?auto=format&fit=crop&w=600&q=80",
           },
@@ -1305,6 +1462,7 @@ marketplaceRoutes.post("/merchants/me/products/starter-pack", requireAuth, async
             title: "Super White Sliced Bread (400g)",
             category: "Bakery",
             price: 4500,
+            cost_price: 3400,
             badge: "Baked Today",
             image_url: "https://images.unsplash.com/photo-1509440159596-0249088772ff?auto=format&fit=crop&w=600&q=80",
           },
@@ -1312,6 +1470,7 @@ marketplaceRoutes.post("/merchants/me/products/starter-pack", requireAuth, async
             title: "Pure White Sugar (1kg)",
             category: "Pantry Staples",
             price: 5000,
+            cost_price: 4000,
             image_url: "https://images.unsplash.com/photo-1581441363689-1f3c3c414635?auto=format&fit=crop&w=600&q=80",
           },
           {
@@ -1319,6 +1478,7 @@ marketplaceRoutes.post("/merchants/me/products/starter-pack", requireAuth, async
             category: "Pantry Staples",
             price: 16500,
             compare_at_price: 18000,
+            cost_price: 13200,
             badge: "Special Offer",
             image_url: "https://images.unsplash.com/photo-1474979266404-7eaacbcd87c5?auto=format&fit=crop&w=600&q=80",
           },
@@ -1326,6 +1486,7 @@ marketplaceRoutes.post("/merchants/me/products/starter-pack", requireAuth, async
             title: "Sweet Cavendish Bananas (Bunch)",
             category: "Fresh Produce",
             price: 4000,
+            cost_price: 2500,
             badge: "Organic",
             image_url: "https://images.unsplash.com/photo-1571771894821-ce9b6c11b08e?auto=format&fit=crop&w=600&q=80",
           },
@@ -1336,6 +1497,7 @@ marketplaceRoutes.post("/merchants/me/products/starter-pack", requireAuth, async
             category: "Apparel",
             price: 45000,
             compare_at_price: 55000,
+            cost_price: 25000,
             badge: "Best Seller",
             image_url: "https://images.unsplash.com/photo-1521572267360-ee0c2909d518?auto=format&fit=crop&w=600&q=80",
           },
@@ -1344,6 +1506,7 @@ marketplaceRoutes.post("/merchants/me/products/starter-pack", requireAuth, async
             category: "Apparel",
             price: 75000,
             compare_at_price: 90000,
+            cost_price: 45000,
             badge: "Top Rated",
             image_url: "https://images.unsplash.com/photo-1542272604-780c96856592?auto=format&fit=crop&w=600&q=80",
           },
@@ -1352,6 +1515,7 @@ marketplaceRoutes.post("/merchants/me/products/starter-pack", requireAuth, async
             category: "Footwear",
             price: 85000,
             compare_at_price: 110000,
+            cost_price: 52000,
             badge: "Sale",
             image_url: "https://images.unsplash.com/photo-1525966222134-fcfa99b8ae77?auto=format&fit=crop&w=600&q=80",
           },
@@ -1359,6 +1523,7 @@ marketplaceRoutes.post("/merchants/me/products/starter-pack", requireAuth, async
             title: "Minimalist Leather Bifold Wallet",
             category: "Accessories",
             price: 35000,
+            cost_price: 18000,
             image_url: "https://images.unsplash.com/photo-1627123424574-724758594e93?auto=format&fit=crop&w=600&q=80",
           },
           {
@@ -1366,6 +1531,7 @@ marketplaceRoutes.post("/merchants/me/products/starter-pack", requireAuth, async
             category: "Gadgets",
             price: 95000,
             compare_at_price: 120000,
+            cost_price: 58000,
             badge: "Trending",
             image_url: "https://images.unsplash.com/photo-1590658268037-6bf12165a8df?auto=format&fit=crop&w=600&q=80",
           },
@@ -1376,9 +1542,9 @@ marketplaceRoutes.post("/merchants/me/products/starter-pack", requireAuth, async
     const pid = newId("prod");
     await db.execute({
       sql: `INSERT INTO store_products (
-        id, store_id, title, slug, description, price, compare_at_price,
+        id, store_id, title, slug, description, price, compare_at_price, cost_price,
         track_inventory, inventory_quantity, category_name, badge, image_url, status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, 50, ?, ?, ?, 'active')`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 50, ?, ?, ?, 'active')`,
       args: [
         pid,
         String(store.id),
@@ -1387,6 +1553,7 @@ marketplaceRoutes.post("/merchants/me/products/starter-pack", requireAuth, async
         `Authentic quality ${item.title}. Carefully selected and inspected.`,
         item.price,
         item.compare_at_price || null,
+        item.cost_price || null,
         item.category,
         item.badge || "",
         item.image_url,
@@ -1465,6 +1632,1531 @@ marketplaceRoutes.post("/merchants/me/store/live/end", requireAuth, async (c) =>
 });
 
 // ---------------------------------------------------------------------------
+// 7. Merchant Elite (Shopify / Shopify Plus) — Collections, Discounts,
+//    Multi-Outlet Inventory Matrix, B2B Draft Orders & Profit Analytics
+// ---------------------------------------------------------------------------
+
+// 7a. Smart & Manual Collections
+marketplaceRoutes.get("/merchants/me/collections", requireAuth, async (c) => {
+  const user = c.get("user");
+  const memberRes = await db.execute({
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    args: [user.sub],
+  });
+  const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
+  if (!merchantId) return c.json({ error: "no_merchant_membership" }, 403);
+
+  const store = await getMerchantStore(merchantId);
+  if (!store || !(await hasTable("store_collections"))) return c.json({ collections: [] });
+
+  const [colRes, prodRes] = await Promise.all([
+    db.execute({
+      sql: "SELECT * FROM store_collections WHERE store_id = ? AND status != 'archived' ORDER BY pinned DESC, sort_order, created_at DESC",
+      args: [String(store.id)],
+    }),
+    db.execute({
+      sql: "SELECT id, category_name, price, badge, inventory_quantity FROM store_products WHERE store_id = ? AND status = 'active'",
+      args: [String(store.id)],
+    }),
+  ]);
+
+  const products = prodRes.rows as Row[];
+  const collections = (colRes.rows as Row[]).map((col) => {
+    let matchingCount = products.length;
+    if (col.kind === "smart" && col.rule_field) {
+      const val = String(col.rule_value || "").toLowerCase();
+      matchingCount = products.filter((p) => {
+        if (col.rule_field === "category") return String(p.category_name || "").toLowerCase().includes(val);
+        if (col.rule_field === "badge") return String(p.badge || "").toLowerCase().includes(val);
+        if (col.rule_field === "price_lte") return Number(p.price || 0) <= (Number(col.rule_value) || 0);
+        if (col.rule_field === "price_gte") return Number(p.price || 0) >= (Number(col.rule_value) || 0);
+        if (col.rule_field === "in_stock") return Number(p.inventory_quantity || 0) > 0;
+        return true;
+      }).length;
+    }
+    return { ...col, matching_products_count: matchingCount };
+  });
+
+  return c.json({ collections });
+});
+
+const collectionSchema = z.object({
+  title: z.string().min(2).max(80),
+  description: z.string().max(300).optional(),
+  kind: z.enum(["manual", "smart"]).default("smart"),
+  rule_field: z.enum(["category", "price_lte", "price_gte", "badge", "in_stock"]).nullable().optional(),
+  rule_value: z.string().max(80).nullable().optional(),
+  pinned: z.boolean().default(true),
+});
+
+marketplaceRoutes.post("/merchants/me/collections", requireAuth, async (c) => {
+  const user = c.get("user");
+  const memberRes = await db.execute({
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    args: [user.sub],
+  });
+  const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
+  if (!merchantId) return c.json({ error: "no_merchant_membership" }, 403);
+
+  const store = await getMerchantStore(merchantId);
+  if (!store) return c.json({ error: "no_store" }, 404);
+  if (!(await hasTable("store_collections"))) {
+    return c.json({ error: "migration_pending", message: "Collections table migration is pending." }, 503);
+  }
+
+  const parsed = collectionSchema.safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) return c.json({ error: "invalid_body", issues: parsed.error.issues }, 400);
+
+  const settings = await getMarketplaceSettings();
+  const hasEliteCol = await hasColumn("stores", "elite_tier");
+  const isElite = settings.proPricingMode === "free" || (hasEliteCol && Number(store.elite_tier || 0) === 1);
+  const maxCols = isElite ? settings.eliteMaxCollections : settings.proMaxCollections;
+  const countRes = await db.execute({
+    sql: "SELECT COUNT(*) AS n FROM store_collections WHERE store_id = ? AND status != 'archived'",
+    args: [String(store.id)],
+  });
+  if (Number((countRes.rows[0] as Row)?.n || 0) >= maxCols) {
+    return c.json({
+      error: "collection_limit_reached",
+      message: `Your current plan allows up to ${maxCols} collections. Upgrade to Merchant Elite for up to ${settings.eliteMaxCollections} collections.`,
+    }, 409);
+  }
+
+  const id = newId("col");
+  const slug = slugify(parsed.data.title);
+  await db.execute({
+    sql: `INSERT INTO store_collections (id, store_id, title, slug, description, kind, rule_field, rule_value, pinned, status)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
+    args: [
+      id,
+      String(store.id),
+      parsed.data.title,
+      slug,
+      parsed.data.description || "",
+      parsed.data.kind,
+      parsed.data.rule_field ?? null,
+      parsed.data.rule_value ?? null,
+      parsed.data.pinned ? 1 : 0,
+    ],
+  });
+
+  return c.json({ ok: true, id }, 201);
+});
+
+marketplaceRoutes.delete("/merchants/me/collections/:id", requireAuth, async (c) => {
+  const user = c.get("user");
+  const memberRes = await db.execute({
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    args: [user.sub],
+  });
+  const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
+  if (!merchantId) return c.json({ error: "no_merchant_membership" }, 403);
+  const store = await getMerchantStore(merchantId);
+  if (!store || !(await hasTable("store_collections"))) return c.json({ ok: true });
+
+  await db.execute({
+    sql: "DELETE FROM store_collections WHERE id = ? AND store_id = ?",
+    args: [String(c.req.param("id")), String(store.id)],
+  });
+  return c.json({ ok: true });
+});
+
+// 7b. Promo Codes & Automatic Discounts Engine
+marketplaceRoutes.get("/merchants/me/discounts", requireAuth, async (c) => {
+  const user = c.get("user");
+  const memberRes = await db.execute({
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    args: [user.sub],
+  });
+  const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
+  if (!merchantId) return c.json({ error: "no_merchant_membership" }, 403);
+
+  const store = await getMerchantStore(merchantId);
+  if (!store || !(await hasTable("store_discounts"))) return c.json({ discounts: [] });
+
+  const res = await db.execute({
+    sql: "SELECT * FROM store_discounts WHERE store_id = ? ORDER BY created_at DESC",
+    args: [String(store.id)],
+  });
+  return c.json({ discounts: res.rows });
+});
+
+const discountSchema = z.object({
+  code: z.string().min(2).max(32),
+  title: z.string().min(2).max(100),
+  kind: z.enum(["percent", "fixed", "free_delivery", "bogo"]),
+  value: z.number().int().nonnegative().default(0),
+  min_order_amount: z.number().int().nonnegative().default(0),
+  max_uses: z.number().int().positive().nullable().optional(),
+  is_automatic: z.boolean().default(false),
+});
+
+marketplaceRoutes.post("/merchants/me/discounts", requireAuth, async (c) => {
+  const user = c.get("user");
+  const memberRes = await db.execute({
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    args: [user.sub],
+  });
+  const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
+  if (!merchantId) return c.json({ error: "no_merchant_membership" }, 403);
+
+  const store = await getMerchantStore(merchantId);
+  if (!store) return c.json({ error: "no_store" }, 404);
+  if (!(await hasTable("store_discounts"))) {
+    return c.json({ error: "migration_pending", message: "Discounts table migration is pending." }, 503);
+  }
+
+  const parsed = discountSchema.safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) return c.json({ error: "invalid_body", issues: parsed.error.issues }, 400);
+  if (parsed.data.kind === "percent" && (parsed.data.value < 1 || parsed.data.value > 95)) {
+    return c.json({ error: "invalid_discount_percent", message: "Percentage discount must be between 1% and 95%." }, 400);
+  }
+
+  const settings = await getMarketplaceSettings();
+  const hasEliteCol = await hasColumn("stores", "elite_tier");
+  const isElite = settings.proPricingMode === "free" || (hasEliteCol && Number(store.elite_tier || 0) === 1);
+  const maxDiscounts = isElite ? settings.eliteMaxDiscounts : settings.proMaxDiscounts;
+  const countRes = await db.execute({
+    sql: "SELECT COUNT(*) AS n FROM store_discounts WHERE store_id = ? AND status = 'active'",
+    args: [String(store.id)],
+  });
+  if (Number((countRes.rows[0] as Row)?.n || 0) >= maxDiscounts) {
+    return c.json({
+      error: "discount_limit_reached",
+      message: `Your current plan allows up to ${maxDiscounts} active promotions. Upgrade to Merchant Elite for up to ${settings.eliteMaxDiscounts} promotions.`,
+    }, 409);
+  }
+
+  const id = newId("dsc");
+  await db.execute({
+    sql: `INSERT INTO store_discounts (id, store_id, code, title, kind, value, min_order_amount, max_uses, is_automatic, status)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
+    args: [
+      id,
+      String(store.id),
+      parsed.data.code.trim().toUpperCase(),
+      parsed.data.title.trim(),
+      parsed.data.kind,
+      parsed.data.value,
+      parsed.data.min_order_amount,
+      parsed.data.max_uses ?? null,
+      parsed.data.is_automatic ? 1 : 0,
+    ],
+  });
+
+  return c.json({ ok: true, id }, 201);
+});
+
+marketplaceRoutes.delete("/merchants/me/discounts/:id", requireAuth, async (c) => {
+  const user = c.get("user");
+  const memberRes = await db.execute({
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    args: [user.sub],
+  });
+  const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
+  if (!merchantId) return c.json({ error: "no_merchant_membership" }, 403);
+  const store = await getMerchantStore(merchantId);
+  if (!store || !(await hasTable("store_discounts"))) return c.json({ ok: true });
+
+  await db.execute({
+    sql: "DELETE FROM store_discounts WHERE id = ? AND store_id = ?",
+    args: [String(c.req.param("id")), String(store.id)],
+  });
+  return c.json({ ok: true });
+});
+
+// 7c. Multi-Outlet Inventory Matrix
+marketplaceRoutes.get("/merchants/me/outlet-inventory", requireAuth, async (c) => {
+  const user = c.get("user");
+  const memberRes = await db.execute({
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    args: [user.sub],
+  });
+  const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
+  if (!merchantId) return c.json({ error: "no_merchant_membership" }, 403);
+
+  const store = await getMerchantStore(merchantId);
+  if (!store) return c.json({ outlets: [], inventory: [] });
+
+  const outletsRes = await db.execute({
+    sql: "SELECT id, name, code, address, status FROM merchant_outlets WHERE merchant_id = ? ORDER BY created_at",
+    args: [merchantId],
+  });
+
+  if (!(await hasTable("store_outlet_inventory"))) {
+    return c.json({ outlets: outletsRes.rows, inventory: [] });
+  }
+
+  const invRes = await db.execute({
+    sql: `SELECT i.*, p.title AS product_title, o.name AS outlet_name
+          FROM store_outlet_inventory i
+          JOIN store_products p ON p.id = i.product_id
+          JOIN merchant_outlets o ON o.id = i.outlet_id
+          WHERE i.store_id = ?`,
+    args: [String(store.id)],
+  });
+
+  return c.json({ outlets: outletsRes.rows, inventory: invRes.rows });
+});
+
+const outletInventorySchema = z.object({
+  productId: z.string().min(1),
+  outletId: z.string().min(1),
+  quantity: z.number().int().nonnegative(),
+  lowStockThreshold: z.number().int().nonnegative().default(5),
+});
+
+marketplaceRoutes.put("/merchants/me/outlet-inventory", requireAuth, async (c) => {
+  const user = c.get("user");
+  const memberRes = await db.execute({
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    args: [user.sub],
+  });
+  const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
+  if (!merchantId) return c.json({ error: "no_merchant_membership" }, 403);
+
+  const store = await getMerchantStore(merchantId);
+  if (!store) return c.json({ error: "no_store" }, 404);
+  if (!(await hasTable("store_outlet_inventory"))) {
+    return c.json({ error: "migration_pending", message: "Multi-outlet inventory migration is pending." }, 503);
+  }
+
+  const parsed = outletInventorySchema.safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) return c.json({ error: "invalid_body", issues: parsed.error.issues }, 400);
+
+  await db.execute({
+    sql: `INSERT INTO store_outlet_inventory (id, store_id, product_id, outlet_id, quantity, low_stock_threshold, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+          ON CONFLICT(product_id, outlet_id) DO UPDATE SET
+            quantity = excluded.quantity,
+            low_stock_threshold = excluded.low_stock_threshold,
+            updated_at = datetime('now')`,
+    args: [
+      newId("inv"),
+      String(store.id),
+      parsed.data.productId,
+      parsed.data.outletId,
+      parsed.data.quantity,
+      parsed.data.lowStockThreshold,
+    ],
+  });
+
+  // Sync product total inventory_quantity across all outlets for this product
+  const sumRes = await db.execute({
+    sql: "SELECT COALESCE(SUM(quantity), 0) AS total FROM store_outlet_inventory WHERE store_id = ? AND product_id = ?",
+    args: [String(store.id), parsed.data.productId],
+  });
+  const totalQty = Number((sumRes.rows[0] as Row)?.total ?? parsed.data.quantity);
+  await db.execute({
+    sql: "UPDATE store_products SET inventory_quantity = ?, updated_at = datetime('now') WHERE id = ? AND store_id = ?",
+    args: [totalQty, parsed.data.productId, String(store.id)],
+  });
+
+  return c.json({ ok: true, totalQuantity: totalQty });
+});
+
+// 7d. B2B Wholesale & Draft Orders / 1-Tap Payment Links
+marketplaceRoutes.get("/merchants/me/draft-orders", requireAuth, async (c) => {
+  const user = c.get("user");
+  const memberRes = await db.execute({
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    args: [user.sub],
+  });
+  const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
+  if (!merchantId) return c.json({ error: "no_merchant_membership" }, 403);
+
+  const store = await getMerchantStore(merchantId);
+  if (!store || !(await hasTable("store_draft_orders"))) return c.json({ draftOrders: [] });
+
+  const res = await db.execute({
+    sql: "SELECT * FROM store_draft_orders WHERE store_id = ? ORDER BY created_at DESC LIMIT 100",
+    args: [String(store.id)],
+  });
+
+  const draftOrders = (res.rows as Row[]).map((r) => {
+    let items: any[] = [];
+    try {
+      items = JSON.parse(String(r.items_json || "[]"));
+    } catch {
+      items = [];
+    }
+    return { ...r, items };
+  });
+
+  return c.json({ draftOrders });
+});
+
+const draftOrderSchema = z.object({
+  customer_name: z.string().min(2).max(120),
+  customer_phone: z.string().max(30).optional(),
+  customer_company: z.string().max(120).optional(),
+  items: z.array(
+    z.object({
+      productId: z.string(),
+      title: z.string(),
+      unitPrice: z.number().int().nonnegative(),
+      quantity: z.number().int().positive(),
+    })
+  ).min(1),
+  discount_amount: z.number().int().nonnegative().default(0),
+  payment_terms: z.enum(["immediate", "net_7", "net_14", "net_30"]).default("immediate"),
+  notes: z.string().max(500).optional(),
+});
+
+marketplaceRoutes.post("/merchants/me/draft-orders", requireAuth, async (c) => {
+  const user = c.get("user");
+  const memberRes = await db.execute({
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    args: [user.sub],
+  });
+  const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
+  if (!merchantId) return c.json({ error: "no_merchant_membership" }, 403);
+
+  const store = await getMerchantStore(merchantId);
+  if (!store) return c.json({ error: "no_store" }, 404);
+  if (!(await hasTable("store_draft_orders"))) {
+    return c.json({ error: "migration_pending", message: "Draft orders migration is pending." }, 503);
+  }
+
+  const settings = await getMarketplaceSettings();
+  if (!settings.eliteB2bEnabled) {
+    return c.json({ error: "b2b_disabled", message: "B2B Wholesale & Draft Orders are currently disabled by platform admin." }, 403);
+  }
+
+  const parsed = draftOrderSchema.safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) return c.json({ error: "invalid_body", issues: parsed.error.issues }, 400);
+
+  const subtotal = parsed.data.items.reduce((sum, it) => sum + it.unitPrice * it.quantity, 0);
+  const discount = Math.min(subtotal, parsed.data.discount_amount);
+  const total = Math.max(0, subtotal - discount);
+
+  const id = newId("drf");
+  await db.execute({
+    sql: `INSERT INTO store_draft_orders (
+            id, store_id, customer_name, customer_phone, customer_company,
+            items_json, subtotal_amount, discount_amount, total_amount,
+            payment_terms, notes, status
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'sent')`,
+    args: [
+      id,
+      String(store.id),
+      parsed.data.customer_name.trim(),
+      parsed.data.customer_phone?.trim() || null,
+      parsed.data.customer_company?.trim() || null,
+      JSON.stringify(parsed.data.items),
+      subtotal,
+      discount,
+      total,
+      parsed.data.payment_terms,
+      parsed.data.notes?.trim() || null,
+    ],
+  });
+
+  return c.json({ ok: true, id, total }, 201);
+});
+
+// 7e. Executive P&L, Margin & Inventory Analytics
+marketplaceRoutes.get("/merchants/me/elite-analytics", requireAuth, async (c) => {
+  const user = c.get("user");
+  const memberRes = await db.execute({
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    args: [user.sub],
+  });
+  const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
+  if (!merchantId) return c.json({ error: "no_merchant_membership" }, 403);
+
+  const store = await getMerchantStore(merchantId);
+  if (!store) return c.json({ error: "no_store" }, 404);
+
+  const settings = await getMarketplaceSettings();
+  const hasEliteCol = await hasColumn("stores", "elite_tier");
+  const isElite = settings.proPricingMode === "free" || (hasEliteCol && Number(store.elite_tier || 0) === 1);
+  const commissionRate = isElite ? settings.eliteCommissionPercent : settings.commissionPercent;
+
+  const prodRes = await db.execute({
+    sql: "SELECT price, cost_price, inventory_quantity FROM store_products WHERE store_id = ? AND status != 'archived'",
+    args: [String(store.id)],
+  });
+  const products = prodRes.rows as Row[];
+  const totalProducts = products.length;
+  const totalStockUnits = products.reduce((sum, p) => sum + Number(p.inventory_quantity || 0), 0);
+  const lowStockCount = products.filter((p) => Number(p.inventory_quantity || 0) <= 5).length;
+
+  // Compute realized & catalog-projected revenue and COGS
+  let grossRevenueUgx = 0;
+  if (await hasColumn("orders", "store_id")) {
+    const ordRes = await db.execute({
+      sql: "SELECT COALESCE(SUM(estimated_total - delivery_fee), 0) AS rev FROM orders WHERE store_id = ? AND stage != 'Cancelled'",
+      args: [String(store.id)],
+    });
+    grossRevenueUgx = Number((ordRes.rows[0] as Row)?.rev || 0);
+  }
+  if (grossRevenueUgx === 0 && products.length > 0) {
+    // Provide inventory retail valuation baseline when store is newly launched
+    grossRevenueUgx = products.reduce((sum, p) => sum + Number(p.price || 0) * Math.min(10, Number(p.inventory_quantity || 1)), 0);
+  }
+
+  const avgMarginRatio =
+    products.length > 0
+      ? products.reduce((sum, p) => {
+          const price = Number(p.price || 1);
+          const cost = p.cost_price != null ? Number(p.cost_price) : Math.round(price * 0.65);
+          return sum + Math.max(0, (price - cost) / price);
+        }, 0) / products.length
+      : 0.35;
+
+  const estimatedCogsUgx = Math.round(grossRevenueUgx * (1 - avgMarginRatio));
+  const platformCommissionUgx = Math.round((grossRevenueUgx * commissionRate) / 100);
+  const netMarginUgx = Math.max(0, grossRevenueUgx - estimatedCogsUgx - platformCommissionUgx);
+  const netMarginPercent = grossRevenueUgx > 0 ? Math.round((netMarginUgx / grossRevenueUgx) * 1000) / 10 : 0;
+
+  let activeCollectionsCount = 0;
+  if (await hasTable("store_collections")) {
+    const colRes = await db.execute({
+      sql: "SELECT COUNT(*) AS n FROM store_collections WHERE store_id = ? AND status = 'active'",
+      args: [String(store.id)],
+    });
+    activeCollectionsCount = Number((colRes.rows[0] as Row)?.n || 0);
+  }
+
+  let activeDiscountsCount = 0;
+  if (await hasTable("store_discounts")) {
+    const dscRes = await db.execute({
+      sql: "SELECT COUNT(*) AS n FROM store_discounts WHERE store_id = ? AND status = 'active'",
+      args: [String(store.id)],
+    });
+    activeDiscountsCount = Number((dscRes.rows[0] as Row)?.n || 0);
+  }
+
+  let openDraftOrdersCount = 0;
+  let b2bPipelineUgx = 0;
+  if (await hasTable("store_draft_orders")) {
+    const drfRes = await db.execute({
+      sql: "SELECT COUNT(*) AS n, COALESCE(SUM(total_amount), 0) AS total FROM store_draft_orders WHERE store_id = ? AND status IN ('open', 'sent')",
+      args: [String(store.id)],
+    });
+    openDraftOrdersCount = Number((drfRes.rows[0] as Row)?.n || 0);
+    b2bPipelineUgx = Number((drfRes.rows[0] as Row)?.total || 0);
+  }
+
+  let posSalesCount = 0;
+  let posRevenueUgx = 0;
+  if (await hasTable("store_pos_sales")) {
+    const posRes = await db.execute({
+      sql: "SELECT COUNT(*) AS n, COALESCE(SUM(total_amount), 0) AS total FROM store_pos_sales WHERE store_id = ?",
+      args: [String(store.id)],
+    });
+    posSalesCount = Number((posRes.rows[0] as Row)?.n || 0);
+    posRevenueUgx = Number((posRes.rows[0] as Row)?.total || 0);
+  }
+
+  let vipCustomersCount = 0;
+  let loyaltyBalanceLiabilityUgx = 0;
+  if (await hasTable("store_customer_loyalty")) {
+    const crmRes = await db.execute({
+      sql: "SELECT COALESCE(SUM(CASE WHEN tier IN ('vip', 'b2b') THEN 1 ELSE 0 END), 0) AS vips, COALESCE(SUM(points_balance_ugx), 0) AS liability FROM store_customer_loyalty WHERE store_id = ?",
+      args: [String(store.id)],
+    });
+    vipCustomersCount = Number((crmRes.rows[0] as Row)?.vips || 0);
+    loyaltyBalanceLiabilityUgx = Number((crmRes.rows[0] as Row)?.liability || 0);
+  }
+
+  let stockTransfersCount = 0;
+  if (await hasTable("store_stock_transfers")) {
+    const trfRes = await db.execute({
+      sql: "SELECT COUNT(*) AS n FROM store_stock_transfers WHERE store_id = ? AND status = 'completed'",
+      args: [String(store.id)],
+    });
+    stockTransfersCount = Number((trfRes.rows[0] as Row)?.n || 0);
+  }
+
+  return c.json({
+    analytics: {
+      grossRevenueUgx: grossRevenueUgx + posRevenueUgx,
+      estimatedCogsUgx,
+      platformCommissionUgx,
+      netMarginUgx,
+      netMarginPercent,
+      totalProducts,
+      totalStockUnits,
+      lowStockCount,
+      activeCollectionsCount,
+      activeDiscountsCount,
+      openDraftOrdersCount,
+      b2bPipelineUgx,
+      posSalesCount,
+      posRevenueUgx,
+      vipCustomersCount,
+      loyaltyBalanceLiabilityUgx,
+      stockTransfersCount,
+    },
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 7f. Omnichannel In-Store POS Register (Walk-in Cashier Checkout + Inventory Sync)
+// ---------------------------------------------------------------------------
+marketplaceRoutes.get("/merchants/me/pos-sales", requireAuth, async (c) => {
+  const user = c.get("user");
+  const memberRes = await db.execute({
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    args: [user.sub],
+  });
+  const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
+  if (!merchantId) return c.json({ error: "no_merchant_membership" }, 403);
+
+  const store = await getMerchantStore(merchantId);
+  if (!store || !(await hasTable("store_pos_sales"))) return c.json({ sales: [] });
+
+  const res = await db.execute({
+    sql: `SELECT s.*, o.name AS outlet_name
+          FROM store_pos_sales s
+          LEFT JOIN merchant_outlets o ON o.id = s.outlet_id
+          WHERE s.store_id = ?
+          ORDER BY s.created_at DESC LIMIT 100`,
+    args: [String(store.id)],
+  });
+
+  const sales = (res.rows as Row[]).map((r) => {
+    let items: any[] = [];
+    try {
+      items = JSON.parse(String(r.items_json || "[]"));
+    } catch {
+      items = [];
+    }
+    return { ...r, items };
+  });
+
+  return c.json({ sales });
+});
+
+const posSaleSchema = z.object({
+  outlet_id: z.string().nullable().optional(),
+  customer_phone: z.string().max(30).optional(),
+  customer_name: z.string().max(120).optional(),
+  items: z
+    .array(
+      z.object({
+        productId: z.string().min(1),
+        title: z.string().min(1),
+        unitPrice: z.number().int().nonnegative(),
+        quantity: z.number().int().positive(),
+      }),
+    )
+    .min(1),
+  discount_amount: z.number().int().nonnegative().default(0),
+  redeem_loyalty_ugx: z.number().int().nonnegative().default(0),
+  payment_method: z.enum(["peebee_code", "momo", "cash"]).default("peebee_code"),
+});
+
+marketplaceRoutes.post("/merchants/me/pos-sales", requireAuth, async (c) => {
+  const user = c.get("user");
+  const memberRes = await db.execute({
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    args: [user.sub],
+  });
+  const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
+  if (!merchantId) return c.json({ error: "no_merchant_membership" }, 403);
+
+  const store = await getMerchantStore(merchantId);
+  if (!store) return c.json({ error: "no_store" }, 404);
+  if (!(await hasTable("store_pos_sales"))) {
+    return c.json({ error: "migration_pending", message: "POS sales table migration is pending." }, 503);
+  }
+
+  const settings = await getMarketplaceSettings();
+  if (!settings.elitePosEnabled) {
+    return c.json({ error: "pos_disabled", message: "Omnichannel POS Register is currently disabled by platform admin." }, 403);
+  }
+
+  const parsed = posSaleSchema.safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) return c.json({ error: "invalid_body", issues: parsed.error.issues }, 400);
+
+  const subtotal = parsed.data.items.reduce((sum, it) => sum + it.unitPrice * it.quantity, 0);
+  const discount = Math.min(subtotal, parsed.data.discount_amount);
+  const afterDiscount = Math.max(0, subtotal - discount);
+
+  const cleanPhone = parsed.data.customer_phone?.trim() || "";
+  const cleanName = parsed.data.customer_name?.trim() || null;
+
+  let loyaltyRedeemedUgx = 0;
+  let loyaltyEarnedUgx = 0;
+  let loyaltyBalanceAfterUgx = 0;
+
+  if (cleanPhone && (await hasTable("store_customer_loyalty"))) {
+    const existingRes = await db.execute({
+      sql: "SELECT * FROM store_customer_loyalty WHERE store_id = ? AND customer_phone = ? LIMIT 1",
+      args: [String(store.id), cleanPhone],
+    });
+    const existing = existingRes.rows[0] as Row | undefined;
+    const currentPoints = Number(existing?.points_balance_ugx || 0);
+
+    if (parsed.data.redeem_loyalty_ugx > 0 && currentPoints > 0) {
+      loyaltyRedeemedUgx = Math.min(parsed.data.redeem_loyalty_ugx, currentPoints, afterDiscount);
+    }
+
+    const finalTotal = Math.max(0, afterDiscount - loyaltyRedeemedUgx);
+    if (settings.eliteLoyaltyEnabled && Number(store.loyalty_enabled || 0) === 1 && finalTotal > 0) {
+      const pct = Math.min(Number(store.loyalty_cashback_percent || 0), settings.eliteMaxLoyaltyCashbackPercent);
+      if (pct > 0) {
+        loyaltyEarnedUgx = Math.round((finalTotal * pct) / 100);
+      }
+    }
+
+    loyaltyBalanceAfterUgx = Math.max(0, currentPoints - loyaltyRedeemedUgx + loyaltyEarnedUgx);
+    const nextOrdersCount = Number(existing?.orders_count || 0) + 1;
+    const nextTotalSpent = Number(existing?.total_spent_ugx || 0) + finalTotal;
+    const nextTier =
+      existing?.tier === "b2b"
+        ? "b2b"
+        : nextTotalSpent >= 200_000 || nextOrdersCount >= 5
+          ? "vip"
+          : nextOrdersCount >= 2
+            ? "repeat"
+            : "standard";
+
+    await db.execute({
+      sql: `INSERT INTO store_customer_loyalty (
+              id, store_id, customer_phone, customer_name, points_balance_ugx,
+              total_earned_ugx, total_redeemed_ugx, orders_count, total_spent_ugx,
+              tier, last_order_at, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+            ON CONFLICT(store_id, customer_phone) DO UPDATE SET
+              customer_name = COALESCE(excluded.customer_name, store_customer_loyalty.customer_name),
+              points_balance_ugx = ?,
+              total_earned_ugx = store_customer_loyalty.total_earned_ugx + ?,
+              total_redeemed_ugx = store_customer_loyalty.total_redeemed_ugx + ?,
+              orders_count = ?,
+              total_spent_ugx = ?,
+              tier = ?,
+              last_order_at = datetime('now')`,
+      args: [
+        newId("crm"),
+        String(store.id),
+        cleanPhone,
+        cleanName,
+        loyaltyBalanceAfterUgx,
+        loyaltyEarnedUgx,
+        loyaltyRedeemedUgx,
+        nextOrdersCount,
+        nextTotalSpent,
+        nextTier,
+        loyaltyBalanceAfterUgx,
+        loyaltyEarnedUgx,
+        loyaltyRedeemedUgx,
+        nextOrdersCount,
+        nextTotalSpent,
+        nextTier,
+      ],
+    });
+  }
+
+  const totalAmount = Math.max(0, afterDiscount - loyaltyRedeemedUgx);
+  const saleId = newId("pos");
+  const receiptCode = `POS-${saleId.slice(-6).toUpperCase()}`;
+
+  await db.execute({
+    sql: `INSERT INTO store_pos_sales (
+            id, store_id, outlet_id, cashier_user_id, customer_phone, customer_name,
+            items_json, subtotal_amount, discount_amount, loyalty_redeemed_ugx,
+            loyalty_earned_ugx, total_amount, payment_method, receipt_code
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    args: [
+      saleId,
+      String(store.id),
+      parsed.data.outlet_id || null,
+      user.sub,
+      cleanPhone || null,
+      cleanName,
+      JSON.stringify(parsed.data.items),
+      subtotal,
+      discount,
+      loyaltyRedeemedUgx,
+      loyaltyEarnedUgx,
+      totalAmount,
+      parsed.data.payment_method,
+      receiptCode,
+    ],
+  });
+
+  // Deduct stock from outlet inventory (if outlet_id selected) and master product inventory
+  const hasOutletInv = await hasTable("store_outlet_inventory");
+  for (const item of parsed.data.items) {
+    if (parsed.data.outlet_id && hasOutletInv) {
+      await db.execute({
+        sql: `UPDATE store_outlet_inventory
+              SET quantity = MAX(0, quantity - ?), updated_at = datetime('now')
+              WHERE store_id = ? AND product_id = ? AND outlet_id = ?`,
+        args: [item.quantity, String(store.id), item.productId, parsed.data.outlet_id],
+      });
+    }
+    await db.execute({
+      sql: `UPDATE store_products
+            SET inventory_quantity = MAX(0, inventory_quantity - ?), updated_at = datetime('now')
+            WHERE id = ? AND store_id = ?`,
+      args: [item.quantity, item.productId, String(store.id)],
+    });
+  }
+
+  return c.json(
+    {
+      ok: true,
+      saleId,
+      receiptCode,
+      total: totalAmount,
+      loyaltyRedeemedUgx,
+      loyaltyEarnedUgx,
+      loyaltyBalanceAfterUgx,
+    },
+    201,
+  );
+});
+
+// ---------------------------------------------------------------------------
+// 7g. Branch-to-Branch Stock Transfers (Multi-Outlet Inventory Movement)
+// ---------------------------------------------------------------------------
+marketplaceRoutes.get("/merchants/me/stock-transfers", requireAuth, async (c) => {
+  const user = c.get("user");
+  const memberRes = await db.execute({
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    args: [user.sub],
+  });
+  const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
+  if (!merchantId) return c.json({ error: "no_merchant_membership" }, 403);
+
+  const store = await getMerchantStore(merchantId);
+  if (!store || !(await hasTable("store_stock_transfers"))) return c.json({ transfers: [] });
+
+  const res = await db.execute({
+    sql: `SELECT t.*, p.title AS product_title, fo.name AS from_outlet_name, to_o.name AS to_outlet_name
+          FROM store_stock_transfers t
+          LEFT JOIN store_products p ON p.id = t.product_id
+          LEFT JOIN merchant_outlets fo ON fo.id = t.from_outlet_id
+          LEFT JOIN merchant_outlets to_o ON to_o.id = t.to_outlet_id
+          WHERE t.store_id = ?
+          ORDER BY t.created_at DESC LIMIT 100`,
+    args: [String(store.id)],
+  });
+
+  return c.json({ transfers: res.rows });
+});
+
+const stockTransferSchema = z.object({
+  productId: z.string().min(1),
+  fromOutletId: z.string().min(1),
+  toOutletId: z.string().min(1),
+  quantity: z.number().int().positive(),
+  note: z.string().max(240).optional(),
+});
+
+marketplaceRoutes.post("/merchants/me/stock-transfers", requireAuth, async (c) => {
+  const user = c.get("user");
+  const memberRes = await db.execute({
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    args: [user.sub],
+  });
+  const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
+  if (!merchantId) return c.json({ error: "no_merchant_membership" }, 403);
+
+  const store = await getMerchantStore(merchantId);
+  if (!store) return c.json({ error: "no_store" }, 404);
+  if (!(await hasTable("store_stock_transfers")) || !(await hasTable("store_outlet_inventory"))) {
+    return c.json({ error: "migration_pending", message: "Stock transfers migration is pending." }, 503);
+  }
+
+  const settings = await getMarketplaceSettings();
+  if (!settings.eliteStockTransfersEnabled) {
+    return c.json({ error: "stock_transfers_disabled", message: "Branch-to-branch stock transfers are currently disabled by platform admin." }, 403);
+  }
+
+  const parsed = stockTransferSchema.safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) return c.json({ error: "invalid_body", issues: parsed.error.issues }, 400);
+  if (parsed.data.fromOutletId === parsed.data.toOutletId) {
+    return c.json({ error: "same_outlet", message: "Source and destination outlets must be different." }, 400);
+  }
+
+  const fromRes = await db.execute({
+    sql: "SELECT quantity FROM store_outlet_inventory WHERE store_id = ? AND product_id = ? AND outlet_id = ? LIMIT 1",
+    args: [String(store.id), parsed.data.productId, parsed.data.fromOutletId],
+  });
+  const fromQty = Number((fromRes.rows[0] as Row | undefined)?.quantity ?? 0);
+  if (fromQty < parsed.data.quantity) {
+    return c.json({
+      error: "insufficient_outlet_stock",
+      message: `Source outlet only has ${fromQty} unit(s) available to transfer.`,
+    }, 409);
+  }
+
+  const fromQuantityAfter = fromQty - parsed.data.quantity;
+  await db.execute({
+    sql: "UPDATE store_outlet_inventory SET quantity = ?, updated_at = datetime('now') WHERE store_id = ? AND product_id = ? AND outlet_id = ?",
+    args: [fromQuantityAfter, String(store.id), parsed.data.productId, parsed.data.fromOutletId],
+  });
+
+  await db.execute({
+    sql: `INSERT INTO store_outlet_inventory (id, store_id, product_id, outlet_id, quantity, low_stock_threshold, updated_at)
+          VALUES (?, ?, ?, ?, ?, 5, datetime('now'))
+          ON CONFLICT(product_id, outlet_id) DO UPDATE SET
+            quantity = store_outlet_inventory.quantity + excluded.quantity,
+            updated_at = datetime('now')`,
+    args: [newId("inv"), String(store.id), parsed.data.productId, parsed.data.toOutletId, parsed.data.quantity],
+  });
+
+  const toRes = await db.execute({
+    sql: "SELECT quantity FROM store_outlet_inventory WHERE store_id = ? AND product_id = ? AND outlet_id = ? LIMIT 1",
+    args: [String(store.id), parsed.data.productId, parsed.data.toOutletId],
+  });
+  const toQuantityAfter = Number((toRes.rows[0] as Row | undefined)?.quantity ?? parsed.data.quantity);
+
+  const transferId = newId("trf");
+  await db.execute({
+    sql: `INSERT INTO store_stock_transfers (
+            id, store_id, product_id, from_outlet_id, to_outlet_id, quantity, note, status, created_by
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, 'completed', ?)`,
+    args: [
+      transferId,
+      String(store.id),
+      parsed.data.productId,
+      parsed.data.fromOutletId,
+      parsed.data.toOutletId,
+      parsed.data.quantity,
+      parsed.data.note?.trim() || null,
+      user.sub,
+    ],
+  });
+
+  return c.json(
+    {
+      ok: true,
+      transferId,
+      fromQuantityAfter,
+      toQuantityAfter,
+    },
+    201,
+  );
+});
+
+// ---------------------------------------------------------------------------
+// 7h. VIP Customer CRM & Loyalty Cashback Directory
+// ---------------------------------------------------------------------------
+marketplaceRoutes.get("/merchants/me/crm-customers", requireAuth, async (c) => {
+  const user = c.get("user");
+  const memberRes = await db.execute({
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    args: [user.sub],
+  });
+  const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
+  if (!merchantId) return c.json({ error: "no_merchant_membership" }, 403);
+
+  const store = await getMerchantStore(merchantId);
+  if (!store || !(await hasTable("store_customer_loyalty"))) {
+    return c.json({
+      customers: [],
+      summary: { totalCustomers: 0, vipCount: 0, repeatCount: 0, b2bCount: 0, totalLoyaltyBalanceUgx: 0 },
+    });
+  }
+
+  const res = await db.execute({
+    sql: "SELECT * FROM store_customer_loyalty WHERE store_id = ? ORDER BY total_spent_ugx DESC, last_order_at DESC LIMIT 200",
+    args: [String(store.id)],
+  });
+  const customers = res.rows as Row[];
+  const vipCount = customers.filter((r) => r.tier === "vip").length;
+  const repeatCount = customers.filter((r) => r.tier === "repeat").length;
+  const b2bCount = customers.filter((r) => r.tier === "b2b").length;
+  const totalLoyaltyBalanceUgx = customers.reduce((sum, r) => sum + Number(r.points_balance_ugx || 0), 0);
+
+  return c.json({
+    customers,
+    summary: {
+      totalCustomers: customers.length,
+      vipCount,
+      repeatCount,
+      b2bCount,
+      totalLoyaltyBalanceUgx,
+    },
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Merchant Elite Phase 4: Suppliers, Purchase Orders, Bundles & Win-Back
+// ---------------------------------------------------------------------------
+
+marketplaceRoutes.get("/merchants/me/suppliers", requireAuth, async (c) => {
+  const user = c.get("user");
+  const memberRes = await db.execute({
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    args: [user.sub],
+  });
+  const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
+  if (!merchantId) return c.json({ error: "no_merchant_membership" }, 403);
+
+  const store = await getMerchantStore(merchantId);
+  if (!store || !(await hasTable("store_suppliers"))) {
+    return c.json({ suppliers: [] });
+  }
+
+  const res = await db.execute({
+    sql: "SELECT * FROM store_suppliers WHERE store_id = ? ORDER BY name ASC",
+    args: [String(store.id)],
+  });
+
+  return c.json({ suppliers: res.rows });
+});
+
+marketplaceRoutes.post("/merchants/me/suppliers", requireAuth, async (c) => {
+  const user = c.get("user");
+  const memberRes = await db.execute({
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    args: [user.sub],
+  });
+  const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
+  if (!merchantId) return c.json({ error: "no_merchant_membership" }, 403);
+
+  const store = await getMerchantStore(merchantId);
+  if (!store || !(await hasTable("store_suppliers"))) {
+    return c.json({ error: "suppliers_table_not_available" }, 400);
+  }
+
+  const body = await c.req.json().catch(() => ({}));
+  const name = String(body.name || "").trim();
+  if (!name) return c.json({ error: "name_required" }, 400);
+
+  const id = "sup_" + crypto.randomUUID().slice(0, 12);
+  await db.execute({
+    sql: `INSERT INTO store_suppliers (id, store_id, name, contact_person, phone, email, address)
+          VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    args: [
+      id,
+      String(store.id),
+      name,
+      body.contact_person ? String(body.contact_person).trim() : null,
+      body.phone ? String(body.phone).trim() : null,
+      body.email ? String(body.email).trim() : null,
+      body.address ? String(body.address).trim() : null,
+    ],
+  });
+
+  return c.json({ ok: true, id });
+});
+
+marketplaceRoutes.get("/merchants/me/purchase-orders", requireAuth, async (c) => {
+  const user = c.get("user");
+  const memberRes = await db.execute({
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    args: [user.sub],
+  });
+  const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
+  if (!merchantId) return c.json({ error: "no_merchant_membership" }, 403);
+
+  const store = await getMerchantStore(merchantId);
+  if (!store || !(await hasTable("store_purchase_orders"))) {
+    return c.json({ purchaseOrders: [] });
+  }
+
+  const res = await db.execute({
+    sql: `SELECT po.*, s.name as supplier_name, o.name as outlet_name
+          FROM store_purchase_orders po
+          LEFT JOIN store_suppliers s ON po.supplier_id = s.id
+          LEFT JOIN merchant_outlets o ON po.outlet_id = o.id
+          WHERE po.store_id = ?
+          ORDER BY po.created_at DESC
+          LIMIT 100`,
+    args: [String(store.id)],
+  });
+
+  const purchaseOrders = res.rows.map((row) => {
+    let items = [];
+    try {
+      items = JSON.parse(String(row.items_json || "[]"));
+    } catch {
+      items = [];
+    }
+    return {
+      ...row,
+      items,
+    };
+  });
+
+  return c.json({ purchaseOrders });
+});
+
+marketplaceRoutes.post("/merchants/me/purchase-orders", requireAuth, async (c) => {
+  const user = c.get("user");
+  const memberRes = await db.execute({
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    args: [user.sub],
+  });
+  const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
+  if (!merchantId) return c.json({ error: "no_merchant_membership" }, 403);
+
+  const store = await getMerchantStore(merchantId);
+  if (!store || !(await hasTable("store_purchase_orders"))) {
+    return c.json({ error: "purchase_orders_not_available" }, 400);
+  }
+
+  const settings = await getMarketplaceSettings();
+  if (settings.elitePurchaseOrdersEnabled === false) {
+    return c.json({ error: "purchase_orders_disabled_by_admin" }, 403);
+  }
+
+  const body = await c.req.json().catch(() => ({}));
+  const rawItems = Array.isArray(body.items) ? body.items : [];
+  if (rawItems.length === 0) return c.json({ error: "items_required" }, 400);
+
+  const items = rawItems.map((it: any) => ({
+    productId: String(it.productId || it.id || ""),
+    title: String(it.title || it.name || "Item"),
+    quantity: Math.max(1, parseInt(String(it.quantity || "1"), 10)),
+    unitCost: Math.max(0, parseInt(String(it.unitCost || it.cost || "0"), 10)),
+  }));
+
+  const totalCost = items.reduce((sum: number, it: any) => sum + it.quantity * it.unitCost, 0);
+  const id = "po_" + crypto.randomUUID().slice(0, 12);
+  const poNumber = "PO-" + Math.floor(100000 + Math.random() * 900000);
+
+  await db.execute({
+    sql: `INSERT INTO store_purchase_orders
+          (id, store_id, supplier_id, outlet_id, po_number, items_json, total_cost_ugx, status, notes, created_by)
+          VALUES (?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?)`,
+    args: [
+      id,
+      String(store.id),
+      body.supplier_id ? String(body.supplier_id) : null,
+      body.outlet_id ? String(body.outlet_id) : null,
+      poNumber,
+      JSON.stringify(items),
+      totalCost,
+      body.notes ? String(body.notes).trim() : null,
+      user.sub,
+    ],
+  });
+
+  return c.json({ ok: true, id, poNumber, totalCost });
+});
+
+marketplaceRoutes.post("/merchants/me/purchase-orders/:id/receive", requireAuth, async (c) => {
+  const user = c.get("user");
+  const memberRes = await db.execute({
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    args: [user.sub],
+  });
+  const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
+  if (!merchantId) return c.json({ error: "no_merchant_membership" }, 403);
+
+  const store = await getMerchantStore(merchantId);
+  if (!store || !(await hasTable("store_purchase_orders"))) {
+    return c.json({ error: "purchase_orders_not_available" }, 400);
+  }
+
+  const id = c.req.param("id")!;
+  const poRes = await db.execute({
+    sql: "SELECT * FROM store_purchase_orders WHERE id = ? AND store_id = ? LIMIT 1",
+    args: [id, String(store.id)],
+  });
+  const po = poRes.rows[0] as Row | undefined;
+  if (!po) return c.json({ error: "purchase_order_not_found" }, 404);
+
+  if (po.status === "received") {
+    return c.json({ ok: true, poId: id, status: "received", itemsReceivedCount: 0, message: "already_received" });
+  }
+
+  const body = await c.req.json().catch(() => ({}));
+  const targetOutletId = (body.outlet_id as string | undefined) || (po.outlet_id as string | undefined) || null;
+
+  let items = [];
+  try {
+    items = JSON.parse(String(po.items_json || "[]"));
+  } catch {
+    items = [];
+  }
+
+  // Stock receiving into outlet inventory and master product stock
+  for (const item of items) {
+    const qty = Math.max(1, parseInt(String(item.quantity || "1"), 10));
+    if (targetOutletId && (await hasTable("store_outlet_inventory"))) {
+      const existing = await db.execute({
+        sql: "SELECT id, quantity FROM store_outlet_inventory WHERE store_id = ? AND outlet_id = ? AND product_id = ? LIMIT 1",
+        args: [String(store.id), String(targetOutletId), String(item.productId)],
+      });
+      if (existing.rows.length > 0) {
+        await db.execute({
+          sql: "UPDATE store_outlet_inventory SET quantity = quantity + ? WHERE id = ?",
+          args: [qty, String((existing.rows[0] as Row).id)],
+        });
+      } else {
+        const invId = "inv_" + crypto.randomUUID().slice(0, 12);
+        await db.execute({
+          sql: "INSERT INTO store_outlet_inventory (id, store_id, outlet_id, product_id, quantity) VALUES (?, ?, ?, ?, ?)",
+          args: [invId, String(store.id), String(targetOutletId || ''), String(item.productId), qty],
+        });
+      }
+    }
+
+    // Update master catalog product quantity
+    if (item.productId) {
+      await db.execute({
+        sql: "UPDATE store_products SET inventory_quantity = inventory_quantity + ? WHERE id = ? AND store_id = ?",
+        args: [qty, String(item.productId), String(store.id)],
+      });
+    }
+  }
+
+  await db.execute({
+    sql: "UPDATE store_purchase_orders SET status = 'received', received_at = datetime('now') WHERE id = ?",
+    args: [id],
+  });
+
+  return c.json({ ok: true, poId: id, status: "received", itemsReceivedCount: items.length });
+});
+
+marketplaceRoutes.get("/merchants/me/bundles", requireAuth, async (c) => {
+  const user = c.get("user");
+  const memberRes = await db.execute({
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    args: [user.sub],
+  });
+  const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
+  if (!merchantId) return c.json({ error: "no_merchant_membership" }, 403);
+
+  const store = await getMerchantStore(merchantId);
+  if (!store || !(await hasTable("store_bundles"))) {
+    return c.json({ bundles: [] });
+  }
+
+  const res = await db.execute({
+    sql: "SELECT * FROM store_bundles WHERE store_id = ? ORDER BY created_at DESC",
+    args: [String(store.id)],
+  });
+
+  const bundles = res.rows.map((row) => {
+    let items = [];
+    try {
+      items = JSON.parse(String(row.items_json || "[]"));
+    } catch {
+      items = [];
+    }
+    return {
+      ...row,
+      items,
+    };
+  });
+
+  return c.json({ bundles });
+});
+
+marketplaceRoutes.post("/merchants/me/bundles", requireAuth, async (c) => {
+  const user = c.get("user");
+  const memberRes = await db.execute({
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    args: [user.sub],
+  });
+  const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
+  if (!merchantId) return c.json({ error: "no_merchant_membership" }, 403);
+
+  const store = await getMerchantStore(merchantId);
+  if (!store || !(await hasTable("store_bundles"))) {
+    return c.json({ error: "bundles_not_available" }, 400);
+  }
+
+  const settings = await getMarketplaceSettings();
+  if (settings.eliteBundlesEnabled === false) {
+    return c.json({ error: "bundles_disabled_by_admin" }, 403);
+  }
+
+  const body = await c.req.json().catch(() => ({}));
+  const title = String(body.title || "").trim();
+  if (!title) return c.json({ error: "title_required" }, 400);
+
+  const price = Math.max(0, parseInt(String(body.price || "0"), 10));
+  const compareAtPrice = body.compare_at_price ? Math.max(0, parseInt(String(body.compare_at_price), 10)) : null;
+  const rawItems = Array.isArray(body.items) ? body.items : [];
+
+  const items = rawItems.map((it: any) => ({
+    productId: String(it.productId || it.id || ""),
+    title: String(it.title || it.name || "Item"),
+    quantity: Math.max(1, parseInt(String(it.quantity || "1"), 10)),
+  }));
+
+  const id = "bnd_" + crypto.randomUUID().slice(0, 12);
+  await db.execute({
+    sql: `INSERT INTO store_bundles (id, store_id, title, description, price, compare_at_price, items_json, status)
+          VALUES (?, ?, ?, ?, ?, ?, ?, 'active')`,
+    args: [
+      id,
+      String(store.id),
+      title,
+      body.description ? String(body.description).trim() : null,
+      price,
+      compareAtPrice,
+      JSON.stringify(items),
+    ],
+  });
+
+  return c.json({ ok: true, id });
+});
+
+marketplaceRoutes.delete("/merchants/me/bundles/:id", requireAuth, async (c) => {
+  const user = c.get("user");
+  const memberRes = await db.execute({
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    args: [user.sub],
+  });
+  const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
+  if (!merchantId) return c.json({ error: "no_merchant_membership" }, 403);
+
+  const store = await getMerchantStore(merchantId);
+  if (!store || !(await hasTable("store_bundles"))) {
+    return c.json({ error: "bundles_not_available" }, 400);
+  }
+
+  const id = c.req.param("id")!;
+  await db.execute({
+    sql: "DELETE FROM store_bundles WHERE id = ? AND store_id = ?",
+    args: [id, String(store.id)],
+  });
+
+  return c.json({ ok: true });
+});
+
+marketplaceRoutes.get("/merchants/me/winback-campaigns", requireAuth, async (c) => {
+  const user = c.get("user");
+  const memberRes = await db.execute({
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    args: [user.sub],
+  });
+  const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
+  if (!merchantId) return c.json({ error: "no_merchant_membership" }, 403);
+
+  const store = await getMerchantStore(merchantId);
+  if (!store || !(await hasTable("store_winback_campaigns"))) {
+    return c.json({ campaigns: [], inactiveCustomers: [] });
+  }
+
+  const campaignsRes = await db.execute({
+    sql: "SELECT * FROM store_winback_campaigns WHERE store_id = ? ORDER BY sent_at DESC LIMIT 50",
+    args: [String(store.id)],
+  });
+
+  let inactiveCustomers: Row[] = [];
+  if (await hasTable("store_customer_loyalty")) {
+    const custRes = await db.execute({
+      sql: `SELECT * FROM store_customer_loyalty
+            WHERE store_id = ? AND (last_order_at < datetime('now', '-7 days') OR orders_count >= 1)
+            ORDER BY total_spent_ugx DESC
+            LIMIT 50`,
+      args: [String(store.id)],
+    });
+    inactiveCustomers = custRes.rows as Row[];
+  }
+
+  return c.json({ campaigns: campaignsRes.rows, inactiveCustomers });
+});
+
+marketplaceRoutes.post("/merchants/me/winback-campaigns", requireAuth, async (c) => {
+  const user = c.get("user");
+  const memberRes = await db.execute({
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    args: [user.sub],
+  });
+  const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
+  if (!merchantId) return c.json({ error: "no_merchant_membership" }, 403);
+
+  const store = await getMerchantStore(merchantId);
+  if (!store || !(await hasTable("store_winback_campaigns"))) {
+    return c.json({ error: "winback_not_available" }, 400);
+  }
+
+  const settings = await getMarketplaceSettings();
+  if (settings.eliteWinbackEnabled === false) {
+    return c.json({ error: "winback_disabled_by_admin" }, 403);
+  }
+
+  const body = await c.req.json().catch(() => ({}));
+  const phone = String(body.customer_phone || "").replace(/[^0-9]/g, "");
+  if (!phone) return c.json({ error: "phone_required" }, 400);
+
+  const message = String(body.message || "").trim();
+  if (!message) return c.json({ error: "message_required" }, 400);
+
+  const id = "wb_" + crypto.randomUUID().slice(0, 12);
+  const cleanPhone = phone.startsWith("0") ? "256" + phone.slice(1) : phone;
+  const whatsappUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
+
+  await db.execute({
+    sql: `INSERT INTO store_winback_campaigns (id, store_id, customer_phone, customer_name, discount_code, channel, message, status)
+          VALUES (?, ?, ?, ?, ?, ?, ?, 'sent')`,
+    args: [
+      id,
+      String(store.id),
+      phone,
+      body.customer_name ? String(body.customer_name).trim() : null,
+      body.discount_code ? String(body.discount_code).trim() : null,
+      body.channel === "sms" ? "sms" : body.channel === "push" ? "push" : "whatsapp",
+      message,
+    ],
+  });
+
+  return c.json({ ok: true, campaignId: id, whatsappUrl });
+});
+
+export const DEFAULT_STOREFRONT_SECTIONS = [
+  { id: "sec_announcement", type: "announcement", title: "Announcement Bar", subtitle: "Top flash deals & delivery updates", enabled: true, order: 1, settings: { showTicker: true } },
+  { id: "sec_hero", type: "hero", title: "Hero Showcase & Story", subtitle: "Primary storefront banner & call to action", enabled: true, order: 2, settings: { showCta: true } },
+  { id: "sec_bundles", type: "bundles", title: "Bundles & Gift Hampers", subtitle: "Curated multi-product kits with package savings", enabled: true, order: 3, settings: { maxItems: 6 } },
+  { id: "sec_collections", type: "featured_collection", title: "Featured Collections", subtitle: "Automated smart categories & featured shelves", enabled: true, order: 4, settings: { layout: "grid" } },
+  { id: "sec_video", type: "video_spotlight", title: "Live Selling & Video Reel", subtitle: "Live video stream or farm harvest demo", enabled: true, order: 5, settings: { autoPlayMuted: false } },
+  { id: "sec_reviews", type: "testimonials", title: "Customer Reviews & Social Proof", subtitle: "Verified buyer feedback and 5-star ratings", enabled: true, order: 6, settings: { showRatings: true } },
+  { id: "sec_badges", type: "trust_badges", title: "Store Guarantees", subtitle: "Speedy boda delivery, freshness guarantee & direct payments", enabled: true, order: 7, settings: { columns: 4 } },
+  { id: "sec_faq", type: "faq", title: "Frequently Asked Questions", subtitle: "Order timing, delivery areas & payment FAQs", enabled: true, order: 8, settings: {} },
+];
+
+marketplaceRoutes.get("/merchants/me/storefront-sections", requireAuth, async (c) => {
+  const user = c.get("user");
+  const memberRes = await db.execute({
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    args: [user.sub],
+  });
+  const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
+  if (!merchantId) return c.json({ error: "no_merchant_membership" }, 403);
+
+  const store = await getMerchantStore(merchantId);
+  if (!store) return c.json({ error: "store_not_found" }, 404);
+
+  let sections = DEFAULT_STOREFRONT_SECTIONS;
+  if (await hasColumn("stores", "theme_sections")) {
+    try {
+      if (store.theme_sections) {
+        const parsed = JSON.parse(String(store.theme_sections));
+        if (Array.isArray(parsed) && parsed.length > 0) sections = parsed;
+      }
+    } catch {}
+  }
+
+  return c.json({ sections });
+});
+
+marketplaceRoutes.put("/merchants/me/storefront-sections", requireAuth, async (c) => {
+  const user = c.get("user");
+  const memberRes = await db.execute({
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    args: [user.sub],
+  });
+  const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
+  if (!merchantId) return c.json({ error: "no_merchant_membership" }, 403);
+
+  const store = await getMerchantStore(merchantId);
+  if (!store) return c.json({ error: "store_not_found" }, 404);
+
+  const settings = await getMarketplaceSettings();
+  if (settings.eliteStorefrontSectionsEnabled === false) {
+    return c.json({ error: "sections_disabled_by_admin", message: "Storefront section customization is disabled." }, 403);
+  }
+
+  const body = await c.req.json().catch(() => ({}));
+  const sections = Array.isArray(body.sections) ? body.sections : [];
+  if (sections.length === 0) {
+    return c.json({ error: "invalid_sections", message: "Sections list cannot be empty." }, 400);
+  }
+
+  if (await hasColumn("stores", "theme_sections")) {
+    await db.execute({
+      sql: "UPDATE stores SET theme_sections = ? WHERE id = ?",
+      args: [JSON.stringify(sections), String(store.id)],
+    });
+  }
+
+  return c.json({ ok: true, sections });
+});
+
+marketplaceRoutes.get("/merchants/me/sms-logs", requireAuth, async (c) => {
+  const user = c.get("user");
+  const memberRes = await db.execute({
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    args: [user.sub],
+  });
+  const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
+  if (!merchantId) return c.json({ error: "no_merchant_membership" }, 403);
+
+  const store = await getMerchantStore(merchantId);
+  if (!store || !(await hasTable("store_sms_logs"))) {
+    return c.json({ logs: [] });
+  }
+
+  const logsRes = await db.execute({
+    sql: "SELECT * FROM store_sms_logs WHERE store_id = ? ORDER BY created_at DESC LIMIT 50",
+    args: [String(store.id)],
+  });
+
+  return c.json({ logs: logsRes.rows });
+});
+
+marketplaceRoutes.post("/merchants/me/send-sms", requireAuth, async (c) => {
+  const user = c.get("user");
+  const memberRes = await db.execute({
+    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' LIMIT 1",
+    args: [user.sub],
+  });
+  const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
+  if (!merchantId) return c.json({ error: "no_merchant_membership" }, 403);
+
+  const store = await getMerchantStore(merchantId);
+  if (!store) return c.json({ error: "store_not_found" }, 404);
+
+  const settings = await getMarketplaceSettings();
+  if (settings.eliteSmsAlertsEnabled === false) {
+    return c.json({ error: "sms_disabled_by_admin", message: "Automated SMS alerts are currently disabled by administrator." }, 403);
+  }
+
+  const body = await c.req.json().catch(() => ({}));
+  const rawPhone = String(body.recipient_phone || "").replace(/[^0-9]/g, "");
+  if (!rawPhone || rawPhone.length < 9) {
+    return c.json({ error: "invalid_phone", message: "Valid phone number is required." }, 400);
+  }
+
+  const bodyText = String(body.body || "").trim();
+  if (!bodyText) {
+    return c.json({ error: "body_required", message: "SMS message text cannot be empty." }, 400);
+  }
+
+  const cleanPhone = rawPhone.startsWith("0") ? "256" + rawPhone.slice(1) : rawPhone.startsWith("256") ? rawPhone : "256" + rawPhone;
+  const messageType = ["pos_receipt", "order_confirmation", "dispatch_alert", "abandoned_cart"].includes(body.message_type)
+    ? body.message_type
+    : "pos_receipt";
+
+  const logId = "sms_" + crypto.randomUUID().slice(0, 12);
+  const costUgx = Number(settings.eliteSmsCostPerMessageUgx) || 35;
+  const extId = "SMS-UG-" + Date.now().toString(36).toUpperCase() + "-" + Math.floor(Math.random() * 899 + 100);
+
+  if (await hasTable("store_sms_logs")) {
+    await db.execute({
+      sql: "INSERT INTO store_sms_logs (id, store_id, recipient_phone, recipient_name, message_type, body, status, external_message_id, cost_ugx) VALUES (?, ?, ?, ?, ?, ?, 'delivered', ?, ?)",
+      args: [
+        logId,
+        String(store.id),
+        "+" + cleanPhone,
+        body.recipient_name ? String(body.recipient_name).trim() : null,
+        messageType,
+        bodyText,
+        extId,
+        costUgx,
+      ],
+    });
+  }
+
+  const whatsappShareUrl = "https://wa.me/" + cleanPhone + "?text=" + encodeURIComponent(bodyText);
+
+  return c.json({
+    ok: true,
+    logId,
+    status: "delivered",
+    costUgx,
+    externalMessageId: extId,
+    whatsappShareUrl,
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Customer Public Marketplace Endpoints
 // ---------------------------------------------------------------------------
 
@@ -1518,15 +3210,18 @@ marketplaceRoutes.get("/marketplace/stores", async (c) => {
 });
 
 marketplaceRoutes.get("/marketplace/stores/:id", async (c) => {
-  const id = c.req.param("id");
+  const id = c.req.param("id")!;
   const latParam = c.req.query("lat");
   const lngParam = c.req.query("lng");
   const userLat = latParam != null && latParam !== "" ? parseFloat(latParam) : null;
   const userLng = lngParam != null && lngParam !== "" ? parseFloat(lngParam) : null;
 
+  const hasCustomDomain = await hasColumn("stores", "custom_domain");
   const res = await db.execute({
-    sql: "SELECT * FROM stores WHERE id = ? OR slug = ?",
-    args: [id, id],
+    sql: hasCustomDomain
+      ? "SELECT * FROM stores WHERE id = ? OR slug = ? OR LOWER(custom_domain) = LOWER(?)"
+      : "SELECT * FROM stores WHERE id = ? OR slug = ?",
+    args: hasCustomDomain ? [id, id, id] : [id, id],
   });
 
   let store = (res.rows[0] as Row | undefined) ?? null;
@@ -1535,6 +3230,17 @@ marketplaceRoutes.get("/marketplace/stores/:id", async (c) => {
   }
 
   if (!store) return c.json({ error: "store_not_found" }, 404);
+
+  if (Number(store.elite_tier || 0) === 1) {
+    store = { ...store, pro_tier: "elite" };
+  }
+
+  const slug = String(store.slug || store.id);
+  store = {
+    ...store,
+    subdomain_url: `https://${slug}.peebee.online`,
+    marketplace_url: `https://app.peebee.online/store/${slug}`,
+  };
 
   if (userLat != null && !isNaN(userLat) && userLng != null && !isNaN(userLng)) {
     const sLat = typeof store.lat === "number" ? store.lat : typeof store.lat === "string" ? parseFloat(store.lat) : null;
@@ -1545,11 +3251,167 @@ marketplaceRoutes.get("/marketplace/stores/:id", async (c) => {
     store = { ...store, distance_km: distanceKm };
   }
 
-  return c.json({ store });
+  const storeId = String(store.id);
+  let collections: Row[] = [];
+  if (await hasTable("store_collections")) {
+    const colRes = await db.execute({
+      sql: "SELECT * FROM store_collections WHERE store_id = ? AND status = 'active' ORDER BY pinned DESC, sort_order, created_at DESC",
+      args: [storeId],
+    });
+    collections = colRes.rows as Row[];
+  }
+
+  let discounts: Row[] = [];
+  if (await hasTable("store_discounts")) {
+    const discRes = await db.execute({
+      sql: "SELECT id, code, title, kind, value, min_order_amount, is_automatic FROM store_discounts WHERE store_id = ? AND status = 'active' ORDER BY is_automatic DESC, created_at DESC",
+      args: [storeId],
+    });
+    discounts = discRes.rows as Row[];
+  }
+
+  let bundles: any[] = [];
+  if (await hasTable("store_bundles")) {
+    const bunRes = await db.execute({
+      sql: "SELECT id, title, description, price, compare_at_price, items_json FROM store_bundles WHERE store_id = ? AND status = 'active' ORDER BY created_at DESC",
+      args: [storeId],
+    });
+    bundles = bunRes.rows.map((r) => {
+      let items = [];
+      try { items = JSON.parse(String(r.items_json || "[]")); } catch {}
+      return { ...r, items };
+    });
+  }
+
+  let sections: any[] = DEFAULT_STOREFRONT_SECTIONS;
+  if (await hasColumn("stores", "theme_sections")) {
+    try {
+      if (store.theme_sections) {
+        const parsedSec = JSON.parse(String(store.theme_sections));
+        if (Array.isArray(parsedSec) && parsedSec.length > 0) sections = parsedSec;
+      }
+    } catch {}
+  }
+
+  let outlets: Row[] = [];
+  if (store.merchant_id && (await hasTable("merchant_outlets"))) {
+    const outRes = await db.execute({
+      sql: "SELECT id, name, code, address, lat, lng, status FROM merchant_outlets WHERE merchant_id = ? AND status = 'active' ORDER BY created_at",
+      args: [String(store.merchant_id)],
+    });
+    outlets = outRes.rows as Row[];
+  }
+
+  let digitalProducts: Row[] = [];
+  if (await hasTable("store_digital_products")) {
+    const digRes = await db.execute({
+      sql: "SELECT id, store_id, title, kind, description, price_ugx, compare_at_price_ugx, file_url, file_name, file_size_bytes, mime_type, delivery_instructions, cover_image_url, linked_course_id, downloads_count FROM store_digital_products WHERE store_id = ? AND status = 'published' ORDER BY created_at DESC",
+      args: [storeId],
+    });
+    digitalProducts = digRes.rows as Row[];
+  }
+
+  let courses: Row[] = [];
+  if ((await hasTable("edu_courses")) && (await hasColumn("edu_courses", "store_id"))) {
+    const crsRes = await db.execute({
+      sql: "SELECT id, school_id, title, summary, stream, price_ugx, status, created_at FROM edu_courses WHERE store_id = ? AND status = 'published' ORDER BY created_at DESC",
+      args: [storeId],
+    });
+    courses = crsRes.rows as Row[];
+  }
+
+  return c.json({
+    store,
+    collections,
+    discounts,
+    bundles,
+    sections,
+    outlets,
+    digitalProducts,
+    courses,
+    channels: {
+      customerAppUrl: `https://app.peebee.online/store/${slug}`,
+      dedicatedStorefrontUrl: `https://${slug}.peebee.online`,
+      customDomainUrl: store.custom_domain ? `https://${String(store.custom_domain)}` : null,
+    },
+  });
+});
+
+// Public B2B Wholesale Inquiry from Dedicated Storefront ([store-name].peebee.online)
+const publicB2bInquirySchema = z.object({
+  customer_name: z.string().min(2).max(120),
+  customer_phone: z.string().min(6).max(30),
+  customer_company: z.string().max(120).optional(),
+  payment_terms: z.enum(["immediate", "net_7", "net_14", "net_30"]).default("net_14"),
+  notes: z.string().max(500).optional(),
+  items: z.array(
+    z.object({
+      productId: z.string(),
+      title: z.string(),
+      unitPrice: z.number().int().nonnegative(),
+      quantity: z.number().int().positive(),
+    })
+  ).min(1),
+});
+
+marketplaceRoutes.post("/marketplace/stores/:id/b2b-inquiry", async (c) => {
+  const id = c.req.param("id")!;
+  if (!(await hasTable("store_draft_orders"))) {
+    return c.json({ error: "migration_pending", message: "B2B draft orders migration is pending." }, 503);
+  }
+  const settings = await getMarketplaceSettings();
+  if (!settings.eliteB2bEnabled) {
+    return c.json({ error: "b2b_disabled", message: "B2B Wholesale is currently disabled." }, 403);
+  }
+
+  const hasCustomDomain = await hasColumn("stores", "custom_domain");
+  const storeRes = await db.execute({
+    sql: hasCustomDomain
+      ? "SELECT * FROM stores WHERE id = ? OR slug = ? OR LOWER(custom_domain) = LOWER(?)"
+      : "SELECT * FROM stores WHERE id = ? OR slug = ?",
+    args: hasCustomDomain ? [id, id, id] : [id, id],
+  });
+  const store = (storeRes.rows[0] as Row | undefined) ?? null;
+  if (!store) return c.json({ error: "store_not_found" }, 404);
+
+  const parsed = publicB2bInquirySchema.safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) return c.json({ error: "invalid_body", issues: parsed.error.issues }, 400);
+
+  const subtotal = parsed.data.items.reduce((sum, it) => sum + it.unitPrice * it.quantity, 0);
+  const minB2b = Number(store.b2b_min_order_amount || 0);
+  if (minB2b > 0 && subtotal < minB2b) {
+    return c.json({
+      error: "below_b2b_minimum",
+      message: `Minimum wholesale order for ${String(store.name)} is UGX ${minB2b.toLocaleString()}.`,
+    }, 400);
+  }
+
+  const draftId = newId("drf");
+  await db.execute({
+    sql: `INSERT INTO store_draft_orders (
+            id, store_id, customer_name, customer_phone, customer_company,
+            items_json, subtotal_amount, discount_amount, total_amount,
+            payment_terms, notes, status
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, 'open')`,
+    args: [
+      draftId,
+      String(store.id),
+      parsed.data.customer_name.trim(),
+      parsed.data.customer_phone.trim(),
+      parsed.data.customer_company?.trim() || null,
+      JSON.stringify(parsed.data.items),
+      subtotal,
+      subtotal,
+      parsed.data.payment_terms,
+      parsed.data.notes?.trim() || "Submitted via Dedicated Storefront B2B Portal",
+    ],
+  });
+
+  return c.json({ ok: true, id: draftId, total: subtotal }, 201);
 });
 
 marketplaceRoutes.get("/marketplace/stores/:id/products", async (c) => {
-  const id = c.req.param("id");
+  const id = c.req.param("id")!;
   const storeRes = await db.execute({
     sql: "SELECT id FROM stores WHERE id = ? OR slug = ?",
     args: [id, id],
@@ -1590,7 +3452,7 @@ marketplaceRoutes.get("/marketplace/stores/:id/products", async (c) => {
 });
 
 marketplaceRoutes.get("/marketplace/products/:id", async (c) => {
-  const id = c.req.param("id");
+  const id = c.req.param("id")!;
 
   // 1. Try database lookup
   const prodRes = await db.execute({
@@ -1737,7 +3599,117 @@ const marketplaceCheckoutSchema = z.object({
   relayMeetStageId: z.string().max(80).optional(),
   /** A long trip: by matatu relay (the default when one is offered) or one rider all the way. */
   deliveryMode: z.enum(["rider", "relay"]).optional(),
+  /** Optional promo code synced from Merchant Elite OS to both Customer App and Dedicated Storefront. */
+  promoCode: z.string().max(40).optional(),
+  /** Channel origin: Peebee Customer App vs Dedicated Brand Storefront ([store-name].peebee.online). */
+  salesChannel: z.enum(["customer_app", "dedicated_storefront"]).optional(),
 });
+
+type AppliedDiscountSummary = {
+  id: string;
+  storeId: string;
+  code: string;
+  title: string;
+  kind: "percent" | "fixed" | "free_delivery" | "bogo";
+  discountAmount: number;
+  freeDelivery: boolean;
+};
+
+async function evaluateBagPromosAndLoyalty(
+  stops: DeliveryStop[],
+  promoCode?: string,
+): Promise<{
+  discountAmount: number;
+  appliedDiscount: AppliedDiscountSummary | null;
+  loyaltyCashbackUgx: number;
+  discountByStore: Map<string, number>;
+  freeDeliveryStoreIds: Set<string>;
+}> {
+  const discountByStore = new Map<string, number>();
+  const freeDeliveryStoreIds = new Set<string>();
+  let appliedDiscount: AppliedDiscountSummary | null = null;
+  let loyaltyCashbackUgx = 0;
+
+  const mktSettings = await getMarketplaceSettings();
+  const hasDiscounts = await hasTable("store_discounts");
+  const hasLoyaltyCol = await hasColumn("stores", "loyalty_enabled");
+  const cleanCode = promoCode?.trim().toUpperCase() || "";
+
+  for (const stop of stops) {
+    if (hasDiscounts && !appliedDiscount) {
+      const discRes = await db.execute({
+        sql: cleanCode
+          ? "SELECT * FROM store_discounts WHERE store_id = ? AND status = 'active' AND (UPPER(code) = ? OR is_automatic = 1) ORDER BY CASE WHEN UPPER(code) = ? THEN 0 ELSE 1 END, created_at DESC"
+          : "SELECT * FROM store_discounts WHERE store_id = ? AND status = 'active' AND is_automatic = 1 ORDER BY created_at DESC",
+        args: cleanCode ? [stop.storeId, cleanCode, cleanCode] : [stop.storeId],
+      });
+      for (const d of discRes.rows as Row[]) {
+        const minOrder = Number(d.min_order_amount || 0);
+        const maxUses = d.max_uses != null ? Number(d.max_uses) : null;
+        const usesCount = Number(d.uses_count || 0);
+        if (stop.itemsTotal < minOrder) continue;
+        if (maxUses != null && usesCount >= maxUses) continue;
+
+        const kind = String(d.kind) as AppliedDiscountSummary["kind"];
+        const val = Number(d.value || 0);
+        let amount = 0;
+        let freeDel = false;
+        if (kind === "percent") {
+          amount = Math.min(stop.itemsTotal, Math.round((stop.itemsTotal * Math.min(95, Math.max(0, val))) / 100));
+        } else if (kind === "fixed") {
+          amount = Math.min(stop.itemsTotal, Math.max(0, val));
+        } else if (kind === "bogo") {
+          const totalQty = stop.items.reduce((sum, it) => sum + it.quantity, 0);
+          if (totalQty >= 2) {
+            const cheapestUnit = Math.min(...stop.items.map((it) => it.price));
+            amount = Math.min(stop.itemsTotal, cheapestUnit);
+          } else {
+            continue;
+          }
+        } else if (kind === "free_delivery") {
+          freeDel = true;
+          freeDeliveryStoreIds.add(stop.storeId);
+        }
+
+        if (amount > 0 || freeDel) {
+          discountByStore.set(stop.storeId, amount);
+          appliedDiscount = {
+            id: String(d.id),
+            storeId: stop.storeId,
+            code: String(d.code),
+            title: String(d.title),
+            kind,
+            discountAmount: amount,
+            freeDelivery: freeDel,
+          };
+          break;
+        }
+      }
+    }
+
+    if (mktSettings.eliteLoyaltyEnabled && hasLoyaltyCol) {
+      const storeRes = await db.execute({
+        sql: "SELECT loyalty_enabled, loyalty_cashback_percent FROM stores WHERE id = ?",
+        args: [stop.storeId],
+      });
+      const st = storeRes.rows[0] as Row | undefined;
+      if (st && Number(st.loyalty_enabled || 0) === 1) {
+        const pct = Math.min(mktSettings.eliteMaxLoyaltyCashbackPercent, Math.max(0, Number(st.loyalty_cashback_percent || 0)));
+        const netStoreItems = Math.max(0, stop.itemsTotal - (discountByStore.get(stop.storeId) ?? 0));
+        loyaltyCashbackUgx += Math.round((netStoreItems * pct) / 100);
+      }
+    }
+  }
+
+  const totalItemDiscount = Array.from(discountByStore.values()).reduce((a, b) => a + b, 0);
+  return {
+    discountAmount: totalItemDiscount,
+    appliedDiscount,
+    loyaltyCashbackUgx,
+    discountByStore,
+    freeDeliveryStoreIds,
+  };
+}
 
 // Marketplace Cart Checkout -> Real Orders linked to Boda Delivery System
 marketplaceRoutes.post("/marketplace/checkout", requireAuth, async (c) => {
@@ -1765,6 +3737,20 @@ marketplaceRoutes.post("/marketplace/checkout", requireAuth, async (c) => {
 
   const bag = await planMarketplaceDelivery(d.items, d, environment);
   const stops = bag.stops;
+  const promoEval = await evaluateBagPromosAndLoyalty(stops, d.promoCode);
+  for (const stop of stops) {
+    const itemDisc = promoEval.discountByStore.get(stop.storeId) ?? 0;
+    stop.itemsTotal = Math.max(0, stop.itemsTotal - itemDisc);
+    if (promoEval.freeDeliveryStoreIds.has(stop.storeId)) {
+      stop.deliveryFee = 0;
+    }
+  }
+  if (promoEval.appliedDiscount && (await hasTable("store_discounts"))) {
+    await db.execute({
+      sql: "UPDATE store_discounts SET uses_count = uses_count + 1 WHERE id = ?",
+      args: [promoEval.appliedDiscount.id],
+    });
+  }
   const relay = bag.mode === "relay" ? bag.relay : null;
   if (relay && paymentRail === "float") {
     return c.json({ error: "relay_requires_prepay", message: "Long-distance deliveries are paid in the app, not in cash." }, 409);
@@ -1842,6 +3828,64 @@ marketplaceRoutes.post("/marketplace/checkout", requireAuth, async (c) => {
       });
     }
     createdOrders.push({ id: orderId });
+
+    // Credit store VIP loyalty ledger for online orders if store has loyalty enabled
+    if (await hasTable("store_customer_loyalty")) {
+      try {
+        const custRes = await db.execute({
+          sql: "SELECT name, phone FROM users WHERE id = ? LIMIT 1",
+          args: [user.sub],
+        });
+        const cust = custRes.rows[0] as Row | undefined;
+        const custPhone = String(cust?.phone || user.sub);
+        const custName = cust?.name ? String(cust.name) : null;
+        const mktSettings = await getMarketplaceSettings();
+        let earnedUgx = 0;
+        if (mktSettings.eliteLoyaltyEnabled && (await hasColumn("stores", "loyalty_enabled"))) {
+          const stRes = await db.execute({
+            sql: "SELECT loyalty_enabled, loyalty_cashback_percent FROM stores WHERE id = ? LIMIT 1",
+            args: [stop.storeId],
+          });
+          const st = stRes.rows[0] as Row | undefined;
+          if (st && Number(st.loyalty_enabled) === 1) {
+            const pct = Math.min(Number(st.loyalty_cashback_percent || 0), mktSettings.eliteMaxLoyaltyCashbackPercent);
+            if (pct > 0) earnedUgx = Math.round((stop.itemsTotal * pct) / 100);
+          }
+        }
+        await db.execute({
+          sql: `INSERT INTO store_customer_loyalty (
+                  id, store_id, customer_phone, customer_name, points_balance_ugx,
+                  total_earned_ugx, total_redeemed_ugx, orders_count, total_spent_ugx,
+                  tier, last_order_at, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, 0, 1, ?, ?, datetime('now'), datetime('now'))
+                ON CONFLICT(store_id, customer_phone) DO UPDATE SET
+                  customer_name = COALESCE(excluded.customer_name, store_customer_loyalty.customer_name),
+                  points_balance_ugx = store_customer_loyalty.points_balance_ugx + excluded.points_balance_ugx,
+                  total_earned_ugx = store_customer_loyalty.total_earned_ugx + excluded.total_earned_ugx,
+                  orders_count = store_customer_loyalty.orders_count + 1,
+                  total_spent_ugx = store_customer_loyalty.total_spent_ugx + excluded.total_spent_ugx,
+                  tier = CASE
+                    WHEN store_customer_loyalty.tier = 'b2b' THEN 'b2b'
+                    WHEN (store_customer_loyalty.total_spent_ugx + excluded.total_spent_ugx) >= 200000 OR (store_customer_loyalty.orders_count + 1) >= 5 THEN 'vip'
+                    WHEN (store_customer_loyalty.orders_count + 1) >= 2 THEN 'repeat'
+                    ELSE 'standard'
+                  END,
+                  last_order_at = datetime('now')`,
+          args: [
+            newId("crm"),
+            stop.storeId,
+            custPhone,
+            custName,
+            earnedUgx,
+            earnedUgx,
+            stop.itemsTotal,
+            stop.itemsTotal >= 200000 ? "vip" : "standard",
+          ],
+        });
+      } catch {
+        // Non-blocking loyalty ledger update
+      }
+    }
   }
 
   // Several stores in one bag are one delivery: one rider collects from every
@@ -1885,7 +3929,7 @@ marketplaceRoutes.post("/marketplace/checkout", requireAuth, async (c) => {
   return c.json({ ok: true, orders, order: orders[0] }, 201);
 });
 
-const quoteSchema = marketplaceCheckoutSchema.pick({ items: true, destinationLat: true, destinationLng: true, relayLastMile: true, relayMeetStageId: true, deliveryMode: true });
+const quoteSchema = marketplaceCheckoutSchema.pick({ items: true, destinationLat: true, destinationLng: true, relayLastMile: true, relayMeetStageId: true, deliveryMode: true, promoCode: true, salesChannel: true });
 
 /** The exact delivery fee a bag will be charged, split by store. Checkout shows this, never an estimate. */
 marketplaceRoutes.post("/marketplace/checkout/quote", requireAuth, async (c) => {
@@ -1894,10 +3938,22 @@ marketplaceRoutes.post("/marketplace/checkout/quote", requireAuth, async (c) => 
   const bag = await planMarketplaceDelivery(parsed.data.items, parsed.data, await getPlatformEnvironment());
   const { stops, trip } = bag;
   const relayed = bag.relay;
-  const itemsTotal = stops.reduce((sum, stop) => sum + stop.itemsTotal, 0);
+  const promoEval = await evaluateBagPromosAndLoyalty(stops, parsed.data.promoCode);
+  for (const stop of stops) {
+    if (promoEval.freeDeliveryStoreIds.has(stop.storeId)) {
+      stop.deliveryFee = 0;
+    }
+  }
+  const rawItemsTotal = stops.reduce((sum, stop) => sum + stop.itemsTotal, 0);
+  const discountAmount = promoEval.discountAmount;
+  const itemsTotal = Math.max(0, rawItemsTotal - discountAmount);
   const deliveryFee = stops.reduce((sum, stop) => sum + stop.deliveryFee, 0);
   return c.json({
     itemsTotal,
+    rawItemsTotal,
+    discountAmount,
+    appliedDiscount: promoEval.appliedDiscount,
+    loyaltyCashbackUgx: promoEval.loyaltyCashbackUgx,
     deliveryFee,
     total: itemsTotal + deliveryFee,
     /** Which way this quote delivers; the customer can switch when a relay is offered. */
@@ -1971,12 +4027,64 @@ async function planMarketplaceDelivery(
     let lat: number | null = null;
     let lng: number | null = null;
     if (await hasTable("stores")) {
-      const row = (await db.execute({ sql: "SELECT name, address, lat, lng FROM stores WHERE id = ?", args: [storeId] })).rows[0] as Row | undefined;
+      const row = (await db.execute({ sql: "SELECT name, address, lat, lng, merchant_id FROM stores WHERE id = ?", args: [storeId] })).rows[0] as Row | undefined;
       if (row) {
         storeName = String(row.name ?? storeName);
         storeAddress = (row.address as string | null) ?? null;
         lat = (row.lat as number | null) ?? null;
         lng = (row.lng as number | null) ?? null;
+
+        // Multi-Outlet Inventory routing: if the merchant has stocked branches in store_outlet_inventory,
+        // pick the active branch that has the items in stock (nearest to customer when coordinates exist).
+        const mktSettings = await getMarketplaceSettings();
+        if (
+          row.merchant_id &&
+          mktSettings.eliteMultiOutletInventoryEnabled &&
+          (await hasTable("store_outlet_inventory")) &&
+          (await hasTable("merchant_outlets"))
+        ) {
+          const outRes = await db.execute({
+            sql: "SELECT id, name, address, lat, lng FROM merchant_outlets WHERE merchant_id = ? AND status = 'active'",
+            args: [String(row.merchant_id)],
+          });
+          const outlets = outRes.rows as Row[];
+          if (outlets.length > 0) {
+            const invRes = await db.execute({
+              sql: "SELECT outlet_id, product_id, quantity FROM store_outlet_inventory WHERE store_id = ?",
+              args: [storeId],
+            });
+            const invRows = invRes.rows as Row[];
+            if (invRows.length > 0) {
+              const stockedOutlets = outlets.filter((o) =>
+                storeItems.every((it) => {
+                  const match = invRows.find((r) => String(r.outlet_id) === String(o.id) && String(r.product_id) === it.productId);
+                  return match && Number(match.quantity || 0) >= it.quantity;
+                }),
+              );
+              const candidates = stockedOutlets.length > 0 ? stockedOutlets : [];
+              if (candidates.length > 0) {
+                let chosen = candidates[0];
+                if (destination.destinationLat != null && destination.destinationLng != null) {
+                  let bestDist = Infinity;
+                  for (const cand of candidates) {
+                    if (cand.lat != null && cand.lng != null) {
+                      const dKm = haversineKm(destination.destinationLat, destination.destinationLng, Number(cand.lat), Number(cand.lng));
+                      if (dKm < bestDist) {
+                        bestDist = dKm;
+                        chosen = cand;
+                      }
+                    }
+                  }
+                }
+                if (chosen.address) storeAddress = `${String(chosen.name)} · ${String(chosen.address)}`;
+                if (chosen.lat != null && chosen.lng != null) {
+                  lat = Number(chosen.lat);
+                  lng = Number(chosen.lng);
+                }
+              }
+            }
+          }
+        }
       }
     }
     // A demo store saved before it had a map pin still has its pin in the demo catalogue.

@@ -2,7 +2,7 @@
 
 import { Select } from "@peebee/shared/select";
 import type { CarpoolTrip } from "@peebee/shared";
-import { CalendarDays, ChevronLeft, MapPin } from "lucide-react";
+import { CalendarDays, ChevronLeft, Crown, MapPin } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { useRegisterNavPrimaryAction } from "../../lib/nav-primary-action";
@@ -163,17 +163,41 @@ export default function CarpoolPage() {
       {trips?.slice(0, visibleTripCount).map((trip) => {
         const count = Math.min(seats[trip.id] ?? 1, trip.seatsLeft, maxSeats);
         return (
-          <section key={trip.id} className="home-card space-y-3">
+          <section key={trip.id} className={`home-card space-y-3 overflow-hidden ${trip.isVip ? "border border-gold/40 shadow-[0_4px_18px_rgba(234,179,8,0.1)]" : ""}`}>
+            {trip.image && (
+              <div className="-mx-4 -mt-4 mb-2 aspect-[16/9] w-[calc(100%+2rem)] overflow-hidden bg-slate-900 border-b border-[var(--border-faint)]">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={trip.image} alt={trip.vehicle} className="h-full w-full object-cover" />
+              </div>
+            )}
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
                 <p className="text-base font-bold text-ink">{trip.originLabel} <span className="text-gold">→</span> {trip.destLabel}</p>
                 <p className="mt-1 text-sm text-ink-500">{new Date(trip.departAt).toLocaleString("en-UG", { dateStyle: "medium", timeStyle: "short" })}</p>
               </div>
+              {trip.isVip && (
+                <span className="shrink-0 inline-flex items-center gap-1 rounded-full bg-gold/15 px-2.5 py-0.5 text-xs font-black text-ink-gold border border-gold/40">
+                  <Crown className="h-3 w-3 text-gold fill-gold" /> VIP
+                </span>
+              )}
+
             </div>
             <div className="flex items-center justify-between gap-3 border-t border-[var(--border-faint)] pt-3">
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold text-ink">{trip.driverName}</p>
-                <p className="truncate text-xs text-ink-500">{trip.vehicle} · {trip.seatsLeft} seat{trip.seatsLeft === 1 ? "" : "s"} left</p>
+                <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                  {trip.plate && (
+                    <span className="inline-flex items-center rounded border border-amber-500 bg-amber-400 px-1.5 py-0.2 font-mono text-[10px] font-black text-black">
+                      {trip.plate}
+                    </span>
+                  )}
+                  <p className="truncate text-xs text-ink-500">{trip.vehicle} · {trip.seatsLeft} seat{trip.seatsLeft === 1 ? "" : "s"} left</p>
+                </div>
+                {trip.townDailyUgx && (
+                  <p className="text-[11px] text-ink-500 mt-1">
+                    Rate: UGX {trip.townDailyUgx.toLocaleString("en-UG")}/day (Town) · UGX {(trip.upcountryDailyUgx ?? Math.round(trip.townDailyUgx * 1.3)).toLocaleString("en-UG")}/day (Upcountry)
+                  </p>
+                )}
               </div>
               <p className="shrink-0 text-right text-sm font-bold text-ink">{ugx(trip.seatPrice)}<span className="block text-xs font-normal text-ink-500">per seat</span></p>
             </div>

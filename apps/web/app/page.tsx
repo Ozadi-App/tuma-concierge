@@ -16,6 +16,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { SiteFooter } from "../components/SiteFooter";
 import { ThemeModeToggle } from "../components/ThemeModeToggle";
+import { StorefrontHostGateway } from "../components/StorefrontHostGateway";
 
 const CUSTOMER_APP_URL = "https://app.peebee.online";
 const RIDER_APP_URL = "https://rider.peebee.online";
@@ -58,6 +59,7 @@ const STEPS = [
 
 export default function Home() {
   return (
+    <StorefrontHostGateway>
     <main className="min-h-screen overflow-hidden bg-cream">
       <section className="hero-shell relative min-h-[92vh] px-5 text-ink sm:px-8">
         <Image
@@ -207,5 +209,6 @@ export default function Home() {
 
       <SiteFooter />
     </main>
+    </StorefrontHostGateway>
   );
 }

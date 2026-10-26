@@ -1,10 +1,7 @@
-import { FoodMarketplace } from "../../components/FoodMarketplace";
+import { FoodSubHome } from "../../components/food/FoodSubHome";
 
-export const metadata = {
-  title: "Juice & Smoothies | Peebee",
-  description: "Freshly pressed juices, smoothies, and wellness shots sealed in spill-proof packaging.",
-};
+export const metadata = { title: "Juices | Peebee" };
 
 export default function JuicesPage() {
-  return <FoodMarketplace mode="directory" category="juices" />;
+  return <FoodSubHome type="juices" />;
 }

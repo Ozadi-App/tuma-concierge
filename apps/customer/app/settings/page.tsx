@@ -5,6 +5,7 @@ import { ChangePasswordPanel } from "../../components/ChangePasswordPanel";
 import { LanguageSettings } from "../../components/LanguageSettings";
 import { MatchingPreference } from "../../components/MatchingPreference";
 import { NotificationSettings } from "../../components/NotificationSettings";
+import { PracticeModeCard } from "../../components/PracticeMode";
 
 export default function SettingsPage() {
   return (
@@ -14,6 +15,7 @@ export default function SettingsPage() {
       <NotificationSettings />
       <LanguageSettings />
       <MatchingPreference />
+      <PracticeModeCard role="customer" />
       <ChangePasswordPanel />
     </div>
   );

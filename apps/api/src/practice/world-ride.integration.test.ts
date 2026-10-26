@@ -77,7 +77,7 @@ test("Ride cluster: demo customers book every kind of ride through the real API"
     const n = async (sql: string) => Number((await db.execute(sql)).rows[0]!.n);
     assert.ok(await n("SELECT COUNT(*) n FROM car_bookings WHERE environment = 'sandbox'") >= 5);
     assert.ok(await n("SELECT COUNT(*) n FROM car_bookings WHERE scheduled_for IS NOT NULL") >= 1);
-    assert.equal(await n("SELECT COUNT(*) n FROM taxipress_bookings WHERE environment = 'sandbox'"), 1);
+    assert.equal(await n("SELECT COUNT(*) n FROM taxipress_bookings WHERE environment = 'sandbox'"), 2);
     assert.equal(await n("SELECT COUNT(*) n FROM carpool_seats"), 1);
     assert.ok(await n("SELECT COUNT(*) n FROM orders WHERE fare_offer IS NOT NULL") >= 1);
     assert.ok(await n("SELECT COUNT(*) n FROM orders WHERE passenger_name IS NOT NULL") >= 1);

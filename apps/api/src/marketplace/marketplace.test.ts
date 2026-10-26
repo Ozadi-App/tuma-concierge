@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createClient, type Client, type InArgs } from "@libsql/client/node";
 import app from "../app.js";
@@ -34,7 +34,7 @@ function bindDatabase(client: Client) {
 test("marketplace routes: public browsing is accessible without authentication", async () => {
   resetSchemaCache();
   const client = createClient({ url: "file::memory:" });
-  const migrations = join(process.cwd(), "src/db/migrations");
+  const migrations = existsSync(join(process.cwd(), "apps/api/src/db/migrations")) ? join(process.cwd(), "apps/api/src/db/migrations") : join(process.cwd(), "src/db/migrations");
   for (const file of readdirSync(migrations).filter((f) => f.endsWith(".sql")).sort()) {
     for (const sql of splitSqlStatements(readFileSync(join(migrations, file), "utf8"))) {
       await client.execute(sql);
@@ -106,7 +106,7 @@ test("marketplace checkout: links orders to delivery system and alerts boda ride
   process.env.JWT_SECRET = "marketplace-tests-only";
   resetSchemaCache();
   const client = createClient({ url: "file::memory:" });
-  const migrations = join(process.cwd(), "src/db/migrations");
+  const migrations = existsSync(join(process.cwd(), "apps/api/src/db/migrations")) ? join(process.cwd(), "apps/api/src/db/migrations") : join(process.cwd(), "src/db/migrations");
   for (const file of readdirSync(migrations).filter((f) => f.endsWith(".sql")).sort()) {
     for (const sql of splitSqlStatements(readFileSync(join(migrations, file), "utf8"))) {
       await client.execute(sql);
@@ -210,7 +210,7 @@ test("marketplace checkout: links orders to delivery system and alerts boda ride
 test("marketplace checkout: a bag from several stores is one delivery, priced exactly and paid once", async () => {
   resetSchemaCache();
   const client = createClient({ url: "file::memory:" });
-  const migrations = join(process.cwd(), "src/db/migrations");
+  const migrations = existsSync(join(process.cwd(), "apps/api/src/db/migrations")) ? join(process.cwd(), "apps/api/src/db/migrations") : join(process.cwd(), "src/db/migrations");
   for (const file of readdirSync(migrations).filter((f) => f.endsWith(".sql")).sort()) {
     for (const sql of splitSqlStatements(readFileSync(join(migrations, file), "utf8"))) await client.execute(sql);
   }
@@ -265,7 +265,7 @@ test("marketplace checkout: a bag from several stores is one delivery, priced ex
 test("marketplace checkout: a long delivery from one store is relayed by matatu", async () => {
   resetSchemaCache();
   const client = createClient({ url: "file::memory:" });
-  const migrations = join(process.cwd(), "src/db/migrations");
+  const migrations = existsSync(join(process.cwd(), "apps/api/src/db/migrations")) ? join(process.cwd(), "apps/api/src/db/migrations") : join(process.cwd(), "src/db/migrations");
   for (const file of readdirSync(migrations).filter((f) => f.endsWith(".sql")).sort()) {
     for (const sql of splitSqlStatements(readFileSync(join(migrations, file), "utf8"))) await client.execute(sql);
   }
@@ -300,3 +300,467 @@ test("marketplace checkout: a long delivery from one store is relayed by matatu"
     client.close();
   }
 });
+
+test("merchant elite tier: upgrades to elite, manages Store 2.0 theme, smart collections, discounts, multi-outlet stock, B2B draft orders, and P&L analytics", async () => {
+  resetSchemaCache();
+  const client = createClient({ url: "file::memory:" });
+  const migrations = existsSync(join(process.cwd(), "apps/api/src/db/migrations")) ? join(process.cwd(), "apps/api/src/db/migrations") : join(process.cwd(), "src/db/migrations");
+  for (const file of readdirSync(migrations).filter((f) => f.endsWith(".sql")).sort()) {
+    for (const sql of splitSqlStatements(readFileSync(join(migrations, file), "utf8"))) await client.execute(sql);
+  }
+  bindDatabase(client);
+  const previousSecret = process.env.JWT_SECRET;
+  process.env.JWT_SECRET = "marketplace-elite-tests-only";
+  try {
+    await client.execute("INSERT INTO users (id, phone, name, password_hash, role, status) VALUES ('merch_elite_1', '+256700999888', 'Kampala Boutique Owner', 'hash', 'customer', 'active')");
+    await client.execute("INSERT INTO merchants (id, legal_name, display_name, business_kind, status, environment) VALUES ('m_elite_1', 'Kampala Boutique Ltd', 'Kampala Boutique', 'business', 'active', 'sandbox')");
+    await client.execute("INSERT INTO merchant_members (merchant_id, user_id, role, status) VALUES ('m_elite_1', 'merch_elite_1', 'owner', 'active')");
+    const catRow = await client.execute("SELECT id FROM merchant_categories LIMIT 1");
+    const catId = String(catRow.rows[0]?.id ?? "cat_retail");
+    await client.execute({
+      sql: "INSERT INTO merchant_outlets (id, merchant_id, category_id, name, code, address, status) VALUES ('out_acacia', 'm_elite_1', ?, 'Acacia Mall Flagship', 'PEEBEE-9988-01', 'Acacia Avenue', 'active'), ('out_arena', 'm_elite_1', ?, 'Arena Mall Branch', 'PEEBEE-9988-02', 'Nsambya', 'active')",
+      args: [catId, catId],
+    });
+
+    const merchantToken = await signToken({ sub: "merch_elite_1", role: "customer" });
+    const req = (path: string, method = "GET", body?: object) =>
+      app.request(`/v1${path}`, {
+        method,
+        headers: {
+          Authorization: `Bearer ${merchantToken}`,
+          ...(body ? { "Content-Type": "application/json" } : {}),
+        },
+        ...(body ? { body: JSON.stringify(body) } : {}),
+      });
+
+    // 1. Tier 1: Merchant Code only (no online store yet)
+    const getStoreRes = await req("/merchants/me/store");
+    assert.equal(getStoreRes.status, 200);
+    const initialStoreData = (await getStoreRes.json()) as any;
+    assert.equal(initialStoreData.store, null);
+    assert.ok(initialStoreData.settings);
+    assert.equal(initialStoreData.settings.eliteEnabled, true);
+
+    // 1b. Tier 2: Launch Marketplace Store (Pro)
+    const createStoreRes = await req("/merchants/me/store", "POST", {
+      name: "Kampala Boutique",
+      category: "stores",
+      sub_category: "fashion",
+      address: "Acacia Mall, Kololo",
+    });
+    assert.equal(createStoreRes.status, 200);
+    const createdStoreData = (await createStoreRes.json()) as any;
+    assert.ok(createdStoreData.store);
+    assert.equal(createdStoreData.store.pro_tier, "pro_live");
+
+    // 2. Tier 3: Upgrade store to Advanced Marketplace (Elite)
+    const upgradeRes = await req("/merchants/me/store/tier", "POST", { tier: "elite", billingCycle: "monthly" });
+    assert.equal(upgradeRes.status, 200);
+    const upgradeData = (await upgradeRes.json()) as any;
+    assert.equal(upgradeData.ok, true);
+    assert.equal(upgradeData.tier, "elite");
+    assert.equal(upgradeData.store.pro_tier, "elite");
+    assert.equal(Number(upgradeData.store.elite_tier), 1);
+
+    // 3. Customize Store 2.0 theme, custom domain, loyalty, and B2B wholesale
+    const updateStoreRes = await req("/merchants/me/store", "PUT", {
+      name: "Kampala Boutique Elite",
+      theme_layout: "editorial",
+      theme_accent: "gold",
+      custom_domain: "shop.kampalaboutique.ug",
+      hero_headline: "New Resort Collection",
+      hero_subheadline: "Same-hour boda delivery across Kampala",
+      hero_cta_text: "Shop Runway",
+      loyalty_enabled: true,
+      loyalty_cashback_percent: 5,
+      b2b_wholesale_enabled: true,
+      b2b_min_order_amount: 500000,
+    });
+    assert.equal(updateStoreRes.status, 200);
+    const updatedStore = ((await updateStoreRes.json()) as any).store;
+    assert.equal(updatedStore.pro_tier, "elite");
+    assert.equal(updatedStore.theme_layout, "editorial");
+    assert.equal(updatedStore.custom_domain, "shop.kampalaboutique.ug");
+    assert.equal(Number(updatedStore.loyalty_enabled), 1);
+    assert.equal(Number(updatedStore.loyalty_cashback_percent), 5);
+    assert.equal(Number(updatedStore.b2b_wholesale_enabled), 1);
+
+    // 4. Create a product with COGS
+    const prodRes = await req("/merchants/me/products", "POST", {
+      title: "Silk Evening Blazer",
+      price: 180000,
+      compare_at_price: 220000,
+      cost_price: 95000,
+      inventory_quantity: 10,
+      category_name: "Fashion",
+      badge: "VIP",
+    });
+    assert.equal(prodRes.status, 200);
+    const prodBody = (await prodRes.json()) as any;
+    assert.ok(prodBody.productId);
+
+    // 5. Create a Smart Collection matching category Fashion
+    const colRes = await req("/merchants/me/collections", "POST", {
+      title: "VIP Fashion Edit",
+      kind: "smart",
+      rule_field: "category",
+      rule_value: "Fashion",
+      pinned: true,
+    });
+    assert.equal(colRes.status, 201);
+    const colListRes = await req("/merchants/me/collections");
+    const colList = (await colListRes.json()) as any;
+    assert.equal(colList.collections.length, 1);
+    assert.equal(colList.collections[0].matching_products_count, 1);
+
+    // 6. Create an Elite Discount Code
+    const discRes = await req("/merchants/me/discounts", "POST", {
+      code: "KAMPALA20",
+      title: "20% Off VIP Launch",
+      kind: "percent",
+      value: 20,
+      min_order_amount: 100000,
+      is_automatic: false,
+    });
+    assert.equal(discRes.status, 201);
+    const discListRes = await req("/merchants/me/discounts");
+    const discList = (await discListRes.json()) as any;
+    assert.equal(discList.discounts.length, 1);
+    assert.equal(discList.discounts[0].code, "KAMPALA20");
+
+    // 7. Update Multi-Outlet Inventory across Acacia & Arena branches and verify total syncs
+    const invUpdateRes = await req("/merchants/me/outlet-inventory", "PUT", {
+      productId: prodBody.productId,
+      outletId: "out_acacia",
+      quantity: 14,
+      lowStockThreshold: 3,
+    });
+    assert.equal(invUpdateRes.status, 200);
+    const invUpdateRes2 = await req("/merchants/me/outlet-inventory", "PUT", {
+      productId: prodBody.productId,
+      outletId: "out_arena",
+      quantity: 8,
+      lowStockThreshold: 3,
+    });
+    assert.equal(invUpdateRes2.status, 200);
+    assert.equal(((await invUpdateRes2.json()) as any).totalQuantity, 22);
+
+    // 8. Create a B2B Wholesale Draft Order
+    const b2bRes = await req("/merchants/me/draft-orders", "POST", {
+      customer_name: "Serena Boutique Partner",
+      customer_phone: "+256772123456",
+      customer_company: "Serena Retail Group",
+      payment_terms: "net_14",
+      discount_amount: 50000,
+      items: [
+        {
+          productId: prodBody.productId,
+          title: "Silk Evening Blazer",
+          unitPrice: 150000,
+          quantity: 5,
+        },
+      ],
+    });
+    assert.equal(b2bRes.status, 201);
+    const draftBody = (await b2bRes.json()) as any;
+    assert.equal(draftBody.total, 700000);
+
+    // 9. Verify Executive P&L Analytics
+    const analyticsRes = await req("/merchants/me/elite-analytics");
+    assert.equal(analyticsRes.status, 200);
+    const analytics = ((await analyticsRes.json()) as any).analytics;
+    assert.equal(analytics.b2bPipelineUgx, 700000);
+    assert.equal(analytics.openDraftOrdersCount, 1);
+    assert.equal(analytics.activeDiscountsCount, 1);
+    assert.equal(analytics.activeCollectionsCount, 1);
+
+    // 10. Dedicated Storefront auto-sync: resolves by custom_domain and returns dual-channel URLs + collections + discounts + outlets
+    const storefrontRes = await app.request("/v1/marketplace/stores/shop.kampalaboutique.ug");
+    assert.equal(storefrontRes.status, 200);
+    const storefrontData = (await storefrontRes.json()) as any;
+    assert.equal(storefrontData.store.pro_tier, "elite");
+    assert.equal(storefrontData.store.theme_layout, "editorial");
+    assert.equal(storefrontData.channels.dedicatedStorefrontUrl, `https://${updatedStore.slug}.peebee.online`);
+    assert.equal(storefrontData.channels.customerAppUrl, `https://app.peebee.online/store/${updatedStore.slug}`);
+    assert.equal(storefrontData.channels.customDomainUrl, "https://shop.kampalaboutique.ug");
+    assert.equal(storefrontData.collections.length, 1);
+    assert.equal(storefrontData.discounts.length, 1);
+    assert.equal(storefrontData.outlets.length, 2);
+
+    // 11. Public B2B Wholesale Inquiry from Dedicated Storefront ([store-name].peebee.online)
+    const publicB2bRes = await app.request("/v1/marketplace/stores/shop.kampalaboutique.ug/b2b-inquiry", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        customer_name: "Acacia Corporate Buyer",
+        customer_phone: "+256701223344",
+        customer_company: "Acacia Hospitality Ltd",
+        payment_terms: "net_30",
+        items: [
+          {
+            productId: prodBody.productId,
+            title: "Silk Evening Blazer",
+            unitPrice: 180000,
+            quantity: 4,
+          },
+        ],
+      }),
+    });
+    assert.equal(publicB2bRes.status, 201);
+    const publicB2bData = (await publicB2bRes.json()) as any;
+    assert.equal(publicB2bData.total, 720000);
+
+    // 12. Checkout Quote auto-syncs Promo Code (KAMPALA20 = 20% off) + VIP Loyalty Cashback (5%)
+    const quoteRes = await req("/marketplace/checkout/quote", "POST", {
+      items: [
+        {
+          productId: prodBody.productId,
+          storeId: String(updatedStore.id),
+          title: "Silk Evening Blazer",
+          price: 180000,
+          quantity: 1,
+        },
+      ],
+      promoCode: "KAMPALA20",
+      salesChannel: "dedicated_storefront",
+    });
+    assert.equal(quoteRes.status, 200);
+    const quoteData = (await quoteRes.json()) as any;
+    assert.equal(quoteData.rawItemsTotal, 180000);
+    assert.equal(quoteData.discountAmount, 36000);
+    assert.equal(quoteData.itemsTotal, 144000);
+    assert.equal(quoteData.appliedDiscount.code, "KAMPALA20");
+    assert.equal(quoteData.loyaltyCashbackUgx, 7200);
+
+    // 13. Branch-to-Branch Stock Transfer (Acacia 14 -> 10, Arena 8 -> 12)
+    const transferRes = await req("/merchants/me/stock-transfers", "POST", {
+      productId: prodBody.productId,
+      fromOutletId: "out_acacia",
+      toOutletId: "out_arena",
+      quantity: 4,
+      note: "Weekend restock for Arena Mall",
+    });
+    assert.equal(transferRes.status, 201);
+    const transferData = (await transferRes.json()) as any;
+    assert.equal(transferData.fromQuantityAfter, 10);
+    assert.equal(transferData.toQuantityAfter, 12);
+
+    const transferListRes = await req("/merchants/me/stock-transfers");
+    assert.equal(transferListRes.status, 200);
+    const transferList = (await transferListRes.json()) as any;
+    assert.equal(transferList.transfers.length, 1);
+    assert.equal(transferList.transfers[0].quantity, 4);
+
+    // 14. Omnichannel Walk-In POS Register Sale (deducts stock + credits 5% VIP loyalty points)
+    const posSale1Res = await req("/merchants/me/pos-sales", "POST", {
+      outlet_id: "out_acacia",
+      customer_phone: "+256777000111",
+      customer_name: "Grace Nakato",
+      payment_method: "peebee_code",
+      items: [
+        {
+          productId: prodBody.productId,
+          title: "Silk Evening Blazer",
+          unitPrice: 180000,
+          quantity: 2,
+        },
+      ],
+    });
+    assert.equal(posSale1Res.status, 201);
+    const posSale1 = (await posSale1Res.json()) as any;
+    assert.equal(posSale1.total, 360000);
+    assert.equal(posSale1.loyaltyEarnedUgx, 18000); // 5% of 360,000
+    assert.equal(posSale1.loyaltyBalanceAfterUgx, 18000);
+    assert.ok(String(posSale1.receiptCode).startsWith("POS-"));
+
+    // Second POS sale for same VIP shopper redeeming 8,000 UGX of loyalty points
+    const posSale2Res = await req("/merchants/me/pos-sales", "POST", {
+      outlet_id: "out_acacia",
+      customer_phone: "+256777000111",
+      customer_name: "Grace Nakato",
+      payment_method: "momo",
+      redeem_loyalty_ugx: 8000,
+      items: [
+        {
+          productId: prodBody.productId,
+          title: "Silk Evening Blazer",
+          unitPrice: 180000,
+          quantity: 1,
+        },
+      ],
+    });
+    assert.equal(posSale2Res.status, 201);
+    const posSale2 = (await posSale2Res.json()) as any;
+    assert.equal(posSale2.loyaltyRedeemedUgx, 8000);
+    assert.equal(posSale2.total, 172000);
+    assert.equal(posSale2.loyaltyEarnedUgx, 8600); // 5% of 172,000
+    assert.equal(posSale2.loyaltyBalanceAfterUgx, 18600); // 18,000 - 8,000 + 8,600
+
+    // 15. Verify VIP Customer CRM & Loyalty Directory
+    const crmRes = await req("/merchants/me/crm-customers");
+    assert.equal(crmRes.status, 200);
+    const crmData = (await crmRes.json()) as any;
+    assert.equal(crmData.summary.totalCustomers, 1);
+    assert.equal(crmData.summary.vipCount, 1);
+    assert.equal(crmData.customers[0].tier, "vip");
+    assert.equal(crmData.customers[0].orders_count, 2);
+    assert.equal(crmData.customers[0].total_spent_ugx, 532000);
+    assert.equal(crmData.customers[0].points_balance_ugx, 18600);
+
+    // 16. Supplier Directory (Phase 4)
+    const supRes = await req("/merchants/me/suppliers", "POST", {
+      name: "Mukwano Wholesalers Ltd",
+      contact_person: "Patrick Mukwano",
+      phone: "+256772123456",
+      email: "orders@mukwano.ug",
+      address: "Plot 14 6th Street Industrial Area",
+    });
+    assert.equal(supRes.status, 200);
+    const supData = (await supRes.json()) as any;
+    assert.ok(supData.id);
+
+    const supListRes = await req("/merchants/me/suppliers");
+    assert.equal(supListRes.status, 200);
+    const supList = (await supListRes.json()) as any;
+    assert.equal(supList.suppliers.length, 1);
+    assert.equal(supList.suppliers[0].name, "Mukwano Wholesalers Ltd");
+
+    // 17. Draft Purchase Order & 1-Tap Stock Receiving (Phase 4)
+    const poCreateRes = await req("/merchants/me/purchase-orders", "POST", {
+      supplier_id: supData.id,
+      outlet_id: "out_acacia",
+      items: [
+        {
+          productId: prodBody.productId,
+          title: "Silk Evening Blazer",
+          quantity: 25,
+          unitCost: 110000,
+        },
+      ],
+      notes: "Urgent restocking for acacia mall outlet",
+    });
+    assert.equal(poCreateRes.status, 200);
+    const poCreate = (await poCreateRes.json()) as any;
+    assert.equal(poCreate.totalCost, 2750000);
+    assert.ok(String(poCreate.poNumber).startsWith("PO-"));
+
+    // 1-Tap Stock Receiving
+    const poReceiveRes = await req(`/merchants/me/purchase-orders/${poCreate.id}/receive`, "POST", {});
+    assert.equal(poReceiveRes.status, 200);
+    const poReceive = (await poReceiveRes.json()) as any;
+    assert.equal(poReceive.status, "received");
+    assert.equal(poReceive.itemsReceivedCount, 1);
+
+    // Verify outlet inventory was credited with 25 new units
+    const invAfterPoRes = await req("/merchants/me/outlet-inventory?outlet_id=out_acacia");
+    const invAfterPo = (await invAfterPoRes.json()) as any;
+    const acaciaProdInv = invAfterPo.inventory.find((r: any) => r.product_id === prodBody.productId);
+    // Was 12 after transfer - 3 via POS = 9, now + 25 = 34
+    assert.equal(acaciaProdInv.quantity, 32);
+
+    // 18. Product Bundles & Kits (Phase 4)
+    const bundleCreateRes = await req("/merchants/me/bundles", "POST", {
+      title: "VIP Executive Hamper",
+      description: "Silk blazer plus luxury accessories combo",
+      price: 220000,
+      compare_at_price: 260000,
+      items: [
+        {
+          productId: prodBody.productId,
+          title: "Silk Evening Blazer",
+          quantity: 1,
+        },
+      ],
+    });
+    assert.equal(bundleCreateRes.status, 200);
+    const bundleCreate = (await bundleCreateRes.json()) as any;
+    assert.ok(bundleCreate.id);
+
+    const bundleListRes = await req("/merchants/me/bundles");
+    assert.equal(bundleListRes.status, 200);
+    const bundleList = (await bundleListRes.json()) as any;
+    assert.equal(bundleList.bundles.length, 1);
+    assert.equal(bundleList.bundles[0].title, "VIP Executive Hamper");
+    assert.equal(bundleList.bundles[0].price, 220000);
+
+    // Public store returns bundles
+    const publicStoreRes = await req(`/marketplace/stores/${upgradeData.store.id}`);
+    assert.equal(publicStoreRes.status, 200);
+    const publicStoreData = (await publicStoreRes.json()) as any;
+    assert.equal(publicStoreData.bundles.length, 1);
+    assert.equal(publicStoreData.bundles[0].title, "VIP Executive Hamper");
+
+    // 19. Customer Win-Back Campaigns (Phase 4)
+    const winbackRes = await req("/merchants/me/winback-campaigns", "POST", {
+      customer_phone: "+256777000111",
+      customer_name: "Grace Nakato",
+      discount_code: "WELCOMEBACK20",
+      channel: "whatsapp",
+      message: "Hello Grace! We miss you at Elite Boutique. Enjoy 20% off your next order today!",
+    });
+    assert.equal(winbackRes.status, 200);
+    const winbackData = (await winbackRes.json()) as any;
+    assert.ok(winbackData.campaignId);
+    assert.ok(winbackData.whatsappUrl.includes("wa.me/256777000111"));
+
+    const winbackListRes = await req("/merchants/me/winback-campaigns");
+    assert.equal(winbackListRes.status, 200);
+    const winbackList = (await winbackListRes.json()) as any;
+    assert.equal(winbackList.campaigns.length, 1);
+    assert.equal(winbackList.campaigns[0].customer_phone, "256777000111");
+
+    // 20. Store 2.0 Visual Section Page Builder
+    const sectionsRes = await req("/merchants/me/storefront-sections");
+    assert.equal(sectionsRes.status, 200);
+    const sectionsData = (await sectionsRes.json()) as any;
+    assert.ok(Array.isArray(sectionsData.sections));
+    assert.ok(sectionsData.sections.length >= 7);
+
+    // Reorder and update sections
+    const reorderedSections = [
+      { id: "sec_hero", type: "hero", title: "Kampala Flagship Store", enabled: true, order: 1 },
+      { id: "sec_bundles", type: "bundles", title: "Luxury Hamper Packages", enabled: true, order: 2 },
+      { id: "sec_reviews", type: "testimonials", title: "VIP Client Reviews", enabled: false, order: 3 },
+    ];
+    const updateSecRes = await req("/merchants/me/storefront-sections", "PUT", {
+      sections: reorderedSections,
+    });
+    assert.equal(updateSecRes.status, 200);
+    const updateSec = (await updateSecRes.json()) as any;
+    assert.equal(updateSec.ok, true);
+    assert.equal(updateSec.sections.length, 3);
+    assert.equal(updateSec.sections[0].id, "sec_hero");
+
+    // Public store returns updated sections
+    const publicStoreWithSecRes = await req(`/marketplace/stores/${upgradeData.store.id}`);
+    assert.equal(publicStoreWithSecRes.status, 200);
+    const publicStoreWithSec = (await publicStoreWithSecRes.json()) as any;
+    assert.equal(publicStoreWithSec.sections.length, 3);
+    assert.equal(publicStoreWithSec.sections[0].title, "Kampala Flagship Store");
+
+    // 21. Automated SMS Receipts & Order Alerts
+    const sendSmsRes = await req("/merchants/me/send-sms", "POST", {
+      recipient_phone: "+256701445889",
+      recipient_name: "Dr. Julian M.",
+      message_type: "pos_receipt",
+      body: "Thank you for shopping at Elite Boutique! Receipt code: #POS-9901. Total: UGX 220,000.",
+    });
+    assert.equal(sendSmsRes.status, 200);
+    const sendSmsData = (await sendSmsRes.json()) as any;
+    assert.equal(sendSmsData.ok, true);
+    assert.equal(sendSmsData.status, "delivered");
+    assert.ok(sendSmsData.logId);
+    assert.ok(sendSmsData.whatsappShareUrl.includes("wa.me/256701445889"));
+
+    const smsLogsRes = await req("/merchants/me/sms-logs");
+    assert.equal(smsLogsRes.status, 200);
+    const smsLogsData = (await smsLogsRes.json()) as any;
+    assert.equal(smsLogsData.logs.length, 1);
+    assert.equal(smsLogsData.logs[0].recipient_phone, "+256701445889");
+    assert.equal(smsLogsData.logs[0].message_type, "pos_receipt");
+  } finally {
+    process.env.JWT_SECRET = previousSecret;
+    client.close();
+  }
+});
+

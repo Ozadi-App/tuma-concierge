@@ -7,7 +7,9 @@ import { db } from "../db/client.js";
 import { newId } from "../lib/ids.js";
 import { bookingFor, bookSeats, manifestFor, myBookings, releaseStaleBookings } from "./bookings.js";
 import { activeQueue, applyTaxi, arrive, driverView, goOnRoad, joinLine, leaveLine, lineOf, listTaxis, onRoadOf, removeFromLine, startBoarding, TaxipressError, updateLocation, updateTaxi, walkUp } from "./queue.js";
-import { getTaxipressSettings, setTaxipressSettings } from "./settings.js";
+import { decorateLine, detailsColumnsReady, detailsReady, stopsFor, taxiProfile } from "./details.js";
+import { getR2Bucket, uploadResponseHeaders } from "../storage/r2.js";
+import { getTaxipressSettings, LUGGAGE_TYPES, setTaxipressSettings } from "./settings.js";
 import { cancelBooking, markNoShow } from "./cancellation.js";
 import { confirmBoarding, settlementReport } from "./settlement.js";
 import { getTaxipressRoute, listActiveTaxipressRoutes, listTaxipressRoutes, taxipressReady } from "./service.js";
@@ -34,15 +36,47 @@ function fail(c: Context, e: unknown) {
  * What the app needs to decide whether to show Taxipress. Always answers: `enabled` is true only
  * when staff switched it on, the migration is applied and at least one route is running.
  */
+/** A driver's face photo, for passengers choosing a taxi. Only while that taxi is boarding or in the line. */
+taxipressRoutes.get("/taxipress/queue/:queueId/driver-photo", requireAuth, async (c) => {
+  const row = (await db.execute({
+    sql: `SELECT COALESCE(rd.profile_photo_key, u.profile_photo_key) AS k FROM taxipress_queue q
+          LEFT JOIN riders rd ON rd.user_id = q.driver_id LEFT JOIN users u ON u.id = q.driver_id
+          WHERE q.id = ? AND q.status IN ('boarding', 'in_line')`,
+    args: [c.req.param("queueId") ?? ""],
+  })).rows[0] as Record<string, unknown> | undefined;
+  const key = row?.k ? String(row.k) : null;
+  if (!key) return c.json({ error: "not_found" }, 404);
+  const object = await getR2Bucket().get(key);
+  if (!object) return c.json({ error: "not_found" }, 404);
+  return new Response(object.body, {
+    headers: { ...uploadResponseHeaders(object.httpMetadata?.contentType, "image/jpeg"), "Cache-Control": "private, max-age=600" },
+  });
+});
+
 taxipressRoutes.get("/taxipress/config", async (c) => {
   const settings = await getTaxipressSettings();
   const routes = settings.enabled && (await taxipressReady()) ? await listActiveTaxipressRoutes() : [];
+  const stops = settings.showStops ? await Promise.all(routes.map((r) => stopsFor(r.relayRouteId, r.direction))) : routes.map(() => []);
+  const ready = await detailsReady();
+  const columns = await detailsColumnsReady();
   return c.json({
     enabled: routes.length > 0,
-    routes: routes.map((r) => ({
+    routes: routes.map((r, i) => ({
       id: r.id, directionLabel: r.directionLabel, routeCode: r.routeCode, fromName: r.fromName, toName: r.toName,
-      farePerSeat: r.farePerSeat,
+      farePerSeat: r.farePerSeat, relayRouteId: r.relayRouteId,
+      reverseId: (routes.find((o) => o.relayRouteId === r.relayRouteId && o.direction !== r.direction)
+        ?? routes.find((o) => o.id !== r.id && o.fromName.trim().toLowerCase() === r.toName.trim().toLowerCase() && o.toName.trim().toLowerCase() === r.fromName.trim().toLowerCase()))?.id ?? null,
+      stops: stops[i],
     })),
+    detailsReady: ready,
+    detailsStore: columns ? "columns" : "fallback",
+    maxLapChildren: settings.maxLapChildren,
+    childSeatFarePercent: settings.childSeatFarePercent,
+    luggageEnabled: settings.luggageEnabled,
+    luggagePrices: settings.luggagePrices,
+    assistanceEnabled: settings.assistanceEnabled,
+    languageEnabled: settings.languageEnabled,
+    bookForOthersEnabled: settings.bookForOthersEnabled,
     cashEnabled: settings.cashEnabled,
     seatChoiceFeeUgx: settings.seatChoiceFeeUgx,
     returnDiscountPercent: settings.returnDiscountPercent,
@@ -61,11 +95,24 @@ taxipressRoutes.get("/taxipress/config", async (c) => {
 taxipressRoutes.get("/taxipress/routes/:id/queue", async (c) => {
   const id = c.req.param("id") as string;
   await releaseStaleBookings();
-  const [line, onRoad, route] = await Promise.all([lineOf(id), onRoadOf(id), getTaxipressRoute(id)]);
+  const [raw, onRoad, route, settings] = await Promise.all([lineOf(id), onRoadOf(id), getTaxipressRoute(id), getTaxipressSettings()]);
+  const line = await decorateLine(id, raw, settings);
   return c.json({
     line, onRoad,
     route: route ? { id: route.id, fromName: route.fromName, toName: route.toName, directionLabel: route.directionLabel, farePerSeat: route.farePerSeat } : null,
   });
+});
+
+/** A taxi's profile, from real records only: what has no data yet is null and the app hides it. */
+taxipressRoutes.get("/taxipress/taxis/:queueId/profile", async (c) => {
+  const queueId = c.req.param("queueId") as string;
+  const row = (await db.execute({ sql: "SELECT taxipress_route_id FROM taxipress_queue WHERE id = ?", args: [queueId] }).catch(() => ({ rows: [] }))).rows[0] as Row | undefined;
+  if (!row) return c.json({ error: "not_found" }, 404);
+  const routeId = String(row.taxipress_route_id);
+  const [route, settings] = await Promise.all([getTaxipressRoute(routeId), getTaxipressSettings()]);
+  const entry = (await decorateLine(routeId, await lineOf(routeId), settings)).find((e) => e.id === queueId);
+  if (!route || !entry) return c.json({ error: "not_found", message: "That taxi has left the line." }, 404);
+  return c.json({ profile: await taxiProfile(entry, route, settings.showStops) });
 });
 
 /** The driver's taxi, their place in the line and what they can do next. */
@@ -150,16 +197,27 @@ taxipressRoutes.post("/taxipress/driver/location", async (c) => {
 // Passenger bookings
 // ---------------------------------------------------------------------------
 
+const phone = z.string().trim().min(7).max(20).regex(/^[+0-9 ()-]+$/);
 const bookSchema = z.object({
   queueId: z.string().min(1),
-  seats: z.number().int().min(1).max(30),
-  payment: z.enum(["app", "cash"]),
-});
+  seats: z.number().int().min(1).max(30).optional(),
+  /** Optional since v5: cash is chosen on the checkout screen. */
+  payment: z.enum(["app", "cash"]).optional(),
+  adults: z.number().int().min(1).max(18).optional(),
+  children: z.number().int().min(0).max(17).optional(),
+  luggage: z.record(z.enum(LUGGAGE_TYPES as [string, ...string[]]), z.number().int().min(0).max(10)).optional(),
+  assistance: z.enum(["none", "boarding", "priority", "mobility"]).nullable().optional(),
+  language: z.enum(["en", "lg", "sw"]).nullable().optional(),
+  forSomeoneElse: z.boolean().optional(),
+  travellerName: z.string().trim().min(2).max(80).nullable().optional(),
+  travellerPhone: phone.nullable().optional(),
+  emergencyPhone: phone.nullable().optional(),
+}).refine((b) => b.seats != null || b.adults != null);
 
 taxipressRoutes.post("/taxipress/bookings", async (c) => {
   const parsed = bookSchema.safeParse(await c.req.json().catch(() => ({})));
   if (!parsed.success) return c.json({ error: "invalid_body", message: "Choose a taxi, the seats and how you will pay." }, 400);
-  return bookSeats(c, parsed.data);
+  return bookSeats(c, parsed.data as Parameters<typeof bookSeats>[1]);
 });
 
 taxipressRoutes.get("/taxipress/bookings/mine", async (c) => c.json({ bookings: await myBookings(c.get("user").sub) }));
@@ -211,6 +269,15 @@ const settingsSchema = z.object({
   noShowMinutes: z.number().int().min(0).max(240),
   noShowFeePercent: z.number().min(0).max(100),
   rebookOnRemoval: z.boolean(),
+  bookableTaxis: z.number().int().min(1).max(20),
+  maxLapChildren: z.number().int().min(0).max(10),
+  childSeatFarePercent: z.number().min(0).max(100),
+  luggageEnabled: z.boolean(),
+  luggagePrices: z.object(Object.fromEntries(LUGGAGE_TYPES.map((t) => [t, z.number().int().min(0).max(1_000_000).nullable()])) as Record<(typeof LUGGAGE_TYPES)[number], z.ZodNullable<z.ZodNumber>>),
+  assistanceEnabled: z.boolean(),
+  languageEnabled: z.boolean(),
+  bookForOthersEnabled: z.boolean(),
+  showStops: z.boolean(),
 }).partial();
 
 taxipressRoutes.put("/admin/taxipress/settings", requirePermission("settings.manage"), async (c) => {

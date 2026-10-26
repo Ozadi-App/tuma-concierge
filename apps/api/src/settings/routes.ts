@@ -168,7 +168,6 @@ async function fullSettings() {
     voiceNoteMaxSeconds,
     platformEnvironment,
     practiceModeEnabled: practiceModeEnabled === "1",
-    practiceAutoInSandbox: (await getSetting("practice_auto_in_sandbox")) !== "0",
     riderMinimumBalanceEnabled: riderReserve.enabled,
     riderMinimumBalanceAmount: riderReserve.amount,
     callsActiveProvider,
@@ -485,6 +484,34 @@ const updateSchema = z.object({
       liveMaxDurationMins: z.number().int().min(15).max(1440),
       deliveryBaseFeeUgx: z.number().int().min(0).max(1_000_000),
       cartExpiryHours: z.number().int().min(1).max(720),
+      eliteEnabled: z.boolean(),
+      elitePriceUgx: z.number().int().min(0).max(50_000_000),
+      eliteCommissionPercent: z.number().min(0).max(100),
+      proMaxProducts: z.number().int().min(1).max(100_000),
+      eliteMaxProducts: z.number().int().min(10).max(500_000),
+      proMaxCollections: z.number().int().min(1).max(1000),
+      eliteMaxCollections: z.number().int().min(1).max(5000),
+      proMaxDiscounts: z.number().int().min(0).max(1000),
+      eliteMaxDiscounts: z.number().int().min(1).max(10_000),
+      eliteB2bEnabled: z.boolean(),
+      eliteMultiOutletInventoryEnabled: z.boolean(),
+      eliteCustomDomainEnabled: z.boolean(),
+      eliteLoyaltyEnabled: z.boolean(),
+      eliteMaxLoyaltyCashbackPercent: z.number().min(0).max(50),
+      elitePosEnabled: z.boolean(),
+      eliteStockTransfersEnabled: z.boolean(),
+      eliteCrmEnabled: z.boolean(),
+      elitePurchaseOrdersEnabled: z.boolean(),
+      eliteBundlesEnabled: z.boolean(),
+      eliteWinbackEnabled: z.boolean(),
+    eliteStorefrontSectionsEnabled: z.boolean(),
+    eliteSmsAlertsEnabled: z.boolean(),
+    eliteSmsCostPerMessageUgx: z.number().min(0).max(1000),
+    smsProvider: z.enum(["simulator", "africas_talking", "twilio"]),
+    eliteDigitalProductsEnabled: z.boolean(),
+    eliteLmsSyncEnabled: z.boolean(),
+    eliteMaxCourses: z.number().int().min(1).max(1000),
+    eliteMaxDigitalProducts: z.number().int().min(1).max(5000),
     })
     .partial()
     .optional(),
@@ -496,7 +523,6 @@ const updateSchema = z.object({
   paymentsActiveProviders: z.array(z.enum(["yo", "flutterwave", "mtn", "airtel"])).min(1).max(4).optional(),
   paymentsDemoMode: z.boolean().optional(),
   practiceModeEnabled: z.boolean().optional(),
-  practiceAutoInSandbox: z.boolean().optional(),
   merchantPaymentsEnabled: z.boolean().optional(),
   walletUnverifiedCap: z.number().int().positive().max(100_000_000).optional(),
   walletVerifiedCap: z.number().int().positive().max(100_000_000).optional(),
@@ -674,9 +700,6 @@ settingsRoutes.put(
     if (parsed.data.practiceModeEnabled != null) {
       await setSetting("user_practice_mode_enabled", parsed.data.practiceModeEnabled ? "1" : "0");
     }
-    if (parsed.data.practiceAutoInSandbox != null) {
-      await setSetting("practice_auto_in_sandbox", parsed.data.practiceAutoInSandbox ? "1" : "0");
-    }
     if (parsed.data.merchantPaymentsEnabled != null) {
       if (parsed.data.merchantPaymentsEnabled && before.platformEnvironment === "live") {
         const approved = await getSetting("merchant_live_custody_approved");
@@ -779,12 +802,11 @@ const modulesUpdateSchema = z.object({
   live: z.record(z.string(), z.boolean()).optional(),
   practice: z.record(z.string(), z.boolean()).optional(),
   practiceModeEnabled: z.boolean().optional(),
-  practiceAutoInSandbox: z.boolean().optional(),
 });
 
 async function modulesPayload() {
-  const [modules, practiceModeEnabled, auto] = await Promise.all([getModuleSettings(), getSetting("user_practice_mode_enabled"), getSetting("practice_auto_in_sandbox")]);
-  return { modules, practiceModeEnabled: practiceModeEnabled === "1", practiceAutoInSandbox: auto !== "0" };
+  const [modules, practiceModeEnabled] = await Promise.all([getModuleSettings(), getSetting("user_practice_mode_enabled")]);
+  return { modules, practiceModeEnabled: practiceModeEnabled === "1" };
 }
 
 /** Every module's Live and Practice switch, and the master Practice switches. */
@@ -803,7 +825,6 @@ settingsRoutes.put("/admin/modules", requireAuth, requireRole("admin"), requireP
   const before = await modulesPayload();
   await setModuleFlags(parsed.data);
   if (parsed.data.practiceModeEnabled != null) await setSetting("user_practice_mode_enabled", parsed.data.practiceModeEnabled ? "1" : "0");
-  if (parsed.data.practiceAutoInSandbox != null) await setSetting("practice_auto_in_sandbox", parsed.data.practiceAutoInSandbox ? "1" : "0");
   const after = await modulesPayload();
   const changed: string[] = [];
   for (const world of ["live", "practice"] as const) {
@@ -812,13 +833,12 @@ settingsRoutes.put("/admin/modules", requireAuth, requireRole("admin"), requireP
     }
   }
   if (before.practiceModeEnabled !== after.practiceModeEnabled) changed.push(`practice mode ${after.practiceModeEnabled ? "on" : "off"}`);
-  if (before.practiceAutoInSandbox !== after.practiceAutoInSandbox) changed.push(`practice auto-open in sandbox ${after.practiceAutoInSandbox ? "on" : "off"}`);
   if (changed.length) {
     await logActivity({
       actor: user, action: "modules.update", entityType: "modules",
       summary: `Switched: ${changed.join(", ")}`,
-      before: { flags: before.modules.flags, practiceModeEnabled: before.practiceModeEnabled, practiceAutoInSandbox: before.practiceAutoInSandbox },
-      after: { flags: after.modules.flags, practiceModeEnabled: after.practiceModeEnabled, practiceAutoInSandbox: after.practiceAutoInSandbox },
+      before: { flags: before.modules.flags, practiceModeEnabled: before.practiceModeEnabled },
+      after: { flags: after.modules.flags, practiceModeEnabled: after.practiceModeEnabled },
       revertible: false, ip: clientIp(c),
     });
   }
@@ -1291,6 +1311,26 @@ const patchMarketplaceSettingsSchema = z
     liveMaxDurationMins: z.number().int().min(15).max(1440),
     deliveryBaseFeeUgx: z.number().int().min(0).max(1_000_000),
     cartExpiryHours: z.number().int().min(1).max(720),
+    eliteEnabled: z.boolean(),
+    elitePriceUgx: z.number().int().min(0).max(50_000_000),
+    eliteCommissionPercent: z.number().min(0).max(100),
+    proMaxProducts: z.number().int().min(1).max(100_000),
+    eliteMaxProducts: z.number().int().min(10).max(500_000),
+    proMaxCollections: z.number().int().min(1).max(1000),
+    eliteMaxCollections: z.number().int().min(1).max(5000),
+    proMaxDiscounts: z.number().int().min(0).max(1000),
+    eliteMaxDiscounts: z.number().int().min(1).max(10_000),
+    eliteB2bEnabled: z.boolean(),
+    eliteMultiOutletInventoryEnabled: z.boolean(),
+    eliteCustomDomainEnabled: z.boolean(),
+    eliteLoyaltyEnabled: z.boolean(),
+    eliteMaxLoyaltyCashbackPercent: z.number().min(0).max(50),
+    elitePosEnabled: z.boolean(),
+    eliteStockTransfersEnabled: z.boolean(),
+    eliteCrmEnabled: z.boolean(),
+    elitePurchaseOrdersEnabled: z.boolean(),
+    eliteBundlesEnabled: z.boolean(),
+    eliteWinbackEnabled: z.boolean(),
   })
   .partial();
 

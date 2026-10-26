@@ -156,10 +156,14 @@ export type LineEntry = {
   boardingAt: string | null;
   departedAt: string | null;
   driverName: string | null;
+  /** Served by GET /v1/taxipress/queue/:id/driver-photo while the taxi is in the line. */
+  driverPhotoUrl?: string | null;
 };
 
-const ENTRY_SQL = `SELECT q.*, x.plate, x.seat_layout, u.name AS driver_name
-  FROM taxipress_queue q JOIN taxipress_taxis x ON x.id = q.taxi_id LEFT JOIN users u ON u.id = q.driver_id`;
+const ENTRY_SQL = `SELECT q.*, x.plate, x.seat_layout, u.name AS driver_name,
+  COALESCE(rd.profile_photo_key, u.profile_photo_key) AS driver_photo_key
+  FROM taxipress_queue q JOIN taxipress_taxis x ON x.id = q.taxi_id LEFT JOIN users u ON u.id = q.driver_id
+  LEFT JOIN riders rd ON rd.user_id = q.driver_id`;
 
 function toEntry(row: Row, position: number | null): LineEntry {
   const total = Number(row.seats_total);
@@ -182,6 +186,7 @@ function toEntry(row: Row, position: number | null): LineEntry {
     boardingAt: (row.boarding_at as string | null) ?? null,
     departedAt: (row.departed_at as string | null) ?? null,
     driverName: (row.driver_name as string | null) ?? null,
+    driverPhotoUrl: row.driver_photo_key ? `/v1/taxipress/queue/${String(row.id)}/driver-photo` : null,
   };
 }
 

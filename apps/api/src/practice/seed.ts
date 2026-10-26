@@ -5,6 +5,7 @@ import { runSeed } from "./batch.js";
 import { merchantBusinessStatements } from "../merchants/service.js";
 import { PRACTICE_CUSTOMERS } from "./personas.js";
 import { seedBuyExtras } from "./seed-buy.js";
+import { seedElite } from "./seed-elite.js";
 import { seedHive } from "./seed-hive.js";
 import { seedLearn } from "./seed-learn.js";
 import { seedMoney } from "./seed-money.js";
@@ -143,6 +144,7 @@ export async function seedPracticeWorld(): Promise<PracticeCounts> {
   await seedLearn();
   await seedHive();
   await seedMoney();
+  await seedElite();
   return practiceCounts();
 }
 

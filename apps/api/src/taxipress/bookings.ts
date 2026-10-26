@@ -8,6 +8,7 @@ import { createOrderFromInput } from "../orders/routes.js";
 import { directionLabel } from "../relay/direction.js";
 import { cancelTermsFor, collectedFor } from "./cancel-terms.js";
 import { lineOf, queueReady } from "./queue.js";
+import { decorateLine, loadDetails, luggageCount, priceBooking, saveDetails, type BookingDetails, type BookingDetailsInput } from "./details.js";
 import { getTaxipressSettings } from "./settings.js";
 
 type Row = Record<string, unknown>;
@@ -43,13 +44,15 @@ export type TaxipressBooking = {
   outcome: { kind: "cancelled" | "no_show" | "taxi_removed"; refunded: number; fee: number } | null;
   /** The receipt for a seat that boarded and was settled; its QR opens the verification page. */
   receiptRef: string | null;
+  /** Who travels and what they bring. Null until migration 0128 is applied. */
+  details: BookingDetails | null;
 };
 
 // rr.* brings the relay route's stage columns (and its stage codes once migration 0107 adds them), so the
 // booking's own columns that share a name with one of its columns (id, status, created_at) are aliased.
 const SQL = `SELECT rr.*, b.id AS bk_id, b.order_id AS bk_order_id, b.queue_id, b.taxipress_route_id, b.passenger_id, b.driver_id, b.seats,
     b.fare_per_seat, b.amount, b.payment_method, b.status AS bk_status, b.ticket_code, b.created_at AS bk_created_at,
-    o.stage AS order_stage,
+    o.stage AS order_stage, o.payment_rail AS order_rail,
     EXISTS (SELECT 1 FROM payments p WHERE p.order_id = b.order_id AND p.type = 'collection' AND p.status = 'successful') AS app_paid,
     q.status AS queue_status, q.seats_total, q.seats_booked, q.walk_up_seats, x.plate, x.seat_layout, u.name AS driver_name, u.phone AS driver_phone,
     t.direction, t.id AS tp_id
@@ -64,7 +67,8 @@ const SQL = `SELECT rr.*, b.id AS bk_id, b.order_id AS bk_order_id, b.queue_id, 
 async function toBooking(row: Row, forPassenger: boolean): Promise<TaxipressBooking> {
   const settings = await getTaxipressSettings();
   const cancelled = row.bk_status === "cancelled" || row.order_stage === "Cancelled";
-  const cash = row.payment_method === "cash";
+  // Cash is chosen on the checkout screen: the order moves to the cash ("float") rail.
+  const cash = row.payment_method === "cash" || row.order_rail === "float";
   const funded = row.order_stage !== "Match" && row.order_stage !== "Create" && !cancelled;
   const paymentStatus: TaxipressPaymentStatus = cancelled ? "cancelled" : cash ? (funded ? "pay_driver" : "unpaid") : Number(row.app_paid) === 1 || funded ? "paid" : "unpaid";
   const aToB = row.direction === "a_to_b";
@@ -88,6 +92,8 @@ async function toBooking(row: Row, forPassenger: boolean): Promise<TaxipressBook
     const r = (await db.execute({ sql: "SELECT kind, refunded, fee FROM taxipress_refunds WHERE booking_id = ?", args: [String(row.bk_id)] })).rows[0] as Row | undefined;
     if (r) outcome = { kind: r.kind as NonNullable<TaxipressBooking["outcome"]>["kind"], refunded: Number(r.refunded), fee: Number(r.fee) };
   }
+  let details: BookingDetails | null = null;
+  details = await loadDetails(String(row.bk_id));
   const createdMs = Date.parse(`${String(row.bk_created_at).replace(" ", "T")}Z`);
   return {
     id: String(row.bk_id),
@@ -120,6 +126,7 @@ async function toBooking(row: Row, forPassenger: boolean): Promise<TaxipressBook
     cancel,
     outcome,
     receiptRef,
+    details,
   };
 }
 
@@ -146,6 +153,10 @@ export type ManifestPassenger = {
   paymentMethod: "app" | "cash";
   paymentStatus: TaxipressPaymentStatus;
   status: TaxipressBookingStatus;
+  adults: number;
+  children: number;
+  bags: number;
+  travellerName: string | null;
 };
 
 /** The passengers booked on a taxi, for its driver. */
@@ -156,7 +167,13 @@ export async function manifestFor(queueId: string): Promise<ManifestPassenger[]>
       WHERE b.queue_id = ? AND b.status != 'cancelled' ORDER BY b.created_at`, args: [queueId] })).rows as Row[];
   return Promise.all(rows.map(async (row) => {
     const b = await toBooking(row, false);
-    return { id: b.id, passengerName: (row.passenger_name as string | null) ?? null, passengerPhone: (row.passenger_phone as string | null) ?? null, seats: b.seats, amount: b.amount, paymentMethod: b.paymentMethod, paymentStatus: b.paymentStatus, status: b.status };
+    const d = b.details;
+    return {
+      id: b.id, passengerName: (row.passenger_name as string | null) ?? null, passengerPhone: (d?.forSomeoneElse && d.travellerPhone) || ((row.passenger_phone as string | null) ?? null),
+      seats: b.seats, amount: b.amount, paymentMethod: b.paymentMethod, paymentStatus: b.paymentStatus, status: b.status,
+      adults: d?.adults ?? b.seats, children: d?.children ?? 0, bags: d ? luggageCount(JSON.stringify(d.luggage)) : 0,
+      travellerName: d?.forSomeoneElse ? d.travellerName : null,
+    };
   }));
 }
 
@@ -167,6 +184,12 @@ export async function manifestFor(queueId: string): Promise<ManifestPassenger[]>
 export async function releaseStaleBookings(): Promise<number> {
   if (!(await bookingsReady())) return 0;
   const { payWithinMinutes } = await getTaxipressSettings();
+  // Cash picked on the checkout screen moves the order to the cash rail; the booking follows so boarding settles it as cash.
+  await db.execute({
+    sql: `UPDATE taxipress_bookings SET payment_method = 'cash', updated_at = datetime('now')
+          WHERE status = 'booked' AND payment_method = 'app' AND order_id IN (SELECT id FROM orders WHERE payment_rail = 'float')`,
+    args: [],
+  });
   // Not paid (or, for cash, not confirmed) in time: cancel the order. Nothing was collected.
   const unpaid = await db.execute({
     sql: `SELECT b.order_id FROM taxipress_bookings b JOIN orders o ON o.id = b.order_id
@@ -202,13 +225,29 @@ function newTicketCode(): string {
 }
 
 /** Books seats on a taxi in the line. The passenger pays next, on the order's pay screen (or hands cash to the driver). */
-export async function bookSeats(c: Context, input: { queueId: string; seats: number; payment: "app" | "cash" }) {
+export type BookInput = { queueId: string; seats?: number; payment?: "app" | "cash" } & Partial<BookingDetailsInput>;
+
+export async function bookSeats(c: Context, input: BookInput) {
   const user = c.get("user");
   if (!(await bookingsReady())) return unavailable(c);
   const settings = await getTaxipressSettings();
   if (!settings.enabled) return c.json({ error: "taxipress_off", message: "Taxipress isn't running right now." }, 409);
-  if (input.seats > settings.maxSeatsPerBooking) return c.json({ error: "too_many_seats", message: `You can book up to ${settings.maxSeatsPerBooking} seats at a time.` }, 400);
-  if (input.payment === "cash" && !settings.cashEnabled) return c.json({ error: "cash_off", message: "Cash isn't accepted right now. Pay in the app." }, 409);
+  // Passengers (v5): adults plus children; children beyond the lap allowance take a seat. Older apps send seats only.
+  const withDetails = input.adults != null;
+  const adults = input.adults ?? input.seats ?? 1;
+  const children = withDetails ? Math.max(0, input.children ?? 0) : 0;
+  const luggage = withDetails && settings.luggageEnabled ? (input.luggage ?? {}) : {};
+  const payment = input.payment ?? "app";
+  if (withDetails && input.forSomeoneElse && !settings.bookForOthersEnabled) return c.json({ error: "for_others_off", message: "Booking for someone else isn't available right now." }, 409);
+  if (withDetails && input.forSomeoneElse && (!input.travellerName || !input.travellerPhone || !input.emergencyPhone)) {
+    return c.json({ error: "traveller_missing", message: "Add the traveller's name, phone and an emergency contact." }, 400);
+  }
+  const preview = priceBooking({ adults, children, luggage }, 0, settings);
+  if (preview.error) return c.json({ error: "invalid_passengers", message: preview.error }, 400);
+  const seatCount = preview.seats;
+  if (seatCount + (children - preview.childSeats) > 18) return c.json({ error: "too_many_passengers", message: "A booking can carry up to 18 passengers." }, 400);
+  if (seatCount > settings.maxSeatsPerBooking) return c.json({ error: "too_many_seats", message: `You can book up to ${settings.maxSeatsPerBooking} seats at a time.` }, 400);
+  if (payment === "cash" && !settings.cashEnabled) return c.json({ error: "cash_off", message: "Cash isn't accepted right now. Pay in the app." }, 409);
 
   await releaseStaleBookings();
   const entry = (await db.execute({
@@ -219,9 +258,14 @@ export async function bookSeats(c: Context, input: { queueId: string; seats: num
   if (!entry) return c.json({ error: "not_found", message: "That taxi isn't available." }, 404);
   if (Number(entry.tp_active) !== 1 || Number(entry.relay_active) !== 1) return c.json({ error: "not_available", message: "That route isn't running." }, 409);
   if (entry.status !== "in_line" && entry.status !== "boarding") return c.json({ error: "not_available", message: "That taxi has left. Choose another." }, 409);
+  // Only the first few taxis waiting behind the one Boarding Now can be booked (admin: bookable taxis).
+  const line = await decorateLine(String(entry.taxipress_route_id), await lineOf(String(entry.taxipress_route_id)), settings);
+  const spot = line.find((e) => e.id === input.queueId);
+  if (entry.status === "boarding") return c.json({ error: "boarding_now", message: "This taxi is boarding now. Get on at the stage, or book one of the next taxis." }, 409);
+  if (!spot?.bookable) return c.json({ error: "not_bookable_yet", message: `You can book the next ${settings.bookableTaxis} taxis in the line. Choose one of those.` }, 409);
   if (entry.driver_id === user.sub) return c.json({ error: "own_taxi", message: "You can't book a seat on your own taxi." }, 409);
 
-  if (input.payment === "cash") {
+  if (payment === "cash") {
     const open = await db.execute({
       sql: "SELECT COUNT(*) AS n FROM taxipress_bookings WHERE passenger_id = ? AND payment_method = 'cash' AND status = 'booked'",
       args: [user.sub],
@@ -232,18 +276,19 @@ export async function bookSeats(c: Context, input: { queueId: string; seats: num
   }
 
   const farePerSeat = Number(entry.fare_per_seat);
-  const amount = farePerSeat * input.seats;
+  const priced = priceBooking({ adults, children, luggage }, farePerSeat, settings);
+  const amount = withDetails ? priced.amount : farePerSeat * seatCount;
   if (!(amount > 0)) return c.json({ error: "no_fare", message: "This route has no fare set yet." }, 409);
 
   // Race-safe: only one request can take the last seats, and only while the taxi is still in the line.
   const taken = await db.execute({
     sql: `UPDATE taxipress_queue SET seats_booked = seats_booked + ?, updated_at = datetime('now')
           WHERE id = ? AND status IN ('in_line', 'boarding') AND seats_booked + walk_up_seats + ? <= seats_total`,
-    args: [input.seats, input.queueId, input.seats],
+    args: [seatCount, input.queueId, seatCount],
   });
   if (taken.rowsAffected === 0) return c.json({ error: "not_available", message: "Those seats aren't available any more." }, 409);
   const release = () =>
-    db.execute({ sql: "UPDATE taxipress_queue SET seats_booked = MAX(0, seats_booked - ?), updated_at = datetime('now') WHERE id = ?", args: [input.seats, input.queueId] });
+    db.execute({ sql: "UPDATE taxipress_queue SET seats_booked = MAX(0, seats_booked - ?), updated_at = datetime('now') WHERE id = ?", args: [seatCount, input.queueId] });
 
   const environment = (await getPlatformEnvironment()) === "sandbox" ? "sandbox" : "live";
   const aToB = entry.direction === "a_to_b";
@@ -261,7 +306,7 @@ export async function bookSeats(c: Context, input: { queueId: string; seats: num
         listId, type: "parcel", isRide: true,
         pickupAddress: from.name, pickupLat: from.lat, pickupLng: from.lng,
         destinationAddress: to.name, destinationLat: to.lat, destinationLng: to.lng,
-        paymentRail: input.payment === "cash" ? "float" : "escrow",
+        paymentRail: payment === "cash" ? "float" : "escrow",
       },
       { fare: amount, matchingMode: "first_to_claim" },
     );
@@ -275,18 +320,29 @@ export async function bookSeats(c: Context, input: { queueId: string; seats: num
     await db.execute({
       sql: `INSERT INTO taxipress_bookings (id, order_id, queue_id, taxipress_route_id, passenger_id, driver_id, seats, fare_per_seat, amount, payment_method, ticket_code, environment)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      args: [bookingId, orderId, input.queueId, String(entry.taxipress_route_id), user.sub, String(entry.driver_id), input.seats, farePerSeat, amount, input.payment, newTicketCode(), environment],
+      args: [bookingId, orderId, input.queueId, String(entry.taxipress_route_id), user.sub, String(entry.driver_id), seatCount, farePerSeat, amount, payment, newTicketCode(), environment],
     });
+    if (withDetails) {
+      await saveDetails(bookingId, {
+        adults, children, childSeats: priced.childSeats, luggage, luggageAmount: priced.luggageAmount,
+        assistance: settings.assistanceEnabled ? (input.assistance ?? null) : null,
+        language: settings.languageEnabled ? (input.language ?? null) : null,
+        forSomeoneElse: !!input.forSomeoneElse,
+        travellerName: input.forSomeoneElse ? (input.travellerName ?? null) : null,
+        travellerPhone: input.forSomeoneElse ? (input.travellerPhone ?? null) : null,
+        emergencyPhone: input.emergencyPhone ?? null,
+      }, { customerId: user.sub, environment });
+    }
     // The seat belongs to this taxi's driver from the start; the passenger pays next.
     await db.execute({ sql: "UPDATE orders SET rider_id = ?, stage = 'Match', updated_at = datetime('now') WHERE id = ? AND rider_id IS NULL", args: [String(entry.driver_id), orderId] });
     await db.execute({ sql: "UPDATE chat_messages SET rider_id = ? WHERE order_id = ? AND rider_id IS NULL", args: [String(entry.driver_id), orderId] });
     await db.execute({
       sql: "INSERT INTO order_events (id, order_id, stage, note, actor_id) VALUES (?, ?, 'Match', ?, ?)",
-      args: [newId("evt"), orderId, `Booked ${input.seats} seat${input.seats === 1 ? "" : "s"} on a Taxipress taxi`, user.sub],
+      args: [newId("evt"), orderId, `Booked ${seatCount} seat${seatCount === 1 ? "" : "s"} on a Taxipress taxi`, user.sub],
     });
     await notifyUser(String(entry.driver_id), {
       title: "Seat booked",
-      body: `${input.seats} seat${input.seats === 1 ? "" : "s"} booked on your taxi.`,
+      body: `${seatCount} seat${seatCount === 1 ? "" : "s"} booked on your taxi.`,
       url: "/taxipress",
       tag: `taxipress-${input.queueId}`,
     }).catch(() => {});

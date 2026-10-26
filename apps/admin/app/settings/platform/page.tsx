@@ -37,7 +37,7 @@ export default function PlatformStateSettingsPage() {
     <SettingsPageShell title="Platform state" loading={loading}>
       {error && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">{error}</p>}
       <PlatformEnvironmentToggle current={platformEnvironment} onChanged={setPlatformEnvironment} />
-      <p className="text-xs text-ink-500">Practice mode, and whether it opens by itself in sandbox, now live under <Link href="/practice" className="font-bold text-ink underline">Practice</Link>.</p>
+      <p className="text-xs text-ink-500">Practice mode (who may practise, and the shared practice world) now lives under <Link href="/practice" className="font-bold text-ink underline">Practice</Link>.</p>
     </SettingsPageShell>
   );
 }

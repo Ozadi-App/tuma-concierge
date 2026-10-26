@@ -49,14 +49,23 @@ export const rideForSomeone: Scenario = async (c, call) => {
 };
 
 export const taxipressSeat: Scenario = async (_c, call) => {
-  const lines = await db.execute("SELECT id FROM taxipress_queue WHERE status IN ('in_line','boarding') AND id LIKE 'prac\\_q\\_%' ESCAPE '\\' ORDER BY joined_at LIMIT 1");
+  const lines = await db.execute("SELECT id FROM taxipress_queue WHERE status = 'in_line' AND id LIKE 'prac\\_q\\_%' ESCAPE '\\' ORDER BY joined_at LIMIT 1");
   const id = String(lines.rows[0]?.id ?? "");
   return id ? book(call, "taxipress seat", "/taxipress/bookings", { queueId: id, seats: 2, payment: "cash" }) : null;
+};
+/** A v5 ticket: two adults and a child, luggage, help boarding, a driver who speaks Luganda, and booked for someone else. */
+export const taxipressTicketWithOptions: Scenario = async (_c, call) => {
+  const lines = await db.execute("SELECT id FROM taxipress_queue WHERE status = 'in_line' AND id LIKE 'prac\\_q\\_%' ESCAPE '\\' ORDER BY joined_at DESC LIMIT 1");
+  const id = String(lines.rows[0]?.id ?? "");
+  return id ? book(call, "taxipress ticket with options", "/taxipress/bookings", {
+    queueId: id, adults: 2, children: 1, luggage: { standard: 1, large: 1 }, assistance: "boarding", language: "lg", forSomeoneElse: true,
+    travellerName: "Mama Nakato", travellerPhone: "0700000555", emergencyPhone: "0700000556", payment: "cash",
+  }) : null;
 };
 export const carpoolSeat: Scenario = (_c, call) => book(call, "carpool seat", "/car/carpool/trips/prac_trip_2/seats", { seats: 1 });
 
 /** One of each, so a fresh world has a finished-looking set of bookings across the cluster. */
 export const RIDE_SCENARIOS: ReadonlyArray<readonly [string, Scenario]> = [
   ["car", carNow], ["car-comfort-large", carComfortLarge], ["car-scheduled", carScheduled], ["luxury", luxuryHire], ["ambulance", ambulance], ["cargo", cargoMove],
-  ["boda", bodaRide], ["boda-own-fare", bodaOwnFare], ["ride-for-someone", rideForSomeone], ["taxipress", taxipressSeat], ["carpool", carpoolSeat],
+  ["boda", bodaRide], ["boda-own-fare", bodaOwnFare], ["ride-for-someone", rideForSomeone], ["taxipress", taxipressSeat], ["taxipress-options", taxipressTicketWithOptions], ["carpool", carpoolSeat],
 ];

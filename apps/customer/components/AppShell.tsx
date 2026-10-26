@@ -9,7 +9,7 @@ import { BrandHeader } from "./BrandHeader";
 import { ChatDrawerShell } from "../lib/chat-drawer";
 import { FoodBusinessTheme } from "./FoodBusinessTheme";
 import { OfflineBanner } from "./OfflineBanner";
-import { PracticeModeBanner, PracticeModeGuard, PracticeModePrompt, SandboxPracticeAuto } from "./PracticeMode";
+import { PracticeModeBanner, PracticeModeGuard, PracticeModePrompt } from "./PracticeMode";
 import { isNavigationOverlayOpen, subscribeToNavigationOverlay } from "../lib/location-flow-state";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -43,7 +43,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <ChatDrawerShell>
 
       <PracticeModeGuard role="customer" pathname={pathname} />
-      {!isAuthPage && <SandboxPracticeAuto role="customer" />}
       {!isAuthPage && <PracticeModePrompt role="customer" />}
       {!isAuthPage && <PracticeModeBanner role="customer" />}
       {!isAuthPage && <OfflineBanner />}

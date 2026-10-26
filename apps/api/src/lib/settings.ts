@@ -27,9 +27,6 @@ const DEFAULTS = {
   /** Allows users to launch isolated guided practice journeys. Unlike
    * platform_environment this never redirects operational API traffic. */
   user_practice_mode_enabled: "1",
-  /** While the platform is in sandbox (the "*demo" label), the customer app opens in the simulated Entebbe
-   * practice world by itself instead of waiting for a user to switch practice mode on. Customers can still leave it. */
-  practice_auto_in_sandbox: "1",
   delivery_rate_per_km: "1000",
   /** Floor on a parcel ride's distance-priced delivery fee (UGX) — a rider
    * still has to go collect and deliver the item even when pickup and
@@ -410,7 +407,7 @@ const DEFAULTS = {
   guest_notify_email: "0",
   guest_notify_whatsapp: "0",
   guest_whatsapp_template: "",
-  /** Peebee Marketplace: Groceries & Stores, Live Commerce, Pro Paywalls, Social Ads */
+  /** Peebee Marketplace: Groceries & Stores, Live Commerce, Pro Paywalls, Social Ads & Elite (Shopify Plus level) */
   marketplace_enabled: "1",
   marketplace_live_enabled: "1",
   marketplace_commission_percent: "10",
@@ -423,6 +420,34 @@ const DEFAULTS = {
   marketplace_min_order_amount: "5000",
   marketplace_live_max_duration_mins: "180",
   marketplace_delivery_base_fee: "3000",
+  marketplace_elite_enabled: "1",
+  marketplace_elite_price_ugx: "150000",
+  marketplace_elite_commission_percent: "5",
+  marketplace_pro_max_products: "50",
+  marketplace_elite_max_products: "5000",
+  marketplace_pro_max_collections: "3",
+  marketplace_elite_max_collections: "100",
+  marketplace_pro_max_discounts: "2",
+  marketplace_elite_max_discounts: "200",
+  marketplace_elite_b2b_enabled: "1",
+  marketplace_elite_multi_outlet_inventory_enabled: "1",
+  marketplace_elite_custom_domain_enabled: "1",
+  marketplace_elite_loyalty_enabled: "1",
+  marketplace_elite_max_loyalty_cashback_percent: "15",
+  marketplace_elite_pos_enabled: "1",
+  marketplace_elite_stock_transfers_enabled: "1",
+  marketplace_elite_crm_enabled: "1",
+  marketplace_elite_purchase_orders_enabled: "1",
+  marketplace_elite_bundles_enabled: "1",
+  marketplace_elite_winback_enabled: "1",
+  marketplace_elite_storefront_sections_enabled: "1",
+  marketplace_elite_sms_alerts_enabled: "1",
+  marketplace_elite_sms_cost_per_message_ugx: "35",
+  marketplace_sms_provider: "simulator",
+  marketplace_elite_digital_products_enabled: "1",
+  marketplace_elite_lms_sync_enabled: "1",
+  marketplace_elite_max_courses: "50",
+  marketplace_elite_max_digital_products: "200",
   /** Peebee Learn Studio: schools, classes, courses and lessons made by educators */
   learn_enabled: "1",
   learn_streams: "sprouts,foundations,academy,compass,skills",
@@ -540,6 +565,42 @@ const DEFAULTS = {
   work_schedule_quick_minutes: "60,180",
   work_schedule_tomorrow_enabled: "1",
   work_schedule_tomorrow_time: "09:00",
+  // Laundry marketplace: how each laundry service is priced (fixed = admin prices apply; estimate = customer may make an offer).
+  laundry_pricing_wash_fold: "fixed",
+  laundry_pricing_dry_clean: "fixed",
+  laundry_pricing_iron: "fixed",
+  laundry_pricing_custom: "fixed",
+  // Offer slider: lowest and highest offer as a percent of the catalogue total, and the step in UGX.
+  laundry_offer_min_percent: "80",
+  laundry_offer_max_percent: "130",
+  laundry_offer_step_ugx: "500",
+  // Who pays each rider leg: customer, provider or split. A split gives the customer this percent of the leg.
+  laundry_ride_payer_pickup: "customer",
+  laundry_ride_payer_delivery: "provider",
+  laundry_ride_split_customer_percent: "50",
+  // Flat fee per rider leg until rides are priced by the rider fare system. 0 = no ride charge.
+  laundry_ride_fee_ugx: "0",
+  // Extra weight over a package limit, UGX per lb (0 = not charged).
+  laundry_overage_ugx_per_lb: "0",
+  // Tips: a free tip is paid on delivery; a conditional tip is held and paid only for an on-time, undisputed delivery.
+  laundry_tip_free_enabled: "1",
+  laundry_tip_conditional_enabled: "1",
+  laundry_tip_max_ugx: "50000",
+  laundry_tip_ontime_hours: "48",
+  // Peebee's cut, set the same way as for riders. Provider commission is withheld from the provider's payout on the goods
+  // only (never the rider fee or a tip). The customer fee is added at checkout and is 100% platform revenue.
+  // When Peebee's commission is taken. "on_payout": withheld from the provider's payout as it lands in their app (like riders).
+  // "at_checkout": taken immediately, on every customer checkout, and not left to the payout.
+  laundry_commission_timing: "on_payout",
+  // If an order is cancelled: "refund" gives the customer everything back, including Peebee's commission and fee; "keep" lets Peebee
+  // keep what it already took at checkout (commission under "at_checkout", and the customer fee).
+  laundry_cancel_commission: "refund",
+  laundry_provider_commission_percent: "15",
+  laundry_customer_fee_enabled: "0",
+  laundry_customer_fee_type: "flat",
+  laundry_customer_fee_value: "0",
+  // The customer fee can never be more than this percent of what the customer pays for goods and rides (1-99).
+  laundry_customer_fee_max_share_percent: "50",
   /** Peebee Hire: a marketplace where customers find workers and workers find gigs, projects and hiring posts (tables talent_*). Off until admin turns it on. */
   talent_enabled: "0",
   talent_gigs_enabled: "1",
@@ -650,6 +711,15 @@ const DEFAULTS = {
   // When a taxi leaves the line, move its passengers to the next taxi with room (off: refund them).
   taxipress_rebook_on_removal: "1",
   taxipress_parcel_not_allowed: '["Charcoal","Fuel","Wet or raw food"]',
+  taxipress_bookable_taxis: "3",
+  taxipress_max_lap_children: "2",
+  taxipress_child_seat_fare_percent: "100",
+  taxipress_luggage_enabled: "1",
+  taxipress_luggage_prices: '{"personal":0,"standard":2000,"large":4000,"excess":6000,"fragile":7000,"commercial":null}',
+  taxipress_assistance_enabled: "1",
+  taxipress_language_enabled: "1",
+  taxipress_book_for_others_enabled: "1",
+  taxipress_show_stops: "1",
 } as const;
 
 export type SettingKey = keyof typeof DEFAULTS;
@@ -1803,6 +1873,35 @@ export type MarketplaceSettings = {
   deliveryBaseFeeUgx: number;
   /** A cart left this many hours is set aside as an earlier cart when the customer starts a new one. */
   cartExpiryHours: number;
+  /** Tier 3: Merchant Advanced Marketplace (Elite — Shopify / Shopify Pro level) */
+  eliteEnabled: boolean;
+  elitePriceUgx: number;
+  eliteCommissionPercent: number;
+  proMaxProducts: number;
+  eliteMaxProducts: number;
+  proMaxCollections: number;
+  eliteMaxCollections: number;
+  proMaxDiscounts: number;
+  eliteMaxDiscounts: number;
+  eliteB2bEnabled: boolean;
+  eliteMultiOutletInventoryEnabled: boolean;
+  eliteCustomDomainEnabled: boolean;
+  eliteLoyaltyEnabled: boolean;
+  eliteMaxLoyaltyCashbackPercent: number;
+  elitePosEnabled: boolean;
+  eliteStockTransfersEnabled: boolean;
+  eliteCrmEnabled: boolean;
+  elitePurchaseOrdersEnabled: boolean;
+  eliteBundlesEnabled: boolean;
+  eliteWinbackEnabled: boolean;
+  eliteStorefrontSectionsEnabled: boolean;
+  eliteSmsAlertsEnabled: boolean;
+  eliteSmsCostPerMessageUgx: number;
+  smsProvider: "simulator" | "africas_talking" | "twilio";
+  eliteDigitalProductsEnabled: boolean;
+  eliteLmsSyncEnabled: boolean;
+  eliteMaxCourses: number;
+  eliteMaxDigitalProducts: number;
 };
 
 export async function getMarketplaceSettings(): Promise<MarketplaceSettings> {
@@ -1820,6 +1919,34 @@ export async function getMarketplaceSettings(): Promise<MarketplaceSettings> {
     liveDurationStr,
     deliveryBaseFeeStr,
     cartExpiryStr,
+    eliteEnabledStr,
+    elitePriceStr,
+    eliteCommissionStr,
+    proMaxProductsStr,
+    eliteMaxProductsStr,
+    proMaxCollectionsStr,
+    eliteMaxCollectionsStr,
+    proMaxDiscountsStr,
+    eliteMaxDiscountsStr,
+    eliteB2bStr,
+    eliteMultiOutletStr,
+    eliteCustomDomainStr,
+    eliteLoyaltyStr,
+    eliteMaxCashbackStr,
+    elitePosStr,
+    eliteTransfersStr,
+    eliteCrmStr,
+    elitePosOrdersStr,
+    eliteBundlesStr,
+    eliteWinbackStr,
+    eliteStorefrontSectionsStr,
+    eliteSmsAlertsStr,
+    eliteSmsCostStr,
+    smsProviderStr,
+    eliteDigitalProductsStr,
+    eliteLmsSyncStr,
+    eliteMaxCoursesStr,
+    eliteMaxDigitalProductsStr,
   ] = await Promise.all([
     getSetting("marketplace_enabled"),
     getSetting("marketplace_live_enabled"),
@@ -1834,6 +1961,34 @@ export async function getMarketplaceSettings(): Promise<MarketplaceSettings> {
     getSetting("marketplace_live_max_duration_mins"),
     getSetting("marketplace_delivery_base_fee"),
     getSetting("cart_expiry_hours"),
+    getSetting("marketplace_elite_enabled"),
+    getSetting("marketplace_elite_price_ugx"),
+    getSetting("marketplace_elite_commission_percent"),
+    getSetting("marketplace_pro_max_products"),
+    getSetting("marketplace_elite_max_products"),
+    getSetting("marketplace_pro_max_collections"),
+    getSetting("marketplace_elite_max_collections"),
+    getSetting("marketplace_pro_max_discounts"),
+    getSetting("marketplace_elite_max_discounts"),
+    getSetting("marketplace_elite_b2b_enabled"),
+    getSetting("marketplace_elite_multi_outlet_inventory_enabled"),
+    getSetting("marketplace_elite_custom_domain_enabled"),
+    getSetting("marketplace_elite_loyalty_enabled"),
+    getSetting("marketplace_elite_max_loyalty_cashback_percent"),
+    getSetting("marketplace_elite_pos_enabled"),
+    getSetting("marketplace_elite_stock_transfers_enabled"),
+    getSetting("marketplace_elite_crm_enabled"),
+    getSetting("marketplace_elite_purchase_orders_enabled"),
+    getSetting("marketplace_elite_bundles_enabled"),
+    getSetting("marketplace_elite_winback_enabled"),
+    getSetting("marketplace_elite_storefront_sections_enabled"),
+    getSetting("marketplace_elite_sms_alerts_enabled"),
+    getSetting("marketplace_elite_sms_cost_per_message_ugx"),
+    getSetting("marketplace_sms_provider"),
+    getSetting("marketplace_elite_digital_products_enabled"),
+    getSetting("marketplace_elite_lms_sync_enabled"),
+    getSetting("marketplace_elite_max_courses"),
+    getSetting("marketplace_elite_max_digital_products"),
   ]);
 
   return {
@@ -1850,6 +2005,34 @@ export async function getMarketplaceSettings(): Promise<MarketplaceSettings> {
     liveMaxDurationMins: Math.max(15, Number(liveDurationStr) || 180),
     deliveryBaseFeeUgx: Math.max(0, Number(deliveryBaseFeeStr) || 3000),
     cartExpiryHours: Math.max(1, Math.min(720, Number(cartExpiryStr) || 12)),
+    eliteEnabled: eliteEnabledStr !== "0",
+    elitePriceUgx: Math.max(0, Number(elitePriceStr) || 150000),
+    eliteCommissionPercent: Math.max(0, Math.min(100, Number(eliteCommissionStr ?? 5))),
+    proMaxProducts: Math.max(1, Number(proMaxProductsStr) || 50),
+    eliteMaxProducts: Math.max(10, Number(eliteMaxProductsStr) || 5000),
+    proMaxCollections: Math.max(1, Number(proMaxCollectionsStr) || 3),
+    eliteMaxCollections: Math.max(1, Number(eliteMaxCollectionsStr) || 100),
+    proMaxDiscounts: Math.max(0, Number(proMaxDiscountsStr) || 2),
+    eliteMaxDiscounts: Math.max(1, Number(eliteMaxDiscountsStr) || 200),
+    eliteB2bEnabled: eliteB2bStr !== "0",
+    eliteMultiOutletInventoryEnabled: eliteMultiOutletStr !== "0",
+    eliteCustomDomainEnabled: eliteCustomDomainStr !== "0",
+    eliteLoyaltyEnabled: eliteLoyaltyStr !== "0",
+    eliteMaxLoyaltyCashbackPercent: Math.max(0, Math.min(50, Number(eliteMaxCashbackStr) || 15)),
+    elitePosEnabled: elitePosStr !== "0",
+    eliteStockTransfersEnabled: eliteTransfersStr !== "0",
+    eliteCrmEnabled: eliteCrmStr !== "0",
+    elitePurchaseOrdersEnabled: elitePosOrdersStr !== "0",
+    eliteBundlesEnabled: eliteBundlesStr !== "0",
+    eliteWinbackEnabled: eliteWinbackStr !== "0",
+    eliteStorefrontSectionsEnabled: eliteStorefrontSectionsStr !== "0",
+    eliteSmsAlertsEnabled: eliteSmsAlertsStr !== "0",
+    eliteSmsCostPerMessageUgx: Math.max(0, Number(eliteSmsCostStr) || 35),
+    smsProvider: (smsProviderStr === "africas_talking" || smsProviderStr === "twilio") ? smsProviderStr : "simulator",
+    eliteDigitalProductsEnabled: eliteDigitalProductsStr !== "0",
+    eliteLmsSyncEnabled: eliteLmsSyncStr !== "0",
+    eliteMaxCourses: Math.max(1, Number(eliteMaxCoursesStr) || 50),
+    eliteMaxDigitalProducts: Math.max(1, Number(eliteMaxDigitalProductsStr) || 200),
   };
 }
 
@@ -1868,6 +2051,30 @@ export async function setMarketplaceSettings(next: Partial<MarketplaceSettings>)
   if (next.liveMaxDurationMins != null) writes.push(setSetting("marketplace_live_max_duration_mins", String(Math.max(15, Math.round(next.liveMaxDurationMins)))));
   if (next.deliveryBaseFeeUgx != null) writes.push(setSetting("marketplace_delivery_base_fee", String(Math.max(0, Math.round(next.deliveryBaseFeeUgx)))));
   if (next.cartExpiryHours != null) writes.push(setSetting("cart_expiry_hours", String(Math.max(1, Math.min(720, Math.round(next.cartExpiryHours))))));
+  if (next.eliteEnabled != null) writes.push(setSetting("marketplace_elite_enabled", next.eliteEnabled ? "1" : "0"));
+  if (next.elitePriceUgx != null) writes.push(setSetting("marketplace_elite_price_ugx", String(Math.max(0, Math.round(next.elitePriceUgx)))));
+  if (next.eliteCommissionPercent != null) writes.push(setSetting("marketplace_elite_commission_percent", String(Math.max(0, Math.min(100, next.eliteCommissionPercent)))));
+  if (next.proMaxProducts != null) writes.push(setSetting("marketplace_pro_max_products", String(Math.max(1, Math.round(next.proMaxProducts)))));
+  if (next.eliteMaxProducts != null) writes.push(setSetting("marketplace_elite_max_products", String(Math.max(10, Math.round(next.eliteMaxProducts)))));
+  if (next.proMaxCollections != null) writes.push(setSetting("marketplace_pro_max_collections", String(Math.max(1, Math.round(next.proMaxCollections)))));
+  if (next.eliteMaxCollections != null) writes.push(setSetting("marketplace_elite_max_collections", String(Math.max(1, Math.round(next.eliteMaxCollections)))));
+  if (next.proMaxDiscounts != null) writes.push(setSetting("marketplace_pro_max_discounts", String(Math.max(0, Math.round(next.proMaxDiscounts)))));
+  if (next.eliteMaxDiscounts != null) writes.push(setSetting("marketplace_elite_max_discounts", String(Math.max(1, Math.round(next.eliteMaxDiscounts)))));
+  if (next.eliteB2bEnabled != null) writes.push(setSetting("marketplace_elite_b2b_enabled", next.eliteB2bEnabled ? "1" : "0"));
+  if (next.eliteMultiOutletInventoryEnabled != null) writes.push(setSetting("marketplace_elite_multi_outlet_inventory_enabled", next.eliteMultiOutletInventoryEnabled ? "1" : "0"));
+  if (next.eliteCustomDomainEnabled != null) writes.push(setSetting("marketplace_elite_custom_domain_enabled", next.eliteCustomDomainEnabled ? "1" : "0"));
+  if (next.eliteLoyaltyEnabled != null) writes.push(setSetting("marketplace_elite_loyalty_enabled", next.eliteLoyaltyEnabled ? "1" : "0"));
+  if (next.eliteMaxLoyaltyCashbackPercent != null) writes.push(setSetting("marketplace_elite_max_loyalty_cashback_percent", String(Math.max(0, Math.min(50, next.eliteMaxLoyaltyCashbackPercent)))));
+  if (next.elitePosEnabled != null) writes.push(setSetting("marketplace_elite_pos_enabled", next.elitePosEnabled ? "1" : "0"));
+  if (next.eliteStockTransfersEnabled != null) writes.push(setSetting("marketplace_elite_stock_transfers_enabled", next.eliteStockTransfersEnabled ? "1" : "0"));
+  if (next.eliteCrmEnabled != null) writes.push(setSetting("marketplace_elite_crm_enabled", next.eliteCrmEnabled ? "1" : "0"));
+  if (next.elitePurchaseOrdersEnabled != null) writes.push(setSetting("marketplace_elite_purchase_orders_enabled", next.elitePurchaseOrdersEnabled ? "1" : "0"));
+  if (next.eliteBundlesEnabled != null) writes.push(setSetting("marketplace_elite_bundles_enabled", next.eliteBundlesEnabled ? "1" : "0"));
+  if (next.eliteWinbackEnabled != null) writes.push(setSetting("marketplace_elite_winback_enabled", next.eliteWinbackEnabled ? "1" : "0"));
+  if (next.eliteStorefrontSectionsEnabled != null) writes.push(setSetting("marketplace_elite_storefront_sections_enabled", next.eliteStorefrontSectionsEnabled ? "1" : "0"));
+  if (next.eliteSmsAlertsEnabled != null) writes.push(setSetting("marketplace_elite_sms_alerts_enabled", next.eliteSmsAlertsEnabled ? "1" : "0"));
+  if (next.eliteSmsCostPerMessageUgx != null) writes.push(setSetting("marketplace_elite_sms_cost_per_message_ugx", String(Math.max(0, Math.round(next.eliteSmsCostPerMessageUgx)))));
+  if (next.smsProvider != null) writes.push(setSetting("marketplace_sms_provider", next.smsProvider));
   await Promise.all(writes);
 }
 

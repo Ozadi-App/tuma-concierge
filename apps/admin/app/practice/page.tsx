@@ -16,7 +16,6 @@ const COVERAGE_CLASS: Record<"full" | "partial" | "none", string> = {
 export default function PracticePage() {
   const [flags, setFlags] = useState<ModuleFlags | null>(null);
   const [practiceMode, setPracticeMode] = useState(false);
-  const [autoSandbox, setAutoSandbox] = useState(true);
   const [world, setWorld] = useState<PracticeWorldStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
@@ -24,7 +23,7 @@ export default function PracticePage() {
 
   useEffect(() => {
     api.adminGetModules()
-      .then((r) => { setFlags(r.modules.flags); setPracticeMode(r.practiceModeEnabled); setAutoSandbox(r.practiceAutoInSandbox); })
+      .then((r) => { setFlags(r.modules.flags); setPracticeMode(r.practiceModeEnabled); })
       .catch((err) => setError(errorMessage(err)))
       .finally(() => setLoading(false));
     api.adminPracticeWorld().then(setWorld).catch(() => undefined);
@@ -39,7 +38,7 @@ export default function PracticePage() {
     setBusy(label); setError(null);
     try {
       const r = await api.adminUpdateModules(update);
-      setFlags(r.modules.flags); setPracticeMode(r.practiceModeEnabled); setAutoSandbox(r.practiceAutoInSandbox);
+      setFlags(r.modules.flags); setPracticeMode(r.practiceModeEnabled);
     } catch (err) { setError(errorMessage(err)); }
     finally { setBusy(null); }
   }
@@ -61,13 +60,6 @@ export default function PracticePage() {
               <span className="min-w-0">
                 <span className="block text-sm font-bold text-ink">Practice mode {practiceMode ? "is available" : "is off"}</span>
                 <span className="block text-xs text-ink-500">Lets customers, riders, restaurants, merchants, fuel attendants and learners open the simulated world from their account. Nothing in it creates a real order, moves a balance, notifies a person or reaches a payment provider.</span>
-              </span>
-            </label>
-            <label className="flex items-start gap-3">
-              <Switch aria-label="Open practice by itself in sandbox" checked={autoSandbox} disabled={busy === "auto" || !practiceMode} onChange={(e) => save("auto", { practiceAutoInSandbox: e.target.checked })} className="mt-0.5 shrink-0" />
-              <span className="min-w-0">
-                <span className="block text-sm font-bold text-ink">Open practice by itself in sandbox</span>
-                <span className="block text-xs text-ink-500">While the platform is in sandbox, the customer app opens in this world automatically. People can leave from the Practice tab. Does nothing in Live.</span>
               </span>
             </label>
             <p className="text-xs text-ink-500">Which modules exist in the practice world is set on <Link href="/settings/services" className="font-bold text-ink underline">Services</Link> (Practice tab). A module can be on there while it is still off in Live.</p>
