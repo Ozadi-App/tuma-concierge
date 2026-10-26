@@ -5,6 +5,7 @@ import { db } from "../db/client.js";
 import { newId } from "../lib/ids.js";
 import { getMarketplaceSettings } from "../lib/settings.js";
 import { hasColumn, hasTable } from "../lib/schema.js";
+import { findPublicStore } from "./public.js";
 import type {
   StoreDigitalProduct,
   StoreDigitalFulfillment,
@@ -228,6 +229,12 @@ digitalLmsRoutes.post("/merchants/me/digital-products", requireAuth, async (c) =
 
   const body = await c.req.json().catch(() => ({}));
   const id = body.id || newId("dig");
+  if (body.id && (await hasTable("store_digital_products"))) {
+    const owned = await db.execute({ sql: "SELECT store_id FROM store_digital_products WHERE id = ?", args: [String(body.id)] });
+    if (owned.rows[0] && String(owned.rows[0].store_id) !== String(store.id)) {
+      return c.json({ error: "forbidden", message: "That product belongs to another store." }, 403);
+    }
+  }
   const title = String(body.title || "").trim();
   if (!title) return c.json({ error: "missing_title", message: "Digital product title is required." }, 400);
 
@@ -272,7 +279,8 @@ digitalLmsRoutes.post("/merchants/me/digital-products", requireAuth, async (c) =
               cover_image_url = excluded.cover_image_url,
               linked_course_id = excluded.linked_course_id,
               status = excluded.status,
-              updated_at = datetime('now')`,
+              updated_at = datetime('now')
+            WHERE store_digital_products.store_id = excluded.store_id`,
       args: [
         id,
         String(store.id),
@@ -574,6 +582,32 @@ digitalLmsRoutes.post("/merchants/me/lms/courses", requireAuth, async (c) => {
     }
   }
 
+  // A client-supplied id may only update something this store already owns.
+  if (body.id && (await hasTable("edu_courses"))) {
+    const owned = await db.execute({ sql: "SELECT school_id FROM edu_courses WHERE id = ?", args: [String(body.id)] });
+    if (owned.rows[0] && String(owned.rows[0].school_id) !== String(schoolId)) {
+      return c.json({ error: "forbidden", message: "That course belongs to another school." }, 403);
+    }
+  }
+  if (Array.isArray(body.modules) && (await hasTable("edu_modules"))) {
+    for (const mod of body.modules) {
+      if (mod?.id) {
+        const owned = await db.execute({ sql: "SELECT course_id FROM edu_modules WHERE id = ?", args: [String(mod.id)] });
+        if (owned.rows[0] && String(owned.rows[0].course_id) !== String(courseId)) {
+          return c.json({ error: "forbidden", message: "That module belongs to another course." }, 403);
+        }
+      }
+      for (const les of Array.isArray(mod?.lessons) ? mod.lessons : []) {
+        if (les?.id && (await hasTable("edu_lessons"))) {
+          const owned = await db.execute({ sql: "SELECT course_id FROM edu_lessons WHERE id = ?", args: [String(les.id)] });
+          if (owned.rows[0] && String(owned.rows[0].course_id) !== String(courseId)) {
+            return c.json({ error: "forbidden", message: "That lesson belongs to another course." }, 403);
+          }
+        }
+      }
+    }
+  }
+
   // 2. Ensure default class exists
   let classId = newId("cls");
   if (schoolId && (await hasTable("edu_classes"))) {
@@ -605,7 +639,8 @@ digitalLmsRoutes.post("/merchants/me/lms/courses", requireAuth, async (c) => {
                 price_ugx = excluded.price_ugx,
                 stream = excluded.stream,
                 store_id = excluded.store_id,
-                updated_at = datetime('now')`,
+                updated_at = datetime('now')
+              WHERE edu_courses.school_id = excluded.school_id`,
         args: [courseId, schoolId, classId, stream, title, summary, priceUgx, storeId],
       });
     } else {
@@ -617,7 +652,8 @@ digitalLmsRoutes.post("/merchants/me/lms/courses", requireAuth, async (c) => {
                 summary = excluded.summary,
                 price_ugx = excluded.price_ugx,
                 stream = excluded.stream,
-                updated_at = datetime('now')`,
+                updated_at = datetime('now')
+              WHERE edu_courses.school_id = excluded.school_id`,
         args: [courseId, schoolId, classId, stream, title, summary, priceUgx],
       });
     }
@@ -647,7 +683,8 @@ digitalLmsRoutes.post("/merchants/me/lms/courses", requireAuth, async (c) => {
       await db.execute({
         sql: `INSERT INTO edu_modules (id, course_id, title, description, position, created_at)
               VALUES (?, ?, ?, ?, ?, datetime('now'))
-              ON CONFLICT(id) DO UPDATE SET title = excluded.title, position = excluded.position`,
+              ON CONFLICT(id) DO UPDATE SET title = excluded.title, position = excluded.position
+              WHERE edu_modules.course_id = excluded.course_id`,
         args: [modId, courseId, String(mod.title || `Module ${mIndex + 1}`), String(mod.description || ""), mIndex + 1],
       });
 
@@ -663,7 +700,8 @@ digitalLmsRoutes.post("/merchants/me/lms/courses", requireAuth, async (c) => {
                     duration_minutes = excluded.duration_minutes,
                     summary = excluded.summary,
                     content_url = excluded.content_url,
-                    position = excluded.position`,
+                    position = excluded.position
+                  WHERE edu_lessons.course_id = excluded.course_id`,
             args: [
               lesId,
               modId,
@@ -695,7 +733,8 @@ digitalLmsRoutes.post("/merchants/me/lms/courses", requireAuth, async (c) => {
               description = excluded.description,
               linked_course_id = excluded.linked_course_id,
               status = excluded.status,
-              updated_at = datetime('now')`,
+              updated_at = datetime('now')
+            WHERE store_digital_products.store_id = excluded.store_id`,
       args: [digId, storeId, title, summary, priceUgx, courseId],
     });
   }
@@ -886,6 +925,14 @@ digitalLmsRoutes.post("/merchants/me/lms/enrollments", requireAuth, async (c) =>
 
   const enrollmentId = newId("enr");
   const storeId = String(store.id);
+  if (await hasTable("edu_courses")) {
+    const own = await db.execute({
+      sql: `SELECT c.id FROM edu_courses c LEFT JOIN edu_schools s ON s.id = c.school_id
+            WHERE c.id = ? AND (s.owner_id = ? OR (? IS NOT NULL AND c.school_id = ?))`,
+      args: [courseId, user.sub, store.learn_school_id ? String(store.learn_school_id) : null, store.learn_school_id ? String(store.learn_school_id) : null],
+    });
+    if (!own.rows[0]) return c.json({ error: "forbidden", message: "You can only enrol students on your own courses." }, 403);
+  }
   const portalUrl = `https://app.peebee.online/learn/course/${courseId}`;
 
   // 1. Insert into store_lms_enrollments
@@ -954,10 +1001,14 @@ digitalLmsRoutes.post("/merchants/me/lms/enrollments", requireAuth, async (c) =>
 // ---------------------------------------------------------------------------
 
 digitalLmsRoutes.get("/marketplace/stores/:id/digital-products", async (c) => {
-  const storeId = c.req.param("id");
+  const requested = c.req.param("id")!;
+  const publicStore = await findPublicStore(requested);
+  const demoStore = !publicStore && DEMO_DIGITAL_PRODUCTS.some((p) => p.store_id === requested);
+  if (!publicStore && !demoStore) return c.json({ digitalProducts: [], courses: [] });
+  const storeId = publicStore ? String(publicStore.id) : requested;
 
   let digitalProducts: StoreDigitalProduct[] = [];
-  if (await hasTable("store_digital_products")) {
+  if (publicStore && (await hasTable("store_digital_products"))) {
     const res = await db.execute({
       sql: "SELECT * FROM store_digital_products WHERE store_id = ? AND status = 'published' ORDER BY created_at DESC",
       args: [storeId],
@@ -970,14 +1021,14 @@ digitalLmsRoutes.get("/marketplace/stores/:id/digital-products", async (c) => {
       description: r.description ? String(r.description) : null,
       price_ugx: Number(r.price_ugx) || 0,
       compare_at_price_ugx: r.compare_at_price_ugx != null ? Number(r.compare_at_price_ugx) : null,
-      file_url: r.file_url ? String(r.file_url) : null,
+      file_url: null, // the file is only ever reached through a purchase token
       file_name: r.file_name ? String(r.file_name) : null,
       file_size_bytes: r.file_size_bytes != null ? Number(r.file_size_bytes) : null,
       mime_type: r.mime_type ? String(r.mime_type) : null,
       max_downloads: Number(r.max_downloads ?? 5),
       expiry_days: Number(r.expiry_days ?? 30),
       license_keys_pool: null, // do not leak license pool publicly
-      delivery_instructions: r.delivery_instructions ? String(r.delivery_instructions) : null,
+      delivery_instructions: null, // shown with the purchase, not before it
       cover_image_url: r.cover_image_url ? String(r.cover_image_url) : null,
       linked_course_id: r.linked_course_id ? String(r.linked_course_id) : null,
       status: "published",
@@ -988,14 +1039,23 @@ digitalLmsRoutes.get("/marketplace/stores/:id/digital-products", async (c) => {
     }));
   }
 
-  // Fallback demo items if none yet
-  if (digitalProducts.length === 0) {
-    digitalProducts = DEMO_DIGITAL_PRODUCTS;
+  // Only the platform's own demo store shows demo items; a real store shows what it really sells.
+  if (demoStore) {
+    digitalProducts = DEMO_DIGITAL_PRODUCTS.filter((p) => p.store_id === requested).map((p) => ({ ...p, file_url: null, license_keys_pool: null, delivery_instructions: null }));
+  }
+
+  let courses: Row[] = [];
+  if (publicStore && (await hasTable("edu_courses")) && (await hasColumn("edu_courses", "store_id"))) {
+    const crsRes = await db.execute({
+      sql: "SELECT id, school_id, title, summary, stream, price_ugx, status, created_at FROM edu_courses WHERE store_id = ? AND status = 'published' ORDER BY created_at DESC",
+      args: [storeId],
+    });
+    courses = crsRes.rows as Row[];
   }
 
   return c.json({
     digitalProducts,
-    courses: DEMO_LMS_COURSES,
+    courses: demoStore ? DEMO_LMS_COURSES : courses,
   });
 });
 
@@ -1023,17 +1083,21 @@ digitalLmsRoutes.get("/marketplace/digital-fulfillments/:token", async (c) => {
     return c.json({ error: "revoked", message: "This digital access token has been revoked by the merchant." }, 403);
   }
 
-  const downloadCount = Number(row.download_count) || 0;
-  const maxDownloads = Number(row.max_downloads) || 5;
-  if (maxDownloads > 0 && downloadCount >= maxDownloads) {
-    return c.json({ error: "limit_reached", message: `Download limit of ${maxDownloads} downloads reached.` }, 403);
+  if (row.expires_at && new Date(String(row.expires_at)).getTime() <= Date.now()) {
+    return c.json({ error: "expired", message: "This download link has expired." }, 403);
   }
 
-  // Increment download count
-  await db.execute({
-    sql: "UPDATE store_digital_fulfillments SET download_count = download_count + 1 WHERE id = ?",
-    args: [String(row.id)],
+  // 0 means unlimited. The cap is enforced by the UPDATE itself so concurrent requests cannot overshoot it.
+  const maxDownloads = Number(row.max_downloads ?? 5);
+  const claim = await db.execute({
+    sql: `UPDATE store_digital_fulfillments SET download_count = download_count + 1
+          WHERE id = ? AND status = 'active' AND (? = 0 OR download_count < ?)`,
+    args: [String(row.id), maxDownloads, maxDownloads],
   });
+  if (!claim.rowsAffected) {
+    return c.json({ error: "limit_reached", message: `Download limit of ${maxDownloads} downloads reached.` }, 403);
+  }
+  const downloadCount = (Number(row.download_count) || 0) + 1;
 
   if (await hasTable("store_digital_products")) {
     await db.execute({
@@ -1050,11 +1114,9 @@ digitalLmsRoutes.get("/marketplace/digital-fulfillments/:token", async (c) => {
       digital_product_id: String(row.digital_product_id),
       digital_product_title: String(row.digital_product_title),
       order_id: row.order_id ? String(row.order_id) : null,
-      customer_name: row.customer_name ? String(row.customer_name) : null,
-      customer_phone: String(row.customer_phone),
       access_token: String(row.access_token),
       license_key_issued: row.license_key_issued ? String(row.license_key_issued) : null,
-      download_count: downloadCount + 1,
+      download_count: downloadCount,
       max_downloads: maxDownloads,
       download_url: row.product_file_url ? String(row.product_file_url) : undefined,
       delivery_instructions: row.delivery_instructions ? String(row.delivery_instructions) : undefined,

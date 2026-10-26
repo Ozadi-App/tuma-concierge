@@ -202,6 +202,18 @@ export const DEMO_SERVICE_BOOKINGS: ServiceBookingRecord[] = [
   },
 ];
 
+/** Structural rail: the public site is an allow-list. `owner_id`, `custom_domain` and review state stay private. */
+const PUBLIC_SERVICE_BUSINESS_FIELDS = [
+  "id", "name", "slug", "tagline", "description", "category", "phone", "whatsapp", "email", "address", "city",
+  "service_area", "logo_url", "banner_url", "cancellation_policy", "allowed_payment_rails", "is_open",
+] as const;
+
+function toPublicServiceBusiness(biz: Row): Row {
+  const out: Row = {};
+  for (const key of PUBLIC_SERVICE_BUSINESS_FIELDS) if (key in biz) out[key] = biz[key];
+  return out;
+}
+
 async function getServiceBusinessForUser(userId: string): Promise<Row | null> {
   if (!(await hasTable("service_businesses"))) return null;
   const res = await db.execute({
@@ -645,26 +657,30 @@ servicesPlatformRoutes.post("/bookings", requireAuth, async (c) => {
 
   if (await hasTable("service_offerings")) {
     const oRes = await db.execute({
-      sql: "SELECT title, price_ugx, deposit_ugx, duration_minutes, pricing_type FROM service_offerings WHERE id = ?",
-      args: [data.service_id],
+      sql: "SELECT title, price_ugx, deposit_ugx, duration_minutes, pricing_type FROM service_offerings WHERE id = ? AND business_id = ?",
+      args: [data.service_id, String(biz.id)],
     });
-    if (oRes.rows.length > 0) {
-      const o = oRes.rows[0];
-      serviceTitle = String(o.title);
-      priceUgx = Number(o.price_ugx) || 0;
-      depositUgx = Number(o.deposit_ugx) || 0;
-      durationMins = Number(o.duration_minutes) || 60;
-      pricingType = String(o.pricing_type || "fixed");
+    if (oRes.rows.length === 0) {
+      return c.json({ error: "unknown_service", message: "That service is not one of yours." }, 400);
     }
+    const o = oRes.rows[0];
+    serviceTitle = String(o.title);
+    priceUgx = Number(o.price_ugx) || 0;
+    depositUgx = Number(o.deposit_ugx) || 0;
+    durationMins = Number(o.duration_minutes) || 60;
+    pricingType = String(o.pricing_type || "fixed");
   }
 
   let staffName = "";
   if (data.staff_id && (await hasTable("service_staff_members"))) {
     const sRes = await db.execute({
-      sql: "SELECT name FROM service_staff_members WHERE id = ?",
-      args: [data.staff_id],
+      sql: "SELECT name FROM service_staff_members WHERE id = ? AND business_id = ? AND is_active = 1",
+      args: [data.staff_id, String(biz.id)],
     });
-    if (sRes.rows.length > 0) staffName = String(sRes.rows[0].name);
+    if (sRes.rows.length === 0) {
+      return c.json({ error: "unknown_staff", message: "That team member is not on your roster." }, 400);
+    }
+    staffName = String(sRes.rows[0].name);
   }
 
   const bookingId = newId("sbk");
@@ -756,10 +772,13 @@ servicesPlatformRoutes.patch("/bookings/:id/status", requireAuth, async (c) => {
       let stfName = "";
       if (data.staff_id && (await hasTable("service_staff_members"))) {
         const sRes = await db.execute({
-          sql: "SELECT name FROM service_staff_members WHERE id = ?",
-          args: [data.staff_id],
+          sql: "SELECT name FROM service_staff_members WHERE id = ? AND business_id = ? AND is_active = 1",
+          args: [data.staff_id, String(biz.id)],
         });
-        if (sRes.rows.length > 0) stfName = String(sRes.rows[0].name);
+        if (sRes.rows.length === 0) {
+          return c.json({ error: "unknown_staff", message: "That team member is not on your roster." }, 400);
+        }
+        stfName = String(sRes.rows[0].name);
       }
       updates.push("staff_id = ?"); args.push(data.staff_id);
       updates.push("staff_name = ?"); args.push(stfName);
@@ -786,8 +805,9 @@ servicesPlatformRoutes.get("/public/:slug", async (c) => {
   let biz: Row | null = null;
   if (await hasTable("service_businesses")) {
     const res = await db.execute({
-      sql: "SELECT * FROM service_businesses WHERE slug = ? OR id = ? OR LOWER(custom_domain) = LOWER(?) LIMIT 1",
-      args: [slug, slug, slug],
+      sql: `SELECT * FROM service_businesses WHERE status = 'active'
+            AND (slug = ? OR id = ?) LIMIT 1`,
+      args: [slug, slug],
     });
     biz = (res.rows[0] as Row | undefined) ?? null;
   }
@@ -841,11 +861,11 @@ servicesPlatformRoutes.get("/public/:slug", async (c) => {
   });
 
   return c.json({
-    business: {
+    business: toPublicServiceBusiness({
       ...biz,
       allowed_payment_rails: rails,
       is_open: Boolean(biz.is_open),
-    },
+    }),
     offerings: parsedOfferings,
     staff,
   });
@@ -876,7 +896,7 @@ servicesPlatformRoutes.post("/public/:slug/book", async (c) => {
   let biz: Row | null = null;
   if (await hasTable("service_businesses")) {
     const res = await db.execute({
-      sql: "SELECT * FROM service_businesses WHERE slug = ? OR id = ? LIMIT 1",
+      sql: "SELECT * FROM service_businesses WHERE status = 'active' AND (slug = ? OR id = ?) LIMIT 1",
       args: [slug, slug],
     });
     biz = (res.rows[0] as Row | undefined) ?? null;
@@ -886,6 +906,9 @@ servicesPlatformRoutes.post("/public/:slug/book", async (c) => {
   }
 
   if (!biz) return c.json({ error: "not_found", message: "Service business not found" }, 404);
+  if (!Number(biz.is_open)) {
+    return c.json({ error: "business_closed", message: "This business is not taking bookings right now." }, 409);
+  }
 
   const body = await c.req.json().catch(() => null);
   const parsed = publicCustomerBookingSchema.safeParse(body);
@@ -919,24 +942,26 @@ servicesPlatformRoutes.post("/public/:slug/book", async (c) => {
 
   if (await hasTable("service_offerings")) {
     const oRes = await db.execute({
-      sql: "SELECT * FROM service_offerings WHERE id = ?",
-      args: [data.service_id],
+      sql: "SELECT * FROM service_offerings WHERE id = ? AND business_id = ? AND is_active = 1",
+      args: [data.service_id, String(biz.id)],
     });
-    if (oRes.rows.length > 0) {
-      const o = oRes.rows[0];
-      serviceTitle = String(o.title);
-      priceUgx = Number(o.price_ugx) || 0;
-      depositUgx = Number(o.deposit_ugx) || 0;
-      durationMins = Number(o.duration_minutes) || 60;
-      pricingType = String(o.pricing_type || "fixed");
-      virtualUrl = String(o.virtual_meeting_url || "");
+    if (oRes.rows.length === 0) {
+      return c.json({ error: "unknown_service", message: "That service is not offered by this business." }, 400);
     }
+    const o = oRes.rows[0];
+    serviceTitle = String(o.title);
+    priceUgx = Number(o.price_ugx) || 0;
+    depositUgx = Number(o.deposit_ugx) || 0;
+    durationMins = Number(o.duration_minutes) || 60;
+    pricingType = String(o.pricing_type || "fixed");
+    virtualUrl = String(o.virtual_meeting_url || "");
   }
 
+  // Structural rail: a booking is never "paid" because the customer said so. Payment status only moves when the
+  // provider confirms money (or the provider records it), so a new booking is always unpaid.
   const bookingId = newId("sbk");
-  const initialPaymentStatus = data.payment_rail === "cash_at_venue"
-    ? "unpaid"
-    : (depositUgx > 0 ? "deposit_paid" : "paid_full");
+  const initialPaymentStatus = "unpaid";
+  const initialStatus = "pending";
 
   if (await hasTable("service_bookings")) {
     await db.execute({
@@ -946,7 +971,7 @@ servicesPlatformRoutes.post("/public/:slug/book", async (c) => {
         address, virtual_meeting_url, notes, pricing_type, total_price_ugx,
         deposit_ugx, payment_rail, payment_status, status, staff_id, staff_name,
         created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed', NULL, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', NULL, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
       args: [
         bookingId,
         String(biz.id),
@@ -989,10 +1014,8 @@ servicesPlatformRoutes.post("/public/:slug/book", async (c) => {
       deposit_ugx: depositUgx,
       payment_rail: data.payment_rail,
       payment_status: initialPaymentStatus,
-      status: "confirmed",
-      instructions: data.location_type === "virtual"
-        ? "Your virtual consultation link has been reserved. You will receive an SMS reminder 30 minutes before the call."
-        : "Your booking is confirmed with the provider. Team will be ready at the scheduled time.",
+      status: initialStatus,
+      instructions: "Your request has been sent. The provider will confirm your booking and tell you how to pay.",
     },
   });
 });

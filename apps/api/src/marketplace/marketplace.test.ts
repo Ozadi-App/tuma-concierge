@@ -227,7 +227,7 @@ test("marketplace checkout: a bag from several stores is one delivery, priced ex
       method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify(body),
     });
     const items = [
-      { productId: "prod_avocado", storeId: "store_demo_fresh_mart", title: "Hass Avocados", price: 5000, quantity: 1 },
+      { productId: "prod_avocados_pack", storeId: "store_demo_fresh_mart", title: "Hass Avocados (Pack of 3)", price: 5000, quantity: 1 },
       { productId: "prod_retro_high_top", storeId: "store_demo_sneaker_hub", title: "Air Retro", price: 185000, quantity: 1 },
     ];
     const destination = { destinationLat: 0.3476, destinationLng: 32.5825 };
@@ -484,7 +484,7 @@ test("merchant elite tier: upgrades to elite, manages Store 2.0 theme, smart col
     assert.equal(storefrontData.channels.customerAppUrl, `https://app.peebee.online/store/${updatedStore.slug}`);
     assert.equal(storefrontData.channels.customDomainUrl, "https://shop.kampalaboutique.ug");
     assert.equal(storefrontData.collections.length, 1);
-    assert.equal(storefrontData.discounts.length, 1);
+    assert.equal(storefrontData.discounts.length, 0, "a private promo code is not published; only automatic offers are");
     assert.equal(storefrontData.outlets.length, 2);
 
     // 11. Public B2B Wholesale Inquiry from Dedicated Storefront ([store-name].peebee.online)

@@ -37,9 +37,9 @@ function bindDatabase(client: Client) {
 
 // Three Kampala stores (demo marketplace) and a customer in Entebbe.
 const ITEMS = [
-  { productId: "prod_avocado", storeId: "store_demo_fresh_mart", title: "Hass Avocados", price: 5000, quantity: 1 },
-  { productId: "prod_bread", storeId: "store_demo_golden_crust", title: "Bread", price: 4000, quantity: 1 },
-  { productId: "prod_dress", storeId: "store_demo_urban_vogue", title: "Dress", price: 68500, quantity: 1 },
+  { productId: "prod_avocados_pack", storeId: "store_demo_fresh_mart", title: "Hass Avocados (Pack of 3)", price: 5000, quantity: 1 },
+  { productId: "prod_sourdough_loaf", storeId: "store_demo_golden_crust", title: "Sourdough Loaf", price: 12000, quantity: 1 },
+  { productId: "prod_linen_shirt", storeId: "store_demo_urban_vogue", title: "Linen Shirt", price: 65000, quantity: 1 },
 ];
 const ENTEBBE_DOOR = { destinationLat: 0.06, destinationLng: 32.47 };
 
@@ -194,9 +194,9 @@ test("a bag's delivery is the rider's whole road trip, and a long one offers a r
         const quote = await json<Breakdown>(call("shopper", `/orders/${bag[0].id}/checkout`));
         assert.ok(quote.bundle, "the first pickup's quote covers the whole bag");
         assert.equal(quote.items.length, 2);
-        assert.deepEqual(quote.items.map((item) => item.price).sort((a, b) => a! - b!), [68500, 185000]);
+        assert.deepEqual(quote.items.map((item) => item.price).sort((a, b) => a! - b!), [65000, 185000]);
         assert.equal(new Set(quote.items.map((item) => item.storeName)).size, 2, "each item names its store");
-        assert.equal(quote.itemsSubtotal, 68500 + 185000);
+        assert.equal(quote.itemsSubtotal, 65000 + 185000);
         assert.equal(quote.delivery.mode, "relay");
         assert.equal(quote.delivery.lastMile, "door");
         assert.equal(quote.delivery.pickups.length, 2, "the first rider collects from both stores");

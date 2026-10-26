@@ -14,6 +14,8 @@ import { insertRelayLegs, planRelay, relayChargeFor, resolveLastMile, type Relay
 import { getRelaySettings } from "../relay/settings.js";
 
 import { digitalLmsRoutes } from "./digital-lms.js";
+import { priceCheckoutItems } from "./pricing.js";
+import { findPublicStore, toPublicProduct, toPublicStore } from "./public.js";
 
 export const marketplaceRoutes = new Hono();
 marketplaceRoutes.route("/", digitalLmsRoutes);
@@ -3215,15 +3217,7 @@ marketplaceRoutes.get("/marketplace/stores/:id", async (c) => {
   const userLat = latParam != null && latParam !== "" ? parseFloat(latParam) : null;
   const userLng = lngParam != null && lngParam !== "" ? parseFloat(lngParam) : null;
 
-  const hasCustomDomain = await hasColumn("stores", "custom_domain");
-  const res = await db.execute({
-    sql: hasCustomDomain
-      ? "SELECT * FROM stores WHERE id = ? OR slug = ? OR LOWER(custom_domain) = LOWER(?)"
-      : "SELECT * FROM stores WHERE id = ? OR slug = ?",
-    args: hasCustomDomain ? [id, id, id] : [id, id],
-  });
-
-  let store = (res.rows[0] as Row | undefined) ?? null;
+  let store = await findPublicStore(id);
   if (!store) {
     store = DEMO_MARKETPLACE_STORES.find((s) => s.id === id || s.slug === id) || null;
   }
@@ -3263,7 +3257,7 @@ marketplaceRoutes.get("/marketplace/stores/:id", async (c) => {
   let discounts: Row[] = [];
   if (await hasTable("store_discounts")) {
     const discRes = await db.execute({
-      sql: "SELECT id, code, title, kind, value, min_order_amount, is_automatic FROM store_discounts WHERE store_id = ? AND status = 'active' ORDER BY is_automatic DESC, created_at DESC",
+      sql: "SELECT id, code, title, kind, value, min_order_amount, is_automatic FROM store_discounts WHERE store_id = ? AND status = 'active' AND is_automatic = 1 ORDER BY created_at DESC",
       args: [storeId],
     });
     discounts = discRes.rows as Row[];
@@ -3304,7 +3298,7 @@ marketplaceRoutes.get("/marketplace/stores/:id", async (c) => {
   let digitalProducts: Row[] = [];
   if (await hasTable("store_digital_products")) {
     const digRes = await db.execute({
-      sql: "SELECT id, store_id, title, kind, description, price_ugx, compare_at_price_ugx, file_url, file_name, file_size_bytes, mime_type, delivery_instructions, cover_image_url, linked_course_id, downloads_count FROM store_digital_products WHERE store_id = ? AND status = 'published' ORDER BY created_at DESC",
+      sql: "SELECT id, store_id, title, kind, description, price_ugx, compare_at_price_ugx, file_name, file_size_bytes, mime_type, cover_image_url, linked_course_id, downloads_count FROM store_digital_products WHERE store_id = ? AND status = 'published' ORDER BY created_at DESC",
       args: [storeId],
     });
     digitalProducts = digRes.rows as Row[];
@@ -3320,7 +3314,7 @@ marketplaceRoutes.get("/marketplace/stores/:id", async (c) => {
   }
 
   return c.json({
-    store,
+    store: toPublicStore(store),
     collections,
     discounts,
     bundles,
@@ -3363,18 +3357,19 @@ marketplaceRoutes.post("/marketplace/stores/:id/b2b-inquiry", async (c) => {
     return c.json({ error: "b2b_disabled", message: "B2B Wholesale is currently disabled." }, 403);
   }
 
-  const hasCustomDomain = await hasColumn("stores", "custom_domain");
-  const storeRes = await db.execute({
-    sql: hasCustomDomain
-      ? "SELECT * FROM stores WHERE id = ? OR slug = ? OR LOWER(custom_domain) = LOWER(?)"
-      : "SELECT * FROM stores WHERE id = ? OR slug = ?",
-    args: hasCustomDomain ? [id, id, id] : [id, id],
-  });
-  const store = (storeRes.rows[0] as Row | undefined) ?? null;
+  const store = await findPublicStore(id);
   if (!store) return c.json({ error: "store_not_found" }, 404);
 
   const parsed = publicB2bInquirySchema.safeParse(await c.req.json().catch(() => ({})));
   if (!parsed.success) return c.json({ error: "invalid_body", issues: parsed.error.issues }, 400);
+
+  // The merchant sees catalogue prices, whatever the form sent.
+  const priced = await priceCheckoutItems(
+    parsed.data.items.map((it) => ({ productId: it.productId, storeId: String(store.id), title: it.title, price: it.unitPrice, quantity: it.quantity })),
+    DEMO_MARKETPLACE_PRODUCTS,
+  );
+  if (!priced.ok) return c.json({ error: priced.error, message: priced.message, productId: priced.productId }, priced.status);
+  parsed.data.items = priced.items.map((it) => ({ productId: it.productId, title: it.title, unitPrice: it.price, quantity: it.quantity }));
 
   const subtotal = parsed.data.items.reduce((sum, it) => sum + it.unitPrice * it.quantity, 0);
   const minB2b = Number(store.b2b_min_order_amount || 0);
@@ -3411,12 +3406,9 @@ marketplaceRoutes.post("/marketplace/stores/:id/b2b-inquiry", async (c) => {
 
 marketplaceRoutes.get("/marketplace/stores/:id/products", async (c) => {
   const id = c.req.param("id")!;
-  const storeRes = await db.execute({
-    sql: "SELECT id FROM stores WHERE id = ? OR slug = ?",
-    args: [id, id],
-  });
-
-  const realStoreId = (storeRes.rows[0] as Row | undefined)?.id as string | undefined || id;
+  const publicStore = await findPublicStore(id);
+  const realStoreId = publicStore ? String(publicStore.id) : DEMO_MARKETPLACE_PRODUCTS[id] ? id : null;
+  if (!realStoreId) return c.json({ products: [] });
 
   const productsRes = await db.execute({
     sql: "SELECT * FROM store_products WHERE store_id = ? AND status = 'active' ORDER BY sort_order, created_at DESC",
@@ -3442,7 +3434,7 @@ marketplaceRoutes.get("/marketplace/stores/:id/products", async (c) => {
     variantsByProduct[pid].push(v);
   }
 
-  const enriched = products.map((p) => ({
+  const enriched = products.map((p) => toPublicProduct({
     ...p,
     variants: (p.variants as any[]) || variantsByProduct[String(p.id)] || [],
   }));
@@ -3455,8 +3447,10 @@ marketplaceRoutes.get("/marketplace/products/:id", async (c) => {
 
   // 1. Try database lookup
   const prodRes = await db.execute({
-    sql: "SELECT * FROM store_products WHERE id = ? OR slug = ?",
-    args: [id, id],
+    sql: `SELECT p.* FROM store_products p JOIN stores s ON s.id = p.store_id
+          WHERE (p.id = ? OR p.slug = ?) AND p.status = 'active' AND s.status = 'active' AND s.environment = ?
+          ORDER BY CASE WHEN p.id = ? THEN 0 ELSE 1 END LIMIT 1`,
+    args: [id, id, await getPlatformEnvironment(), id],
   });
 
   let product = (prodRes.rows[0] as Row | undefined) || null;
@@ -3493,7 +3487,7 @@ marketplaceRoutes.get("/marketplace/products/:id", async (c) => {
     return c.json({ error: "product_not_found" }, 404);
   }
 
-  return c.json({ product, store });
+  return c.json({ product: toPublicProduct(product), store });
 });
 
 // Live Channels Feed (for top "LIVE NOW" rail)
@@ -3734,7 +3728,9 @@ marketplaceRoutes.post("/marketplace/checkout", requireAuth, async (c) => {
   const paymentRail = d.paymentRail ?? (d.paymentMethod === "cod" ? "float" : "escrow");
   const stage = paymentRail === "float" ? "Match" : "Create";
 
-  const bag = await planMarketplaceDelivery(d.items, d, environment);
+  const pricing = await priceCheckoutItems(d.items, DEMO_MARKETPLACE_PRODUCTS);
+  if (!pricing.ok) return c.json({ error: pricing.error, message: pricing.message, productId: pricing.productId }, pricing.status);
+  const bag = await planMarketplaceDelivery(pricing.items, d, environment);
   const stops = bag.stops;
   const promoEval = await evaluateBagPromosAndLoyalty(stops, d.promoCode);
   for (const stop of stops) {
@@ -3934,7 +3930,9 @@ const quoteSchema = marketplaceCheckoutSchema.pick({ items: true, destinationLat
 marketplaceRoutes.post("/marketplace/checkout/quote", requireAuth, async (c) => {
   const parsed = quoteSchema.safeParse(await c.req.json().catch(() => ({})));
   if (!parsed.success) return c.json({ error: "invalid_body", issues: parsed.error.issues }, 400);
-  const bag = await planMarketplaceDelivery(parsed.data.items, parsed.data, await getPlatformEnvironment());
+  const pricing = await priceCheckoutItems(parsed.data.items, DEMO_MARKETPLACE_PRODUCTS);
+  if (!pricing.ok) return c.json({ error: pricing.error, message: pricing.message, productId: pricing.productId }, pricing.status);
+  const bag = await planMarketplaceDelivery(pricing.items, parsed.data, await getPlatformEnvironment());
   const { stops, trip } = bag;
   const relayed = bag.relay;
   const promoEval = await evaluateBagPromosAndLoyalty(stops, parsed.data.promoCode);
