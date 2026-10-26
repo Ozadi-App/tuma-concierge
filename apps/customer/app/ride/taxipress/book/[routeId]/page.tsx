@@ -64,11 +64,49 @@ function BookLine() {
   const someoneOk = !draft.forSomeoneElse || (draft.travellerName.trim().length >= 2 && /^[+0-9 ()-]{7,20}$/.test(draft.travellerPhone.trim()));
   const ready = restored && selected && fits && someoneOk && seats >= 1;
 
+
+  const forOthers = details && taxipressOptions(taxipress).forOthers;
+  const justMe = draft.adults === 1 && draft.children === 0 && !draft.forSomeoneElse;
+  const passengerPanel = selected ? (
+    <div aria-label="Who is travelling" className="mt-4 space-y-3 border-t border-[var(--border-faint)] pt-4">
+      <div className="flex items-baseline justify-between gap-2">
+        <h2 className="text-base font-bold text-ink">Who is travelling?</h2>
+        <span className="text-xs text-ink-500">{justMe ? "Just you · 1 seat" : `${seats} seat${seats === 1 ? "" : "s"} · ${ugx(total)}`}</span>
+      </div>
+      {forOthers && (
+        <div role="radiogroup" aria-label="Booking for" className="grid grid-cols-2 gap-1 rounded-2xl bg-[rgb(var(--surface-muted))] p-1">
+          {([[false, "Me"], [true, "Someone else"]] as const).map(([value, text]) => (
+            <button key={text} type="button" role="radio" aria-checked={draft.forSomeoneElse === value} onClick={() => setDraft({ forSomeoneElse: value })}
+              className={`min-h-11 rounded-xl text-sm font-bold ${draft.forSomeoneElse === value ? "bg-[rgb(var(--surface-card))] text-ink shadow-sm" : "text-ink-500"}`}>
+              {text}
+            </button>
+          ))}
+        </div>
+      )}
+      {draft.forSomeoneElse && (
+        <div className="space-y-2">
+          <Field label="Passenger name" value={draft.travellerName} autoComplete="name" onChange={(travellerName) => setDraft({ travellerName })} />
+          <Field label="Passenger phone" value={draft.travellerPhone} type="tel" autoComplete="tel" onChange={(travellerPhone) => setDraft({ travellerPhone })} />
+          <Field label="Emergency contact (optional)" value={draft.emergencyPhone} type="tel" onChange={(emergencyPhone) => setDraft({ emergencyPhone })} />
+        </div>
+      )}
+      <Stepper label="Adults" note="Age 13 and above" value={draft.adults} min={1} max={MAX_PASSENGERS - draft.children} onChange={(adults) => setDraft({ adults })} />
+      <Stepper label="Children" note="Under 12" value={draft.children} min={0} max={MAX_PASSENGERS - draft.adults} onChange={(children) => setDraft({ children })} />
+      {(draft.children > 0 || draft.adults > 1) && (
+        <p className="text-xs text-ink-500">
+          {maxLap > 0 ? `Up to ${maxLap} child${maxLap === 1 ? "" : "ren"} ride on a lap free. ` : ""}
+          {`Each child beyond that needs a seat${childPct < 100 ? ` at ${childPct}% of the fare` : ""}.`}
+        </p>
+      )}
+      {!fits && <p role="alert" className="text-xs font-semibold text-[rgb(var(--color-red,200_40_40))]">{selected.plate} has {selected.seatsLeft} seat{selected.seatsLeft === 1 ? "" : "s"} left. Choose fewer passengers or another taxi.</p>}
+    </div>
+  ) : null;
+
   useRegisterNavBack(true, () => router.push("/ride/taxipress"));
   useRegisterNavPrimaryAction({
     tone: "gold",
     icon: Ticket,
-    label: `Select · ${seats} seat${seats === 1 ? "" : "s"}`,
+    label: justMe ? "Continue" : `Continue · ${seats} seat${seats === 1 ? "" : "s"}`,
     detail: selected ? `${ugx(total)} · ${selected.plate}` : "Choose a taxi",
     disabled: !ready,
     onClick: () => { if (ready) router.push(`/ride/taxipress/book/${routeId}/${selected!.id}`); },
@@ -111,55 +149,18 @@ function BookLine() {
 
       <ol className="space-y-3">
         {bookable.map((van, i) => (
-          <TaxiCard key={van.id} van={van} rank={i + 1} routeId={routeId} selected={van.id === draft.queueId} onSelect={() => setDraft({ queueId: van.id })} />
+          <TaxiCard key={van.id} van={van} rank={i + 1} routeId={routeId} selected={van.id === draft.queueId} onSelect={() => setDraft({ queueId: van.id })}>
+            {van.id === draft.queueId ? passengerPanel : null}
+          </TaxiCard>
         ))}
       </ol>
       {waiting.length > 0 && <p className="px-1 text-xs text-ink-500">{waiting.length} more taxi{waiting.length === 1 ? "" : "s"} waiting. They open for booking as the line moves.</p>}
 
-      <section aria-label="Passengers" className="home-card space-y-3 border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-4">
-        <div className="flex items-baseline justify-between">
-          <h2 className="text-base font-bold text-ink">Passengers</h2>
-          <span className="text-xs text-ink-500">{draft.adults} adult{draft.adults === 1 ? "" : "s"}{draft.children > 0 ? ` · ${draft.children} child${draft.children === 1 ? "" : "ren"}` : ""}</span>
-        </div>
-        <Stepper label="Adults" note="Age 13 and above" value={draft.adults} min={1} max={MAX_PASSENGERS - draft.children} onChange={(adults) => setDraft({ adults })} />
-        {details && (
-          <>
-            <Stepper label="Children" note="Under 12" value={draft.children} min={0} max={MAX_PASSENGERS - draft.adults} onChange={(children) => setDraft({ children })} />
-            <p className="text-xs text-ink-500">
-              {maxLap > 0 ? `Up to ${maxLap} child${maxLap === 1 ? "" : "ren"} ride on a lap free. ` : ""}
-              {`Each child beyond that needs a seat${childPct < 100 ? ` at ${childPct}% of the fare` : ""}.`}
-            </p>
-          </>
-        )}
-        {selected && !fits && <p role="alert" className="text-xs font-semibold text-[rgb(var(--color-red,200_40_40))]">{selected.plate} has {selected.seatsLeft} seat{selected.seatsLeft === 1 ? "" : "s"} left. Choose fewer passengers or another taxi.</p>}
-      </section>
-
-      {details && taxipressOptions(taxipress).forOthers && (
-        <section aria-label="Booking for someone else" className="home-card space-y-3 border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-4">
-          <label className="flex items-center justify-between gap-3">
-            <span>
-              <span className="block text-base font-bold text-ink">Booking for someone else</span>
-              <span className="block text-xs text-ink-500">Their details go on the ticket</span>
-            </span>
-            <input type="checkbox" role="switch" checked={draft.forSomeoneElse} onChange={(e) => setDraft({ forSomeoneElse: e.target.checked })} className="peer sr-only" />
-            <span aria-hidden className={`relative h-7 w-12 shrink-0 rounded-full transition ${draft.forSomeoneElse ? "bg-gold" : "bg-[rgb(var(--surface-muted))]"} peer-focus-visible:ring-2 peer-focus-visible:ring-gold`}>
-              <span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-all ${draft.forSomeoneElse ? "left-6" : "left-1"}`} />
-            </span>
-          </label>
-          {draft.forSomeoneElse && (
-            <div className="space-y-2">
-              <Field label="Passenger name" value={draft.travellerName} autoComplete="name" onChange={(travellerName) => setDraft({ travellerName })} />
-              <Field label="Passenger phone" value={draft.travellerPhone} type="tel" autoComplete="tel" onChange={(travellerPhone) => setDraft({ travellerPhone })} />
-              <Field label="Emergency contact (optional)" value={draft.emergencyPhone} type="tel" onChange={(emergencyPhone) => setDraft({ emergencyPhone })} />
-            </div>
-          )}
-        </section>
-      )}
     </main>
   );
 }
 
-function TaxiCard({ van, rank, routeId, selected, onSelect }: { van: TaxipressLineEntry; rank: number; routeId: string; selected: boolean; onSelect: () => void }) {
+function TaxiCard({ van, rank, routeId, selected, onSelect, children }: { van: TaxipressLineEntry; rank: number; routeId: string; selected: boolean; onSelect: () => void; children?: React.ReactNode }) {
   const router = useRouter();
   return (
     <li className={`home-card border-2 bg-[rgb(var(--surface-card))] p-4 ${selected ? "border-gold" : "border-[var(--border-faint)]"}`}>
@@ -184,6 +185,7 @@ function TaxiCard({ van, rank, routeId, selected, onSelect }: { van: TaxipressLi
       <button type="button" aria-pressed={selected} onClick={onSelect} className={`mt-3 flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl text-base font-bold ${selected ? "bg-gold text-ink-gold" : "border border-gold text-ink"}`}>
         {selected ? <><Check className="h-5 w-5" aria-hidden /> Selected</> : <><Ticket className="h-5 w-5" aria-hidden /> Book a seat</>}
       </button>
+      {children}
     </li>
   );
 }
