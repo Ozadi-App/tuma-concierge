@@ -338,3 +338,14 @@ export type TaxipressReport =
       owing: Array<{ id: string; name: string | null; phone: string | null; balance: number; plate: string }>;
       refunds: { count: number; refunded: number; fees: number; cancelled: number; noShows: number; taxiRemoved: number };
     };
+
+/**
+ * The town or city a stage belongs to, for route titles: "Entebbe Taxi Park" → "Entebbe", "Kampala Old Taxi Park" →
+ * "Kampala", "Busega Roundabout" → "Busega". The stage's own name is kept for the stops list. A name with nothing
+ * to strip (or that would strip to nothing) is returned as it is.
+ */
+export function taxipressTown(stageName: string): string {
+  const name = String(stageName ?? "").trim();
+  const town = name.replace(/\s+(?:(?:old|new|main|central)\s+)?(?:(?:taxi|bus|matatu)\s+)?(?:park|stage|stand|stop|station|terminal|roundabout|junction)$/i, "").trim();
+  return town || name;
+}

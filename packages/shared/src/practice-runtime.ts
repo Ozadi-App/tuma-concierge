@@ -1,6 +1,6 @@
 import { endServerPractice, isServerPractice } from "./practice-server.js";
 import { practiceTalentRequest, resetPracticeTalent } from "./practice-talent.js";
-import { practiceTaxipressRequest, resetPracticeTaxipress } from "./practice-taxipress.js";
+import { practiceTaxipressRequest, rememberPracticeTaxipressOptions, resetPracticeTaxipress } from "./practice-taxipress.js";
 import { practiceWalletView, practiceWalletBalance, practiceWalletSpend, practiceWalletRefund, resetPracticeWallet } from "./practice-wallet.js";
 import { practiceWorkRequest, resetPracticeWork } from "./practice-work.js";
 import { PRACTICE_MODE_STORAGE_KEY, type PracticeRole } from "./practice.js";
@@ -1751,6 +1751,25 @@ function rememberPlatformEnvironment(environment: unknown) {
 /** Everything the Channels feature serves. */
 const CHANNELS_PATHS = /^\/v1\/(channels|posts|comments|spotlight\/feed|public\/(channels|causes|donations|media)|creator|live|subscriptions|tiers|ads|video|admin\/(channels|video|ads))(\/|$|\?)/;
 
+const TAXIPRESS_STAFF_SETTINGS = [
+  "luggageEnabled", "luggageTypes", "luggagePrices", "assistanceEnabled", "languageEnabled", "languages", "bookForOthersEnabled", "maxLapChildren", "childSeatFarePercent",
+  "cashEnabled", "seatChoiceFeeUgx", "returnDiscountPercent", "maxSeatsPerBooking", "payWithinMinutes", "parcelFitText", "parcelNotAllowed",
+] as const;
+
+async function overlayTaxipressSettings(sample: Response, real: () => Promise<Response>): Promise<Response> {
+  try {
+    const live = (await (await real()).json()) as Record<string, unknown>;
+    const base = (await sample.clone().json()) as Record<string, unknown>;
+    for (const key of TAXIPRESS_STAFF_SETTINGS) if (live[key] !== undefined) base[key] = live[key];
+    rememberPracticeTaxipressOptions(base);
+    return jsonResponse(base);
+  } catch {
+    // Offline or refused: the sample's own defaults apply.
+    rememberPracticeTaxipressOptions({});
+    return sample;
+  }
+}
+
 export function createPracticeFetch(role: PracticeRole, realFetch: typeof fetch = fetch): typeof fetch {
   return (async (input: RequestInfo | URL, init?: RequestInit) => {
     // Practising against the shared world: the server answers, nothing is simulated here.
@@ -1780,6 +1799,10 @@ export function createPracticeFetch(role: PracticeRole, realFetch: typeof fetch 
       if (method === "GET") return jsonResponse({ error: "channels_unavailable", message: "Channels are not part of practice mode." }, 503);
       return jsonResponse({ error: "channels_unavailable", message: "Channels are not part of practice mode." }, 503);
     }
-    return handlePracticeRequest(role, url.pathname, method, parseBody(init), url.searchParams);
+    const sample = handlePracticeRequest(role, url.pathname, method, parseBody(init), url.searchParams);
+    // Taxipress's routes and taxis are the sample's, but the options staff control (luggage, assistance, languages, cash, limits)
+    // are the platform's real settings, so what admin changes shows up here too.
+    if (role === "customer" && method === "GET" && url.pathname === "/v1/taxipress/config") return overlayTaxipressSettings(sample, () => realFetch(input, init));
+    return sample;
   }) as typeof fetch;
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { TAXIPRESS_LUGGAGE_LABELS, type TaxipressAssistance, type TaxipressLanguage, type TaxipressLuggageType, type TaxipressQueueView } from "@peebee/shared";
+import { TAXIPRESS_LUGGAGE_LABELS, taxipressTown, type TaxipressAssistance, type TaxipressLanguage, type TaxipressLuggageType, type TaxipressQueueView } from "@peebee/shared";
 import { Accessibility, ArrowRight, Armchair, Ban, Box, Briefcase, Bus, Gem, HandHelping, Luggage, Minus, Package, Plus, ShoppingBag, X } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -126,7 +126,7 @@ export default function OptionsPage() {
           <div className="flex items-center gap-2 rounded-full bg-[rgb(var(--color-black-700))] px-4 py-3 text-white" aria-label="Your booking so far">
             <Bus className="h-4 w-4 shrink-0 text-gold" aria-hidden />
             <span className="min-w-0 flex-1 truncate text-sm">
-              {route.fromName} → {route.toName} · <span className="font-mono">{van.plate}</span>{van.departsAt ? ` · ~${clock(van.departsAt)}` : ""} · {party}
+              {taxipressTown(route.fromName)} → {taxipressTown(route.toName)} · <span className="font-mono">{van.plate}</span>{van.departsAt ? ` · ~${clock(van.departsAt)}` : ""} · {party}
             </span>
             <span className="shrink-0 text-sm font-bold text-gold">{ride.toLocaleString("en-UG")}</span>
           </div>
