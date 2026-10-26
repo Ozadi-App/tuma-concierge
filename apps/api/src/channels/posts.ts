@@ -437,7 +437,8 @@ export function serializePost(p: PostRow, ctx: SerializeCtx) {
     status: p.status,
     publishedAt: p.published_at ?? null,
     scheduledAt: isAuthor ? p.scheduled_at ?? null : null,
-    liveStatus: p.live_status ?? null,
+    // An airing's clock is read when the post is serialised, which can be a moment after the post row was fetched.
+    liveStatus: ctx.events.get(p.id) ? ({ scheduled: "scheduled", on_air: "live", ended: "ended" } as const)[ctx.events.get(p.id)!.status] : p.live_status ?? null,
     event: ctx.events.get(p.id) ?? null,
     counts: { views: Number(p.view_count), likes: Number(p.like_count), comments: Number(p.comment_count) },
     liked: ctx.liked.has(p.id),

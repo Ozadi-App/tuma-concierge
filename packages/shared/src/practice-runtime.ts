@@ -1677,7 +1677,7 @@ function rememberPlatformEnvironment(environment: unknown) {
 }
 
 /** Everything the Channels feature serves. */
-const CHANNELS_PATHS = /^\/v1\/(channels|posts|comments|spotlight\/feed|public\/(channels|causes|donations|media)|creator|live|subscriptions|tiers|ads|video|admin\/(channels|video|ads))(\/|$|\?)/;
+const CHANNELS_PATHS = /^\/v1\/(channels|posts|comments|spotlight\/feed|public\/(channels|causes|donations|media)|creator|live|airings|subscriptions|tiers|ads|video|admin\/(channels|video|ads))(\/|$|\?)/;
 
 export function createPracticeFetch(role: PracticeRole, realFetch: typeof fetch = fetch): typeof fetch {
   return (async (input: RequestInfo | URL, init?: RequestInit) => {
