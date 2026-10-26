@@ -1,6 +1,6 @@
 "use client";
 
-import type { TaxipressTaxiProfile } from "@peebee/shared";
+import { taxipressTown, type TaxipressTaxiProfile } from "@peebee/shared";
 import { Star, Ticket, User } from "lucide-react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
@@ -62,7 +62,7 @@ function TaxiProfile() {
           <span className="flex h-20 w-20 items-center justify-center rounded-full bg-[rgb(var(--surface-muted))] text-ink-500"><User className="h-9 w-9" aria-hidden /></span>
         )}
         <h1 className="text-2xl font-black text-ink">{profile.driverName ?? profile.plate}</h1>
-        <p className="text-sm text-ink-500">TaxiPress driver · {profile.route.fromName} → {profile.route.toName}</p>
+        <p className="text-sm text-ink-500">TaxiPress driver · {taxipressTown(profile.route.fromName)} → {taxipressTown(profile.route.toName)}</p>
         {profile.rating != null && profile.ratingCount != null && (
           <p className="flex items-center gap-1 text-sm font-bold text-ink"><Star className="h-4 w-4 fill-gold text-gold" aria-hidden /> {profile.rating.toFixed(1)} <span className="font-normal text-ink-500">({profile.ratingCount} review{profile.ratingCount === 1 ? "" : "s"})</span></p>
         )}

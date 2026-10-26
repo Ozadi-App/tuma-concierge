@@ -1,6 +1,6 @@
 "use client";
 
-import type { TaxipressLineEntry, TaxipressQueueView } from "@peebee/shared";
+import { taxipressTown, type TaxipressLineEntry, type TaxipressQueueView } from "@peebee/shared";
 import { Check, ChevronRight, Clock, Minus, Plus, Ticket } from "lucide-react";
 import { DriverAvatar } from "../../../../../components/taxipress/DriverAvatar";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
@@ -77,7 +77,7 @@ function BookLine() {
   return (
     <main className="space-y-4 px-4 pb-8 pt-4">
       <header>
-        <p className="text-xs font-bold uppercase tracking-[0.14em] text-gold">Step 2 of 3{route ? ` · ${route.fromName} → ${route.toName}` : ""}</p>
+        <p className="text-xs font-bold uppercase tracking-[0.14em] text-gold">Step 2 of 3{route ? ` · ${taxipressTown(route.fromName)} → ${taxipressTown(route.toName)}` : ""}</p>
         <h1 className="mt-1 text-3xl font-black tracking-tight text-ink">Book a seat</h1>
         <p className="mt-1 text-sm text-ink-500">Now {clock(new Date().toISOString())}. You get the next free seat. Tap a taxi for its profile.</p>
       </header>

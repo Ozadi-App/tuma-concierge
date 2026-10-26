@@ -1,6 +1,6 @@
 "use client";
 
-import type { TaxipressConfig } from "@peebee/shared";
+import { taxipressTown, type TaxipressConfig } from "@peebee/shared";
 import { ArrowRight, ArrowUpDown, ChevronDown, ChevronLeft, ChevronUp, Ticket } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -81,11 +81,11 @@ export default function TaxipressPage() {
                 <div className="relative cursor-pointer p-4" onClick={() => setOpen(isOpen ? null : card.id)}>
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <h2 className="text-2xl font-black leading-tight">{r.fromName} → {r.toName}</h2>
+                      <h2 className="text-2xl font-black leading-tight">{taxipressTown(r.fromName)} → {taxipressTown(r.toName)}</h2>
                       {n != null && <p className="mt-1 text-sm text-white/70">{n === 0 ? "No taxi in the line yet" : `${n} taxi${n === 1 ? "" : "s"} in the line`}</p>}
                     </div>
                     {reverseOf(card) && (
-                      <button type="button" aria-label={`Swap to ${r.toName} → ${r.fromName}`} onClick={(e) => { e.stopPropagation(); setSwapped((s) => ({ ...s, [card.id]: !s[card.id] })); }} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/15">
+                      <button type="button" aria-label={`Swap to ${taxipressTown(r.toName)} → ${taxipressTown(r.fromName)}`} onClick={(e) => { e.stopPropagation(); setSwapped((s) => ({ ...s, [card.id]: !s[card.id] })); }} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/15">
                         <ArrowUpDown className="h-5 w-5" aria-hidden />
                       </button>
                     )}
