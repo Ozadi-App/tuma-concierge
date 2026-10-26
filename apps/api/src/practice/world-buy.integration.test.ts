@@ -52,10 +52,10 @@ test("Deliver and Buy: fuel, relay, pharmacy and live selling have demo data a p
   });
 
   await t.test("relay: stops and matatu operators are in place on both routes", async () => {
-    assert.equal(await n("SELECT COUNT(*) n FROM relay_route_stages WHERE route_id LIKE 'prac\\_%' ESCAPE '\\'"), 6);
+    assert.equal(await n("SELECT COUNT(*) n FROM relay_route_stages WHERE route_id LIKE 'prac\\_%' ESCAPE '\\'"), 13);
     assert.equal(await n("SELECT COUNT(*) n FROM relay_operators WHERE status = 'approved'"), 3);
     const liveRoutes = await runInPractice(async () => n("SELECT COUNT(*) n FROM relay_routes WHERE active = 1"));
-    assert.equal(liveRoutes, 2);
+    assert.equal(liveRoutes, 6);
   });
 });
 

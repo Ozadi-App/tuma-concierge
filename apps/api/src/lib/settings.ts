@@ -720,6 +720,8 @@ const DEFAULTS = {
   taxipress_language_enabled: "1",
   taxipress_book_for_others_enabled: "1",
   taxipress_show_stops: "1",
+  taxipress_luggage_options_shown: "6",
+  taxipress_languages: JSON.stringify([{ code: "en", name: "English", enabled: true }, { code: "lg", name: "Luganda", enabled: true }, { code: "sw", name: "Swahili", enabled: true }]),
 } as const;
 
 export type SettingKey = keyof typeof DEFAULTS;

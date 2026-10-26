@@ -59,6 +59,7 @@ function SettingsTab() {
   const [notAllowed, setNotAllowed] = useState("");
   const [num, setNum] = useState<Record<string, string>>({});
   const [ready, setReady] = useState(true);
+  const [newLanguage, setNewLanguage] = useState({ code: "", name: "" });
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -76,7 +77,7 @@ function SettingsTab() {
       payWithinMinutes: String(next.payWithinMinutes), maxCashBookings: String(next.maxCashBookings),
       freeCancelMinutes: String(next.freeCancelMinutes), cancelRetentionPercent: String(next.cancelRetentionPercent),
       noShowMinutes: String(next.noShowMinutes), noShowFeePercent: String(next.noShowFeePercent),
-      childSeatFarePercent: String(next.childSeatFarePercent),
+      childSeatFarePercent: String(next.childSeatFarePercent), luggageOptionsShown: String(next.luggageOptionsShown),
       ...Object.fromEntries(TAXIPRESS_LUGGAGE_TYPES.map((t) => [`luggage_${t}`, next.luggagePrices[t] == null ? "" : String(next.luggagePrices[t])])),
     });
   }, []);
@@ -121,6 +122,7 @@ function SettingsTab() {
         noShowMinutes: n("noShowMinutes"), noShowFeePercent: n("noShowFeePercent"), rebookOnRemoval: s.rebookOnRemoval,
         bookableTaxis: s.bookableTaxis, maxLapChildren: s.maxLapChildren, childSeatFarePercent: n("childSeatFarePercent"),
         luggageEnabled: s.luggageEnabled, assistanceEnabled: s.assistanceEnabled, languageEnabled: s.languageEnabled,
+        luggageOptionsShown: Math.min(TAXIPRESS_LUGGAGE_TYPES.length, Math.max(1, n("luggageOptionsShown"))), languages: s.languages,
         bookForOthersEnabled: s.bookForOthersEnabled, showStops: s.showStops,
         // A blank luggage price means "priced at the stage".
         luggagePrices: Object.fromEntries(TAXIPRESS_LUGGAGE_TYPES.map((t) => [t, (num[`luggage_${t}`] ?? "") === "" ? null : n(`luggage_${t}`)])) as Record<TaxipressLuggageType, number | null>,
@@ -212,9 +214,14 @@ function SettingsTab() {
           Passengers may add luggage
         </label>
         {s.luggageEnabled && (
+          <Field label={`Luggage options shown (1 to ${TAXIPRESS_LUGGAGE_TYPES.length})`} hint={`Passengers see the first ${Math.min(TAXIPRESS_LUGGAGE_TYPES.length, Math.max(1, Number(num.luggageOptionsShown || 1)))} in the list below, in that order.`}>
+            {field("luggageOptionsShown", true)}
+          </Field>
+        )}
+        {s.luggageEnabled && (
           <div className="grid grid-cols-2 gap-3">
-            {TAXIPRESS_LUGGAGE_TYPES.map((t) => (
-              <Field key={t} label={`${TAXIPRESS_LUGGAGE_LABELS[t].name} (UGX)`} hint={`${TAXIPRESS_LUGGAGE_LABELS[t].note}. Blank: priced at the stage.`}>
+            {TAXIPRESS_LUGGAGE_TYPES.map((t, i) => (
+              <Field key={t} label={`${TAXIPRESS_LUGGAGE_LABELS[t].name} (UGX)${i < Math.max(1, Number(num.luggageOptionsShown || 1)) ? "" : " · hidden"}`} hint={`${TAXIPRESS_LUGGAGE_LABELS[t].note}. Blank: priced at the stage.`}>
                 <input inputMode="numeric" value={num[`luggage_${t}`] ?? ""} onChange={(e) => setNum((x) => ({ ...x, [`luggage_${t}`]: digits(e.target.value) }))} className={inputCls} />
               </Field>
             ))}
@@ -228,6 +235,26 @@ function SettingsTab() {
           <Switch checked={s.languageEnabled} onChange={(e) => set("languageEnabled", e.target.checked)} />
           Passengers may choose a preferred language
         </label>
+        {s.languageEnabled && (
+          <div className="space-y-2">
+            <p className="text-xs text-ink-500">Add or remove languages, and switch off any you don&apos;t want shown. Passengers only see the ones switched on.</p>
+            {s.languages.map((l, i) => (
+              <div key={l.code} className="flex items-center gap-2">
+                <Switch aria-label={`Show ${l.name}`} checked={l.enabled} onChange={(e) => set("languages", s.languages.map((x, j) => (j === i ? { ...x, enabled: e.target.checked } : x)))} />
+                <input aria-label={`Name for ${l.code}`} value={l.name} maxLength={40} onChange={(e) => set("languages", s.languages.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))} className={inputCls} />
+                <span className="w-12 shrink-0 text-xs font-bold uppercase text-ink-500">{l.code}</span>
+                <button type="button" aria-label={`Remove ${l.name}`} onClick={() => set("languages", s.languages.filter((_, j) => j !== i))} className="min-h-10 shrink-0 rounded-full px-3 text-xs font-bold text-red-600">Remove</button>
+              </div>
+            ))}
+            <div className="flex items-center gap-2">
+              <input aria-label="New language name" placeholder="Language, e.g. Kinyarwanda" value={newLanguage.name} maxLength={40} onChange={(e) => setNewLanguage((x) => ({ ...x, name: e.target.value }))} className={inputCls} />
+              <input aria-label="New language code" placeholder="Code, e.g. rw" value={newLanguage.code} maxLength={8} onChange={(e) => setNewLanguage((x) => ({ ...x, code: e.target.value.toLowerCase().replace(/[^a-z-]/g, "") }))} className={`${inputCls} w-28 shrink-0`} />
+              <button type="button" disabled={!newLanguage.name.trim() || !/^[a-z]{2,8}$/.test(newLanguage.code) || s.languages.some((l) => l.code === newLanguage.code)}
+                onClick={() => { set("languages", [...s.languages, { code: newLanguage.code, name: newLanguage.name.trim(), enabled: true }]); setNewLanguage({ code: "", name: "" }); }}
+                className="min-h-10 shrink-0 rounded-full bg-gold px-4 text-xs font-bold text-ink-gold disabled:opacity-50">Add</button>
+            </div>
+          </div>
+        )}
       </section>
 
       <section className="home-card space-y-3">

@@ -54,7 +54,7 @@ test("Ride cluster: every ride module has demo data, visible in practice and hid
   await t.test("deals and self-drive history are seeded", async () => {
     assert.equal(Number((await rows("SELECT COUNT(*) n FROM driver_requests WHERE status = 'pending'"))[0]!.n), 2);
     assert.equal(Number((await rows("SELECT COUNT(*) n FROM rentals WHERE status IN ('active','completed')"))[0]!.n), 2);
-    assert.equal(Number((await rows("SELECT COUNT(*) n FROM taxipress_queue WHERE status IN ('boarding','in_line')"))[0]!.n), 5);
+    assert.equal(Number((await rows("SELECT COUNT(*) n FROM taxipress_queue WHERE status IN ('boarding','in_line')"))[0]!.n), 13);
   });
 });
 

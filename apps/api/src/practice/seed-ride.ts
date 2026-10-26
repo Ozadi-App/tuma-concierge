@@ -142,11 +142,23 @@ export async function seedRide(): Promise<void> {
   s.push({ sql: `UPDATE vehicle_assignments SET fee_type = 'share', owner_share_percent = 60 WHERE id = 'prac_asg_01'`, args: [] });
   s.push({ sql: `UPDATE vehicle_assignments SET fee_type = 'rent', rent_amount = 280000, rent_period = 'week' WHERE id = 'prac_asg_05'`, args: [] });
 
-  // Taxipress: two shared-taxi routes out of Entebbe, each with taxis in the line.
+  // Taxipress: shared-taxi routes out of Entebbe and across Kampala, each with taxis in the line.
+  const OLD_TAXI_PARK = ["Kampala Old Taxi Park", 0.3136, 32.5775] as const;
   const routes = [
     { id: "prac_rr_kampala", name: "Entebbe ⇄ Kampala (Old Taxi Park)", a: ["Entebbe Taxi Park", 0.0577, 32.4627, "PRA"], b: ["Kampala Old Taxi Park", 0.3136, 32.5775, "PRB"], fare: 7_000, parcel: 10_000 },
     { id: "prac_rr_masaka", name: "Entebbe ⇄ Masaka", a: ["Entebbe Taxi Park", 0.0577, 32.4627, "PRC"], b: ["Masaka Bus Park", -0.3355, 31.7366, "PRD"], fare: 22_000, parcel: 25_000 },
+    { id: "prac_rr_mukono", name: "Kampala ⇄ Mukono", a: [...OLD_TAXI_PARK, "PRE"], b: ["Mukono Taxi Park", 0.3533, 32.7553, "PRF"], fare: 5_000, parcel: 8_000 },
+    { id: "prac_rr_ntinda", name: "Kampala ⇄ Ntinda", a: [...OLD_TAXI_PARK, "PRG"], b: ["Ntinda Stage", 0.3540, 32.6155, "PRH"], fare: 3_000, parcel: 5_000 },
+    { id: "prac_rr_naalya", name: "Kampala ⇄ Naalya", a: [...OLD_TAXI_PARK, "PRI"], b: ["Naalya Stage", 0.3817, 32.6544, "PRJ"], fare: 4_000, parcel: 6_000 },
+    { id: "prac_rr_busega_naalya", name: "Busega ⇄ Naalya", a: ["Busega Roundabout", 0.3139, 32.5409, "PRK"], b: ["Naalya Stage", 0.3817, 32.6544, "PRL"], fare: 5_000, parcel: 7_000 },
   ] as const;
+  // Stops between the ends, so passengers can get on and off along the way.
+  const ROUTE_STOPS: Record<string, ReadonlyArray<readonly [string, number, number]>> = {
+    prac_rr_mukono: [["Banda", 0.3447, 32.6563], ["Seeta", 0.3586, 32.7177]],
+    prac_rr_ntinda: [["Kisaasi", 0.3727, 32.6013]],
+    prac_rr_naalya: [["Ntinda", 0.3540, 32.6155], ["Kyaliwajjala", 0.3814, 32.6325]],
+    prac_rr_busega_naalya: [["Wandegeya", 0.3322, 32.5692], ["Ntinda", 0.3540, 32.6155]],
+  };
   for (const r of routes) {
     s.push({
       sql: `INSERT OR IGNORE INTO relay_routes (id, name, stage_a_name, stage_a_lat, stage_a_lng, stage_b_name, stage_b_lat, stage_b_lng, parcel_fare, active, stage_a_code, stage_b_code)
@@ -158,12 +170,26 @@ export async function seedRide(): Promise<void> {
       args: [`${r.id}_${dir}`, r.id, dir, r.fare, i],
     }));
   }
+  for (const [route, list] of Object.entries(ROUTE_STOPS)) {
+    list.forEach(([name, lat, lng], i) => s.push({
+      sql: "INSERT OR IGNORE INTO relay_route_stages (id, route_id, seq, name, lat, lng, outlet_id, active) VALUES (?, ?, ?, ?, ?, ?, NULL, 1)",
+      args: [`${route}_stage_${i + 1}`, route, i + 1, name, lat, lng],
+    }));
+  }
   const taxis = [
     { n: "1", name: "Moses Wasswa", plate: "UBR 110T", layout: "14", route: routes[0].id, state: "boarding", booked: 0 },
     { n: "2", name: "Robert Mukisa", plate: "UBR 111T", layout: "14", route: routes[0].id, state: "in_line", booked: 0 },
     { n: "3", name: "Simon Ochieng", plate: "UBR 112T", layout: "18", route: routes[0].id, state: "in_line", booked: 0 },
     { n: "4", name: "Patrick Lutaaya", plate: "UBR 113T", layout: "14", route: routes[1].id, state: "boarding", booked: 0 },
     { n: "5", name: "Vincent Kayiwa", plate: "UBR 114T", layout: "18", route: routes[1].id, state: "in_line", booked: 0 },
+    { n: "6", name: "Tom Ssentamu", plate: "UBR 115T", layout: "14", route: routes[2].id, state: "boarding", booked: 0 },
+    { n: "7", name: "Emmanuel Byaruhanga", plate: "UBR 116T", layout: "14", route: routes[2].id, state: "in_line", booked: 0 },
+    { n: "8", name: "Gerald Mbabazi", plate: "UBR 117T", layout: "18", route: routes[3].id, state: "boarding", booked: 0 },
+    { n: "9", name: "Hakim Lutalo", plate: "UBR 118T", layout: "14", route: routes[3].id, state: "in_line", booked: 0 },
+    { n: "10", name: "Vicky Nabukenya", plate: "UBR 119T", layout: "14", route: routes[4].id, state: "boarding", booked: 0 },
+    { n: "11", name: "Dennis Opolot", plate: "UBR 120T", layout: "18", route: routes[4].id, state: "in_line", booked: 0 },
+    { n: "12", name: "Yusuf Kasule", plate: "UBR 121T", layout: "14", route: routes[5].id, state: "boarding", booked: 0 },
+    { n: "13", name: "Martin Kawooya", plate: "UBR 122T", layout: "14", route: routes[5].id, state: "in_line", booked: 0 },
   ] as const;
   for (const t of taxis) {
     const id = `prac_tx_${t.n}`;

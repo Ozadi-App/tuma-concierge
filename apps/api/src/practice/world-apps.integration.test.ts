@@ -219,3 +219,52 @@ test("demo car drivers take a ride all the way, by themselves", async () => {
   assert.ok(Number(booking.driver_amount) > 0, "and was paid");
   assert.equal(Number((await db.execute({ sql: "SELECT COUNT(*) n FROM order_ratings WHERE order_id = ?", args: [orderId] })).rows[0]!.n), 1, "and was rated");
 });
+
+test("Taxipress has demo routes, and admin decides which luggage options and languages passengers see", async (t) => {
+  const { db, call, json, post, start, tokens } = await practiceHarness();
+  const customer = await start("customer");
+  const put = (token: string, path: string, body: unknown) => call(token, path, { method: "PUT", body: JSON.stringify(body) });
+
+  await t.test("the Kampala routes are there, each with taxis in the line", async () => {
+    const config = await json<{ routes: Array<{ id: string; fromName: string; toName: string }> }>(await call(customer.token, "/taxipress/config"));
+    const pairs = new Set(config.routes.map((r) => `${r.fromName} > ${r.toName}`));
+    for (const wanted of ["Kampala Old Taxi Park > Mukono Taxi Park", "Kampala Old Taxi Park > Ntinda Stage", "Kampala Old Taxi Park > Naalya Stage", "Busega Roundabout > Naalya Stage"]) assert.ok(pairs.has(wanted), `${wanted} is offered`);
+    assert.ok(new Set(config.routes.map((r) => r.id.replace(/_(a_to_b|b_to_a)$/, ""))).size >= 5, "at least five routes");
+    for (const id of ["prac_rr_mukono", "prac_rr_ntinda", "prac_rr_naalya", "prac_rr_busega_naalya"]) {
+      const queue = await json<{ line: unknown[] }>(await call(customer.token, `/taxipress/routes/${id}_a_to_b/queue`));
+      assert.ok(queue.line.length >= 2, `${id} has taxis in the line`);
+    }
+  });
+
+  await t.test("luggage: admin picks how many options show", async () => {
+    const cfg = async () => json<{ luggageTypes: string[] }>(await call(customer.token, "/taxipress/config"));
+    assert.equal((await cfg()).luggageTypes.length, 6, "all six by default");
+    assert.equal((await put(tokens.admin, "/admin/taxipress/settings", { luggageOptionsShown: 3 })).status, 200);
+    assert.deepEqual((await cfg()).luggageTypes, ["personal", "standard", "large"]);
+    assert.equal((await put(tokens.admin, "/admin/taxipress/settings", { luggageOptionsShown: 0 })).status, 400, "at least one");
+    assert.equal((await put(tokens.admin, "/admin/taxipress/settings", { luggageOptionsShown: 7 })).status, 400, "no more than there are");
+    const queueId = String((await db.execute("SELECT id FROM taxipress_queue WHERE id = 'prac_q_7'")).rows[0]!.id);
+    const booked = await post(customer.token, "/taxipress/bookings", { queueId, adults: 1, luggage: { standard: 1, excess: 2 }, payment: "cash" });
+    assert.equal(booked.status, 201, JSON.stringify(await booked.clone().json()));
+    const saved = JSON.parse(String((await db.execute("SELECT luggage_json FROM taxipress_bookings ORDER BY rowid DESC LIMIT 1")).rows[0]!.luggage_json));
+    assert.deepEqual(saved, { standard: 1 }, "a type that isn't offered is left off the booking");
+  });
+
+  await t.test("languages: admin adds, removes and chooses which are displayed", async () => {
+    const cfg = async () => json<{ languages: Array<{ code: string; name: string }> }>(await call(customer.token, "/taxipress/config"));
+    assert.deepEqual((await cfg()).languages.map((l) => l.code), ["en", "lg", "sw"]);
+    const list = [{ code: "en", name: "English", enabled: true }, { code: "lg", name: "Luganda", enabled: true }, { code: "sw", name: "Swahili", enabled: false }, { code: "rw", name: "Kinyarwanda", enabled: true }];
+    assert.equal((await put(tokens.admin, "/admin/taxipress/settings", { languages: list })).status, 200);
+    assert.deepEqual((await cfg()).languages.map((l) => l.code), ["en", "lg", "rw"], "a hidden language isn't shown; an added one is");
+    assert.equal((await put(tokens.admin, "/admin/taxipress/settings", { languages: [...list, { code: "en", name: "Again", enabled: true }] })).status, 400, "no duplicates");
+    assert.equal((await put(tokens.admin, "/admin/taxipress/settings", { languages: [{ code: "not a code", name: "x", enabled: true }] })).status, 400);
+    const queueId = "prac_q_9";
+    const bad = await post(customer.token, "/taxipress/bookings", { queueId, adults: 1, language: "sw", payment: "cash" });
+    assert.equal(bad.status, 400, "a hidden language can't be chosen");
+    const good = await post(customer.token, "/taxipress/bookings", { queueId, adults: 1, language: "rw", payment: "cash" });
+    assert.equal(good.status, 201, JSON.stringify(await good.clone().json()));
+    assert.equal(String((await db.execute("SELECT language FROM taxipress_bookings ORDER BY rowid DESC LIMIT 1")).rows[0]!.language), "rw");
+    assert.equal((await put(tokens.admin, "/admin/taxipress/settings", { languages: [list[0]] })).status, 200, "languages can be removed");
+    assert.deepEqual((await cfg()).languages.map((l) => l.code), ["en"]);
+  });
+});
