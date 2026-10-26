@@ -191,8 +191,8 @@ export const OPTION_SETTINGS: SettingDef[] = [
     description: "Stores registered before plans were enforced. Prices and the free launch period are set under Marketplace settings.",
     default: "keep_access",
     options: [
-      opt("keep_access", "Keep their current access", true, { recommended: true, requires: { columns: [["stores", "plan_legacy"]], migration: "0142_merchant_plans.sql" }, hint: "Nobody loses features. New stores follow the plan they chose." }),
-      opt("follow_plan", "Follow the plan they chose, like new stores", true, { requires: { columns: [["stores", "plan_legacy"]], migration: "0142_merchant_plans.sql" } }),
+      opt("keep_access", "Keep their current access", true, { recommended: true, requires: { columns: [["stores", "plan_legacy"]], migration: "0143_merchant_plans.sql" }, hint: "Nobody loses features. New stores follow the plan they chose." }),
+      opt("follow_plan", "Follow the plan they chose, like new stores", true, { requires: { columns: [["stores", "plan_legacy"]], migration: "0143_merchant_plans.sql" } }),
     ],
   },
   {
