@@ -117,8 +117,8 @@ const rideItems = (special: SpecialCarServices, taxipress: boolean): MenuItem[] 
 const staticSubmenuItems: Record<"shopping" | "food", MenuItem[]> = {
   shopping: [
     { id: "shoplist", label: "List", icon: ListChecks, href: "/shoplist" },
-    { id: "markets", label: "Groceries", icon: Store, href: "/groceries" },
-    { id: "stores", label: "Stores", icon: ShoppingBasket, href: "/stores" },
+    { id: "markets", label: "Groceries", icon: ShoppingBasket, href: "/groceries" },
+    { id: "stores", label: "Stores", icon: Store, href: "/stores" },
     { id: "pharmacy", label: "Pharma", icon: Pill, href: "/pharmacy" },
     // Past orders. /orders itself is the shopping lists, so those stay under List.
     { id: "orders", label: "Orders", icon: Receipt, href: "/orders/history" },
