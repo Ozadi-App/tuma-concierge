@@ -276,9 +276,9 @@ export const OPTION_SETTINGS: SettingDef[] = [
     description: "Service money moves on mobile money, cash and bank rails only — never cards.",
     default: "momo_escrow",
     options: [
-      opt("momo_escrow", "Mobile money held until the service is done", false, { recommended: true }),
-      opt("momo_direct", "Mobile money straight to the provider", false),
-      opt("deposit_online_balance_at_venue", "Deposit online, balance at the venue", false),
+      opt("momo_escrow", "Mobile money held until the service is done", true, { recommended: true, requires: { tables: ["service_payments"], migration: "0138_services_hardening.sql" } }),
+      opt("momo_direct", "Mobile money straight to the provider", true, { requires: { tables: ["service_payments"], migration: "0138_services_hardening.sql" } }),
+      opt("deposit_online_balance_at_venue", "Deposit online, balance at the venue", true, { requires: { tables: ["service_payments"], migration: "0138_services_hardening.sql" } }),
       opt("pay_at_venue_only", "Pay at the venue only", true, { hint: "No online collection. Bookings are never marked paid by the customer." }),
     ],
   },
@@ -300,7 +300,7 @@ export const OPTION_SETTINGS: SettingDef[] = [
     options: [
       opt("provider_confirms", "The provider confirms each booking", true, { recommended: true }),
       opt("auto_confirm", "Confirm automatically", true),
-      opt("auto_confirm_when_paid", "Confirm automatically once paid", false),
+      opt("auto_confirm_when_paid", "Confirm automatically once paid", true, { requires: { tables: ["service_payments"], migration: "0138_services_hardening.sql" } }),
     ],
   },
   {
@@ -308,10 +308,10 @@ export const OPTION_SETTINGS: SettingDef[] = [
     description: "How refunds are decided when a customer cancels.",
     default: "policy_based",
     options: [
-      opt("policy_based", "Follow the business's cancellation policy", false, { recommended: true }),
-      opt("full_refund_until_x_hours", "Full refund until the window below", false),
-      opt("no_refund", "No refunds", false),
-      opt("manual_review", "Provider decides each time", false),
+      opt("policy_based", "Follow the business's own free-cancellation window", true, { recommended: true, requires: { tables: ["service_payments"], migration: "0138_services_hardening.sql" } }),
+      opt("full_refund_until_x_hours", "Full refund until the platform window below", true, { requires: { tables: ["service_payments"], migration: "0138_services_hardening.sql" } }),
+      opt("no_refund", "No refunds", true, { requires: { tables: ["service_payments"], migration: "0138_services_hardening.sql" } }),
+      opt("manual_review", "Provider decides each time", true, { requires: { tables: ["service_payments"], migration: "0138_services_hardening.sql" } }),
     ],
   },
   { key: "services_cancellation_window_hours", module: "services", kind: "int", label: "Free-cancellation window", description: "Hours before the appointment a customer may cancel for a full refund.", default: 24, min: 0, max: 720, unit: "hours" },
@@ -340,7 +340,7 @@ export const OPTION_SETTINGS: SettingDef[] = [
     description: "How customers pick when they want the service.",
     default: "free_text_request",
     options: [
-      opt("weekly_schedule_with_slots", "Pick from the provider's open slots", false, { recommended: true, requires: { tables: ["service_availability"], migration: "0136_services_hardening.sql" } }),
+      opt("weekly_schedule_with_slots", "Pick from the provider's open slots", true, { recommended: true, requires: { tables: ["service_hours", "service_blackouts"], migration: "0138_services_hardening.sql" } }),
       opt("free_text_request", "Request a date and time, the provider confirms", true),
     ],
   },

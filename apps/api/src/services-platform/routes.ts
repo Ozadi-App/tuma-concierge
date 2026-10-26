@@ -11,6 +11,8 @@ import { getOptions } from "../lib/option-settings.js";
 import { migrationPending, publicRateLimit } from "../lib/guards.js";
 import { proofIsValid } from "../lib/phone-proof.js";
 import { dateString, eatInstant, httpsUrl, phoneString, timeString } from "../lib/validation.js";
+import { demoCatalogAllowed } from "../marketplace/public.js";
+import { serviceBookingRoutes } from "./booking-routes.js";
 import { getServicesPlatformSettings, setServicesPlatformSettings } from "./settings.js";
 import type {
   ServiceBusinessProfile,
@@ -24,6 +26,9 @@ import type {
 } from "@peebee/shared";
 
 export const servicesPlatformRoutes = new Hono();
+
+// Slots, booking, payment, cancellation and refunds live in their own router; mounted first so its paths win.
+servicesPlatformRoutes.route("/", serviceBookingRoutes);
 
 type Row = Record<string, unknown>;
 
@@ -408,12 +413,9 @@ servicesPlatformRoutes.put("/my-business", requireAuth, async (c) => {
 servicesPlatformRoutes.get("/offerings", requireAuth, async (c) => {
   const user = c.get("user");
   const biz = await getServiceBusinessForUser(user.sub);
-  if (!biz) {
-    return c.json({ offerings: DEMO_SERVICE_OFFERINGS });
-  }
-
-  if (!(await hasTable("service_offerings"))) {
-    return c.json({ offerings: DEMO_SERVICE_OFFERINGS });
+  const demoOk = await demoCatalogAllowed();
+  if (!biz || !(await hasTable("service_offerings"))) {
+    return c.json({ offerings: demoOk ? DEMO_SERVICE_OFFERINGS : [] });
   }
 
   const res = await db.execute({
@@ -422,7 +424,7 @@ servicesPlatformRoutes.get("/offerings", requireAuth, async (c) => {
   });
 
   let offerings = res.rows as Row[];
-  if (offerings.length === 0 && String(biz.id).includes("demo")) {
+  if (offerings.length === 0 && demoOk && String(biz.id).includes("demo")) {
     offerings = DEMO_SERVICE_OFFERINGS as unknown as Row[];
   }
 
@@ -553,11 +555,8 @@ servicesPlatformRoutes.delete("/offerings/:id", requireAuth, async (c) => {
 servicesPlatformRoutes.get("/staff", requireAuth, async (c) => {
   const user = c.get("user");
   const biz = await getServiceBusinessForUser(user.sub);
-  if (!biz) return c.json({ staff: DEMO_SERVICE_STAFF });
-
-  if (!(await hasTable("service_staff_members"))) {
-    return c.json({ staff: DEMO_SERVICE_STAFF });
-  }
+  const demoOk = await demoCatalogAllowed();
+  if (!biz || !(await hasTable("service_staff_members"))) return c.json({ staff: demoOk ? DEMO_SERVICE_STAFF : [] });
 
   const res = await db.execute({
     sql: "SELECT * FROM service_staff_members WHERE business_id = ? AND is_active = 1 ORDER BY created_at DESC",
@@ -616,12 +615,13 @@ servicesPlatformRoutes.post("/staff", requireAuth, async (c) => {
 servicesPlatformRoutes.get("/bookings", requireAuth, async (c) => {
   const user = c.get("user");
   const biz = await getServiceBusinessForUser(user.sub);
-  if (!biz) return c.json({ bookings: DEMO_SERVICE_BOOKINGS });
+  const demoOk = await demoCatalogAllowed();
+  if (!biz) return c.json({ bookings: demoOk ? DEMO_SERVICE_BOOKINGS : [] });
 
   const statusFilter = c.req.query("status");
 
   if (!(await hasTable("service_bookings"))) {
-    let list = DEMO_SERVICE_BOOKINGS;
+    let list = demoOk ? DEMO_SERVICE_BOOKINGS : [];
     if (statusFilter && statusFilter !== "all") {
       list = list.filter((b) => b.status === statusFilter);
     }
@@ -645,7 +645,7 @@ servicesPlatformRoutes.get("/bookings", requireAuth, async (c) => {
 
   const res = await db.execute({ sql, args });
   let rows = res.rows as Row[];
-  if (rows.length === 0 && String(biz.id).includes("demo")) {
+  if (rows.length === 0 && demoOk && String(biz.id).includes("demo")) {
     rows = DEMO_SERVICE_BOOKINGS as unknown as Row[];
   }
 
@@ -768,66 +768,6 @@ servicesPlatformRoutes.post("/bookings", requireAuth, async (c) => {
   });
 });
 
-// PATCH /v1/services-platform/bookings/:id/status
-const updateBookingStatusSchema = z.object({
-  status: z.enum(["pending", "confirmed", "in_progress", "completed", "cancelled"]).optional(),
-  payment_status: z.enum(["unpaid", "deposit_paid", "paid_full", "waived"]).optional(),
-  staff_id: z.string().optional().nullable(),
-  rescheduled_date: dateString.optional(),
-  rescheduled_time: timeString.optional(),
-});
-
-servicesPlatformRoutes.patch("/bookings/:id/status", requireAuth, async (c) => {
-  const user = c.get("user");
-  const pending = await migrationPending(c, "0134_standalone_services_platform.sql", "service_businesses", "service_bookings");
-  if (pending) return pending;
-  const biz = await getServiceBusinessForUser(user.sub);
-  if (!biz) return c.json({ error: "no_business" }, 404);
-
-  const bookingId = c.req.param("id")!;
-  const body = await c.req.json().catch(() => null);
-  const parsed = updateBookingStatusSchema.safeParse(body);
-  if (!parsed.success) {
-    return c.json({ error: "invalid_body", details: parsed.error.issues }, 400);
-  }
-
-  const data = parsed.data;
-
-  if (await hasTable("service_bookings")) {
-    const updates: string[] = ["updated_at = CURRENT_TIMESTAMP"];
-    const args: any[] = [];
-
-    if (data.status != null) { updates.push("status = ?"); args.push(data.status); }
-    if (data.payment_status != null) { updates.push("payment_status = ?"); args.push(data.payment_status); }
-    if (data.rescheduled_date != null) { updates.push("scheduled_date = ?"); args.push(data.rescheduled_date); }
-    if (data.rescheduled_time != null) { updates.push("scheduled_time = ?"); args.push(data.rescheduled_time); }
-
-    if (data.staff_id !== undefined) {
-      let stfName = "";
-      if (data.staff_id && (await hasTable("service_staff_members"))) {
-        const sRes = await db.execute({
-          sql: "SELECT name FROM service_staff_members WHERE id = ? AND business_id = ? AND is_active = 1",
-          args: [data.staff_id, String(biz.id)],
-        });
-        if (sRes.rows.length === 0) {
-          return c.json({ error: "unknown_staff", message: "That team member is not on your roster." }, 400);
-        }
-        stfName = String(sRes.rows[0].name);
-      }
-      updates.push("staff_id = ?"); args.push(data.staff_id);
-      updates.push("staff_name = ?"); args.push(stfName);
-    }
-
-    args.push(bookingId, String(biz.id));
-    await db.execute({
-      sql: `UPDATE service_bookings SET ${updates.join(", ")} WHERE id = ? AND business_id = ?`,
-      args,
-    });
-  }
-
-  return c.json({ ok: true, id: bookingId, updatedStatus: data.status });
-});
-
 // -----------------------------------------------------------------
 // 5. PUBLIC DEDICATED SERVICE SITE (Standalone Customer Experience)
 // -----------------------------------------------------------------
@@ -846,7 +786,8 @@ servicesPlatformRoutes.get("/public/:slug", async (c) => {
     biz = (res.rows[0] as Row | undefined) ?? null;
   }
 
-  if (!biz && (slug.includes("demo") || slug.includes("apex"))) {
+  const demoSite = await demoCatalogAllowed();
+  if (!biz && demoSite && (slug.includes("demo") || slug.includes("apex"))) {
     biz = DEMO_SERVICE_BUSINESS as unknown as Row;
   }
 
@@ -863,7 +804,7 @@ servicesPlatformRoutes.get("/public/:slug", async (c) => {
     });
     offerings = oRes.rows as Row[];
   }
-  if (offerings.length === 0 && bizId.includes("demo")) {
+  if (offerings.length === 0 && demoSite && bizId.includes("demo")) {
     offerings = DEMO_SERVICE_OFFERINGS as unknown as Row[];
   }
 
@@ -875,7 +816,7 @@ servicesPlatformRoutes.get("/public/:slug", async (c) => {
     });
     staff = sRes.rows as Row[];
   }
-  if (staff.length === 0 && bizId.includes("demo")) {
+  if (staff.length === 0 && demoSite && bizId.includes("demo")) {
     staff = DEMO_SERVICE_STAFF as unknown as Row[];
   }
 
@@ -902,181 +843,6 @@ servicesPlatformRoutes.get("/public/:slug", async (c) => {
     }),
     offerings: parsedOfferings,
     staff,
-  });
-});
-
-// POST /v1/services-platform/public/:slug/book (Standalone Customer Booking)
-const publicCustomerBookingSchema = z.object({
-  service_id: z.string(),
-  customer_name: z.string().min(2).max(120),
-  customer_phone: phoneString,
-  customer_email: z.string().email().optional().or(z.literal("")),
-  scheduled_date: dateString,
-  scheduled_time: timeString,
-  location_type: z.enum(["in_facility", "client_site", "virtual"]).default("in_facility"),
-  address: z.string().max(300).optional().default(""),
-  notes: z.string().max(1000).optional().default(""),
-  payment_rail: z.enum(["momo_mtn", "momo_airtel", "cash_at_venue", "bank_wire"]).default("momo_mtn"),
-});
-
-servicesPlatformRoutes.post("/public/:slug/book", async (c) => {
-  const slug = c.req.param("slug")!;
-  const pending = await migrationPending(c, "0134_standalone_services_platform.sql", "service_businesses", "service_offerings", "service_bookings");
-  if (pending) return pending;
-
-  const platformSettings = await getServicesPlatformSettings();
-  if (!platformSettings.enabled) {
-    return c.json({ error: "platform_paused", message: "Service booking platform is temporarily paused for scheduled maintenance." }, 503);
-  }
-
-  let biz: Row | null = null;
-  if (await hasTable("service_businesses")) {
-    const res = await db.execute({
-      sql: "SELECT * FROM service_businesses WHERE status = 'active' AND (slug = ? OR id = ?) LIMIT 1",
-      args: [slug, slug],
-    });
-    biz = (res.rows[0] as Row | undefined) ?? null;
-  }
-  if (!biz && (slug.includes("demo") || slug.includes("apex"))) {
-    biz = DEMO_SERVICE_BUSINESS as unknown as Row;
-  }
-
-  if (!biz) return c.json({ error: "not_found", message: "Service business not found" }, 404);
-  if (!Number(biz.is_open)) {
-    return c.json({ error: "business_closed", message: "This business is not taking bookings right now." }, 409);
-  }
-
-  const body = await c.req.json().catch(() => null);
-  const parsed = publicCustomerBookingSchema.safeParse(body);
-  if (!parsed.success) {
-    return c.json({ error: "invalid_body", details: parsed.error.issues }, 400);
-  }
-
-  const data = parsed.data;
-
-  const limited = await publicRateLimit(c, "svc-book", data.customer_phone, "rate_limit_public_booking_per_hour", 3600);
-  if (limited) return limited;
-  if ((await getOptions(["services_booking_verification"])).services_booking_verification === "phone_otp") {
-    if (!(await proofIsValid(c.req.header("x-phone-proof"), data.customer_phone, "service_booking"))) {
-      return c.json({ error: "phone_proof_required", message: "Confirm your phone number with the code we text you, then send the booking again." }, 403);
-    }
-  }
-
-  const platform = await getServicesPlatformSettings();
-  const opts = await getOptions(["services_enabled_rails", "services_booking_confirmation"]);
-  if (data.location_type === "virtual" && !platform.virtualConsultationsEnabled) {
-    return c.json({ error: "virtual_disabled", message: "Virtual consultations are not available right now." }, 403);
-  }
-  const startsAt = eatInstant(data.scheduled_date, data.scheduled_time);
-  if (startsAt == null || startsAt < Date.now() + platform.leadTimeHours * 3600_000) {
-    return c.json({ error: "too_soon", message: `Bookings need at least ${platform.leadTimeHours} hour(s) notice.` }, 400);
-  }
-
-  // Enforce Aggregator Isolation Rule:
-  // Strictly prevent Stripe/credit card aggregators from handling intangible service payments
-  // to avoid dispute-related account holds on the main product commerce accounts!
-  let allowedRails: string[] = ["momo_mtn", "momo_airtel", "cash_at_venue", "bank_wire"];
-  try {
-    allowedRails = JSON.parse(String(biz.allowed_payment_rails || "[]"));
-  } catch {}
-
-  // Only methods admin allows for services AND the business accepts. Cards are not a services rail at all.
-  const platformRails = opts.services_enabled_rails as string[];
-  allowedRails = allowedRails.filter((rail) => platformRails.includes(rail));
-  if (!allowedRails.includes(data.payment_rail)) {
-    return c.json({
-      error: "unsupported_service_rail",
-      message: `The payment method '${data.payment_rail}' is not accepted for services at this business. Please select Mobile Money (MTN/Airtel) or Pay on completion.`,
-    }, 400);
-  }
-
-  let serviceTitle = "Specialist Service";
-  let priceUgx = 0;
-  let depositUgx = 0;
-  let durationMins = 60;
-  let pricingType = "fixed";
-  let virtualUrl = "";
-
-  if (await hasTable("service_offerings")) {
-    const oRes = await db.execute({
-      sql: "SELECT * FROM service_offerings WHERE id = ? AND business_id = ? AND is_active = 1",
-      args: [data.service_id, String(biz.id)],
-    });
-    if (oRes.rows.length === 0) {
-      return c.json({ error: "unknown_service", message: "That service is not offered by this business." }, 400);
-    }
-    const o = oRes.rows[0];
-    serviceTitle = String(o.title);
-    priceUgx = Number(o.price_ugx) || 0;
-    depositUgx = Number(o.deposit_ugx) || 0;
-    durationMins = Number(o.duration_minutes) || 60;
-    pricingType = String(o.pricing_type || "fixed");
-    virtualUrl = String(o.virtual_meeting_url || "");
-  }
-
-  // Structural rail: a booking is never "paid" because the customer said so. Payment status only moves when the
-  // provider confirms money (or the provider records it), so a new booking is always unpaid.
-  const bookingId = newId("sbk");
-  const initialPaymentStatus = "unpaid";
-  const initialStatus = opts.services_booking_confirmation === "auto_confirm" ? "confirmed" : "pending";
-
-  if (await hasTable("service_bookings")) {
-    await db.execute({
-      sql: `INSERT INTO service_bookings (
-        id, business_id, service_id, customer_name, customer_phone, customer_email,
-        scheduled_date, scheduled_time, duration_minutes, location_type,
-        address, virtual_meeting_url, notes, pricing_type, total_price_ugx,
-        deposit_ugx, payment_rail, payment_status, status, staff_id, staff_name,
-        created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
-      args: [
-        bookingId,
-        String(biz.id),
-        data.service_id,
-        data.customer_name,
-        data.customer_phone,
-        data.customer_email || "",
-        data.scheduled_date,
-        data.scheduled_time,
-        durationMins,
-        data.location_type,
-        data.address || "",
-        virtualUrl || "",
-        data.notes || "",
-        pricingType,
-        priceUgx,
-        depositUgx,
-        data.payment_rail,
-        initialPaymentStatus,
-        initialStatus,
-      ],
-    });
-
-    await db.execute({
-      sql: "UPDATE service_offerings SET bookings_count = bookings_count + 1 WHERE id = ?",
-      args: [data.service_id],
-    });
-  }
-
-  return c.json({
-    ok: true,
-    booking: {
-      id: bookingId,
-      business_name: String(biz.name),
-      service_title: serviceTitle,
-      scheduled_date: data.scheduled_date,
-      scheduled_time: data.scheduled_time,
-      duration_minutes: durationMins,
-      location_type: data.location_type,
-      total_price_ugx: priceUgx,
-      deposit_ugx: depositUgx,
-      payment_rail: data.payment_rail,
-      payment_status: initialPaymentStatus,
-      status: initialStatus,
-      instructions: initialStatus === "confirmed"
-        ? "Your booking is confirmed. The provider will tell you how to pay."
-        : "Your request has been sent. The provider will confirm your booking and tell you how to pay.",
-    },
   });
 });
 

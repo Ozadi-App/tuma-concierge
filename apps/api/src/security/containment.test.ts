@@ -1,3 +1,4 @@
+import { setPlatformEnvironment } from "../lib/settings.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { addMerchantStore, addUser, anonymous, app, freshDatabase } from "../test-support/db.js";
@@ -153,6 +154,7 @@ test("a merchant cannot overwrite another store's course or product, or enrol on
 
 test("service bookings: tenant-scoped, never paid on request, public site is an allow-list", async () => {
   const client = await freshDatabase();
+  await setPlatformEnvironment("sandbox"); // payments go through the simulator
   const ownerA = await addUser(client, "u_svc_a");
   const ownerB = await addUser(client, "u_svc_b");
   const as = (token: string) => (path: string, method = "GET", body?: object) =>
@@ -166,14 +168,15 @@ test("service bookings: tenant-scoped, never paid on request, public site is an 
   const offerB = (await json(await b("/services-platform/offerings", "POST", { title: "Beta Call", price_ugx: 90000, deposit_ugx: 30000 }))).offering;
   const offerA = (await json(await a("/services-platform/offerings", "POST", { title: "Alpha Call", price_ugx: 40000 }))).offering;
   const staffB = (await json(await b("/services-platform/staff", "POST", { name: "Bea Specialist", phone: "+256700555555" }))).staff;
-  const slot = { scheduled_date: "2030-01-15", scheduled_time: "10:00", customer_name: "Carol", customer_phone: "+256700777777", payment_rail: "momo_mtn" };
+  const slot = { scheduled_date: "2030-01-15", scheduled_time: "10:00", customer_name: "Carol", customer_phone: "+256772777777", payment_rail: "momo_mtn" };
 
   const cross = await anonymous(`/services-platform/public/${bizA.slug}/book`, "POST", { ...slot, service_id: offerB.id });
   assert.equal(cross.status, 400, "another business's service cannot be booked here");
   const ghost = await anonymous(`/services-platform/public/${bizA.slug}/book`, "POST", { ...slot, service_id: "sofr_nope" });
   assert.equal(ghost.status, 400);
 
-  const ok = await json(await anonymous(`/services-platform/public/${bizA.slug}/book`, "POST", { ...slot, service_id: offerA.id }));
+  const okRes = await anonymous(`/services-platform/public/${bizA.slug}/book`, "POST", { ...slot, service_id: offerA.id });
+  const ok = await json(okRes);
   assert.equal(ok.booking.payment_status, "unpaid", "a mobile-money booking is not paid until the provider says so");
   assert.equal(ok.booking.status, "pending");
 

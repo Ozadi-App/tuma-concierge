@@ -1,5 +1,6 @@
 "use client";
 
+import { OpeningHours } from "../../components/services/OpeningHours";
 import {
   Briefcase,
   Calendar,
@@ -71,7 +72,7 @@ export default function ServicesPlatformPage() {
   const [bookings, setBookings] = useState<ServiceBookingRecord[]>([]);
 
   // Navigation tabs
-  const [activeTab, setActiveTab] = useState<"offerings" | "bookings" | "staff" | "compliance">("offerings");
+  const [activeTab, setActiveTab] = useState<"offerings" | "bookings" | "staff" | "hours" | "compliance">("offerings");
   const [bookingFilter, setBookingFilter] = useState<string>("all");
 
   // Onboarding launch modal
@@ -306,18 +307,45 @@ export default function ServicesPlatformPage() {
     }
   }
 
-  async function handleUpdateBookingStatus(bookingId: string, status: string, staffId?: string) {
+  async function bookingCall(path: string, method: string, body: object, done: (d: any) => string) {
+    setError(null);
     try {
-      await fetch(`${API_BASE}/v1/services-platform/bookings/${bookingId}/status`, {
-        method: "PATCH",
+      const res = await fetch(`${API_BASE}/v1/services-platform/bookings/${path}`, {
+        method,
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ status, staff_id: staffId }),
+        body: JSON.stringify(body),
       });
-      setSuccessMsg(`Booking status updated to ${status}.`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || "That didn't work.");
+      setSuccessMsg(done(data));
       loadAll();
-    } catch {
-      setError("Could not update booking status.");
+    } catch (err: any) {
+      setError(err.message || "That didn't work.");
     }
+  }
+
+  const ugxLine = (n: number) => `UGX ${Math.round(Number(n) || 0).toLocaleString()}`;
+
+  async function handleUpdateBookingStatus(bookingId: string, status: string, staffId?: string) {
+    await bookingCall(`${bookingId}/status`, "PATCH", { status, staff_id: staffId }, (d) =>
+      d.refund?.state === "pending" || d.refund?.state === "refunded" ? "Cancelled. The customer's money is being refunded."
+        : d.refund?.state === "review" ? "Cancelled. Decide on the refund below."
+        : d.released_ugx ? `Done. ${ugxLine(d.released_ugx)} has been added to your wallet.`
+        : `Booking is now ${status.replace("_", " ")}.`);
+  }
+
+  async function handleVenuePayment(bookingId: string, balance: number) {
+    const raw = window.prompt("Amount received (UGX)", String(balance));
+    const amount = Math.round(Number(raw));
+    if (!raw || !Number.isFinite(amount) || amount <= 0) return;
+    await bookingCall(`${bookingId}/venue-payment`, "POST", { amount_ugx: amount }, () => "Payment recorded.");
+  }
+
+  async function handleQuote(bookingId: string) {
+    const raw = window.prompt("Price for this job (UGX)");
+    const amount = Math.round(Number(raw));
+    if (!raw || !Number.isFinite(amount) || amount <= 0) return;
+    await bookingCall(`${bookingId}/quote`, "POST", { total_ugx: amount }, () => "Price sent to the customer.");
   }
 
   function copySiteLink() {
@@ -489,6 +517,14 @@ export default function ServicesPlatformPage() {
               Team Specialists ({staff.length})
             </button>
             <button
+              onClick={() => setActiveTab("hours")}
+              className={`rounded-xl px-4 py-2 text-xs font-bold transition-colors shrink-0 ${
+                activeTab === "hours" ? "bg-ink text-cream" : "text-ink-600 hover:bg-ink/5"
+              }`}
+            >
+              Opening hours
+            </button>
+            <button
               onClick={() => setActiveTab("compliance")}
               className={`rounded-xl px-4 py-2 text-xs font-bold transition-colors shrink-0 ${
                 activeTab === "compliance" ? "bg-ink text-cream" : "text-ink-600 hover:bg-ink/5"
@@ -657,6 +693,7 @@ export default function ServicesPlatformPage() {
                             {b.status.replace("_", " ")}
                           </span>
                           <span className="text-xs font-bold text-ink">{b.service_title}</span>
+                          {b.booking_code && <span className="text-[10px] font-mono tracking-widest text-ink-400">{b.booking_code}</span>}
                         </div>
 
                         <div className="text-xs text-ink-600">
@@ -675,6 +712,10 @@ export default function ServicesPlatformPage() {
                           <span>Fee: {ugx(b.total_price_ugx)}</span>
                           <span>•</span>
                           <span className="capitalize">Rail: {b.payment_rail.replace("_", " ")}</span>
+                        </div>
+                        <div className="text-[11px] font-semibold text-ink-600">
+                          {String(b.payment_status).replace("_", " ")} · paid {ugx(Number(b.paid_ugx ?? 0))}
+                          {b.refund_state && b.refund_state !== "none" ? ` · refund ${b.refund_state}` : ""}
                         </div>
                       </div>
 
@@ -703,7 +744,30 @@ export default function ServicesPlatformPage() {
                             Mark Completed
                           </button>
                         )}
-                        {b.status !== "completed" && b.status !== "cancelled" && (
+                        {b.status === "confirmed" && (
+                          <button
+                            onClick={() => handleUpdateBookingStatus(b.id, "no_show")}
+                            className="rounded-xl border border-ink/10 px-3 py-1.5 text-xs font-bold text-ink-600 hover:bg-ink/5"
+                          >
+                            No-show
+                          </button>
+                        )}
+                        {["pending", "confirmed", "in_progress", "completed"].includes(b.status) && Number(b.total_price_ugx) > Number(b.paid_ugx ?? 0) && b.payment_status !== "waived" && (
+                          <>
+                            <button onClick={() => handleVenuePayment(b.id, Number(b.total_price_ugx) - Number(b.paid_ugx ?? 0))} className="rounded-xl border border-ink/10 px-3 py-1.5 text-xs font-bold text-ink hover:bg-ink/5">Record payment</button>
+                            <button onClick={() => bookingCall(`${b.id}/waive`, "POST", {}, () => "Balance waived.")} className="rounded-xl border border-ink/10 px-3 py-1.5 text-xs font-bold text-ink-600 hover:bg-ink/5">Waive balance</button>
+                          </>
+                        )}
+                        {Number(b.total_price_ugx) === 0 && ["pending", "confirmed"].includes(b.status) && (
+                          <button onClick={() => handleQuote(b.id)} className="rounded-xl border border-gold px-3 py-1.5 text-xs font-bold text-ink">Set price</button>
+                        )}
+                        {b.refund_state === "review" && (
+                          <>
+                            <button onClick={() => bookingCall(`${b.id}/refund-decision`, "POST", { decision: "refund" }, () => "Refund sent.")} className="rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white">Refund customer</button>
+                            <button onClick={() => bookingCall(`${b.id}/refund-decision`, "POST", { decision: "keep" }, () => "You kept the payment.")} className="rounded-xl border border-ink/10 px-3 py-1.5 text-xs font-bold text-ink-600">Keep payment</button>
+                          </>
+                        )}
+                        {["pending", "confirmed", "in_progress"].includes(b.status) && (
                           <button
                             onClick={() => handleUpdateBookingStatus(b.id, "cancelled")}
                             className="rounded-xl border border-red-200 text-red-600 hover:bg-red-50 px-3 py-1.5 text-xs font-bold"
@@ -718,6 +782,8 @@ export default function ServicesPlatformPage() {
               )}
             </div>
           )}
+
+          {activeTab === "hours" && <OpeningHours token={token} />}
 
           {/* TAB 3: TEAM SPECIALISTS */}
           {activeTab === "staff" && (

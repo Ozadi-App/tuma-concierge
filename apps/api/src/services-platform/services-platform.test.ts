@@ -1,3 +1,4 @@
+import { setPlatformEnvironment } from "../lib/settings.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
@@ -47,6 +48,7 @@ test("standalone services platform: business onboarding, offerings, aggregator i
     }
   }
   bindDatabase(client);
+  await setPlatformEnvironment("sandbox"); // payments go through the simulator
 
   // Seed user
   await client.execute("INSERT INTO users (id, phone, name, password_hash, role, status) VALUES ('usr_srv_pro', '+256701998877', 'Dr. Ronald Kasule', 'hash', 'customer', 'active')");
@@ -154,7 +156,7 @@ test("standalone services platform: business onboarding, offerings, aggregator i
     body: JSON.stringify({
       service_id: serviceId,
       customer_name: "Baker Lubega",
-      customer_phone: "+256 752 000 111",
+      customer_phone: "+256 772 000 111",
       scheduled_date: FUTURE_DATE,
       scheduled_time: "10:30",
       location_type: "client_site",
@@ -173,7 +175,7 @@ test("standalone services platform: business onboarding, offerings, aggregator i
     body: JSON.stringify({
       service_id: serviceId,
       customer_name: "Baker Lubega",
-      customer_phone: "+256 752 000 111",
+      customer_phone: "+256 772 000 111",
       customer_email: "baker@lubega.com",
       scheduled_date: FUTURE_DATE,
       scheduled_time: "10:30",
@@ -197,6 +199,9 @@ test("standalone services platform: business onboarding, offerings, aggregator i
   assert.equal(crmListJson.bookings.length, 1);
   assert.equal(crmListJson.bookings[0].customer_name, "Baker Lubega");
 
+  const skipRes = await req(`/services-platform/bookings/${bookingId}/status`, "PATCH", { status: "in_progress" });
+  assert.equal(skipRes.status, 409, "a pending booking must be confirmed before it can start");
+  assert.equal((await req(`/services-platform/bookings/${bookingId}/status`, "PATCH", { status: "confirmed" })).status, 200);
   const assignRes = await req(`/services-platform/bookings/${bookingId}/status`, "PATCH", {
     status: "in_progress",
     staff_id: staffId,

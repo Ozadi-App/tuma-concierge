@@ -3485,9 +3485,13 @@ export type ServiceBookingRecord = {
   deposit_ugx: number;
   payment_rail: ServicePaymentRail;
   payment_status: "unpaid" | "deposit_paid" | "paid_full" | "waived";
-  status: "pending" | "confirmed" | "in_progress" | "completed" | "cancelled";
+  status: "pending" | "confirmed" | "in_progress" | "completed" | "cancelled" | "no_show";
   staff_id?: string | null;
   staff_name?: string | null;
+  booking_code?: string | null;
+  paid_ugx?: number;
+  refund_ugx?: number;
+  refund_state?: string | null;
   created_at: string;
   updated_at: string;
 };

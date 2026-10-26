@@ -62,16 +62,16 @@ test("admin option settings: validated, availability-aware, access-controlled an
   assert.equal((await customer("/admin/option-settings")).status, 403);
   assert.equal((await anonymous("/admin/option-settings")).status, 401);
 
-  const all = await json(await admin("/admin/option-settings?module=services"));
-  const mode = all.settings.find((s: any) => s.key === "services_online_collection_mode");
-  assert.equal(mode.default, "momo_escrow");
-  assert.equal(mode.effective, "pay_at_venue_only", "the recommended option is not built yet, so the working one is in force");
-  assert.ok(mode.options.find((o: any) => o.value === "momo_escrow").recommended);
-  assert.equal(mode.options.find((o: any) => o.value === "momo_escrow").available, false);
+  const all = await json(await admin("/admin/option-settings?module=storefront"));
+  const mode = all.settings.find((s: any) => s.key === "storefront_checkout_mode");
+  assert.equal(mode.default, "handoff_to_app");
+  assert.equal(mode.effective, "handoff_to_app");
+  assert.ok(mode.options.find((o: any) => o.value === "handoff_to_app").recommended);
+  assert.equal(mode.options.find((o: any) => o.value === "inline_web_checkout").available, false, "an option that is not built cannot be chosen");
 
-  const refused = await admin("/admin/option-settings", "PATCH", { values: { services_online_collection_mode: "momo_escrow" } });
+  const refused = await admin("/admin/option-settings", "PATCH", { values: { storefront_checkout_mode: "inline_web_checkout" } });
   assert.equal(refused.status, 400);
-  assert.match((await json(refused)).errors.services_online_collection_mode, /not available yet/);
+  assert.match((await json(refused)).errors.storefront_checkout_mode, /not available yet/);
 
   const mixed = await admin("/admin/option-settings", "PATCH", { values: { rate_limit_public_booking_per_hour: 3, lms_pass_mark_percent: 500 } });
   assert.equal(mixed.status, 400, "all or nothing: one bad value rejects the batch");
