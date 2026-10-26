@@ -188,3 +188,34 @@ test("a customer books a Work service and a demo provider takes it all the way",
   assert.equal((await post(customer.token, `/work/jobs/${jobId}/confirm`, {})).status, 200);
   assert.equal((await post(customer.token, `/work/jobs/${jobId}/rate`, { rating: 5, comment: "On time and tidy." })).status, 200);
 });
+
+test("demo car drivers take a ride all the way, by themselves", async () => {
+  const { db, start } = await practiceHarness();
+  const { actAs, runDemoCustomerAutopilot } = await import("./demo-customers.js");
+  const { runDemoDriverAutopilot } = await import("./demo-drivers.js");
+  const { carNow } = await import("./scenarios-ride.js");
+  const { PRACTICE_CUSTOMERS } = await import("./personas.js");
+  const { runInPractice } = await import("../db/practice-context.js");
+  await start("customer");
+  const rider = PRACTICE_CUSTOMERS[3]!;
+  const orderId = await runInPractice(async () => String(await carNow(rider, await actAs(rider))));
+  assert.ok(orderId.startsWith("ord"), `a ride was requested (${orderId})`);
+
+  const tick = () => runInPractice(async () => ({ drivers: await runDemoDriverAutopilot(), customers: await runDemoCustomerAutopilot() }));
+  assert.equal((await tick()).drivers, 0, "a ride that has only just been asked for is left for a practising partner first");
+  await db.execute({ sql: "UPDATE orders SET created_at = datetime('now', '-10 minutes') WHERE id = ?", args: [orderId] });
+  const stages: string[] = [];
+  for (let i = 0; i < 10; i++) {
+    await tick();
+    const stage = String((await db.execute({ sql: "SELECT stage FROM orders WHERE id = ?", args: [orderId] })).rows[0]!.stage);
+    if (stages[stages.length - 1] !== stage) stages.push(stage);
+    const rated = Number((await db.execute({ sql: "SELECT COUNT(*) n FROM order_ratings WHERE order_id = ?", args: [orderId] })).rows[0]!.n);
+    if (stage === "Settle" && rated) break;
+  }
+  assert.deepEqual(stages.slice(-1), ["Settle"], `the ride finished (${stages.join(" > ")})`);
+  const booking = (await db.execute({ sql: "SELECT status, driver_id, driver_amount FROM car_bookings WHERE order_id = ?", args: [orderId] })).rows[0]!;
+  assert.equal(booking.status, "completed");
+  assert.ok(String(booking.driver_id).startsWith("prac_cdrv_"), "a demo driver drove it");
+  assert.ok(Number(booking.driver_amount) > 0, "and was paid");
+  assert.equal(Number((await db.execute({ sql: "SELECT COUNT(*) n FROM order_ratings WHERE order_id = ?", args: [orderId] })).rows[0]!.n), 1, "and was rated");
+});

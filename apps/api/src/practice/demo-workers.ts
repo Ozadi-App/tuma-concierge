@@ -12,7 +12,7 @@ const DEMO_WORKER = "(w.user_id LIKE 'prac\\_wk\\_%' ESCAPE '\\' OR w.user_id LI
 /** Jobs the seed made are for people to browse; only jobs a practising person posted get answered. */
 const POSTED_BY_PRACTICE = "(j.employer_id LIKE 'prac\\_cust\\_%' ESCAPE '\\' AND j.id NOT LIKE 'prac\\_tj\\_%' ESCAPE '\\')";
 
-async function actAsWorker(id: string) {
+export async function actAsWorker(id: string) {
   const { default: app } = await import("../app.js");
   const token = await signToken({ sub: id, role: "customer", phone: null, practice: true });
   return async (method: string, path: string, body?: unknown): Promise<Answer> => {

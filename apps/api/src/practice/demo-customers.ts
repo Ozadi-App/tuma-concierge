@@ -80,6 +80,7 @@ async function waiting(): Promise<{ forRiders: number; forRestaurants: number }>
  */
 export async function topUpDemoOrders(target = 4, foodTarget = 2): Promise<number> {
   await runDemoCustomerAutopilot().catch((err) => console.error("Practice autopilot failed:", err));
+  await import("./demo-drivers.js").then((m) => m.runDemoDriverAutopilot()).catch((err) => console.error("Practice driver autopilot failed:", err));
   await import("./demo-workers.js").then(async (m) => { await m.runDemoWorkerAutopilot(); await m.runDemoProviderAutopilot(); }).catch((err) => console.error("Practice worker autopilot failed:", err));
   let placed = 0;
   for (let attempt = 0; attempt < (target + foodTarget) * 2; attempt++) {
