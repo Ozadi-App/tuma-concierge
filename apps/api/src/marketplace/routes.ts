@@ -22,6 +22,7 @@ import { merchantRoleGuard, publicRateLimit } from "../lib/guards.js";
 import { getOptions } from "../lib/option-settings.js";
 import { recordLoyaltyForOrder, settleLoyalty } from "./loyalty.js";
 import { sendStoreSms } from "./sms.js";
+import { createStoreForMerchant } from "./store-create.js";
 import { cleanSections, parseSections } from "./sections.js";
 import { soldOutLicenseProducts } from "./digital-sales.js";
 import { proofIsValid } from "../lib/phone-proof.js";
@@ -1059,44 +1060,8 @@ marketplaceRoutes.post("/merchants/me/store", requireAuth, async (c) => {
   const parsed = createStoreSchema.safeParse(body);
   if (!parsed.success) return c.json({ error: "invalid_body", issues: parsed.error.issues }, 400);
 
-  const storeId = newId("store");
-  const baseSlug = slugify(parsed.data.name);
-  const reservedNames = await getOption<string[]>("storefront_reserved_subdomains");
-  const compactSlug = baseSlug.replace(/-/g, "");
-  if (reservedNames.some((r) => r === baseSlug || r.replace(/-/g, "") === compactSlug)) {
-    return c.json({ error: "reserved_name", message: "That store name can't be used because it could be mistaken for a Peebee page. Please choose another name." }, 400);
-  }
-  const slug = `${baseSlug}-${storeId.slice(-4)}`;
-  const environment = await getPlatformEnvironment();
-  const settings = await getMarketplaceSettings();
-
-  // Automatic 14-day Pro Live trial so sellers experience live selling immediately!
-  const trialExpiresAt = new Date(Date.now() + settings.proTrialDays * 86400000).toISOString();
-
-  await db.execute({
-    sql: `INSERT INTO stores (
-      id, merchant_id, name, slug, category, sub_category, description,
-      announcement, phone, whatsapp_number, address, min_order_amount,
-      pro_tier, pro_expires_at, status, environment
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)`,
-    args: [
-      storeId,
-      merchantId,
-      parsed.data.name,
-      slug,
-      parsed.data.category,
-      parsed.data.sub_category || "general",
-      parsed.data.description || "",
-      parsed.data.announcement || "Welcome to our store! Shop online for fast delivery.",
-      parsed.data.phone || "",
-      parsed.data.whatsapp_number || "",
-      parsed.data.address || "",
-      parsed.data.min_order_amount || settings.minOrderAmountUgx,
-      "pro_live",
-      trialExpiresAt,
-      environment,
-    ],
-  });
+  const made = await createStoreForMerchant(merchantId, parsed.data);
+  if (!made.ok) return c.json({ error: made.error, message: made.message }, 400);
 
   const created = await getMerchantStore(merchantId);
   return c.json({ store: created, trialActive: true });
@@ -3234,6 +3199,8 @@ marketplaceRoutes.get("/marketplace/stores", async (c) => {
   const environment = await getPlatformEnvironment();
 
   let query = "SELECT * FROM stores WHERE status = 'active' AND environment = ?";
+  // A store that chose not to be listed in the app is only reachable by its own web address.
+  if (await hasColumn("stores", "listed_in_app")) query += " AND listed_in_app = 1";
   const args: (string | number)[] = [environment];
 
   if (category && (category === "groceries" || category === "stores" || category === "pharmacy")) {
@@ -3730,6 +3697,18 @@ const marketplaceCheckoutSchema = z.object({
   salesChannel: z.enum(["customer_app", "dedicated_storefront"]).optional(),
 });
 
+/** An order placed on a store's own web storefront needs the merchant to have switched the web store on. */
+async function webStoreRefusal(items: Array<{ storeId: string }>, salesChannel: string | undefined): Promise<{ error: string; message: string } | null> {
+  if (salesChannel !== "dedicated_storefront" || !(await hasColumn("stores", "web_store_enabled"))) return null;
+  for (const storeId of new Set(items.map((i) => i.storeId))) {
+    const row = (await db.execute({ sql: "SELECT web_store_enabled FROM stores WHERE id = ?", args: [storeId] })).rows[0] as Row | undefined;
+    if (row && Number(row.web_store_enabled) !== 1) {
+      return { error: "web_store_off", message: "This store doesn't take orders on its website. Open it in the Peebee app to order." };
+    }
+  }
+  return null;
+}
+
 type AppliedDiscountSummary = {
   id: string;
   storeId: string;
@@ -3862,6 +3841,8 @@ marketplaceRoutes.post("/marketplace/checkout", requireAuth, async (c) => {
 
   const pricing = await priceCheckoutItems(d.items, (await demoCatalogAllowed()) ? DEMO_MARKETPLACE_PRODUCTS : {});
   if (!pricing.ok) return c.json({ error: pricing.error, message: pricing.message, productId: pricing.productId }, pricing.status);
+  const refused = await webStoreRefusal(pricing.items, d.salesChannel);
+  if (refused) return c.json(refused, 403);
   const bag = await planMarketplaceDelivery(pricing.items, d, environment);
   const stops = bag.stops;
   const promoEval = await evaluateBagPromosAndLoyalty(stops, d.promoCode);
@@ -4038,6 +4019,8 @@ marketplaceRoutes.post("/marketplace/checkout/quote", requireAuth, async (c) => 
   if (!parsed.success) return c.json({ error: "invalid_body", issues: parsed.error.issues }, 400);
   const pricing = await priceCheckoutItems(parsed.data.items, (await demoCatalogAllowed()) ? DEMO_MARKETPLACE_PRODUCTS : {});
   if (!pricing.ok) return c.json({ error: pricing.error, message: pricing.message, productId: pricing.productId }, pricing.status);
+  const refused = await webStoreRefusal(pricing.items, parsed.data.salesChannel);
+  if (refused) return c.json(refused, 403);
   const bag = await planMarketplaceDelivery(pricing.items, parsed.data, await getPlatformEnvironment());
   const { stops, trip } = bag;
   const relayed = bag.relay;

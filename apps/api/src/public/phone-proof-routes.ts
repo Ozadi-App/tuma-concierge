@@ -8,7 +8,7 @@ import { normalizePhone } from "../lib/validation.js";
 
 export const phoneProofRoutes = new Hono();
 
-const requestSchema = z.object({ phone: z.string().min(6).max(30), purpose: z.enum(["service_booking", "b2b_inquiry"]) });
+const requestSchema = z.object({ phone: z.string().min(6).max(30), purpose: z.enum(["service_booking", "b2b_inquiry", "merchant_portal"]) });
 
 /** Text a code to a phone. Used by public forms whose admin protection is set to "phone code". */
 phoneProofRoutes.post("/public/phone-proof/request", async (c) => {

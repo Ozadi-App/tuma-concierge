@@ -10,6 +10,7 @@ options on in Admin → Settings → Commerce options. The code keeps working wi
 | `apps/api/src/db/migrations/0138_digital_fulfillment.sql` | Digital products: hashed access tokens, licence-key pool, file links, refunds |
 | `apps/api/src/db/migrations/0139_lms_hardening.sql` | LMS: enrolment rules, course listing, certificates, email log |
 | `apps/api/src/db/migrations/0140_services_hardening.sql` | Services: opening hours, days off, booking codes and seats, online payments and refunds |
+| `apps/api/src/db/migrations/0141_merchant_portal.sql` | Merchant sign-up website: per-store "listed in the app" and "web store" switches, and where a merchant registered |
 
 Each file is safe to read before running: they only add tables, columns and indexes. Run them one at a time and check
 the Admin → Commerce options page — an option whose migration is missing is shown as unavailable and cannot be chosen.
