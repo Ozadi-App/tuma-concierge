@@ -42,7 +42,7 @@ const shopping: Scenario = async (customer, call) => {
   return order.status === 201 ? openToRiders(call, String(order.body.order?.id ?? order.body.id ?? "")) : null;
 };
 
-const parcel: Scenario = async (customer, call) => {
+export const parcel: Scenario = async (customer, call) => {
   const made = await call("POST", "/lists", { title: "Parcel to a friend", items: [{ name: "Small parcel", quantity: 1 }] });
   if (made.status !== 201) return null;
   const order = await call("POST", "/orders", {

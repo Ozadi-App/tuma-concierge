@@ -10,7 +10,8 @@ import { runInPractice } from "../db/practice-context.js";
 import { splitSqlStatements } from "../db/split-sql.js";
 import { resetSchemaCache } from "../lib/schema.js";
 import { invalidateSettingsCache } from "../lib/settings.js";
-import { runDemoCustomerAutopilot, topUpDemoOrders } from "./demo-customers.js";
+import { actAs, parcel, runDemoCustomerAutopilot, topUpDemoOrders } from "./demo-customers.js";
+import { PRACTICE_CUSTOMERS } from "./personas.js";
 import { ridersForThisWorld } from "./people.js";
 import { practiceCounts, resetPracticeWorld, seedPracticeWorld } from "./seed.js";
 
@@ -99,13 +100,25 @@ test("practice and sandbox share one database; real people and demo people never
 
   await t.test("a practising rider's whole job finishes: take, be paid for, deliver, hand over, settle, be rated", async () => {
     const demoRider = await start(rider, "rider");
-    const open = await db.execute(`SELECT id FROM orders WHERE customer_id LIKE 'prac\\_%' ESCAPE '\\' AND rider_id IS NULL AND type = 'parcel' AND restaurant_id IS NULL ORDER BY created_at LIMIT 1`);
+    // Earlier steps left demo riders on jobs; clear them so this one starts from a quiet world.
+    await db.execute("UPDATE orders SET stage = 'Cancelled' WHERE customer_id LIKE 'prac\\_%' ESCAPE '\\' AND stage NOT IN ('Settle', 'Cancelled')");
+    await runInPractice(async () => { const who = PRACTICE_CUSTOMERS[0]!; await parcel(who, await actAs(who)); });
+    const open = await db.execute(`SELECT id, rider_id FROM orders WHERE customer_id LIKE 'prac\\_%' ESCAPE '\\' AND customer_id = '${PRACTICE_CUSTOMERS[0]!.id}' AND type = 'parcel' ORDER BY created_at DESC, rowid DESC LIMIT 1`);
     const id = String(open.rows[0]?.id ?? "");
-    assert.ok(id, "a demo parcel is waiting for a rider");
+    assert.ok(id, "a demo parcel was placed");
+    // Matching may already have handed it to a nearby demo rider; either way a demo rider takes it.
+    let assigned = open.rows[0]!.rider_id ? String(open.rows[0]!.rider_id) : null;
+    // The persona rider may already be on a job of their own; a demo rider who is free takes it instead.
+    const free = await db.execute(`SELECT user_id FROM riders WHERE user_id LIKE 'prac\\_%' ESCAPE '\\' AND verified = 1 AND is_online = 1 AND user_id NOT IN (SELECT rider_id FROM orders WHERE rider_id IS NOT NULL AND stage NOT IN ('Settle', 'Cancelled')) LIMIT 1`);
+    const taker = assigned ?? String(free.rows[0]?.user_id ?? "");
+    assert.ok(taker, "a demo rider is free");
+    const riderToken = await signToken({ sub: taker, role: "rider", practice: true });
     const stageOf = async () => String((await db.execute({ sql: "SELECT stage FROM orders WHERE id = ?", args: [id] })).rows[0]!.stage);
-    const act = (path: string, body: unknown = {}) => call(demoRider.token, `/orders/${id}/${path}`, { method: "POST", body: JSON.stringify(body) });
-    const claimed = await act("claim");
-    assert.ok(claimed.status < 300, `claim ${claimed.status} ${JSON.stringify(await claimed.clone().json().catch(() => ({})))}`);
+    const act = (path: string, body: unknown = {}) => call(riderToken, `/orders/${id}/${path}`, { method: "POST", body: JSON.stringify(body) });
+    if (!assigned) {
+      const claimed = await act("claim");
+      assert.ok(claimed.status < 300, `claim ${claimed.status} ${JSON.stringify(await claimed.clone().json().catch(() => ({})))}`);
+    }
     assert.equal(await stageOf(), "Match");
     assert.ok((await runInPractice(() => runDemoCustomerAutopilot())) >= 1, "the demo customer pays");
     assert.equal(await stageOf(), "Shop");

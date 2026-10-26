@@ -36,7 +36,7 @@ export const nearbyParcel: Scenario = async (c, call) => {
 
 /** A shared product link bought without an account. The practice token on the request keeps it in the practice world. */
 export const guestOrder: Scenario = async (c, call) => {
-  const products = await db.execute("SELECT p.id FROM store_products p JOIN stores s ON s.id = p.store_id WHERE s.merchant_id LIKE 'prac\\_%' ESCAPE '\\' AND s.category IN ('groceries','stores') ORDER BY RANDOM() LIMIT 1");
+  const products = await db.execute("SELECT p.id FROM store_products p JOIN stores s ON s.id = p.store_id WHERE s.merchant_id LIKE 'prac\\_%' ESCAPE '\\' AND s.category IN ('groceries','stores') AND p.price >= 10000 ORDER BY RANDOM() LIMIT 1");
   const id = String(products.rows[0]?.id ?? "");
   if (!id) return null;
   return place(call, "guest checkout", "/guest/checkout", { productId: id, quantity: 1, name: "Guest Visitor", phone: "0700000777", address: c.areaAddress, lat: c.lat, lng: c.lng, createAccount: false });
