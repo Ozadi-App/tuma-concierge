@@ -20,6 +20,8 @@ const RESERVED_SUBDOMAINS = new Set([
   "learn",
   "tv",
   "preview",
+  "stores",
+  "portal",
 ]);
 
 /**

@@ -292,6 +292,11 @@ export default function StorefrontClient({ overrideSlug, initial }: { overrideSl
           setError("Storefront not found.");
           return;
         }
+        // The merchant chose not to have a web store (they are listed in the app only).
+        if (storeRes.store.web_store_enabled === 0 || storeRes.store.web_store_enabled === false) {
+          setUnavailable(true);
+          return;
+        }
         const prodRes = await fetch(`${API_BASE}/v1/marketplace/stores/${encodeURIComponent(slug)}/products`)
           .then((r) => (r.ok ? r.json() : null))
           .catch(() => null);

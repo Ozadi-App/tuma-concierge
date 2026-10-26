@@ -8,6 +8,9 @@ const nextConfig: NextConfig = {
   },
   async rewrites() {
     return [
+      // The merchant sign-up website: https://stores.peebee.online -> /portal (the same pages also answer at /portal).
+      { source: "/", has: [{ type: "host", value: "stores\\.peebee\\.online" }], destination: "/portal" },
+      { source: "/:page(register|login|dashboard)", has: [{ type: "host", value: "stores\\.peebee\\.online" }], destination: "/portal/:page" },
       // Dedicated Merchant Storefront: https://[store-name].peebee.online -> /site/[store-name]
       // Excludes reserved Peebee platform subdomains (www, app, customer, rider, merchant, admin, api, etc.)
       {
@@ -16,7 +19,7 @@ const nextConfig: NextConfig = {
           {
             type: "host",
             value:
-              "(?<store>(?!www$|app$|customer$|rider$|merchant$|admin$|api$|food$|gas$|pharmacy$|partner$|sales$|work$|learn$|tv$|preview$)[a-z0-9-]+)\\.peebee\\.online",
+              "(?<store>(?!www$|app$|customer$|rider$|merchant$|admin$|api$|food$|gas$|pharmacy$|partner$|sales$|work$|learn$|tv$|preview$|stores$|portal$)[a-z0-9-]+)\\.peebee\\.online",
           },
         ],
         destination: "/site/:store",

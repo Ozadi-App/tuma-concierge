@@ -14,7 +14,7 @@
  * Pure data and helpers only (no database access) so it can be imported anywhere, including settings defaults.
  */
 
-export type OptionModule = "storefront" | "digital" | "lms" | "services" | "platform";
+export type OptionModule = "storefront" | "portal" | "digital" | "lms" | "services" | "platform";
 
 export type OptionRequirement = {
   tables?: string[];
@@ -86,7 +86,7 @@ export const OPTION_SETTINGS: SettingDef[] = [
   {
     key: "storefront_reserved_subdomains", module: "storefront", kind: "list", label: "Reserved store names",
     description: "Names no store may take as its web address (lookalikes of platform pages).",
-    default: ["www", "app", "customer", "rider", "merchant", "admin", "api", "food", "gas", "pharmacy", "partner", "sales", "work", "learn", "tv", "preview", "login", "signin", "secure", "pay", "payment", "payments", "wallet", "support", "help", "mail", "email", "status", "docs", "blog", "cdn", "static", "assets", "auth", "account", "billing", "staging", "dev", "test", "peebee"],
+    default: ["www", "app", "customer", "rider", "merchant", "admin", "api", "food", "gas", "pharmacy", "partner", "sales", "work", "learn", "tv", "preview", "login", "signin", "secure", "pay", "payment", "payments", "wallet", "support", "help", "mail", "email", "status", "docs", "blog", "cdn", "static", "assets", "auth", "account", "billing", "staging", "dev", "test", "peebee", "stores", "portal"],
     maxItems: 200, itemPattern: "^[a-z0-9-]{1,40}$", itemHint: "lowercase letters, numbers and hyphens",
   },
   {
@@ -140,6 +140,49 @@ export const OPTION_SETTINGS: SettingDef[] = [
   {
     key: "storefront_pixels_enabled", module: "storefront", kind: "bool", label: "Ad pixels on storefronts",
     description: "Allow merchants' Meta and TikTok pixel IDs to be loaded on their web store.", default: true,
+  },
+
+  // ------------------------------------------------------------------ Merchant portal
+  {
+    key: "merchant_portal_enabled", module: "portal", kind: "bool", label: "Merchant sign-up website",
+    description: "The website at stores.peebee.online where businesses register as merchants. Off hides the sign-up pages; existing merchants are not affected.",
+    default: true,
+  },
+  {
+    key: "merchant_portal_features", module: "portal", kind: "multi", label: "What a new merchant can choose to switch on",
+    description: "Every merchant gets a merchant account. These are the extras the sign-up website offers.",
+    default: ["app_listing", "web_store"], min: 0,
+    options: [
+      opt("app_listing", "List products in the Peebee app", true, { recommended: true, requires: { columns: [["stores", "listed_in_app"]], migration: "0141_merchant_portal.sql" } }),
+      opt("web_store", "A web store at [name].peebee.online", true, { recommended: true, requires: { columns: [["stores", "web_store_enabled"]], migration: "0141_merchant_portal.sql" } }),
+    ],
+  },
+  {
+    key: "merchant_portal_account_creation", module: "portal", kind: "enum", label: "Creating the account on the website",
+    description: "Whether someone with no Peebee account can create one while signing up as a merchant.",
+    default: "register_here",
+    options: [
+      opt("register_here", "Create the account on the website", true, { recommended: true }),
+      opt("sign_in_only", "Only people who already have a Peebee account", true, { hint: "They sign in with the account from the app." }),
+    ],
+  },
+  {
+    key: "merchant_portal_phone_check", module: "portal", kind: "enum", label: "Checking the phone number at sign-up",
+    description: "Proves the person owns the number they register with.",
+    default: "phone_code",
+    options: [
+      opt("phone_code", "Text a code to the phone", true, { recommended: true, requires: { sms: true } }),
+      opt("none", "No phone check", true),
+    ],
+  },
+  {
+    key: "merchant_portal_store_activation", module: "portal", kind: "enum", label: "When a new store goes live",
+    description: "A store made on the website is created hidden and published when admin approves the merchant, or published straight away.",
+    default: "after_admin_approval",
+    options: [
+      opt("after_admin_approval", "After admin approves the merchant", true, { recommended: true }),
+      opt("immediately", "Straight away", true, { hint: "The store is public before any verification." }),
+    ],
   },
 
   // ------------------------------------------------------------------ Digital products

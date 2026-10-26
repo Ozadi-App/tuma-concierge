@@ -8,6 +8,7 @@ import { useAuth } from "../../../lib/auth-context";
 
 const TABS = [
   { id: "storefront", label: "Web storefront" },
+  { id: "portal", label: "Merchant sign-up site" },
   { id: "digital", label: "Digital products" },
   { id: "lms", label: "Courses & Learn" },
   { id: "services", label: "Services" },

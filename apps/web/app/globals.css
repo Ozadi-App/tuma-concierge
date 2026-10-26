@@ -545,3 +545,21 @@ body {
     font-size: 1.08rem;
   }
 }
+
+/* Merchant sign-up site: every field is one solid fill, edge to edge (existing tokens only). */
+.portal-site input:not([type="checkbox"], [type="radio"], [type="file"], [type="hidden"], [type="submit"], [type="button"]),
+.portal-site textarea,
+.portal-site select {
+  width: 100%;
+  background-color: rgb(var(--surface-input));
+  border: 1.5px solid transparent;
+  border-radius: 0.75rem;
+  color: rgb(var(--color-ink));
+  transition: border-color 150ms ease;
+}
+.portal-site input:focus,
+.portal-site textarea:focus,
+.portal-site select:focus {
+  outline: none;
+  border-color: rgb(var(--color-gold));
+}

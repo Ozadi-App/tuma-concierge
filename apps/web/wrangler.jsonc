@@ -7,7 +7,8 @@
   "workers_dev": true,
   "routes": [
     { "pattern": "peebee.online", "custom_domain": true },
-    { "pattern": "www.peebee.online", "custom_domain": true }
+    { "pattern": "www.peebee.online", "custom_domain": true },
+    { "pattern": "stores.peebee.online", "custom_domain": true }
   ],
   "assets": {
     "directory": ".open-next/assets",

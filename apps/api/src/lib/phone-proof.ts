@@ -12,7 +12,7 @@ import { normalizePhone } from "./validation.js";
  * an online attempt per guess (which the routes rate limit per challenge).
  */
 
-export type ProofPurpose = "service_booking" | "b2b_inquiry" | "digital_access";
+export type ProofPurpose = "service_booking" | "b2b_inquiry" | "digital_access" | "merchant_portal";
 
 const CHALLENGE_SECONDS = 10 * 60;
 const PROOF_SECONDS = 30 * 60;
