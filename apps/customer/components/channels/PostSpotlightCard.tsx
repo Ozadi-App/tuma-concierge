@@ -26,8 +26,8 @@ function useInView(threshold = 0.6) {
 }
 
 /** One post from any publisher in the full-screen Spotlight feed. */
-export function PostSpotlightCard({ post: initial, muted, topInset, following, onFollowChange }: {
-  post: PostView; muted: boolean; topInset: ReactNode; following: boolean; onFollowChange: (channelId: string, now: boolean) => void;
+export function PostSpotlightCard({ post: initial, muted, topInset, bottomPad = 0, following, onFollowChange }: {
+  post: PostView; muted: boolean; topInset: ReactNode; /** Room kept clear at the bottom for the floating menu. */ bottomPad?: number; following: boolean; onFollowChange: (channelId: string, now: boolean) => void;
 }) {
   const { config } = useChannelsConfig();
   const { user } = useAuth();
@@ -63,7 +63,7 @@ export function PostSpotlightCard({ post: initial, muted, topInset, following, o
 
       <div className="absolute inset-x-0 top-0 z-20" style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top))" }}>{topInset}</div>
 
-      <aside className="absolute right-3 z-20 flex flex-col items-center gap-5" style={{ bottom: 120 }}>
+      <aside className="absolute right-3 z-20 flex flex-col items-center gap-5" style={{ bottom: 120 + bottomPad }}>
         {p.publisher && (
           <div className="relative">
             {p.publisher.type === "channel" && p.publisher.handle ? (
@@ -78,7 +78,7 @@ export function PostSpotlightCard({ post: initial, muted, topInset, following, o
           onLike={s.toggleLike} onComments={() => s.setSheet("comments")} onTip={() => s.setSheet("tip")} onReport={() => s.setSheet("report")} />
       </aside>
 
-      <div className="absolute inset-x-0 bottom-0 z-20 space-y-2 px-4 pr-20" style={{ paddingBottom: "max(1rem, env(safe-area-inset-bottom))" }}>
+      <div className="absolute inset-x-0 bottom-0 z-20 space-y-2 px-4 pr-20" style={{ paddingBottom: `calc(max(1rem, env(safe-area-inset-bottom)) + ${bottomPad}px)` }}>
         <PublisherLine post={p} dark />
         {p.type !== "text" && p.caption && (
           <button type="button" onClick={() => setOpen((o) => !o)} className="block w-full text-left" aria-expanded={open}>

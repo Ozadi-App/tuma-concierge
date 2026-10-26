@@ -21,8 +21,10 @@ import {
   CookingPot,
   Croissant,
   Crown,
+  Clapperboard,
   Flame,
   GraduationCap,
+  Heart,
   HardHat,
   Home,
   ListChecks,
@@ -57,6 +59,7 @@ import { useLivePolling } from "../lib/use-live-polling";
 import { BottomDrawer } from "./BottomDrawer";
 import { CartDrawer } from "./CartDrawer";
 import { useCart } from "../lib/cart";
+import { SPOTLIGHT_FILTERS, setSpotlightFilter, useSpotlightFilter, type SpotlightFilter } from "../lib/spotlight-filter";
 import { goBackOr, useNavBack, useNavPrimaryAction } from "../lib/nav-primary-action";
 
 /** Two names that take turns in the same spot. Screen readers get both names from the button's own label, so this is hidden from them. */
@@ -71,8 +74,8 @@ function SwappingLabel({ first, second, seconds }: { first: string; second: stri
   return <span key={text} aria-hidden className="customer-nav-label-swap block truncate">{text}</span>;
 }
 
-type MenuGroup = "original" | "ride" | "shopping" | "food" | "hive" | "learn";
-type MenuItem = { id: string; label: string; /** A second name that swaps with `label`. */ alt?: { label: string; seconds: number }; icon: LucideIcon; href?: string; group?: Exclude<MenuGroup, "original">; disabled?: boolean };
+type MenuGroup = "original" | "ride" | "shopping" | "food" | "hive" | "learn" | "spotlight";
+type MenuItem = { id: string; label: string; /** A second name that swaps with `label`. */ alt?: { label: string; seconds: number }; icon: LucideIcon; href?: string; group?: Exclude<MenuGroup, "original" | "spotlight">; disabled?: boolean; /** A Spotlight filter this button switches on. */ spotlight?: SpotlightFilter };
 
 // Five main buttons: Ride, Buy, Eat, Learn and Hive. Learn goes straight to its own home; the others open a row of shortcuts.
 // The names come from the admin's home menu setting; these are the buttons' icons and where they lead.
@@ -116,7 +119,6 @@ const staticSubmenuItems: Record<"shopping" | "food", MenuItem[]> = {
     { id: "markets", label: "Groceries", icon: Store, href: "/groceries" },
     { id: "stores", label: "Stores", icon: ShoppingBasket, href: "/stores" },
     { id: "pharmacy", label: "Pharma", icon: Pill, href: "/pharmacy" },
-    { id: "spotlight", label: "Spotlight", icon: Flame, href: "/spotlight" },
   ],
   food: [
     { id: "restaurant", label: "Restaurants", icon: UtensilsCrossed, href: "/restaurants" },
@@ -126,6 +128,10 @@ const staticSubmenuItems: Record<"shopping" | "food", MenuItem[]> = {
     { id: "bakery", label: "Bakeries", icon: Croissant, href: "/bakeries" },
   ],
 };
+
+/** Spotlight's row: the feed's filters, in place of the Home menu while the person is in Spotlight. */
+const SPOTLIGHT_ICON: Record<SpotlightFilter, LucideIcon> = { foryou: Flame, following: Heart, creators: Clapperboard, market: Store, learn: GraduationCap };
+const spotlightItems: MenuItem[] = SPOTLIGHT_FILTERS.map((f) => ({ id: `sp-${f.id}`, label: f.label, icon: SPOTLIGHT_ICON[f.id], href: "/spotlight", spotlight: f.id }));
 
 /** Learn's row. Levels (Sprouts, Basics, Academy, Campus, Skills) are chosen on Discover. */
 const learnItems: MenuItem[] = [
@@ -151,7 +157,8 @@ function groupForPath(pathname: string): MenuGroup {
   if (pathname === "/ride" || pathname === "/rent" || pathname === "/carpool" || pathname.startsWith("/ride/") || pathname === "/move") return "ride";
   // Parcel is part of Ride now (Send is no longer its own button).
   if (pathname === "/deliver" || pathname.startsWith("/deliver/")) return "ride";
-  if (["/shopping", "/shoplist", "/groceries", "/stores", "/store", "/pharmacy", "/spotlight"].some((path) => pathname === path || pathname.startsWith(`${path}/`)) || pathname.startsWith("/orders")) return "shopping";
+  if (pathname === "/spotlight" || pathname.startsWith("/spotlight/")) return "spotlight";
+  if (["/shopping", "/shoplist", "/groceries", "/stores", "/store", "/pharmacy"].some((path) => pathname === path || pathname.startsWith(`${path}/`)) || pathname.startsWith("/orders")) return "shopping";
   if (pathname === "/learn" || pathname.startsWith("/learn/")) return "learn";
   if (["/services", "/service"].some((path) => pathname === path || pathname.startsWith(`${path}/`))) return "hive";
   return "original";
@@ -180,6 +187,7 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
   // A cart/checkout or a flow step is open: Home becomes a one-step Back.
   const navBack = useNavBack();
   const [cartOpen, setCartOpen] = useState(false);
+  const spotlightFilter = useSpotlightFilter();
 
   // Right-hand capsule mode:
   //  - "action": a page-provided primary action (the /cart page's Checkout), gold.
@@ -201,19 +209,23 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
   const defaultBack =
     !navBack && pathname !== "/" && rightMode !== "links"
       ? () => {
-          if (screenGroup !== "original" && screenGroup !== "learn") {
+          if (screenGroup !== "original" && screenGroup !== "learn" && screenGroup !== "spotlight") {
             pendingGroupRef.current = screenGroup;
             router.push("/");
-          } else goBackOr(router, screenGroup === "learn" ? "/learn" : "/");
+          } else goBackOr(router, screenGroup === "learn" ? "/learn" : screenGroup === "spotlight" ? "/spotlight" : "/");
         }
       : null;
   const backAction = navBack ?? defaultBack;
+  // On the Home screen the Home button becomes Spotlight; on Spotlight it is Home again (the ordinary Home button below).
+  // With a sub menu open on "/", it stays Home so the person can get back to the main menu.
+  const onHomeScreen = pathname === "/" && menuGroup === "original";
 
   const menuItems: MenuItem[] =
     menuGroup === "original" ? originalMenu(homeMenu)
     : menuGroup === "ride" ? rideItems(special, taxipress.enabled)
     : menuGroup === "hive" ? hiveItems(homeMenu, hireAvailability)
     : menuGroup === "learn" ? learnItems
+    : menuGroup === "spotlight" ? spotlightItems
     : staticSubmenuItems[menuGroup];
   // Ride can grow to eight; past five the row scrolls sideways instead of squeezing the names.
   const scrolls = menuItems.length > 5;
@@ -240,7 +252,7 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
     else if (pathname === "/groceries" || pathname.startsWith("/groceries/")) setSelectedItem("markets");
     else if (pathname === "/stores" || pathname.startsWith("/store/")) setSelectedItem("stores");
     else if (pathname === "/pharmacy" || pathname.startsWith("/pharmacy/")) setSelectedItem("pharmacy");
-    else if (pathname === "/spotlight") setSelectedItem("spotlight");
+    else if (pathname === "/spotlight") setSelectedItem(null);
     else if (pathname === "/services/laundry") setSelectedItem("laundry");
     else if (pathname === "/services/clean") setSelectedItem("clean");
     else if (pathname === "/services/fix") setSelectedItem("fix");
@@ -342,6 +354,17 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
               >
                 <ChevronLeft className="h-5 w-5" strokeWidth={2.2} aria-hidden />
                 <span className="leading-none truncate max-w-[54px]">Back</span>
+              </button>
+              ) : onHomeScreen ? (
+              <button
+                key="nav-spotlight"
+                type="button"
+                aria-label="Spotlight"
+                onClick={() => router.push("/spotlight")}
+                className="customer-nav-item customer-nav-icon-swap relative flex h-[58px] w-full flex-col items-center justify-center gap-1 rounded-[18px] px-1 py-1 text-[11px] font-bold transition-all duration-200 active:scale-95"
+              >
+                <Flame className="h-5 w-5" strokeWidth={1.8} aria-hidden />
+                <span className="leading-none truncate max-w-[54px]">Spotlight</span>
               </button>
               ) : (
               <button
@@ -479,7 +502,7 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
               >
                 {menuItems.map((item) => {
                   const Icon = item.icon;
-                  const active = item.id === selectedItem;
+                  const active = item.spotlight ? item.spotlight === spotlightFilter : item.id === selectedItem;
 
                   const content = (
                     <>
@@ -538,7 +561,7 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
                       ) : (
                         <Link
                           href={item.href!}
-                          onClick={() => setSelectedItem(item.id)}
+                          onClick={() => { if (item.spotlight) setSpotlightFilter(item.spotlight); setSelectedItem(item.id); }}
                           aria-current={active ? "page" : undefined}
                           className={btnClass}
                         >
