@@ -25,6 +25,8 @@ export type OptionRequirement = {
   sms?: boolean;
   /** Needs the private file storage (R2) to be connected. */
   r2?: boolean;
+  /** Needs an email provider to be connected. */
+  email?: boolean;
 };
 
 export type OptionChoice = {
@@ -207,8 +209,8 @@ export const OPTION_SETTINGS: SettingDef[] = [
     default: "two_way_auto",
     options: [
       opt("two_way_auto", "Automatic two-way sync", true, { recommended: true }),
-      opt("publish_to_learn_manual", "Merchant publishes to Learn manually", false),
-      opt("store_only", "Store only, not listed in Learn", false),
+      opt("publish_to_learn_manual", "Merchant publishes to Learn manually", true, { requires: { columns: [["edu_courses", "catalog_listed"]], migration: "0137_lms_hardening.sql" } }),
+      opt("store_only", "Store only, not listed in Learn", true, { requires: { columns: [["edu_courses", "catalog_listed"]], migration: "0137_lms_hardening.sql" } }),
     ],
   },
   {
@@ -216,9 +218,9 @@ export const OPTION_SETTINGS: SettingDef[] = [
     description: "How a student gets an account when a merchant enrols them or they buy a course.",
     default: "phone_account_auto_create_sms_setup",
     options: [
-      opt("phone_account_auto_create_sms_setup", "Create the account from their phone and send a setup link", false, { recommended: true }),
-      opt("require_existing_account", "They must already have a Peebee account", false),
-      opt("email_invite", "Invite them by email", false),
+      opt("phone_account_auto_create_sms_setup", "Create the account from their phone and send a setup link", true, { recommended: true, requires: { sms: true } }),
+      opt("require_existing_account", "They must already have a Peebee account", true),
+      opt("email_invite", "Invite them by email", true, { requires: { email: true } }),
     ],
   },
   {
@@ -226,8 +228,8 @@ export const OPTION_SETTINGS: SettingDef[] = [
     description: "Which payment path course purchases use.",
     default: "learn_payments_commission",
     options: [
-      opt("learn_payments_commission", "Peebee Learn payments (Learn commission)", false, { recommended: true }),
-      opt("store_checkout_direct", "Store checkout", false),
+      opt("learn_payments_commission", "Peebee Learn payments (Learn commission)", true, { recommended: true }),
+      opt("store_checkout_direct", "Store checkout (the digital-sales share)", true),
     ],
   },
   {
@@ -235,8 +237,8 @@ export const OPTION_SETTINGS: SettingDef[] = [
     description: "How lesson videos and files are protected from sharing.",
     default: "signed_urls",
     options: [
-      opt("signed_urls", "Short-lived signed links", false, { recommended: true }),
-      opt("domain_allowlist_only", "Only approved video hosts", false),
+      opt("signed_urls", "Approved video hosts and Peebee-hosted lessons (short-lived links)", true, { recommended: true }),
+      opt("domain_allowlist_only", "Only approved video hosts", true),
       opt("none", "No protection (free courses)", true),
     ],
   },
@@ -245,17 +247,26 @@ export const OPTION_SETTINGS: SettingDef[] = [
     description: "When a certificate is issued.",
     default: "auto_on_completion",
     options: [
-      opt("auto_on_completion", "Automatically on completion", false, { recommended: true }),
-      opt("manual_issue", "Merchant issues them", false),
-      opt("off", "Off", false),
+      opt("auto_on_completion", "Automatically on completion", true, { recommended: true }),
+      opt("manual_issue", "Merchant issues them", true, { requires: { tables: ["edu_certificates"], migration: "0117_learn_pro_completion.sql" } }),
+      opt("off", "Off", true),
     ],
   },
-  { key: "lms_pass_mark_percent", module: "lms", kind: "int", label: "Quiz pass mark", description: "Score needed to pass a quiz.", default: 70, min: 0, max: 100, unit: "%" },
+  {
+    key: "lms_allowed_video_hosts", module: "lms", kind: "list", label: "Approved lesson video hosts",
+    description: "Websites a lesson video or file may come from when content protection is on. (The quiz pass mark is set under Peebee Learn.)",
+    default: ["youtube.com", "youtu.be", "vimeo.com", "peebee.online", "cloudflarestream.com"], maxItems: 50,
+    itemPattern: "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$", itemHint: "domain names like youtube.com",
+  },
   {
     key: "lms_drip_default", module: "lms", kind: "enum", label: "Default lesson release",
     description: "When lessons unlock for a new course.",
     default: "all_at_once",
-    options: [opt("all_at_once", "All at once", true, { recommended: true }), opt("weekly", "One module a week", false), opt("custom", "Merchant sets a schedule", false)],
+    options: [
+      opt("all_at_once", "All at once", true, { recommended: true }),
+      opt("weekly", "One module a week", true, { requires: { tables: ["edu_module_drip"], migration: "0117_learn_pro_completion.sql" } }),
+      opt("custom", "Merchant sets a schedule", true, { requires: { tables: ["edu_module_drip"], migration: "0117_learn_pro_completion.sql" } }),
+    ],
   },
   { key: "lms_max_courses", module: "lms", kind: "int", label: "Courses per store", description: "Upper limit per store.", default: 50, min: 1, max: 1000 },
 
@@ -397,9 +408,9 @@ export function decodeValue(def: SettingDef, raw: string | undefined | null): Op
   }
 }
 
-export type Availability = { available: boolean; reason?: "not_built" | "migration_pending" | "sms_provider_pending" | "storage_pending" };
+export type Availability = { available: boolean; reason?: "not_built" | "migration_pending" | "sms_provider_pending" | "storage_pending" | "email_pending" };
 /** Which database objects exist right now; supplied by the caller (see option-settings.ts). */
-export type SchemaProbe = { hasTable(name: string): boolean; hasColumn(table: string, column: string): boolean; smsReady?(): boolean; r2Ready?(): boolean };
+export type SchemaProbe = { hasTable(name: string): boolean; hasColumn(table: string, column: string): boolean; smsReady?(): boolean; r2Ready?(): boolean; emailReady?(): boolean };
 
 export function choiceAvailability(choice: OptionChoice, schema: SchemaProbe): Availability {
   if (!choice.built) return { available: false, reason: "not_built" };
@@ -408,6 +419,7 @@ export function choiceAvailability(choice: OptionChoice, schema: SchemaProbe): A
   if (need?.columns?.some(([t, c]) => !schema.hasColumn(t, c))) return { available: false, reason: "migration_pending" };
   if (need?.sms && !schema.smsReady?.()) return { available: false, reason: "sms_provider_pending" };
   if (need?.r2 && !schema.r2Ready?.()) return { available: false, reason: "storage_pending" };
+  if (need?.email && !schema.emailReady?.()) return { available: false, reason: "email_pending" };
   return { available: true };
 }
 
@@ -448,7 +460,7 @@ export function validateValue(def: SettingDef, input: unknown, schema: SchemaPro
       const choice = def.options.find((o) => o.value === input);
       if (!choice) return { ok: false, message: `${def.label}: unknown option.` };
       const a = choiceAvailability(choice, schema);
-      if (!a.available) return { ok: false, message: `${def.label}: "${choice.label}" is ${a.reason === "not_built" ? "not available yet" : a.reason === "sms_provider_pending" ? "waiting for a real SMS provider (Admin → Marketplace → SMS provider, with its credentials set)" : a.reason === "storage_pending" ? "waiting for the private file storage to be connected" : `waiting for migration ${choice.requires?.migration ?? ""}`}.` };
+      if (!a.available) return { ok: false, message: `${def.label}: "${choice.label}" is ${a.reason === "not_built" ? "not available yet" : a.reason === "sms_provider_pending" ? "waiting for a real SMS provider (Admin → Marketplace → SMS provider, with its credentials set)" : a.reason === "storage_pending" ? "waiting for the private file storage to be connected" : a.reason === "email_pending" ? "waiting for an email provider to be connected" : `waiting for migration ${choice.requires?.migration ?? ""}`}.` };
       return { ok: true, value: choice.value };
     }
     case "multi": {

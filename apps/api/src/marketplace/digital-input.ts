@@ -75,6 +75,8 @@ const moduleSchema = z.object({
   id: z.string().max(80).optional(),
   title: z.string().trim().min(1).max(200),
   description: z.string().trim().max(2000).default(""),
+  /** Days after enrolment that this module opens (used when admin lets merchants set a schedule). */
+  drip_days: intIn(0, 365).optional(),
   lessons: z.array(lessonSchema).max(200).default([]),
 });
 const courseSchema = z.object({
@@ -95,6 +97,7 @@ export function parseCourse(body: Body) {
         id: pick(m, "id"),
         title: pick(m, "title"),
         description: pick(m, "description"),
+        drip_days: pick(m, "drip_days", "dripDays"),
         lessons: Array.isArray(m.lessons)
           ? m.lessons.map((l: Body) => ({
               id: pick(l, "id"),

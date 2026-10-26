@@ -9,6 +9,11 @@ import { demoCatalogAllowed, findPublicStore } from "./public.js";
 import { sendStoreSms } from "./sms.js";
 import { digitalDeliveryRoutes } from "./digital-delivery.js";
 import { licensePoolCounts, soldOutLicenseProducts, syncLicensePool } from "./digital-sales.js";
+import { emailStudent, enrollStudent, resolveStudent, studentWelcome } from "./lms-enroll.js";
+import { applyModuleDrip, applyNewCourseDefaults, catalogListingFor, lessonHostProblem } from "./lms-rules.js";
+import { courseFinished } from "../education/rewards.js";
+import { getPlatformEnvironment } from "../lib/settings.js";
+import { normalizePhone } from "../lib/validation.js";
 import { migrationPending, publicRateLimit } from "../lib/guards.js";
 import { getOptions } from "../lib/option-settings.js";
 import { enrollmentSchema, parseCourse, parseDigitalProduct } from "./digital-input.js";
@@ -422,116 +427,155 @@ digitalLmsRoutes.post("/merchants/me/digital-fulfillments/:id/revoke", requireAu
 // Merchant Tier 3: LMS Courses (Synchronised with Peebee Learn edu_* tables)
 // ---------------------------------------------------------------------------
 
+/**
+ * Link every course of this merchant's Learn school to the store (and put it on sale), without touching a course that
+ * belongs to another store. Returns how many courses were newly linked.
+ */
+async function linkLearnCourses(userId: string, store: Row, onlyUnlinked: boolean): Promise<number> {
+  if (!(await hasTable("edu_courses")) || !(await hasTable("edu_schools")) || !(await hasColumn("edu_courses", "store_id"))) return 0;
+  const storeId = String(store.id);
+  const res = await db.execute({
+    sql: `SELECT c.id, c.title, c.summary, c.price_ugx, c.status, c.store_id
+          FROM edu_courses c JOIN edu_schools s ON s.id = c.school_id
+          WHERE s.owner_id = ? AND (c.store_id IS NULL ${onlyUnlinked ? "" : "OR c.store_id = ?"})`,
+    args: onlyUnlinked ? [userId] : [userId, storeId],
+  });
+  let linked = 0;
+  for (const r of res.rows as Row[]) {
+    const courseId = String(r.id);
+    if (r.store_id == null) {
+      await db.execute({ sql: "UPDATE edu_courses SET store_id = ? WHERE id = ? AND store_id IS NULL", args: [storeId, courseId] });
+      linked++;
+    }
+    if (await hasTable("store_digital_products")) {
+      await db.execute({
+        sql: `INSERT INTO store_digital_products (id, store_id, title, kind, description, price_ugx, max_downloads, expiry_days, linked_course_id, status, updated_at)
+              VALUES (?, ?, ?, 'course', ?, ?, 0, 0, ?, ?, datetime('now'))
+              ON CONFLICT(id) DO UPDATE SET title = excluded.title, price_ugx = excluded.price_ugx, description = excluded.description,
+                linked_course_id = excluded.linked_course_id, status = excluded.status
+              WHERE store_digital_products.store_id = excluded.store_id`,
+        args: [`dig_crs_${courseId}`, storeId, String(r.title), String(r.summary || ""), Number(r.price_ugx) || 0, courseId, r.status === "published" ? "published" : "draft"],
+      });
+    }
+  }
+  return linked;
+}
+
 digitalLmsRoutes.get("/merchants/me/lms/courses", requireAuth, async (c) => {
   const user = c.get("user");
   const store = await getMerchantStore(user.sub);
   if (!store) return c.json({ error: "no_store" }, 404);
+  if (!(await hasTable("edu_courses"))) return c.json({ courses: [] });
 
   const storeId = String(store.id);
   const learnSchoolId = store.learn_school_id ? String(store.learn_school_id) : null;
+  const hasStoreCol = await hasColumn("edu_courses", "store_id");
+  const o = await getOptions(["lms_learn_sync_mode", "lms_certificates"]);
 
-  if (!(await hasTable("edu_courses"))) {
-    return c.json({ courses: DEMO_LMS_COURSES });
-  }
+  // Two-way sync: what the merchant builds in Peebee Learn shows up here without pressing anything.
+  if (o.lms_learn_sync_mode === "two_way_auto") await linkLearnCourses(user.sub, store, true).catch(() => 0);
 
-  // Find courses owned by this store or its linked Learn school
+  const where = hasStoreCol ? "c.store_id = ?" : "c.school_id = ?";
   const courseRes = await db.execute({
-    sql: `SELECT c.*, s.name as school_name
-          FROM edu_courses c
-          LEFT JOIN edu_schools s ON s.id = c.school_id
-          WHERE c.store_id = ? OR (c.school_id = ? AND ? IS NOT NULL) OR s.owner_id = ?
-          ORDER BY c.created_at DESC`,
-    args: [storeId, learnSchoolId || null, learnSchoolId || null, user.sub],
+    sql: `SELECT c.* FROM edu_courses c WHERE ${where} ${hasStoreCol && learnSchoolId ? "OR (c.school_id = ? AND c.store_id IS NULL)" : ""} ORDER BY c.created_at DESC LIMIT 200`,
+    args: hasStoreCol ? (learnSchoolId ? [storeId, learnSchoolId] : [storeId]) : [learnSchoolId ?? ""],
   });
+  const courseRows = courseRes.rows as Row[];
+  if (courseRows.length === 0) return c.json({ courses: [] });
+  const ids = courseRows.map((r) => String(r.id));
+  const marks = ids.map(() => "?").join(",");
 
-  if (courseRes.rows.length === 0) {
-    return c.json({ courses: DEMO_LMS_COURSES });
+  const modules = (await hasTable("edu_modules"))
+    ? ((await db.execute({ sql: `SELECT * FROM edu_modules WHERE course_id IN (${marks}) ORDER BY position ASC`, args: ids })).rows as Row[])
+    : [];
+  const lessons = (await hasTable("edu_lessons"))
+    ? ((await db.execute({ sql: `SELECT * FROM edu_lessons WHERE course_id IN (${marks}) ORDER BY position ASC`, args: ids })).rows as Row[])
+    : [];
+  const drip = new Map<string, number>();
+  if (await hasTable("edu_module_drip")) {
+    for (const d of (await db.execute({ sql: `SELECT d.module_id, d.drip_days FROM edu_module_drip d JOIN edu_modules m ON m.id = d.module_id WHERE m.course_id IN (${marks})`, args: ids })).rows as Row[]) {
+      drip.set(String(d.module_id), Number(d.drip_days));
+    }
   }
+  const seats = new Map<string, number>();
+  const finished = new Map<string, number>();
+  if (await hasTable("edu_enrollments")) {
+    for (const r of (await db.execute({ sql: `SELECT course_id, COUNT(*) AS n FROM edu_enrollments WHERE course_id IN (${marks}) AND status = 'active' GROUP BY course_id`, args: ids })).rows as Row[]) {
+      seats.set(String(r.course_id), Number(r.n));
+    }
+    if (await hasTable("edu_lesson_progress")) {
+      for (const r of (await db.execute({
+        sql: `SELECT e.course_id, COUNT(*) AS n FROM edu_enrollments e
+              WHERE e.course_id IN (${marks}) AND e.status = 'active'
+                AND (SELECT COUNT(*) FROM edu_lessons l WHERE l.course_id = e.course_id) > 0
+                AND (SELECT COUNT(*) FROM edu_lessons l WHERE l.course_id = e.course_id) <= (SELECT COUNT(*) FROM edu_lesson_progress p WHERE p.user_id = e.user_id AND p.course_id = e.course_id)
+              GROUP BY e.course_id`,
+        args: ids,
+      })).rows as Row[]) finished.set(String(r.course_id), Number(r.n));
+    }
+  }
+  const rules = new Map<string, boolean>();
+  if (await hasTable("edu_course_rules")) {
+    for (const r of (await db.execute({ sql: `SELECT course_id, certificate_enabled FROM edu_course_rules WHERE course_id IN (${marks})`, args: ids })).rows as Row[]) {
+      rules.set(String(r.course_id), Number(r.certificate_enabled) !== 0);
+    }
+  }
+  const quizCount = (raw: unknown): number | undefined => {
+    if (typeof raw !== "string" || !raw) return undefined;
+    try {
+      const q = JSON.parse(raw) as { questions?: unknown[] };
+      return Array.isArray(q.questions) ? q.questions.length : undefined;
+    } catch {
+      return undefined;
+    }
+  };
 
-  const courses: StoreLmsCourse[] = [];
-  for (const row of courseRes.rows as Row[]) {
+  const courses: StoreLmsCourse[] = courseRows.map((row) => {
     const courseId = String(row.id);
-
-    // Fetch modules
-    let modules: any[] = [];
-    if (await hasTable("edu_modules")) {
-      const modRes = await db.execute({
-        sql: "SELECT * FROM edu_modules WHERE course_id = ? ORDER BY position ASC",
-        args: [courseId],
-      });
-      for (const m of modRes.rows as Row[]) {
-        const modId = String(m.id);
-        let lessons: any[] = [];
-        if (await hasTable("edu_lessons")) {
-          const lesRes = await db.execute({
-            sql: "SELECT * FROM edu_lessons WHERE module_id = ? ORDER BY position ASC",
-            args: [modId],
-          });
-          lessons = (lesRes.rows as Row[]).map((l) => ({
-            id: String(l.id),
-            title: String(l.title),
-            content_type: (l.content_type as any) || "video",
-            duration_minutes: Number(l.duration_minutes) || 10,
-            content_url: l.content_url ? String(l.content_url) : undefined,
-            summary: l.summary ? String(l.summary) : undefined,
-            quiz_questions_count: l.quiz_json ? 5 : undefined,
-          }));
-        }
-        modules.push({
-          id: modId,
-          title: String(m.title),
-          description: m.description ? String(m.description) : undefined,
-          position: Number(m.position) || 0,
-          lessons,
-        });
-      }
-    }
-
-    const totalLessons = modules.reduce((sum, mod) => sum + mod.lessons.length, 0);
-    const totalDuration = modules.reduce(
-      (sum, mod) => sum + mod.lessons.reduce((lsum: number, les: any) => lsum + les.duration_minutes, 0),
-      0
-    );
-
-    // Count enrollments
-    let enrolledStudentsCount = 0;
-    if (await hasTable("store_lms_enrollments")) {
-      const enrRes = await db.execute({
-        sql: "SELECT count(*) as cnt FROM store_lms_enrollments WHERE course_id = ?",
-        args: [courseId],
-      });
-      enrolledStudentsCount = Number(enrRes.rows[0]?.cnt) || 0;
-    } else if (await hasTable("edu_enrollments")) {
-      const enrRes = await db.execute({
-        sql: "SELECT count(*) as cnt FROM edu_enrollments WHERE course_id = ?",
-        args: [courseId],
-      });
-      enrolledStudentsCount = Number(enrRes.rows[0]?.cnt) || 0;
-    }
-
-    courses.push({
+    const mods = modules.filter((m) => String(m.course_id) === courseId).map((m) => ({
+      id: String(m.id),
+      title: String(m.title),
+      description: m.description ? String(m.description) : undefined,
+      position: Number(m.position) || 0,
+      drip_days: drip.get(String(m.id)) ?? 0,
+      lessons: lessons.filter((l) => String(l.module_id) === String(m.id)).map((l) => ({
+        id: String(l.id),
+        title: String(l.title),
+        content_type: (l.content_type as any) || "video",
+        duration_minutes: Number(l.duration_minutes) || 0,
+        content_url: l.content_url ? String(l.content_url) : undefined,
+        summary: l.summary ? String(l.summary) : undefined,
+        quiz_questions_count: quizCount(l.quiz_json),
+      })),
+    }));
+    const totalLessons = mods.reduce((sum, m) => sum + m.lessons.length, 0);
+    const totalDuration = mods.reduce((sum, m) => sum + m.lessons.reduce((t, l) => t + l.duration_minutes, 0), 0);
+    const enrolled = seats.get(courseId) ?? 0;
+    const listed = row.catalog_listed === undefined ? true : Number(row.catalog_listed) === 1;
+    return {
       id: courseId,
       store_id: storeId,
       learn_course_id: courseId,
       learn_school_id: row.school_id ? String(row.school_id) : undefined,
       title: String(row.title),
-      slug: row.title ? String(row.title).toLowerCase().replace(/[^a-z0-9]+/g, "-") : undefined,
+      slug: String(row.title).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, ""),
       stream: (row.stream as any) || "skills",
       summary: row.summary ? String(row.summary) : "",
       price_ugx: Number(row.price_ugx) || 0,
-      certificate_enabled: true,
-      drip_schedule: "all_at_once",
+      certificate_enabled: o.lms_certificates !== "off" && (rules.get(courseId) ?? true),
+      drip_schedule: mods.some((m) => (m.drip_days ?? 0) > 0) ? "weekly" : "all_at_once",
       status: (row.status as any) || "published",
-      modules,
+      modules: mods,
       total_lessons: totalLessons,
       total_duration_minutes: totalDuration,
-      enrolled_students_count: enrolledStudentsCount,
-      completion_rate_percent: 75,
-      learn_synced: true,
+      enrolled_students_count: enrolled,
+      completion_rate_percent: enrolled > 0 ? Math.round(((finished.get(courseId) ?? 0) / enrolled) * 100) : 0,
+      // True only when learners can actually find the course in Peebee Learn.
+      learn_synced: listed && row.status === "published",
       created_at: String(row.created_at || new Date().toISOString()),
       updated_at: String(row.updated_at || new Date().toISOString()),
-    });
-  }
+    } as StoreLmsCourse;
+  });
 
   return c.json({ courses });
 });
@@ -552,6 +596,8 @@ digitalLmsRoutes.post("/merchants/me/lms/courses", requireAuth, async (c) => {
   const parsed = parseCourse(body);
   if (!parsed.ok) return c.json({ error: "invalid_body", message: parsed.issues[0]?.message ?? "Check the course details.", issues: parsed.issues }, 400);
   const d = parsed.data;
+  const hostProblem = await lessonHostProblem(d.modules);
+  if (hostProblem) return c.json({ error: "lesson_host_not_allowed", message: hostProblem }, 400);
 
   const storeId = String(store.id);
   const courseId = d.id ?? newId("crs");
@@ -631,9 +677,11 @@ digitalLmsRoutes.post("/merchants/me/lms/courses", requireAuth, async (c) => {
 
   // 3. Insert or update the course in edu_courses (the Learn catalogue's own table)
   const hasStoreCol = await hasColumn("edu_courses", "store_id");
+  const hasListedCol = await hasColumn("edu_courses", "catalog_listed");
+  const listed = await catalogListingFor(status);
   await db.execute({
-    sql: `INSERT INTO edu_courses (id, school_id, class_id, stream, title, summary, price_ugx, ${hasStoreCol ? "store_id, " : ""}status, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ${hasStoreCol ? "?, " : ""}?, datetime('now'), datetime('now'))
+    sql: `INSERT INTO edu_courses (id, school_id, class_id, stream, title, summary, price_ugx, ${hasStoreCol ? "store_id, " : ""}${hasListedCol ? "catalog_listed, " : ""}status, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ${hasStoreCol ? "?, " : ""}${hasListedCol ? "?, " : ""}?, datetime('now'), datetime('now'))
           ON CONFLICT(id) DO UPDATE SET
             title = excluded.title,
             summary = excluded.summary,
@@ -641,14 +689,17 @@ digitalLmsRoutes.post("/merchants/me/lms/courses", requireAuth, async (c) => {
             stream = excluded.stream,
             status = excluded.status,
             ${hasStoreCol ? "store_id = excluded.store_id," : ""}
+            ${hasListedCol ? "catalog_listed = CASE WHEN excluded.status != 'published' THEN 0 WHEN edu_courses.status != 'published' THEN excluded.catalog_listed ELSE edu_courses.catalog_listed END," : ""}
             updated_at = datetime('now')
           WHERE edu_courses.school_id = excluded.school_id`,
-    args: [courseId, schoolId, classId, d.stream, d.title, d.summary, d.price_ugx, ...(hasStoreCol ? [storeId] : []), status],
+    args: [courseId, schoolId, classId, d.stream, d.title, d.summary, d.price_ugx, ...(hasStoreCol ? [storeId] : []), ...(hasListedCol ? [listed] : []), status],
   });
 
   // 4. Save modules and lessons
+  const moduleIds: string[] = [];
   for (const [mIndex, mod] of modulesInput.entries()) {
     const modId = mod.id ?? newId("mod");
+    moduleIds.push(modId);
     await db.execute({
       sql: `INSERT INTO edu_modules (id, course_id, title, description, position, created_at)
             VALUES (?, ?, ?, ?, ?, datetime('now'))
@@ -656,6 +707,7 @@ digitalLmsRoutes.post("/merchants/me/lms/courses", requireAuth, async (c) => {
             WHERE edu_modules.course_id = excluded.course_id`,
       args: [modId, courseId, mod.title, mod.description, mIndex + 1],
     });
+    await applyModuleDrip(modId, mod.drip_days);
     for (const [lIndex, les] of mod.lessons.entries()) {
       await db.execute({
         sql: `INSERT INTO edu_lessons (id, module_id, course_id, title, content_type, duration_minutes, summary, content_url, position, created_at)
@@ -672,6 +724,9 @@ digitalLmsRoutes.post("/merchants/me/lms/courses", requireAuth, async (c) => {
       });
     }
   }
+
+  // A brand-new course starts with the platform's choices for certificates and lesson release.
+  if (!existingCourse) await applyNewCourseDefaults(courseId, moduleIds);
 
   // 5. Create or sync the matching digital product so the course can be bought on the store
   if (await hasTable("store_digital_products")) {
@@ -713,7 +768,7 @@ digitalLmsRoutes.post("/merchants/me/lms/courses", requireAuth, async (c) => {
       total_duration_minutes: totalMinutes,
       enrolled_students_count: 0,
       completion_rate_percent: 0,
-      learn_synced: true,
+      learn_synced: hasListedCol && listed === 1,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     },
@@ -724,141 +779,95 @@ digitalLmsRoutes.post("/merchants/me/lms/sync-from-learn", requireAuth, async (c
   const user = c.get("user");
   const store = await getMerchantStore(user.sub);
   if (!store) return c.json({ error: "no_store" }, 404);
-
-  const storeId = String(store.id);
-  let importedCount = 0;
-
-  if (await hasTable("edu_courses") && (await hasTable("edu_schools"))) {
-    // Find courses owned by user's schools
-    const res = await db.execute({
-      sql: `SELECT c.id, c.title, c.summary, c.price_ugx, c.school_id
-            FROM edu_courses c
-            JOIN edu_schools s ON s.id = c.school_id
-            WHERE s.owner_id = ?`,
-      args: [user.sub],
-    });
-
-    for (const r of res.rows as Row[]) {
-      const courseId = String(r.id);
-      if (await hasColumn("edu_courses", "store_id")) {
-        await db.execute({
-          sql: "UPDATE edu_courses SET store_id = ? WHERE id = ?",
-          args: [storeId, courseId],
-        });
-      }
-
-      // Ensure digital product exists
-      if (await hasTable("store_digital_products")) {
-        await db.execute({
-          sql: `INSERT INTO store_digital_products (
-                  id, store_id, title, kind, description, price_ugx, max_downloads,
-                  expiry_days, linked_course_id, status, updated_at
-                ) VALUES (?, ?, ?, 'course', ?, ?, 0, 0, ?, 'published', datetime('now'))
-                ON CONFLICT(id) DO UPDATE SET
-                  title = excluded.title,
-                  price_ugx = excluded.price_ugx,
-                  description = excluded.description,
-                  linked_course_id = excluded.linked_course_id,
-                  status = 'published'`,
-          args: [`dig_crs_${courseId}`, storeId, String(r.title), String(r.summary || ""), Number(r.price_ugx) || 0, courseId],
-        });
-      }
-      importedCount++;
-    }
-  }
-
-  // Return updated list
-  const coursesRes = await digitalLmsRoutes.fetch(new Request("https://localhost/merchants/me/lms/courses", {
-    headers: { Authorization: c.req.header("Authorization") || "" },
-  }));
-  const json: any = await coursesRes.json();
-
-  return c.json({
-    ok: true,
-    importedCount,
-    courses: json.courses || DEMO_LMS_COURSES,
-  });
+  const pending = await migrationPending(c, "0133_merchant_tier3_digital_products_lms.sql", "edu_courses", "edu_schools");
+  if (pending) return pending;
+  const importedCount = await linkLearnCourses(user.sub, store, true);
+  return c.json({ ok: true, importedCount });
 });
+
+/** Put a store's course in (or take it out of) the Peebee Learn catalogue. A sale from the store works either way. */
+async function setListing(c: any, listed: boolean) {
+  const user = c.get("user");
+  const store = await getMerchantStore(user.sub);
+  if (!store) return c.json({ error: "no_store" }, 404);
+  if (!(await hasColumn("edu_courses", "catalog_listed"))) {
+    return c.json({ error: "migration_pending", message: "Catalogue listing is being set up (0137_lms_hardening.sql is not applied yet)." }, 503);
+  }
+  const { lms_learn_sync_mode: mode } = await getOptions(["lms_learn_sync_mode"]);
+  if (listed && mode === "store_only") return c.json({ error: "store_only", message: "This platform keeps store courses out of the Peebee Learn catalogue." }, 409);
+  const course = (await db.execute({ sql: "SELECT id, status FROM edu_courses WHERE id = ? AND store_id = ?", args: [c.req.param("id"), String(store.id)] })).rows[0] as Row | undefined;
+  if (!course) return c.json({ error: "not_found", message: "That isn't one of your courses." }, 404);
+  if (listed && course.status !== "published") return c.json({ error: "not_published", message: "Publish the course before listing it." }, 409);
+  await db.execute({ sql: "UPDATE edu_courses SET catalog_listed = ?, updated_at = datetime('now') WHERE id = ?", args: [listed ? 1 : 0, String(course.id)] });
+  return c.json({ ok: true, listed });
+}
+digitalLmsRoutes.post("/merchants/me/lms/courses/:id/publish-to-learn", requireAuth, (c) => setListing(c, true));
+digitalLmsRoutes.post("/merchants/me/lms/courses/:id/unlist-from-learn", requireAuth, (c) => setListing(c, false));
 
 digitalLmsRoutes.get("/merchants/me/lms/enrollments", requireAuth, async (c) => {
   const user = c.get("user");
   const store = await getMerchantStore(user.sub);
   if (!store) return c.json({ error: "no_store" }, 404);
+  if (!(await hasTable("store_lms_enrollments"))) return c.json({ enrollments: [] });
 
-  if (!(await hasTable("store_lms_enrollments"))) {
-    return c.json({
-      enrollments: [
-        {
-          id: "enr_demo_1",
-          store_id: String(store.id),
-          course_id: "crs_demo_agribusiness",
-          course_title: "Commercial Agribusiness & Cold-Chain Logistics Masterclass",
-          student_name: "Denis Mugisha",
-          student_phone: "+256 701 556 789",
-          student_email: "denis.m@gmail.com",
-          progress_percent: 65,
-          completed_lessons: 8,
-          total_lessons: 12,
-          quiz_average_score: 88,
-          certificate_issued: false,
-          certificate_url: null,
-          enrolled_at: new Date(Date.now() - 5 * 86400000).toISOString(),
-          last_active_at: new Date(Date.now() - 2 * 3600000).toISOString(),
-          access_status: "active",
-          learn_portal_url: "https://app.peebee.online/learn/course/crs_demo_agribusiness",
-        },
-        {
-          id: "enr_demo_2",
-          store_id: String(store.id),
-          course_id: "crs_demo_agribusiness",
-          course_title: "Commercial Agribusiness & Cold-Chain Logistics Masterclass",
-          student_name: "Amina Nakato",
-          student_phone: "+256 774 221 890",
-          student_email: "amina.nakato@outlook.com",
-          progress_percent: 100,
-          completed_lessons: 12,
-          total_lessons: 12,
-          quiz_average_score: 95,
-          certificate_issued: true,
-          certificate_url: "https://app.peebee.online/learn/certificates/cert_demo_9921",
-          enrolled_at: new Date(Date.now() - 12 * 86400000).toISOString(),
-          last_active_at: new Date(Date.now() - 86400000).toISOString(),
-          access_status: "completed",
-          learn_portal_url: "https://app.peebee.online/learn/course/crs_demo_agribusiness",
-        },
-      ],
-    });
-  }
-
+  const hasUser = await hasColumn("store_lms_enrollments", "user_id");
   const res = await db.execute({
-    sql: `SELECT e.*, c.title as course_title
-          FROM store_lms_enrollments e
-          LEFT JOIN edu_courses c ON c.id = e.course_id
-          WHERE e.store_id = ?
-          ORDER BY e.enrolled_at DESC`,
+    sql: `SELECT e.*, c.title AS course_title
+          FROM store_lms_enrollments e LEFT JOIN edu_courses c ON c.id = e.course_id
+          WHERE e.store_id = ? ORDER BY e.enrolled_at DESC LIMIT 500`,
     args: [String(store.id)],
   });
+  const rows = res.rows as Row[];
+  // Progress is what the learner has really done in Peebee Learn, not a number typed in once.
+  const progress = new Map<string, { done: number; avg: number | null }>();
+  const seatStatus = new Map<string, string>();
+  const certified = new Set<string>();
+  const totals = new Map<string, number>();
+  if (hasUser && rows.length > 0) {
+    const courseIds = [...new Set(rows.map((r) => String(r.course_id)))];
+    const cm = courseIds.map(() => "?").join(",");
+    if (await hasTable("edu_lessons")) {
+      for (const r of (await db.execute({ sql: `SELECT course_id, COUNT(*) AS n FROM edu_lessons WHERE course_id IN (${cm}) GROUP BY course_id`, args: courseIds })).rows as Row[]) totals.set(String(r.course_id), Number(r.n));
+    }
+    if (await hasTable("edu_lesson_progress")) {
+      for (const r of (await db.execute({ sql: `SELECT user_id, course_id, COUNT(*) AS n, AVG(best_score_percent) AS a FROM edu_lesson_progress WHERE course_id IN (${cm}) GROUP BY user_id, course_id`, args: courseIds })).rows as Row[]) {
+        progress.set(`${r.course_id}:${r.user_id}`, { done: Number(r.n), avg: r.a == null ? null : Math.round(Number(r.a)) });
+      }
+    }
+    if (await hasTable("edu_enrollments")) {
+      for (const r of (await db.execute({ sql: `SELECT course_id, user_id, status FROM edu_enrollments WHERE course_id IN (${cm})`, args: courseIds })).rows as Row[]) seatStatus.set(`${r.course_id}:${r.user_id}`, String(r.status));
+    }
+    if (await hasTable("edu_certificates")) {
+      for (const r of (await db.execute({ sql: `SELECT course_id, user_id FROM edu_certificates WHERE course_id IN (${cm})`, args: courseIds })).rows as Row[]) certified.add(`${r.course_id}:${r.user_id}`);
+    }
+  }
 
-  const enrollments = (res.rows as Row[]).map((r) => ({
-    id: String(r.id),
-    store_id: String(r.store_id),
-    course_id: String(r.course_id),
-    course_title: r.course_title ? String(r.course_title) : "Course",
-    student_name: String(r.student_name),
-    student_phone: String(r.student_phone),
-    student_email: r.student_email ? String(r.student_email) : undefined,
-    progress_percent: Number(r.progress_percent) || 0,
-    completed_lessons: Number(r.completed_lessons) || 0,
-    total_lessons: Number(r.total_lessons) || 0,
-    quiz_average_score: r.quiz_average_score != null ? Number(r.quiz_average_score) : null,
-    certificate_issued: Boolean(r.certificate_issued),
-    certificate_url: r.certificate_url ? String(r.certificate_url) : null,
-    enrolled_at: String(r.enrolled_at),
-    last_active_at: String(r.last_active_at),
-    access_status: (r.access_status as any) || "active",
-    learn_portal_url: `https://app.peebee.online/learn/course/${String(r.course_id)}`,
-  }));
-
+  const enrollments = rows.map((r) => {
+    const key = `${r.course_id}:${r.user_id}`;
+    const total = hasUser && r.user_id ? totals.get(String(r.course_id)) ?? Number(r.total_lessons) ?? 0 : Number(r.total_lessons) || 0;
+    const p = hasUser && r.user_id ? progress.get(key) : undefined;
+    const done = p?.done ?? Number(r.completed_lessons) ?? 0;
+    const seat = hasUser && r.user_id ? seatStatus.get(key) : undefined;
+    return {
+      id: String(r.id),
+      store_id: String(r.store_id),
+      course_id: String(r.course_id),
+      course_title: r.course_title ? String(r.course_title) : "Course",
+      student_name: String(r.student_name),
+      student_phone: String(r.student_phone),
+      student_email: r.student_email ? String(r.student_email) : undefined,
+      progress_percent: total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0,
+      completed_lessons: done,
+      total_lessons: total,
+      quiz_average_score: p?.avg ?? (r.quiz_average_score != null ? Number(r.quiz_average_score) : null),
+      certificate_issued: certified.has(key) || Boolean(r.certificate_issued),
+      certificate_url: r.certificate_url ? String(r.certificate_url) : null,
+      enrolled_at: String(r.enrolled_at),
+      last_active_at: String(r.last_active_at),
+      access_status: seat && seat !== "active" ? "suspended" : total > 0 && done >= total ? "completed" : ((r.access_status as any) || "active"),
+      learn_portal_url: `https://app.peebee.online/learn/course/${String(r.course_id)}`,
+    };
+  });
   return c.json({ enrollments });
 });
 
@@ -871,75 +880,53 @@ digitalLmsRoutes.post("/merchants/me/lms/enrollments", requireAuth, async (c) =>
   if (!parsedEnrol.success) {
     return c.json({ error: "invalid_input", message: "Course, student name and a valid phone are required.", issues: parsedEnrol.error.issues }, 400);
   }
-  const { courseId, studentName, studentPhone, sendSmsNotice = false } = parsedEnrol.data;
+  const { courseId, studentName, studentPhone } = parsedEnrol.data;
   const studentEmail = parsedEnrol.data.studentEmail ?? "";
-  const pendingEnrol = await migrationPending(c, "0133_merchant_tier3_digital_products_lms.sql", "store_lms_enrollments");
+  const pendingEnrol = await migrationPending(c, "0133_merchant_tier3_digital_products_lms.sql", "store_lms_enrollments", "edu_enrollments", "edu_courses");
   if (pendingEnrol) return pendingEnrol;
-
-  const enrollmentId = newId("enr");
   const storeId = String(store.id);
-  if (await hasTable("edu_courses")) {
-    const own = await db.execute({
-      sql: `SELECT c.id FROM edu_courses c LEFT JOIN edu_schools s ON s.id = c.school_id
-            WHERE c.id = ? AND (s.owner_id = ? OR (? IS NOT NULL AND c.school_id = ?))`,
-      args: [courseId, user.sub, store.learn_school_id ? String(store.learn_school_id) : null, store.learn_school_id ? String(store.learn_school_id) : null],
-    });
-    if (!own.rows[0]) return c.json({ error: "forbidden", message: "You can only enrol students on your own courses." }, 403);
+
+  // Only the merchant's own courses, and only in a school this account owns.
+  const own = await db.execute({
+    sql: `SELECT c.id, c.title, c.status FROM edu_courses c LEFT JOIN edu_schools s ON s.id = c.school_id
+          WHERE c.id = ? AND (s.owner_id = ? OR (? IS NOT NULL AND c.school_id = ?))`,
+    args: [courseId, user.sub, store.learn_school_id ? String(store.learn_school_id) : null, store.learn_school_id ? String(store.learn_school_id) : null],
+  });
+  const course = own.rows[0] as Row | undefined;
+  if (!course) return c.json({ error: "forbidden", message: "You can only enrol students on your own courses." }, 403);
+
+  const student = await resolveStudent({ name: studentName, phone: studentPhone, email: studentEmail });
+  if (!student.ok) return c.json({ error: student.error, message: student.message }, student.status);
+
+  const environment = await getPlatformEnvironment();
+  const phone = normalizePhone(studentPhone)!;
+  const seat = await enrollStudent({ storeId, courseId, userId: student.userId, name: studentName, phone, email: studentEmail, pricePaid: 0, commission: 0, environment });
+  if (!seat) return c.json({ error: "enrolment_failed", message: "We couldn't enrol the student. Please try again." }, 500);
+  if (!seat.created) return c.json({ error: "already_enrolled", message: `${studentName} is already enrolled in this course.` }, 409);
+
+  // Tell the student by the channel that matches how their account was made, and report what really happened.
+  const welcome = studentWelcome({ name: studentName, courseTitle: String(course.title), storeName: String(store.name), courseId, created: student.created });
+  let notice: { channel: string; status: string; error?: string } | null = null;
+  if (student.invite === "email" && studentEmail) {
+    notice = { channel: "email", ...(await emailStudent(studentEmail, welcome.email)) };
+  } else if (parsedEnrol.data.sendSmsNotice || student.created) {
+    const sent = await sendStoreSms({ storeId, phone, name: studentName, type: "order_confirmation", body: welcome.sms });
+    notice = { channel: "sms", status: sent.status, ...(sent.error ? { error: sent.error } : {}) };
   }
+
   const portalUrl = `https://app.peebee.online/learn/course/${courseId}`;
-
-  // 1. Insert into store_lms_enrollments
-  if (await hasTable("store_lms_enrollments")) {
-    await db.execute({
-      sql: `INSERT INTO store_lms_enrollments (
-              id, store_id, course_id, student_name, student_phone, student_email,
-              progress_percent, completed_lessons, total_lessons, enrolled_at, last_active_at, access_status
-            ) VALUES (?, ?, ?, ?, ?, ?, 0, 0, 10, datetime('now'), datetime('now'), 'active')`,
-      args: [enrollmentId, storeId, courseId, studentName, studentPhone, studentEmail],
-    });
-  }
-
-  // 2. Also register seat in Peebee Learn edu_enrollments if school/user exists
-  if (await hasTable("edu_enrollments") && (await hasTable("edu_courses"))) {
-    try {
-      const crsRes = await db.execute({ sql: "SELECT school_id, price_ugx FROM edu_courses WHERE id = ? LIMIT 1", args: [courseId] });
-      const crs = crsRes.rows[0] as Row | undefined;
-      const schoolId = crs?.school_id ? String(crs.school_id) : "sch_default";
-      await db.execute({
-        sql: `INSERT OR IGNORE INTO edu_enrollments (id, course_id, school_id, user_id, status, price_paid_ugx, environment)
-              VALUES (?, ?, ?, ?, 'active', ?, 'live')`,
-        args: [enrollmentId, courseId, schoolId, user.sub, Number(crs?.price_ugx) || 0],
-      });
-    } catch {
-      // Non-blocking Learn seat sync
-    }
-  }
-
-  // 3. Dispatch automated SMS receipt/access notice if requested
-  let sms: { status: string; error?: string } | null = null;
-  if (sendSmsNotice) {
-    const cleanPhone = studentPhone.replace(/[^0-9]/g, "");
-    sms = await sendStoreSms({
-      storeId,
-      phone: "+" + cleanPhone,
-      name: studentName,
-      type: "order_confirmation",
-      body: `Hi ${studentName}! You've been enrolled in ${String(store.name)} Academy. Access your lessons here: ${portalUrl}`,
-    });
-  }
-
   return c.json({
     ok: true,
     enrollment: {
-      id: enrollmentId,
+      id: seat.storeRecordId ?? seat.enrollmentId,
       store_id: storeId,
       course_id: courseId,
       student_name: studentName,
-      student_phone: studentPhone,
+      student_phone: phone,
       student_email: studentEmail,
       progress_percent: 0,
       completed_lessons: 0,
-      total_lessons: 10,
+      total_lessons: Number((await db.execute({ sql: "SELECT COUNT(*) AS n FROM edu_lessons WHERE course_id = ?", args: [courseId] })).rows[0]?.n) || 0,
       certificate_issued: false,
       certificate_url: null,
       enrolled_at: new Date().toISOString(),
@@ -947,9 +934,37 @@ digitalLmsRoutes.post("/merchants/me/lms/enrollments", requireAuth, async (c) =>
       access_status: "active",
       learn_portal_url: portalUrl,
     },
+    accountCreated: student.created,
+    notice,
     learnPortalUrl: portalUrl,
-    sms,
   });
+});
+
+const CERT_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+/** Issue a certificate by hand (admin option "manual_issue"), once the student has finished every lesson. */
+digitalLmsRoutes.post("/merchants/me/lms/enrollments/:id/certificate", requireAuth, async (c) => {
+  const user = c.get("user");
+  const store = await getMerchantStore(user.sub);
+  if (!store) return c.json({ error: "no_store" }, 404);
+  const { lms_certificates: mode } = await getOptions(["lms_certificates"]);
+  if (mode !== "manual_issue") return c.json({ error: "not_manual", message: mode === "off" ? "Certificates are switched off on this platform." : "Certificates are issued automatically when a student finishes." }, 409);
+  if (!(await hasColumn("store_lms_enrollments", "user_id"))) return c.json({ error: "migration_pending", message: "Needs 0137_lms_hardening.sql." }, 503);
+  const row = (await db.execute({ sql: "SELECT * FROM store_lms_enrollments WHERE id = ? AND store_id = ?", args: [c.req.param("id")!, String(store.id)] })).rows[0] as Row | undefined;
+  if (!row || !row.user_id) return c.json({ error: "not_found", message: "That student isn't in your records." }, 404);
+  if (!(await courseFinished(String(row.user_id), String(row.course_id)))) return c.json({ error: "not_finished", message: "The student hasn't finished every lesson yet." }, 409);
+  const info = (await db.execute({
+    sql: "SELECT c.title AS course_title, s.name AS school_name FROM edu_courses c JOIN edu_schools s ON s.id = c.school_id WHERE c.id = ?",
+    args: [String(row.course_id)],
+  })).rows[0] as Row | undefined;
+  if (!info) return c.json({ error: "not_found" }, 404);
+  const avg = (await db.execute({ sql: "SELECT AVG(best_score_percent) AS a FROM edu_lesson_progress WHERE user_id = ? AND course_id = ? AND best_score_percent IS NOT NULL", args: [String(row.user_id), String(row.course_id)] })).rows[0]?.a;
+  const code = Array.from(crypto.getRandomValues(new Uint8Array(10)), (b) => CERT_CHARS[b % CERT_CHARS.length]).join("");
+  await db.execute({
+    sql: "INSERT OR IGNORE INTO edu_certificates (id, code, course_id, user_id, learner_name, course_title, school_name, score_percent) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+    args: [newId("crt"), code, String(row.course_id), String(row.user_id), String(row.student_name), String(info.course_title), String(info.school_name), avg == null ? null : Math.round(Number(avg))],
+  });
+  await db.execute({ sql: "UPDATE store_lms_enrollments SET certificate_issued = 1 WHERE id = ?", args: [String(row.id)] });
+  return c.json({ ok: true });
 });
 
 // ---------------------------------------------------------------------------

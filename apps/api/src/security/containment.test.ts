@@ -144,6 +144,7 @@ test("a merchant cannot overwrite another store's course or product, or enrol on
   const course = await json(await a.call("/merchants/me/lms/courses", "POST", { title: "A's Course", price_ugx: 5000 }));
   const hijack = await b.call("/merchants/me/lms/courses", "POST", { id: course.course.id, title: "B hijack" });
   assert.equal(hijack.status, 403);
+  await client.execute("INSERT INTO users (id, phone, name, password_hash, role, status) VALUES ('stu_eve', '+256700000003', 'Eve', 'h', 'customer', 'active'), ('stu_ann', '+256700000004', 'Ann', 'h', 'customer', 'active')");
   const enrol = await b.call("/merchants/me/lms/enrollments", "POST", { courseId: course.course.id, studentName: "Eve", studentPhone: "+256700000003" });
   assert.equal(enrol.status, 403);
   const own = await a.call("/merchants/me/lms/enrollments", "POST", { courseId: course.course.id, studentName: "Ann", studentPhone: "+256700000004" });

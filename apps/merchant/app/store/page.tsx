@@ -702,12 +702,32 @@ export default function MerchantProStorePage() {
     setSyncingLearn(true);
     try {
       const res = await api.syncMerchantLmsFromLearn();
-      setLmsCourses(res.courses || []);
+      setLmsCourses((await api.getMerchantLmsCourses()).courses || []);
       setNotice(`Sync complete! ${res.importedCount} courses synchronized from Peebee Learn Studio.`);
     } catch (err) {
       setError(errorMessage(err));
     } finally {
       setSyncingLearn(false);
+    }
+  }
+
+  async function handleListInLearn(courseId: string, listed: boolean) {
+    try {
+      await api.listMerchantCourseInLearn(courseId, listed);
+      setLmsCourses((prev) => prev.map((c) => (c.id === courseId ? { ...c, learn_synced: listed } : c)));
+      setNotice(listed ? "The course is now in the Peebee Learn catalogue." : "The course is no longer listed in Peebee Learn (it is still on sale in your store).");
+    } catch (err) {
+      setError(errorMessage(err));
+    }
+  }
+
+  async function handleIssueCertificate(enrollmentId: string) {
+    try {
+      await api.issueMerchantCertificate(enrollmentId);
+      setLmsEnrollments((prev) => prev.map((e) => (e.id === enrollmentId ? { ...e, certificate_issued: true } : e)));
+      setNotice("Certificate issued.");
+    } catch (err) {
+      setError(errorMessage(err));
     }
   }
 
@@ -728,7 +748,8 @@ export default function MerchantProStorePage() {
       setEnrollStudentName("");
       setEnrollStudentPhone("");
       setEnrollStudentEmail("");
-      setNotice(`Student enrolled successfully! Portal link: ${res.learnPortalUrl}`);
+      const told = res.notice ? (res.notice.status === "failed" ? ` We could not reach them by ${res.notice.channel}: ${res.notice.error ?? "try again"}.` : res.notice.status === "simulated" ? " (No text was sent: no SMS provider is connected.)" : ` They were told by ${res.notice.channel}.`) : "";
+      setNotice(`${enrollStudentName.trim()} is enrolled${res.accountCreated ? " and a Peebee account was created for them" : ""}.${told} Portal link: ${res.learnPortalUrl}`);
     } catch (err) {
       setError(errorMessage(err));
     } finally {
@@ -3322,8 +3343,15 @@ export default function MerchantProStorePage() {
                       <div className="pt-3 border-t border-[var(--border-faint)] flex items-center justify-between text-xs">
                         <div className="flex items-center gap-2 text-ink-400 text-[11px]">
                           <span>👥 {c.enrolled_students_count || 0} students</span>
-                          <span>📜 Cert included</span>
+                          {c.certificate_enabled ? <span>📜 Certificate</span> : <span>No certificate</span>}
                         </div>
+                        <button
+                          type="button"
+                          onClick={() => void handleListInLearn(c.id, !c.learn_synced)}
+                          className="rounded-full border border-[var(--border-faint)] px-3 py-1 text-[11px] font-bold text-ink"
+                        >
+                          {c.learn_synced ? "Unlist from Learn" : "List in Learn"}
+                        </button>
                         <a
                           href={`https://app.peebee.online/learn/course/${c.id}`}
                           target="_blank"
@@ -3387,6 +3415,11 @@ export default function MerchantProStorePage() {
                             </div>
                           </div>
 
+                          {enr.progress_percent >= 100 && !enr.certificate_issued && (
+                            <button type="button" onClick={() => void handleIssueCertificate(enr.id)} className="rounded-full bg-gold px-3 py-1.5 text-[11px] font-black text-ink-gold">
+                              Issue certificate
+                            </button>
+                          )}
                           <a
                             href={enr.learn_portal_url}
                             target="_blank"

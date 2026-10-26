@@ -5,8 +5,10 @@ import { hasColumn, hasTable } from "../lib/schema.js";
 import { getPlatformEnvironment } from "../lib/settings.js";
 import { sendSms } from "../lib/sms-gateway.js";
 import { postLedgerTransaction } from "../ledger/service.js";
+import { enrollStudent } from "./lms-enroll.js";
 import { creditWallet, debitWallet } from "../wallet/service.js";
-import { appBaseUrl } from "../verify/service.js";
+import { chargeAndPayOut } from "../education/payments.js";
+import { getLearnSettings } from "../education/settings.js";
 
 type Row = Record<string, unknown>;
 
@@ -145,7 +147,7 @@ export async function purchaseDigitalProduct(input: {
   const price = Number(product.price_ugx) || 0;
   const kind = String(product.kind);
   const environment = await getPlatformEnvironment();
-  const opts = await getOptions(["digital_commission_percent", "digital_license_exhausted_action", "digital_delivery_channels", "digital_license_reveal"]);
+  const opts = await getOptions(["digital_commission_percent", "digital_license_exhausted_action", "digital_delivery_channels", "digital_license_reveal", "lms_payment_path"]);
   const storeId = String(input.store.id);
   const merchantId = String(input.store.merchant_id);
 
@@ -192,11 +194,25 @@ export async function purchaseDigitalProduct(input: {
     }
   }
 
-  // 2. The money: buyer's wallet -> merchant (minus Peebee's share), in the double-entry ledger.
-  const commission = Math.floor((price * Number(opts.digital_commission_percent)) / 100);
+  // 2. The money. A course can be paid the way every Peebee Learn course is (wallet to the school owner, Learn's
+  // commission) or like any other digital sale (wallet to the merchant's balance, in the double-entry ledger).
+  const learnPath = kind === "course" && opts.lms_payment_path === "learn_payments_commission";
+  const commissionPercent = learnPath ? (await getLearnSettings()).commissionPercent : Number(opts.digital_commission_percent);
+  const commission = Math.floor((price * commissionPercent) / 100);
   const payout = price - commission;
   let ledgerId: string | null = null;
-  if (price > 0) {
+  if (price > 0 && learnPath) {
+    const school = (await db.execute({ sql: "SELECT s.owner_id FROM edu_courses c JOIN edu_schools s ON s.id = c.school_id WHERE c.id = ?", args: [String(product.linked_course_id)] })).rows[0] as Row | undefined;
+    if (!school) {
+      await abandon();
+      return fail(409, "course_missing", "This course isn't ready yet.");
+    }
+    const paid = await chargeAndPayOut({ payerId: input.buyer.id, ownerId: String(school.owner_id), amount: price, commissionPercent, environment, note: `Peebee Learn: ${String(product.title)}` }).catch(() => null);
+    if (!paid || !paid.ok) {
+      await abandon();
+      return fail(402, "insufficient_wallet", `Add UGX ${price.toLocaleString("en-UG")} to your Peebee wallet to buy this.`);
+    }
+  } else if (price > 0) {
     const balance = await debitWallet(input.buyer.id, price, { type: "order_payment", environment, note: `Digital purchase: ${String(product.title)}` });
     if (balance === null) {
       await abandon();
@@ -244,7 +260,12 @@ export async function purchaseDigitalProduct(input: {
   // 4. A course purchase is a seat in the course.
   let enrollmentId: string | null = null;
   if (kind === "course") {
-    enrollmentId = await enrollLearner(String(product.linked_course_id), input.buyer.id, price, commission, environment);
+    const seat = await enrollStudent({
+      storeId, courseId: String(product.linked_course_id), userId: input.buyer.id,
+      name: input.buyer.name ?? "", phone: input.buyer.phone ?? "", email: "",
+      pricePaid: price, commission, environment,
+    });
+    enrollmentId = seat?.enrollmentId ?? null;
     if (enrollmentId) await db.execute({ sql: "UPDATE store_digital_fulfillments SET edu_enrollment_id = ? WHERE id = ?", args: [enrollmentId, fulfillmentId] });
   }
 
@@ -266,25 +287,6 @@ export async function purchaseDigitalProduct(input: {
   };
 }
 
-/** A seat in a Peebee Learn course for a paying learner. Safe to call twice. */
-export async function enrollLearner(courseId: string, userId: string, pricePaid: number, commission: number, environment: string): Promise<string | null> {
-  if (!(await hasTable("edu_enrollments")) || !(await hasTable("edu_courses"))) return null;
-  const course = (await db.execute({ sql: "SELECT id, school_id FROM edu_courses WHERE id = ?", args: [courseId] })).rows[0] as Row | undefined;
-  if (!course) return null;
-  const existing = (await db.execute({ sql: "SELECT id FROM edu_enrollments WHERE course_id = ? AND user_id = ?", args: [courseId, userId] })).rows[0] as Row | undefined;
-  if (existing) {
-    await db.execute({ sql: "UPDATE edu_enrollments SET status = 'active' WHERE id = ?", args: [String(existing.id)] });
-    return String(existing.id);
-  }
-  const id = newId("enr");
-  await db.execute({
-    sql: `INSERT OR IGNORE INTO edu_enrollments (id, course_id, school_id, user_id, status, price_paid_ugx, commission_ugx, environment)
-          VALUES (?, ?, ?, ?, 'active', ?, ?, ?)`,
-    args: [id, courseId, String(course.school_id), userId, pricePaid, commission, environment],
-  });
-  return id;
-}
-
 /* ------------------------------------------------------------ revoke/refund */
 
 /**
@@ -292,6 +294,13 @@ export async function enrollLearner(courseId: string, userId: string, pricePaid:
  * key is voided rather than reissued, and doing it twice does nothing.
  */
 export async function refundFulfillment(input: { fulfillmentId: string; storeId: string; actorId: string }): Promise<{ ok: true } | { ok: false; error: string; message: string }> {
+  const asLearn = async (row: Row, environment: "live" | "sandbox", price: number, commission: number) => {
+    // A Learn-path sale has no ledger entry: the school owner's wallet was credited directly, so it is debited back.
+    const owner = (await db.execute({ sql: "SELECT s.owner_id FROM store_digital_products p JOIN edu_courses c ON c.id = p.linked_course_id JOIN edu_schools s ON s.id = c.school_id WHERE p.id = ?", args: [String(row.digital_product_id)] })).rows[0] as Row | undefined;
+    if (!owner) return true;
+    const back = await debitWallet(String(owner.owner_id), price - commission, { type: "adjustment", environment, note: "Refund of a course sale", actorId: input.actorId });
+    return back !== null;
+  };
   const row = (await db.execute({ sql: "SELECT * FROM store_digital_fulfillments WHERE id = ? AND store_id = ?", args: [input.fulfillmentId, input.storeId] })).rows[0] as Row | undefined;
   if (!row) return { ok: false, error: "not_found", message: "That purchase doesn't exist." };
   if (row.refunded_at) return { ok: true };
@@ -303,7 +312,14 @@ export async function refundFulfillment(input: { fulfillmentId: string; storeId:
   const claim = await db.execute({ sql: "UPDATE store_digital_fulfillments SET refunded_at = datetime('now') WHERE id = ? AND refunded_at IS NULL", args: [input.fulfillmentId] });
   if (!claim.rowsAffected) return { ok: true };
 
-  if (price > 0 && row.buyer_user_id) {
+  const viaLedger = price > 0 && (await db.execute({ sql: "SELECT 1 FROM ledger_transactions WHERE environment = ? AND idempotency_key = ?", args: [environment, `digital-sale:${input.fulfillmentId}`] })).rows.length > 0;
+  if (price > 0 && row.buyer_user_id && !viaLedger) {
+    if (!(await asLearn(row, environment, price, commission))) {
+      await db.execute({ sql: "UPDATE store_digital_fulfillments SET refunded_at = NULL WHERE id = ?", args: [input.fulfillmentId] });
+      return { ok: false, error: "insufficient_school_balance", message: "The school's wallet doesn't cover this refund yet." };
+    }
+    await creditWallet(String(row.buyer_user_id), price, { type: "refund", environment, note: "Refund: course purchase", actorId: input.actorId });
+  } else if (price > 0 && row.buyer_user_id) {
     // The merchant's money comes back out of their balance; if they have already withdrawn it, the refund is refused.
     const spend = await db.execute({
       sql: "UPDATE merchant_balances SET available = available - ?, updated_at = datetime('now') WHERE merchant_id = ? AND environment = ? AND available >= ?",

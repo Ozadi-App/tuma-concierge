@@ -3,6 +3,7 @@ import { getRawSetting, setRawSetting } from "./settings.js";
 import { hasColumn, hasTable } from "./schema.js";
 import { smsIsReal } from "./sms-gateway.js";
 import { r2IsReady } from "../storage/r2.js";
+import { emailIsReady } from "./email-gateway.js";
 import {
   OPTION_SETTINGS,
   choiceAvailability,
@@ -33,6 +34,7 @@ export async function loadSchemaProbe(): Promise<SchemaProbe> {
   const have = new Set<string>();
   const smsReady = await smsIsReal();
   const r2Ready = r2IsReady();
+  const emailReady = await emailIsReady().catch(() => false);
   await Promise.all([
     ...[...tables].map(async (t) => { if (await hasTable(t)) have.add(`t:${t}`); }),
     ...[...columns].map(async (tc) => { const [t, c] = tc.split("."); if (await hasColumn(t, c)) have.add(`c:${tc}`); }),
@@ -42,6 +44,7 @@ export async function loadSchemaProbe(): Promise<SchemaProbe> {
     hasColumn: (table, column) => have.has(`c:${table}.${column}`),
     smsReady: () => smsReady,
     r2Ready: () => r2Ready,
+    emailReady: () => emailReady,
   };
 }
 
@@ -81,7 +84,7 @@ export type OptionView = {
   unit?: string;
   maxItems?: number;
   itemHint?: string;
-  options?: Array<{ value: string; label: string; hint?: string; recommended: boolean; available: boolean; reason?: "not_built" | "migration_pending" | "sms_provider_pending" | "storage_pending"; migration?: string }>;
+  options?: Array<{ value: string; label: string; hint?: string; recommended: boolean; available: boolean; reason?: "not_built" | "migration_pending" | "sms_provider_pending" | "storage_pending" | "email_pending"; migration?: string }>;
 };
 
 /** What the admin page renders: every setting with its stored value, the value in force, and which options can be chosen. */

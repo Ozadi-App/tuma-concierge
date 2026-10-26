@@ -2585,9 +2585,15 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
       });
     },
     async syncMerchantLmsFromLearn() {
-      return request<{ ok: boolean; importedCount: number; courses: StoreLmsCourse[] }>("/v1/merchants/me/lms/sync-from-learn", {
+      return request<{ ok: boolean; importedCount: number }>("/v1/merchants/me/lms/sync-from-learn", {
         method: "POST",
       });
+    },
+    async listMerchantCourseInLearn(courseId: string, listed: boolean) {
+      return request<{ ok: boolean; listed: boolean }>(`/v1/merchants/me/lms/courses/${encodeURIComponent(courseId)}/${listed ? "publish-to-learn" : "unlist-from-learn"}`, { method: "POST", body: JSON.stringify({}) });
+    },
+    async issueMerchantCertificate(enrollmentId: string) {
+      return request<{ ok: boolean }>(`/v1/merchants/me/lms/enrollments/${encodeURIComponent(enrollmentId)}/certificate`, { method: "POST", body: JSON.stringify({}) });
     },
     async getMerchantLmsEnrollments() {
       return request<{ enrollments: StoreLmsEnrollment[] }>("/v1/merchants/me/lms/enrollments");
@@ -2599,7 +2605,7 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized }
       studentEmail?: string;
       sendSmsNotice?: boolean;
     }) {
-      return request<{ ok: boolean; enrollment: StoreLmsEnrollment; learnPortalUrl: string }>("/v1/merchants/me/lms/enrollments", {
+      return request<{ ok: boolean; enrollment: StoreLmsEnrollment; learnPortalUrl: string; accountCreated?: boolean; notice?: { channel: string; status: string; error?: string } | null }>("/v1/merchants/me/lms/enrollments", {
         method: "POST",
         body: JSON.stringify(input),
       });
