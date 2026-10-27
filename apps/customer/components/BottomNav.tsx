@@ -31,6 +31,7 @@ import {
   MessagesSquare,
   Package,
   Pill,
+  Receipt,
   Radio,
   Route,
   ShoppingBag,
@@ -116,9 +117,11 @@ const rideItems = (special: SpecialCarServices, taxipress: boolean): MenuItem[] 
 const staticSubmenuItems: Record<"shopping" | "food", MenuItem[]> = {
   shopping: [
     { id: "shoplist", label: "List", icon: ListChecks, href: "/shoplist" },
-    { id: "markets", label: "Groceries", icon: Store, href: "/groceries" },
-    { id: "stores", label: "Stores", icon: ShoppingBasket, href: "/stores" },
+    { id: "markets", label: "Groceries", icon: ShoppingBasket, href: "/groceries" },
+    { id: "stores", label: "Stores", icon: Store, href: "/stores" },
     { id: "pharmacy", label: "Pharma", icon: Pill, href: "/pharmacy" },
+    // Past orders. /orders itself is the shopping lists, so those stay under List.
+    { id: "orders", label: "Orders", icon: Receipt, href: "/orders/history" },
   ],
   food: [
     { id: "restaurant", label: "Restaurants", icon: UtensilsCrossed, href: "/restaurants" },
@@ -248,6 +251,7 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
     else if (pathname === "/carpool") setSelectedItem("rideshare");
     else if (pathname === "/rent") setSelectedItem("selfdrive");
     else if (pathname === "/ride/move" || pathname === "/move") setSelectedItem("move");
+    else if (pathname === "/orders/history" || pathname.startsWith("/orders/history/")) setSelectedItem("orders");
     else if (pathname === "/shoplist" || pathname.startsWith("/orders")) setSelectedItem("shoplist");
     else if (pathname === "/groceries" || pathname.startsWith("/groceries/")) setSelectedItem("markets");
     else if (pathname === "/stores" || pathname.startsWith("/store/")) setSelectedItem("stores");

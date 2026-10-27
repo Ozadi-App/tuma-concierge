@@ -31,8 +31,8 @@ const landingContent: Record<LandingGroup, { eyebrow: string; title: string; des
     description: "Build a list for your next shop, browse groceries & stores, or watch spotlight streams.",
     items: [
       { title: "List", description: "Create and send a shopping list.", icon: ListChecks, href: "/shoplist" },
-      { title: "Groceries", description: "Browse nearby markets and groceries.", icon: Store, href: "/groceries" },
-      { title: "Stores", description: "Shop from verified local stores.", icon: ShoppingBasket, href: "/stores" },
+      { title: "Groceries", description: "Browse nearby markets and groceries.", icon: ShoppingBasket, href: "/groceries" },
+      { title: "Stores", description: "Shop from verified local stores.", icon: Store, href: "/stores" },
       { title: "Pharma", description: "Get everyday health essentials.", icon: Pill, href: "/pharmacy" },
       { title: "Spotlight", description: "Watch live shopping streams, reels & creator carousels.", icon: Flame, href: "/spotlight" },
     ],
