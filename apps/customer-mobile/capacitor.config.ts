@@ -7,10 +7,10 @@ const config: CapacitorConfig = {
   appName: "Peebee",
   webDir: "www",
   server: {
-    // The bundle is served locally, but the webview still needs an origin for
-    // CORS. The API allows exactly these (apps/api/src/app.ts):
-    //   Android  https://app.peebee.local      iOS  capacitor://app.peebee.local
-    hostname: "app.peebee.local",
+    // The bundle is served locally by Capacitor, using the app.peebee.online
+    // origin so Google Identity Services and the live API CORS policy accept it
+    // immediately.
+    hostname: "app.peebee.online",
     androidScheme: "https",
   },
 };

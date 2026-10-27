@@ -56,7 +56,14 @@ test("the bundled mobile apps' origins are allowed in production, whatever CORS_
   process.env.ENVIRONMENT = "production";
   process.env.CORS_ORIGINS = "https://customer.peebee.online";
   try {
-    for (const origin of ["https://app.peebee.local", "capacitor://app.peebee.local"]) {
+    for (const origin of [
+      "https://app.peebee.online",
+      "capacitor://app.peebee.online",
+      "https://mobile.peebee.online",
+      "capacitor://mobile.peebee.online",
+      "https://app.peebee.local",
+      "capacitor://app.peebee.local",
+    ]) {
       const preflight = await app.request("/v1/auth/login", {
         method: "OPTIONS",
         headers: {
