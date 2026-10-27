@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { GoogleSignIn } from "../../../components/portal/GoogleSignIn";
 import { portalFetch, PortalError, setToken } from "../../../lib/portal";
 
 export default function LoginPage() {
@@ -36,6 +37,7 @@ export default function LoginPage() {
         <input required type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full rounded-xl p-3" />
       </label>
       <button disabled={busy} className="button button-primary w-full disabled:opacity-50">{busy ? "Signing in…" : "Sign in"}</button>
+      <GoogleSignIn onSignedIn={() => router.push("/portal/dashboard")} onError={setError} />
       <p className="text-center text-sm text-ink-500">New here? <Link href="/portal/register" className="font-bold text-gold">Register your business</Link></p>
     </form>
   );

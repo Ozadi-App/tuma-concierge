@@ -85,6 +85,9 @@ const devOrigins = [
 ];
 
 const defaultOrigins = [
+  "https://peebee.online",
+  "https://www.peebee.online",
+  "https://stores.peebee.online", // merchant sign-up site
   "https://app.peebee.online",
   "https://customer.peebee.online", // the previous address; still redirects here
   "https://rider.peebee.online",

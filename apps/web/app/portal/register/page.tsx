@@ -4,6 +4,7 @@ import { CheckCircle2, Globe, LocateFixed, Smartphone, Wallet } from "lucide-rea
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { GoogleSignIn } from "../../../components/portal/GoogleSignIn";
 import { getToken, portalFetch, PortalError, setToken, type PortalConfig } from "../../../lib/portal";
 
 const STEPS = ["Account", "Business", "Options", "Review"] as const;
@@ -154,6 +155,7 @@ export default function RegisterPage() {
               <Field label="Email (optional)"><input type="email" autoComplete="email" value={account.email} onChange={(e) => setAccount({ ...account, email: e.target.value })} className="w-full rounded-xl p-3" /></Field>
               <Field label="Password" hint="At least 6 characters"><input required type="password" autoComplete="new-password" minLength={6} value={account.password} onChange={(e) => setAccount({ ...account, password: e.target.value })} className="w-full rounded-xl p-3" /></Field>
               <button disabled={busy || !accountReady} className="button button-primary w-full disabled:opacity-50">{busy ? "Creating…" : "Create account"}</button>
+              <GoogleSignIn onSignedIn={() => { setSignedIn(true); setStep(1); setError(""); }} onError={setError} />
             </>
           )}
           <p className="text-center text-sm text-ink-500">Already have a Peebee account? <Link href="/portal/login" className="font-bold text-gold">Sign in</Link></p>
