@@ -44,3 +44,8 @@ local.db-wal
 # ide
 .idea
 .vscode
+
+# apps/customer-mobile build output
+apps/customer-mobile/.stage
+apps/customer-mobile/www
+apps/customer-mobile/*.apk
