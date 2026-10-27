@@ -8,7 +8,7 @@ import { createOrderFromInput } from "../orders/routes.js";
 import { directionLabel } from "../relay/direction.js";
 import { cancelTermsFor, collectedFor } from "./cancel-terms.js";
 import { lineOf, queueReady } from "./queue.js";
-import { decorateLine, loadDetails, luggageCount, priceBooking, saveDetails, type BookingDetails, type BookingDetailsInput } from "./details.js";
+import { decorateLine, detailsColumnsReady, loadDetails, luggageCount, phoneTail, priceBooking, saveDetails, type BookingDetails, type BookingDetailsInput } from "./details.js";
 import { getTaxipressSettings, offeredLanguages, offeredLuggageTypes } from "./settings.js";
 
 type Row = Record<string, unknown>;
@@ -46,6 +46,10 @@ export type TaxipressBooking = {
   receiptRef: string | null;
   /** Who travels and what they bring. Null until migration 0128 is applied. */
   details: BookingDetails | null;
+  /** True when someone else bought this ticket and sent it to the signed-in person. */
+  sharedWithMe?: boolean;
+  /** The first name of whoever bought a ticket that was sent to you. */
+  sentBy?: string | null;
 };
 
 // rr.* brings the relay route's stage columns (and its stage codes once migration 0107 adds them), so the
@@ -130,18 +134,50 @@ async function toBooking(row: Row, forPassenger: boolean): Promise<TaxipressBook
   };
 }
 
+/** A WHERE clause for tickets whose named traveller has this phone number (and who did not buy them themselves). */
+const SENT_TO_ME = `b.for_someone_else = 1 AND b.passenger_id <> ? AND b.status != 'cancelled'
+  AND substr(REPLACE(REPLACE(REPLACE(COALESCE(b.traveller_phone, ''), ' ', ''), '-', ''), '+', ''), -9) = ?`;
+
+async function myPhoneTail(userId: string): Promise<string | null> {
+  const tail = phoneTail(((await db.execute({ sql: "SELECT phone FROM users WHERE id = ?", args: [userId] })).rows[0] as Row | undefined)?.phone as string | undefined);
+  return tail.length === 9 && (await detailsColumnsReady()) ? tail : null;
+}
+
+async function asSent(row: Row): Promise<TaxipressBooking> {
+  const booking = await toBooking(row, true);
+  const buyer = (await db.execute({ sql: "SELECT name FROM users WHERE id = ?", args: [String(row.passenger_id)] })).rows[0] as Row | undefined;
+  return { ...booking, sharedWithMe: true, sentBy: String(buyer?.name ?? "").trim().split(/\s+/)[0] || null };
+}
+
+/** The signed-in person's tickets: the ones they bought, and the ones someone sent them (once paid or for cash). */
 export async function myBookings(passengerId: string): Promise<TaxipressBooking[]> {
   if (!(await bookingsReady())) return [];
   await releaseStaleBookings();
   const rows = (await db.execute({ sql: `${SQL} WHERE b.passenger_id = ? ORDER BY b.created_at DESC LIMIT 50`, args: [passengerId] })).rows as Row[];
-  return Promise.all(rows.map((row) => toBooking(row, true)));
+  const own = await Promise.all(rows.map((row) => toBooking(row, true)));
+  const tail = await myPhoneTail(passengerId);
+  if (!tail || !(await getTaxipressSettings()).ticketSharingEnabled) return own;
+  const sent = (await db.execute({ sql: `${SQL} WHERE ${SENT_TO_ME} ORDER BY b.created_at DESC LIMIT 20`, args: [passengerId, tail] })).rows as Row[];
+  const received = (await Promise.all(sent.map(asSent))).filter((b) => b.paymentStatus === "paid" || b.paymentStatus === "pay_driver");
+  return [...received, ...own].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
 export async function bookingFor(id: string, passengerId: string): Promise<TaxipressBooking | null> {
   if (!(await bookingsReady())) return null;
   await releaseStaleBookings();
   const row = (await db.execute({ sql: `${SQL} WHERE b.id = ? AND b.passenger_id = ?`, args: [id, passengerId] })).rows[0] as Row | undefined;
-  return row ? toBooking(row, true) : null;
+  if (row) return toBooking(row, true);
+  // A ticket someone sent to this person: they may see it and show it to the driver, but it stays the buyer's to cancel.
+  const tail = await myPhoneTail(passengerId);
+  if (!tail || !(await getTaxipressSettings()).ticketSharingEnabled) return null;
+  const sent = (await db.execute({ sql: `${SQL} WHERE b.id = ? AND ${SENT_TO_ME}`, args: [id, passengerId, tail] })).rows[0] as Row | undefined;
+  return sent ? asSent(sent) : null;
+}
+
+/** A ticket by its code, for the public code page. Returns the booking and who bought it. */
+export async function ticketRowByCode(code: string): Promise<{ booking: TaxipressBooking; passengerId: string } | null> {
+  const row = (await db.execute({ sql: `${SQL} WHERE b.ticket_code = ?`, args: [code] })).rows[0] as Row | undefined;
+  return row ? { booking: await toBooking(row, true), passengerId: String(row.passenger_id) } : null;
 }
 
 export type ManifestPassenger = {

@@ -9,6 +9,9 @@ type Row = Record<string, unknown>;
  * Taxipress v5: passengers, luggage and options on a booking, the taxi profile, route stops and
  * departure estimates. Migration 0128 adds the columns; until it is applied a booking is seats only.
  */
+/** The last nine digits of a phone number: what two spellings of one number ("0772…", "+256 772…") have in common. */
+export const phoneTail = (phone: string | null | undefined): string => String(phone ?? "").replace(/\D/g, "").slice(-9);
+
 export async function detailsColumnsReady(): Promise<boolean> {
   return (await hasColumn("taxipress_bookings", "adults")) && (await hasColumn("taxipress_bookings", "emergency_phone"));
 }

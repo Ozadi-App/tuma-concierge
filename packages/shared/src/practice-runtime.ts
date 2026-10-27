@@ -843,7 +843,7 @@ function handlePracticeRequest(role: PracticeRole, path: string, method: string,
   if (role === "customer" && path.startsWith("/v1/guest/")) return practiceGuestRequest(path, method, body);
   if (role === "customer" && path.startsWith("/v1/talent/")) return practiceTalentRequest(path, method, body, query);
   if (role === "customer" && path.startsWith("/v1/work/")) return practiceWorkRequest(path, method, body, query);
-  if (role === "customer" && (path.startsWith("/v1/taxipress/") || path.startsWith("/v1/orders/practice-tp-order-") || path.startsWith("/v1/public/receipts/practice-"))) return practiceTaxipressRequest(path, method, body);
+  if (role === "customer" && (path.startsWith("/v1/taxipress/") || path.startsWith("/v1/taxipress-ticket/") || path.startsWith("/v1/orders/practice-tp-order-") || path.startsWith("/v1/public/receipts/practice-"))) return practiceTaxipressRequest(path, method, body);
 
   if (role === "customer" && method === "GET") {
     if (path === "/v1/car/rentals/listings") return jsonResponse({ days: 1, vehicles: PRACTICE_RENTAL_CARS });
@@ -1753,7 +1753,7 @@ function rememberPlatformEnvironment(environment: unknown) {
 const CHANNELS_PATHS = /^\/v1\/(channels|posts|comments|spotlight\/feed|public\/(channels|causes|donations|media)|creator|live|airings|subscriptions|tiers|ads|video|admin\/(channels|video|ads))(\/|$|\?)/;
 
 const TAXIPRESS_STAFF_SETTINGS = [
-  "luggageEnabled", "luggageTypes", "luggagePrices", "assistanceEnabled", "languageEnabled", "languages", "bookForOthersEnabled", "maxLapChildren", "childSeatFarePercent",
+  "luggageEnabled", "luggageTypes", "luggagePrices", "assistanceEnabled", "languageEnabled", "languages", "bookForOthersEnabled", "ticketSharingEnabled", "maxLapChildren", "childSeatFarePercent",
   "cashEnabled", "seatChoiceFeeUgx", "returnDiscountPercent", "maxSeatsPerBooking", "payWithinMinutes", "parcelFitText", "parcelNotAllowed",
 ] as const;
 

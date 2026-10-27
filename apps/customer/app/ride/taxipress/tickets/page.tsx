@@ -17,6 +17,7 @@ export default function MyTicketsPage() {
   const [bookings, setBookings] = useState<TaxipressBooking[] | null>(null);
   const [tab, setTab] = useState<"active" | "past">("active");
   const [error, setError] = useState("");
+  const [codeText, setCodeText] = useState("");
   useRegisterNavBack(true, () => router.push("/ride/taxipress"));
 
   useEffect(() => {
@@ -41,6 +42,10 @@ export default function MyTicketsPage() {
           </button>
         ))}
       </div>
+      <form className="field-box flex items-center gap-2 rounded-2xl px-3" onSubmit={(e) => { e.preventDefault(); const code = codeText.trim(); if (code) router.push(`/ticket/${encodeURIComponent(code)}`); }}>
+        <input value={codeText} onChange={(e) => setCodeText(e.target.value)} placeholder="Have a ticket code? TXP-XXXXXX" aria-label="Ticket code" autoCapitalize="characters" className="min-h-12 flex-1 text-sm" />
+        <button type="submit" className="min-h-11 px-2 text-sm font-bold text-gold">Open</button>
+      </form>
       {error && <p role="alert" className="text-sm text-ink-500">{error}</p>}
       {bookings && list.length === 0 && <p role="status" className="text-sm text-ink-500">{tab === "active" ? "No active tickets." : "No past tickets yet."}</p>}
       <ul className="space-y-2">
@@ -50,7 +55,7 @@ export default function MyTicketsPage() {
               <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gold/15 text-gold"><Ticket className="h-5 w-5" aria-hidden /></span>
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-base font-bold text-ink">{taxipressTown(b.route.fromName)} → {taxipressTown(b.route.toName)}</span>
-                <span className="block truncate text-xs text-ink-500"><span className="font-mono">{b.taxi.plate}</span> · {PAY[b.paymentStatus]}</span>
+                <span className="block truncate text-xs text-ink-500"><span className="font-mono">{b.taxi.plate}</span> · {b.sharedWithMe ? `Sent by ${b.sentBy ?? "a friend"}` : PAY[b.paymentStatus]}</span>
               </span>
               <span className="shrink-0 text-xs font-bold text-gold">{state(b)}</span>
               <ChevronRight className="h-4 w-4 shrink-0 text-ink-500" aria-hidden />

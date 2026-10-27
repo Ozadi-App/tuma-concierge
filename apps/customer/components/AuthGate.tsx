@@ -22,7 +22,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   // A passenger opens their trip link without an account ("/trip/<token>").
-  const isUngated = UNGATED_PATHS.includes(pathname) || pathname.startsWith("/trip/") || pathname === "/guest" || pathname.startsWith("/guest/") || pathname.startsWith("/receipt/") || SHARED_ITEM_PATH.test(pathname);
+  const isUngated = UNGATED_PATHS.includes(pathname) || pathname.startsWith("/trip/") || pathname === "/guest" || pathname.startsWith("/guest/") || pathname.startsWith("/receipt/") || pathname.startsWith("/ticket/") || SHARED_ITEM_PATH.test(pathname);
   const isPublic = PUBLIC_PATHS.includes(pathname);
   const needsVerification = !!user && !isUserVerified(user) && !ALWAYS_ALLOWED_PATHS.includes(pathname);
   const verifiedButOnVerifyPage = !!user && isUserVerified(user) && pathname === "/verify";

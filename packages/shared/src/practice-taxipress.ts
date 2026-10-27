@@ -160,6 +160,39 @@ export function practiceTaxipressRequest(path: string, method: string, body: Jso
 
   if (method === "GET" && path === "/v1/taxipress/bookings/mine") return ok({ bookings: [...s.bookings].reverse().map((b) => view(s, b)) });
 
+  // A ticket code opens the ticket's details for anyone who has it (no sign-in).
+  const byCode = /^\/v1\/taxipress-ticket\/([^/]+)$/.exec(path);
+  if (method === "GET" && byCode) {
+    const compact = decodeURIComponent(byCode[1]!).toUpperCase().replace(/[^A-Z0-9]/g, "");
+    const code = `TXP-${compact.startsWith("TXP") ? compact.slice(3) : compact}`;
+    const b = s.bookings.find((x) => x.code === code || `TXP-${x.code}` === code);
+    if (!b) return err(404, "not_found", "No ticket has that code. Check it and try again.");
+    const v = view(s, b);
+    const d = v.details as Json | null;
+    return ok({ ticket: {
+      code: v.ticketCode, status: v.status, paymentStatus: v.paymentStatus, amountDue: v.paymentStatus === "pay_driver" ? v.amount : null,
+      seats: v.seats, adults: d?.adults ?? v.seats, children: d?.children ?? 0,
+      bags: d ? Object.values((d.luggage ?? {}) as Record<string, number>).reduce((n, q) => n + Number(q || 0), 0) : 0,
+      assistance: d?.assistance && d.assistance !== "none" ? d.assistance : null, language: d?.language ?? null,
+      travellerName: d?.forSomeoneElse ? d.travellerName : "You", bookedBy: d?.forSomeoneElse ? "You" : null,
+      route: { fromName: v.route.fromName, toName: v.route.toName, directionLabel: v.route.directionLabel },
+      taxi: { plate: v.taxi.plate, seatLayout: v.taxi.seatLayout, driverName: String(v.taxi.driverName ?? "").split(" ")[0] || null, status: v.taxi.status, position: v.taxi.position },
+    } });
+  }
+
+  // Send the ticket on: in practice nobody is really notified, but the buyer gets the code to pass on.
+  const send = /^\/v1\/taxipress\/bookings\/([^/]+)\/send$/.exec(path);
+  if (method === "POST" && send) {
+    const b = s.bookings.find((x) => x.id === decodeURIComponent(send[1]!));
+    if (!b) return err(404, "not_found", "That ticket wasn't found.");
+    const name = String(body.name ?? "").trim();
+    const phone = String(body.phone ?? "").trim();
+    if (name.length < 2 || phone.replace(/\D/g, "").length < 7) return err(400, "invalid_body", "Add the person's name and phone number.");
+    b.details = { ...(b.details ?? {}), forSomeoneElse: true, travellerName: name, travellerPhone: phone } as any;
+    save(s);
+    return ok({ ok: true, code: b.code, onPeebee: false, travellerName: name, travellerPhone: phone });
+  }
+
   const one = /^\/v1\/taxipress\/bookings\/([^/]+)$/.exec(path);
   if (method === "GET" && one) {
     const b = s.bookings.find((x) => x.id === decodeURIComponent(one[1]!));
