@@ -190,6 +190,13 @@ export default function OptionsPage() {
         </section>
       )}
 
+      {!luggageOn && !opts.assistance && !opts.language && (
+        <section className="home-card space-y-1 border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-5 text-center" role="status">
+          <h2 className="text-base font-bold text-ink">No extras to choose</h2>
+          <p className="text-sm text-ink-500">Luggage, assistance and language choices aren&apos;t offered right now. Tap Skip below to go to payment.</p>
+        </section>
+      )}
+
       {error && <p role="alert" className="text-sm font-semibold text-[rgb(var(--color-red,200_40_40))]">{error}</p>}
     </main>
   );
