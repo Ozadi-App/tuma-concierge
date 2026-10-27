@@ -26,6 +26,7 @@ test("custom domains: off by default, verified by DNS, unique, and only then ser
   const admin = await addAdmin(client);
   const a = await addMerchantStore(client, "u_dom_a");
   const b = await addMerchantStore(client, "u_dom_b");
+  await client.execute("UPDATE stores SET elite_tier = 1, elite_expires_at = NULL WHERE environment IS NOT NULL"); // domains and themes are Merchant Elite
 
   const off = await a.call("/merchants/me/store", "PUT", { custom_domain: "shop.example.com" });
   assert.equal(off.status, 409, "the platform default is Peebee subdomains only");
@@ -296,6 +297,7 @@ test("page sections hold only what the merchant wrote, validated; nothing is inv
 test("an unchanged domain can be saved again (and a malformed pixel id cannot)", async () => {
   const client = await freshDatabase();
   const seller = await addMerchantStore(client, "u_dom_same");
+  await client.execute("UPDATE stores SET elite_tier = 1, elite_expires_at = NULL WHERE environment IS NOT NULL"); // domains and themes are Merchant Elite
   await client.execute({ sql: "UPDATE stores SET custom_domain = 'legacy.example.com' WHERE id = ?", args: [seller.storeId] });
   const same = await seller.call("/merchants/me/store", "PUT", { custom_domain: "legacy.example.com", hero_headline: "Hello" });
   assert.equal(same.status, 200, "platform has domains off, but re-saving the theme with the same value is not an error");
