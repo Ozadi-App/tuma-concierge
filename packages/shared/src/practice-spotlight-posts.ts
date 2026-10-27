@@ -6,7 +6,7 @@ import { PRACTICE_ENTEBBE_STORES, PRACTICE_FOOD_RESTAURANTS } from "./practice-e
 const svg = (bg: string, emoji: string) =>
   `data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 1200'><rect width='100%' height='100%' fill='${bg}'/><text x='50%' y='50%' font-size='260' text-anchor='middle' dominant-baseline='middle'>${emoji}</text></svg>`)}`;
 
-type Base = Pick<PostView, "type" | "caption"> & Partial<Pick<PostView, "tags" | "poll" | "productRef">> & { images?: string[]; publisher: PublisherView; ago: number; likes: number; comments: number; views: number };
+type Base = Pick<PostView, "type" | "caption"> & Partial<Pick<PostView, "tags" | "poll" | "productRef">> & { images?: string[]; video?: string; publisher: PublisherView; ago: number; likes: number; comments: number; views: number };
 
 let counter = 0;
 function post(b: Base): PostView {
@@ -14,7 +14,7 @@ function post(b: Base): PostView {
   const at = new Date(Date.now() - b.ago * 60_000).toISOString();
   return {
     id: `practice_post_${counter}`, publisher: b.publisher, type: b.type, caption: b.caption, tags: b.tags ?? [], language: "en",
-    media: { images: b.images ?? [], audioUrl: null, liveUrl: null, videoAssetId: null, coverUrl: null, durationSeconds: null },
+    media: { images: b.images ?? [], audioUrl: null, liveUrl: null, videoAssetId: b.video ? `practice-video-${b.video}` : null, coverUrl: b.video ? `/demo-video/${b.video}.jpg` : null, durationSeconds: b.video ? 15 : null },
     poll: b.poll ?? null, productRef: b.productRef ?? null,
     access: "free", priceUgx: 0, previewSeconds: 0, locked: null,
     status: "published", publishedAt: at, scheduledAt: null, liveStatus: null,
@@ -47,6 +47,18 @@ const POSTS: PostView[] = [
   post({ type: "image", publisher: ZAWADI, caption: "Road-testing these retro sneakers for a week around town. Verdict in the next post.", tags: ["style"], images: ["/products/retro-sneakers.jpg"], ago: 180, likes: 267, comments: 15, views: 3100 }),
   post({ type: "text", publisher: ZAWADI, caption: "Which sound should I mix next on Friday's live set?", poll: { question: "Which sound should I mix next?", options: [{ text: "Kidandali", votes: 128 }, { text: "Afrobeats", votes: 214 }, { text: "Amapiano", votes: 305 }, { text: "Gospel", votes: 61 }], total: 708, myVote: null }, ago: 260, likes: 143, comments: 40, views: 2100 }),
   post({ type: "text", publisher: person("practice-user-joseph", "Joseph O.", "personal", "🙂", "#E6F2E6"), caption: "Ordered groceries at 4pm, they were at my door by 4:25. Peebee riders are quick.", ago: 70, likes: 58, comments: 6, views: 640 }),
+  // Videos: a clip under every segment, played by the same player real video posts use.
+  post({ type: "video", publisher: AMINA, caption: "A morning at the market: how I pick the freshest tomatoes and greens.", tags: ["cooking", "market"], video: "market", ago: 20, likes: 640, comments: 48, views: 8800 }),
+  post({ type: "video", publisher: AMINA, caption: "Fresh bakes straight from the oven. Soft inside, golden outside.", tags: ["baking"], video: "bakery", ago: 150, likes: 402, comments: 31, views: 6100 }),
+  post({ type: "video", publisher: KATO, caption: "Honest 60-second review of budget earbuds under UGX 50,000.", tags: ["tech", "review"], video: "earbuds", ago: 75, likes: 355, comments: 42, views: 5400 }),
+  post({ type: "video", publisher: ZAWADI, caption: "Street-style fits for the weekend. Which one is yours?", tags: ["style"], video: "fashion", ago: 110, likes: 520, comments: 57, views: 7300 }),
+  post({ type: "video", publisher: ZAWADI, caption: "Unboxing the retro sneakers everyone keeps asking about.", tags: ["style", "sneakers"], video: "sneakers", ago: 230, likes: 478, comments: 39, views: 6600 }),
+  post({ type: "video", publisher: storeBy(1), caption: "Watch our sourdough being baked this morning. Order for pickup or delivery.", video: "bakery", ago: 45, likes: 210, comments: 12, views: 3300 }),
+  post({ type: "video", publisher: storeBy(2), caption: "Our skincare routine in 15 seconds: cleanse, glow, protect.", video: "skincare", ago: 160, likes: 289, comments: 19, views: 4100 }),
+  post({ type: "video", publisher: restaurantBy(0), caption: "Behind the kitchen: fresh ingredients delivered every morning.", video: "market", ago: 90, likes: 230, comments: 15, views: 3600 }),
+  post({ type: "video", publisher: person("practice-learn-skills", "Entebbe Skills Academy", "learn", "📚", "#E3E8FA"), caption: "Lesson preview: pricing your products so you actually make a profit.", video: "market", ago: 65, likes: 144, comments: 21, views: 2500 }),
+  post({ type: "video", publisher: person("practice-learn-codehub", "Lake Code Hub", "learn", "💻", "#DDEFF2"), caption: "Lesson preview: build a small shop page on your phone.", video: "earbuds", ago: 200, likes: 118, comments: 16, views: 2100 }),
+  post({ type: "video", publisher: person("practice-learn-skills", "Entebbe Skills Academy", "learn", "📚", "#E3E8FA"), caption: "Tailoring basics: choosing fabric and taking measurements.", video: "fashion", ago: 320, likes: 96, comments: 11, views: 1700 }),
   // Market: stores and restaurants
   post({ type: "image", publisher: storeBy(0), caption: "Fresh avocados just in. Pick up or we deliver within the hour.", images: ["/products/fresh-avocados.jpg"], ago: 25, likes: 190, comments: 11, views: 2400 }),
   post({ type: "image", publisher: storeBy(1), caption: "Warm sourdough out of the oven until 6pm. Order early, it goes fast.", images: ["/products/sourdough-bread.jpg"], ago: 130, likes: 164, comments: 9, views: 1900 }),
@@ -78,6 +90,14 @@ export function practiceSpotlightPosts(path: string, method: string, query: URLS
     return { posts: list, nextCursor: null };
   }
   if (method === "GET" && path === "/v1/channels/following") return { channels: CHANNEL_PUBLISHERS.filter((c) => followed.has(c.id)).map(channelView) };
+  // A channel's page and its posts, so tapping a channel in practice opens something.
+  const page = /^\/v1\/public\/channels\/([^/]+)(\/posts)?$/.exec(path);
+  if (method === "GET" && page) {
+    const pub = CHANNEL_PUBLISHERS.find((c) => c.handle === decodeURIComponent(page[1]!));
+    if (!pub) return null;
+    if (page[2]) return { posts: POSTS.filter((p) => p.publisher?.id === pub.id).map((p) => ({ ...p, liked: likedIds.has(p.id) })), nextCursor: null };
+    return { channel: { ...channelView(pub), bio: "A practice channel with demo videos and posts." }, tiers: [], causes: [], membership: null };
+  }
   const follow = /^\/v1\/channels\/([^/]+)\/follow$/.exec(path);
   if (follow) {
     if (method === "POST") { followed.add(decodeURIComponent(follow[1]!)); return { following: true }; }
@@ -94,6 +114,12 @@ export function practiceSpotlightPosts(path: string, method: string, query: URLS
       return { liked, likeCount: found.counts.likes + (liked ? 1 : 0) };
     }
     return act[2] === "view" ? { counted: false } : { ok: true };
+  }
+  const play = /^\/v1\/posts\/([^/]+)\/playback$/.exec(path);
+  if (play && method === "GET") {
+    const found = POSTS.find((p) => p.id === decodeURIComponent(play[1]!));
+    const clip = found?.media.videoAssetId?.replace("practice-video-", "");
+    return clip ? { playback: { mp4Url: `/demo-video/${clip}.mp4`, posterUrl: `/demo-video/${clip}.jpg` }, preview: false, access: "free" } : null;
   }
   const one = /^\/v1\/posts\/([^/]+)$/.exec(path);
   if (one && method === "GET") {
