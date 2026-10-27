@@ -4,6 +4,7 @@ import { hasTable } from "../lib/schema.js";
 import { notifyUser } from "../lib/webpush.js";
 import { creditWallet } from "../wallet/service.js";
 import { bookingsReady } from "./bookings.js";
+import { openTicketColumnsReady, openTicketOf } from "./open-tickets.js";
 import { cancelTermsFor, collectedFor, feeOf, minutesSince, type CancelTerms } from "./cancel-terms.js";
 import { activeEntry, lineOf, TaxipressError } from "./queue.js";
 import { getTaxipressSettings } from "./settings.js";
@@ -78,7 +79,7 @@ async function endBooking(
 }
 
 /** The terms a passenger would get if they cancelled this booking now (for the ticket screen). */
-export async function cancelTermsOf(booking: { status: string; queueStatus: string; method: "app" | "cash"; amount: number; createdAt: string; orderId: string }): Promise<CancelTerms> {
+export async function cancelTermsOf(booking: { status: string; queueStatus: string; method: "app" | "cash"; amount: number; createdAt: string; orderId: string; openTicket?: boolean }): Promise<CancelTerms> {
   const settings = await getTaxipressSettings();
   const collected = booking.method === "app" && booking.status === "booked" ? await collectedFor(booking.orderId) : 0;
   return cancelTermsFor({ ...booking, collected }, settings);
@@ -90,10 +91,11 @@ export async function cancelBooking(passengerId: string, bookingId: string): Pro
   const row = (await db.execute({ sql: `${BOOKING} WHERE b.id = ? AND b.passenger_id = ?`, args: [bookingId, passengerId] })).rows[0] as Row | undefined;
   if (!row) throw new TaxipressError(404, "not_found", "That booking wasn't found.");
   const method = row.payment_method === "cash" ? "cash" : "app";
-  const terms = await cancelTermsOf({ status: String(row.status), queueStatus: String(row.queue_status), method, amount: Number(row.amount), createdAt: String(row.created_at), orderId: String(row.order_id) });
+  const open = (await openTicketOf(bookingId)) != null;
+  const terms = await cancelTermsOf({ status: String(row.status), queueStatus: String(row.queue_status), method, amount: Number(row.amount), createdAt: String(row.created_at), orderId: String(row.order_id), openTicket: open });
   if (!terms.allowed) throw new TaxipressError(409, "not_cancellable", terms.reason ?? "This booking can't be cancelled.");
   const settings = await getTaxipressSettings();
-  const outcome = await endBooking(row, "cancelled", terms.free ? 0 : settings.cancelRetentionPercent, { releaseSeats: true, note: "Passenger cancelled before boarding" });
+  const outcome = await endBooking(row, "cancelled", terms.free ? 0 : open ? 100 - settings.openTicketRefundPercent : settings.cancelRetentionPercent, { releaseSeats: true, note: "Passenger cancelled before boarding" });
   if (row.driver_id) {
     await notifyUser(String(row.driver_id), { title: "A passenger cancelled", body: `${Number(row.seats)} seat${Number(row.seats) === 1 ? "" : "s"} are free again.`, url: "/taxipress", tag: `taxipress-cancel-${bookingId}` }).catch(() => {});
   }
@@ -128,7 +130,9 @@ export async function markNoShow(driverId: string, bookingId: string): Promise<B
 export async function markRemainingNoShows(queueId: string): Promise<number> {
   if (!(await refundsReady())) return 0;
   const settings = await getTaxipressSettings();
-  const rows = (await db.execute({ sql: `${BOOKING} WHERE b.queue_id = ? AND b.status = 'booked'`, args: [queueId] })).rows as Row[];
+  // An open ticket outlives its taxi: it stays valid for any other taxi on the route.
+  const keepOpen = (await openTicketColumnsReady()) ? " AND b.open_ticket = 0" : "";
+  const rows = (await db.execute({ sql: `${BOOKING} WHERE b.queue_id = ? AND b.status = 'booked'${keepOpen}`, args: [queueId] })).rows as Row[];
   let done = 0;
   for (const row of rows) {
     try {
@@ -213,4 +217,30 @@ export async function reassignOrRefund(queueId: string): Promise<{ moved: number
     }
   }
   return { moved, refunded };
+}
+
+/** Open tickets past their valid-until date are ended and refunded as staff set (lazily, whenever tickets are listed). */
+export async function expireOpenTickets(): Promise<number> {
+  if (!(await refundsReady()) || !(await openTicketColumnsReady())) return 0;
+  const settings = await getTaxipressSettings();
+  const rows = (await db.execute({
+    sql: `${BOOKING} WHERE b.status = 'booked' AND b.open_ticket = 1 AND b.valid_until IS NOT NULL AND b.valid_until <= datetime('now')`,
+    args: [],
+  })).rows as Row[];
+  let done = 0;
+  for (const row of rows) {
+    try {
+      const outcome = await endBooking(row, "cancelled", 100 - settings.openTicketRefundPercent, { releaseSeats: true, note: "Open ticket expired" });
+      done += 1;
+      await notifyUser(String(row.passenger_id), {
+        title: "Your open ticket expired",
+        body: outcome.refunded > 0 ? `${ugx(outcome.refunded)} was refunded to your wallet.` : "It was not used in time.",
+        url: `/ride/taxipress/ticket/${String(row.id)}`,
+        tag: `taxipress-open-expired-${String(row.id)}`,
+      }).catch(() => {});
+    } catch {
+      // Already dealt with by another request.
+    }
+  }
+  return done;
 }

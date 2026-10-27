@@ -1,4 +1,5 @@
 import type { Context } from "hono";
+import { markOpenTicket, openTicketColumnsReady, openTicketOf } from "./open-tickets.js";
 import { db } from "../db/client.js";
 import { newId } from "../lib/ids.js";
 import { hasTable } from "../lib/schema.js";
@@ -46,6 +47,8 @@ export type TaxipressBooking = {
   receiptRef: string | null;
   /** Who travels and what they bring. Null until migration 0128 is applied. */
   details: BookingDetails | null;
+  /** Set for an open ticket: valid on any taxi on this route until validUntil (null = never expires). */
+  openTicket?: { validUntil: string | null; expired: boolean } | null;
   /** True when someone else bought this ticket and sent it to the signed-in person. */
   sharedWithMe?: boolean;
   /** The first name of whoever bought a ticket that was sent to you. */
@@ -82,8 +85,9 @@ async function toBooking(row: Row, forPassenger: boolean): Promise<TaxipressBook
     : null;
   const method: "app" | "cash" = cash ? "cash" : "app";
   const collected = method === "app" && row.bk_status === "booked" ? await collectedFor(String(row.bk_order_id)) : 0;
+  const openTicket = await openTicketOf(String(row.bk_id));
   const cancel = cancelTermsFor(
-    { status: String(row.bk_status), queueStatus, method, amount: Number(row.amount), createdAt: String(row.bk_created_at), collected },
+    { status: String(row.bk_status), queueStatus, method, amount: Number(row.amount), createdAt: String(row.bk_created_at), collected, openTicket: openTicket != null },
     settings,
   );
   let receiptRef: string | null = null;
@@ -131,6 +135,7 @@ async function toBooking(row: Row, forPassenger: boolean): Promise<TaxipressBook
     outcome,
     receiptRef,
     details,
+    openTicket,
   };
 }
 
@@ -261,7 +266,7 @@ function newTicketCode(): string {
 }
 
 /** Books seats on a taxi in the line. The passenger pays next, on the order's pay screen (or hands cash to the driver). */
-export type BookInput = { queueId: string; seats?: number; payment?: "app" | "cash" } & Partial<BookingDetailsInput>;
+export type BookInput = { queueId: string; seats?: number; payment?: "app" | "cash"; openTicket?: boolean } & Partial<BookingDetailsInput>;
 
 export async function bookSeats(c: Context, input: BookInput) {
   const user = c.get("user");
@@ -277,6 +282,10 @@ export async function bookSeats(c: Context, input: BookInput) {
   const language = withDetails && input.language && offeredLanguages(settings).some((l) => l.code === input.language) ? input.language : null;
   if (withDetails && input.language && !language && settings.languageEnabled) return c.json({ error: "language_not_offered", message: "That language isn't offered. Choose one from the list." }, 400);
   const payment = input.payment ?? "app";
+  if (input.openTicket) {
+    if (!settings.openTicketsEnabled || !(await openTicketColumnsReady())) return c.json({ error: "open_tickets_off", message: "Open tickets aren't available right now." }, 409);
+    if (payment === "cash") return c.json({ error: "open_ticket_prepaid", message: "An open ticket is paid in the app, not in cash." }, 409);
+  }
   if (withDetails && input.forSomeoneElse && !settings.bookForOthersEnabled) return c.json({ error: "for_others_off", message: "Booking for someone else isn't available right now." }, 409);
   if (withDetails && input.forSomeoneElse && (!input.travellerName || !input.travellerPhone || !input.emergencyPhone)) {
     return c.json({ error: "traveller_missing", message: "Add the traveller's name, phone and an emergency contact." }, 400);
@@ -361,6 +370,7 @@ export async function bookSeats(c: Context, input: BookInput) {
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       args: [bookingId, orderId, input.queueId, String(entry.taxipress_route_id), user.sub, String(entry.driver_id), seatCount, farePerSeat, amount, payment, newTicketCode(), environment],
     });
+    if (input.openTicket) await markOpenTicket(bookingId);
     if (withDetails) {
       await saveDetails(bookingId, {
         adults, children, childSeats: priced.childSeats, luggage, luggageAmount: priced.luggageAmount,

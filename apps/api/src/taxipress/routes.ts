@@ -10,8 +10,9 @@ import { activeQueue, applyTaxi, arrive, driverView, goOnRoad, joinLine, leaveLi
 import { decorateLine, detailsColumnsReady, detailsReady, stopsFor, taxiProfile } from "./details.js";
 import { getR2Bucket, uploadResponseHeaders } from "../storage/r2.js";
 import { getTaxipressSettings, LANGUAGE_CODE, LUGGAGE_TYPES, MAX_LANGUAGES, offeredLanguages, offeredLuggageTypes, setTaxipressSettings } from "./settings.js";
-import { cancelBooking, markNoShow } from "./cancellation.js";
+import { cancelBooking, expireOpenTickets, markNoShow } from "./cancellation.js";
 import { sendTicket } from "./ticket-share.js";
+import { openTicketColumnsReady } from "./open-tickets.js";
 import { confirmBoarding, settlementReport } from "./settlement.js";
 import { getTaxipressRoute, listActiveTaxipressRoutes, listTaxipressRoutes, taxipressReady } from "./service.js";
 
@@ -81,6 +82,7 @@ taxipressRoutes.get("/taxipress/config", async (c) => {
     languages: offeredLanguages(settings).map((l) => ({ code: l.code, name: l.name })),
     bookForOthersEnabled: settings.bookForOthersEnabled,
     ticketSharingEnabled: settings.ticketSharingEnabled,
+    openTicketsEnabled: settings.openTicketsEnabled && (await openTicketColumnsReady()),
     cashEnabled: settings.cashEnabled,
     seatChoiceFeeUgx: settings.seatChoiceFeeUgx,
     returnDiscountPercent: settings.returnDiscountPercent,
@@ -213,6 +215,8 @@ const bookSchema = z.object({
   assistance: z.enum(["none", "boarding", "priority", "mobility"]).nullable().optional(),
   language: z.string().trim().min(2).max(20).nullable().optional(),
   forSomeoneElse: z.boolean().optional(),
+  /** Buy an open ticket: normal fare, valid on any taxi on this route. */
+  openTicket: z.boolean().optional(),
   travellerName: z.string().trim().min(2).max(80).nullable().optional(),
   travellerPhone: phone.nullable().optional(),
   emergencyPhone: phone.nullable().optional(),
@@ -224,7 +228,10 @@ taxipressRoutes.post("/taxipress/bookings", async (c) => {
   return bookSeats(c, parsed.data as Parameters<typeof bookSeats>[1]);
 });
 
-taxipressRoutes.get("/taxipress/bookings/mine", async (c) => c.json({ bookings: await myBookings(c.get("user").sub) }));
+taxipressRoutes.get("/taxipress/bookings/mine", async (c) => {
+  await expireOpenTickets().catch(() => 0);
+  return c.json({ bookings: await myBookings(c.get("user").sub) });
+});
 
 /** A passenger cancels a seat before boarding. What comes back depends on the free-cancel window staff set. */
 taxipressRoutes.post("/taxipress/bookings/:id/cancel", async (c) => {
@@ -295,6 +302,9 @@ const settingsSchema = z.object({
     .refine((list) => new Set(list.map((l) => l.code)).size === list.length, { message: "Each language can be listed once." }),
   bookForOthersEnabled: z.boolean(),
   ticketSharingEnabled: z.boolean(),
+  openTicketsEnabled: z.boolean(),
+  openTicketValidityDays: z.number().int().min(0).max(3650),
+  openTicketRefundPercent: z.number().min(0).max(100),
   showStops: z.boolean(),
 }).partial();
 

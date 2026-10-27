@@ -36,11 +36,17 @@ export function feeOf(fare: number, percent: number, collected: number): number 
 
 /** The terms for a passenger cancelling a booking that has not boarded and whose taxi has not left. */
 export function cancelTermsFor(
-  input: { status: string; queueStatus: string; method: "app" | "cash"; amount: number; createdAt: string; collected: number },
-  settings: Pick<TaxipressSettings, "freeCancelMinutes" | "cancelRetentionPercent">,
+  input: { status: string; queueStatus: string; method: "app" | "cash"; amount: number; createdAt: string; collected: number; openTicket?: boolean },
+  settings: Pick<TaxipressSettings, "freeCancelMinutes" | "cancelRetentionPercent"> & Partial<Pick<TaxipressSettings, "openTicketRefundPercent">>,
   now = Date.now(),
 ): CancelTerms {
   if (input.status !== "booked") return { allowed: false, reason: "This booking can't be cancelled.", free: true, fee: 0, refund: 0 };
+  // An open ticket can be cancelled any time before it is used, even once its taxi has left; staff set how much comes back.
+  if (input.openTicket) {
+    if (input.collected <= 0) return { allowed: true, reason: null, free: true, fee: 0, refund: 0 };
+    const fee = feeOf(input.amount, 100 - (settings.openTicketRefundPercent ?? 100), input.collected);
+    return { allowed: true, reason: null, free: fee === 0, fee, refund: input.collected - fee };
+  }
   if (input.queueStatus !== "in_line" && input.queueStatus !== "boarding") {
     return { allowed: false, reason: "The taxi has already left.", free: true, fee: 0, refund: 0 };
   }
