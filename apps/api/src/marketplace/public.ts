@@ -1,5 +1,6 @@
 import { db } from "../db/client.js";
 import { getPlatformEnvironment } from "../lib/settings.js";
+import { storePlan } from "./plans.js";
 import { hasColumn } from "../lib/schema.js";
 import { getOptions } from "../lib/option-settings.js";
 
@@ -58,7 +59,8 @@ export async function findPublicStore(idOrSlug: string): Promise<Row | null> {
         sql: "SELECT * FROM stores WHERE custom_domain = ? AND domain_verified = 1 AND status = 'active' AND environment = ? LIMIT 1",
         args: [idOrSlug.toLowerCase(), environment],
       });
-      if (byDomain.rows[0]) return byDomain.rows[0] as Row;
+      // A custom domain is Merchant Elite: when the plan ends, the store is still at its Peebee address, not here.
+      if (byDomain.rows[0]) return (await storePlan(byDomain.rows[0] as Row)).isElite ? (byDomain.rows[0] as Row) : null;
     }
   }
   return null;

@@ -166,3 +166,40 @@ test("the plan options are admin-controlled, and mobile money is shown as not bu
   assert.equal(pay.effective, "wallet");
   assert.equal(pay.options.find((o: any) => o.value === "mobile_money").available, false);
 });
+
+test("Elite-only store settings can't be changed without the plan, but an unchanged form still saves", async () => {
+  const client = await freshDatabase();
+  const s = await plainMerchant(client);
+  const put = (body: object) => s.call("/merchants/me/store", "PUT", body);
+
+  const theme = await put({ theme_layout: "editorial" });
+  assert.equal(theme.status, 403);
+  const body = await json(theme);
+  assert.equal(body.error, "plan_required");
+  assert.deepEqual(body.fields, ["theme_layout"]);
+  assert.equal((await json(await put({ loyalty_enabled: true, b2b_wholesale_enabled: true }))).fields.length, 2);
+
+  // The app sends the whole form: values that haven't changed, and ordinary fields, must not be refused.
+  const same = await put({ name: "Better Name", theme_layout: "grid", theme_accent: "gold", loyalty_enabled: false, b2b_wholesale_enabled: false, hero_headline: "" });
+  assert.equal(same.status, 200, JSON.stringify(await same.clone().json()));
+
+  await s.call("/merchants/me/store/tier", "POST", { tier: "elite" });
+  assert.equal((await put({ theme_layout: "editorial", loyalty_enabled: true })).status, 200);
+  assert.equal((await me(s)).theme_layout, "editorial");
+});
+
+test("a custom domain stops being served when the Elite plan ends", async () => {
+  const client = await freshDatabase();
+  const admin = await addAdmin(client);
+  await admin.setOptions({ storefront_domain_mode: "subdomain_plus_verified_custom_domains" });
+  const s = await plainMerchant(client);
+  await s.call("/merchants/me/store/tier", "POST", { tier: "elite" });
+  await client.execute({ sql: "UPDATE stores SET custom_domain = 'shop.example.ug', domain_verified = 1 WHERE id = ?", args: [s.storeId] });
+
+  const byDomain = () => app.request("/v1/marketplace/stores/shop.example.ug");
+  assert.equal((await byDomain()).status, 200, "served while the plan is active");
+  const past = new Date(Date.now() - 3600_000).toISOString();
+  await client.execute({ sql: "UPDATE stores SET elite_expires_at = ?, pro_expires_at = ? WHERE id = ?", args: [past, past, s.storeId] });
+  assert.notEqual((await byDomain()).status, 200, "not served once the plan has ended");
+  assert.equal((await app.request(`/v1/marketplace/stores/${s.slug}`)).status, 200, "the Peebee address still works");
+});

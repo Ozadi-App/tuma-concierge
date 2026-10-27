@@ -1129,6 +1129,29 @@ marketplaceRoutes.put("/merchants/me/store", requireAuth, async (c) => {
   if (!parsed.success) return c.json({ error: "invalid_body", issues: parsed.error.issues }, 400);
 
   const settings = await getMarketplaceSettings();
+
+  // Custom themes, the hero banner, a custom domain, loyalty cashback and wholesale are Merchant Elite. Saving a form that
+  // leaves them as they are is fine on any plan; changing one needs an active Elite plan.
+  {
+    const same = (a: unknown, b: unknown) => String(a ?? "").trim() === String(b ?? "").trim();
+    const elite: Array<[string, unknown, unknown]> = [
+      ["custom_domain", parsed.data.custom_domain, store.custom_domain],
+      ["theme_layout", parsed.data.theme_layout, store.theme_layout],
+      ["theme_accent", parsed.data.theme_accent, store.theme_accent],
+      ["hero_headline", parsed.data.hero_headline, store.hero_headline],
+      ["hero_subheadline", parsed.data.hero_subheadline, store.hero_subheadline],
+      ["hero_cta_text", parsed.data.hero_cta_text, store.hero_cta_text],
+      ["loyalty_enabled", parsed.data.loyalty_enabled === undefined ? undefined : Number(parsed.data.loyalty_enabled), store.loyalty_enabled],
+      ["loyalty_cashback_percent", parsed.data.loyalty_cashback_percent, store.loyalty_cashback_percent],
+      ["b2b_wholesale_enabled", parsed.data.b2b_wholesale_enabled === undefined ? undefined : Number(parsed.data.b2b_wholesale_enabled), store.b2b_wholesale_enabled],
+      ["b2b_min_order_amount", parsed.data.b2b_min_order_amount, store.b2b_min_order_amount],
+    ];
+    const changed = elite.filter(([, incoming, current]) => incoming !== undefined && !same(incoming, current)).map(([field]) => field);
+    if (changed.length > 0 && !(await storePlan(store, settings)).isElite) {
+      return c.json({ error: "plan_required", requiredPlan: "elite", fields: changed, message: "Themes, the hero banner, a custom domain, loyalty cashback and wholesale are part of Merchant Elite. Upgrade your plan in the Store tab to change them." }, 403);
+    }
+  }
+
   if (parsed.data.loyalty_cashback_percent != null && parsed.data.loyalty_cashback_percent > settings.eliteMaxLoyaltyCashbackPercent) {
     return c.json({
       error: "loyalty_cashback_exceeds_max",
