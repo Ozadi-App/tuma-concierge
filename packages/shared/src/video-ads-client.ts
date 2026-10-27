@@ -3,7 +3,7 @@
  * and the creator-facing ones (`/v1/video/*`, `/v1/ads/*`). Mirrors apps/api/src/video and apps/api/src/ads.
  */
 
-export type VideoProviderKey = "cloudflare_stream" | "mux" | "cloudinary" | "bunny" | "link" | "mock";
+export type VideoProviderKey = "cloudflare_stream" | "mux" | "cloudinary" | "bunny" | "livepeer" | "link" | "mock";
 
 export type VideoConfig = {
   enabled: boolean;

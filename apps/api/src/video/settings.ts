@@ -23,8 +23,8 @@ export type VideoConfig = {
 export const DEFAULT_VIDEO_CONFIG: VideoConfig = {
   enabled: false,
   // Cloudinary first: it takes uploads and plays them back publicly. Cloudflare Stream follows for what Cloudinary cannot do
-  // (locking videos for members and paid posts, and going live). A provider with no credentials is skipped.
-  platformProviders: ["cloudinary", "cloudflare_stream"],
+  // (locking videos for members and paid posts, and going live). Livepeer is last: live only, with a free start. A provider with no credentials is skipped.
+  platformProviders: ["cloudinary", "cloudflare_stream", "livepeer"],
   byoEnabled: false,
   byoProviders: ["cloudflare_stream", "mux", "cloudinary", "bunny", "link"],
   maxDurationSeconds: 600,
