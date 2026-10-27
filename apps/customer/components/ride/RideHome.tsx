@@ -420,6 +420,8 @@ export function RideHome() {
   const bodaFrom = rates ? bodaFare(0, rates.ratePerKm, rates.minimum) : null;
   const modes: ModeItem[] = [
     { id: "boda", label: "Boda", icon: Bike, sub: bodaFrom ? `from ${bodaFrom.toLocaleString("en-UG")}` : "Quick in town", prefer: "boda" },
+    // Taxipress (when it is on) sits right after Boda.
+    ...(taxipress.enabled ? [{ id: "taxipress", label: "Taxipress", icon: Bus, sub: "Book a seat", href: "/ride/taxipress" }] : []),
     tiers
       ? { id: "car", label: "Car", icon: Car, sub: nearbyCars ? `${nearbyCars} nearby` : `from ${tiers.minimumFare.toLocaleString("en-UG")}`, prefer: "car" }
       : { id: "car", label: "Car", icon: Car, sub: "Book a car", href: "/ride/car" },
@@ -722,31 +724,17 @@ export function RideHome() {
                 </ul>
               </div>
 
-              {/* Taxipress (when it is on) sits first, Ambulance beside it. Ambulance keeps its full-size hold-to-call control. */}
-              <div className={taxipress.enabled ? "grid grid-cols-2 items-stretch gap-2" : undefined}>
-              {taxipress.enabled && (
-                <Link href="/ride/taxipress" className="ride-link-tile flex min-h-14 flex-col justify-between gap-2 rounded-2xl p-3">
-                  <Bus className="h-6 w-6 shrink-0" aria-hidden />
-                  <span className="min-w-0">
-                    <span className="block text-[15px] font-bold text-ink">Taxipress</span>
-                    <span className="block text-[11px] text-ink-500">Book a seat on the next taxi</span>
-                  </span>
-                </Link>
-              )}
-              <div className={`ride-amb flex rounded-2xl p-3 ${taxipress.enabled ? "flex-col gap-2" : "items-center gap-3"}`}>
-                <span className={taxipress.enabled ? "flex items-center gap-2" : "contents"}>
+              <div className="ride-amb flex items-center gap-3 rounded-2xl p-3">
                 <span className="ride-amb__icon flex h-10 w-10 shrink-0 items-center justify-center rounded-[13px]"><Ambulance className="h-5 w-5" aria-hidden /></span>
                 <span className="min-w-0 flex-1">
                   <span className="block text-[15px] font-bold">Ambulance</span>
                   {special.ambulance || ambulanceCats.length > 0 ? (
-                    <Link href="/ride/ambulance" className="inline-flex min-h-6 items-center gap-0.5 whitespace-nowrap text-xs font-bold text-ink-500 underline-offset-2 hover:underline">{taxipress.enabled ? "Request" : "Request a crew"} <ChevronRight className="h-3 w-3" aria-hidden /></Link>
+                    <Link href="/ride/ambulance" className="inline-flex min-h-6 items-center gap-0.5 whitespace-nowrap text-xs font-bold text-ink-500 underline-offset-2 hover:underline">Request a crew <ChevronRight className="h-3 w-3" aria-hidden /></Link>
                   ) : (
                     <span className="block text-xs text-ink-500">Life in danger? Call now.</span>
                   )}
                 </span>
-                </span>
-                <HoldToCall number={emergencyNumber} fill={taxipress.enabled} />
-              </div>
+                <HoldToCall number={emergencyNumber} />
               </div>
 
               <div>
