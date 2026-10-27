@@ -6,6 +6,7 @@ import android.os.Message;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
 import android.webkit.CookieManager;
+import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
@@ -75,7 +76,7 @@ public class MainActivity extends BridgeActivity {
                 WebSettings popupSettings = popupWebView.getSettings();
                 popupSettings.setJavaScriptEnabled(true);
                 popupSettings.setDomStorageEnabled(true);
-                popupSettings.setSupportMultipleWindows(true);
+                popupSettings.setSupportMultipleWindows(false);
                 popupSettings.setJavaScriptCanOpenWindowsAutomatically(true);
                 if (cleanUserAgent != null) {
                     popupSettings.setUserAgentString(cleanUserAgent);
@@ -90,7 +91,9 @@ public class MainActivity extends BridgeActivity {
                     }
                 });
 
-                popupWebView.setWebChromeClient(new BridgeWebChromeClient(getBridge()) {
+                // Use plain WebChromeClient here — BridgeWebChromeClient registers ActivityResultLaunchers
+                // in its constructor, which throws IllegalStateException when called after onCreate/onStart!
+                popupWebView.setWebChromeClient(new WebChromeClient() {
                     @Override
                     public void onCloseWindow(WebView window) {
                         closePopupWebView();
