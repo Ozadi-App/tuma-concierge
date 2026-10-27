@@ -1,7 +1,8 @@
 "use client";
 
-import { taxipressTown, type TaxipressLineEntry, type TaxipressQueueView } from "@peebee/shared";
-import { Check, ChevronRight, Clock, Minus, Plus, Ticket } from "lucide-react";
+import { taxipressTown, type RidePassenger, type SavedPassenger, type TaxipressLineEntry, type TaxipressQueueView } from "@peebee/shared";
+import { BookUser, Check, ChevronRight, Clock, Minus, Phone, Plus, ShieldAlert, Ticket, User, UserPlus, type LucideIcon } from "lucide-react";
+import { WhoIsRiding } from "../../../../../components/WhoIsRiding";
 import { DriverAvatar } from "../../../../../components/taxipress/DriverAvatar";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
@@ -28,6 +29,10 @@ function BookLine() {
   const [tick, setTick] = useState(0);
   const [draft, setDraftState] = useState<TaxipressDraft>(() => emptyDraft(routeId));
   const [restored, setRestored] = useState(false);
+  // People this customer has booked for before (the same list the ride booking uses), and the contacts sheet.
+  const [saved, setSaved] = useState<SavedPassenger[]>([]);
+  const [contacts, setContacts] = useState<null | { adding: boolean }>(null);
+  useEffect(() => { api.getPassengers().then((res) => setSaved(res.passengers)).catch(() => undefined); }, []);
 
   useEffect(() => {
     const saved = readDraft(routeId);
@@ -67,6 +72,8 @@ function BookLine() {
 
   const forOthers = details && taxipressOptions(taxipress).forOthers;
   const justMe = draft.adults === 1 && draft.children === 0 && !draft.forSomeoneElse;
+  // The person picked from the contacts sheet (or typed to match one): shown as a tile with a Change button.
+  const chosenContact = draft.forSomeoneElse && draft.travellerName.trim().length >= 2 && saved.some((p) => p.phone === draft.travellerPhone.trim() && p.name === draft.travellerName.trim());
   const passengerPanel = selected ? (
     <div aria-label="Who is travelling" className="mt-4 space-y-3 border-t border-[var(--border-faint)] pt-4">
       <div className="flex items-baseline justify-between gap-2">
@@ -84,10 +91,30 @@ function BookLine() {
         </div>
       )}
       {draft.forSomeoneElse && (
-        <div className="space-y-2">
-          <Field label="Passenger name" value={draft.travellerName} autoComplete="name" onChange={(travellerName) => setDraft({ travellerName })} />
-          <Field label="Passenger phone" value={draft.travellerPhone} type="tel" autoComplete="tel" onChange={(travellerPhone) => setDraft({ travellerPhone })} />
-          <Field label="Emergency contact (optional)" value={draft.emergencyPhone} type="tel" onChange={(emergencyPhone) => setDraft({ emergencyPhone })} />
+        <div className="space-y-3">
+          {chosenContact ? (
+            <div className="flex items-center gap-3 rounded-2xl bg-[rgb(var(--surface-muted))] p-3">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gold/15 text-gold"><User className="h-5 w-5" strokeWidth={2} aria-hidden /></span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-base font-bold text-ink">{draft.travellerName}</span>
+                <span className="block truncate text-sm text-ink-500">{draft.travellerPhone}</span>
+              </span>
+              <button type="button" onClick={() => setContacts({ adding: false })} className="min-h-10 shrink-0 rounded-full px-3 text-sm font-bold text-gold">Change</button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-2">
+              <button type="button" onClick={() => setContacts({ adding: false })} className="flex min-h-12 items-center justify-center gap-2 rounded-2xl border border-[var(--border-faint)] px-3 text-sm font-bold text-ink active:bg-[rgb(var(--surface-muted))]">
+                <BookUser className="h-4 w-4 text-gold" strokeWidth={2} aria-hidden /> Saved contacts
+              </button>
+              <button type="button" onClick={() => setContacts({ adding: true })} className="flex min-h-12 items-center justify-center gap-2 rounded-2xl border-2 border-gold px-3 text-sm font-bold text-ink active:bg-gold/10">
+                <UserPlus className="h-4 w-4 text-gold" strokeWidth={2} aria-hidden /> Add contact
+              </button>
+            </div>
+          )}
+          <p className="px-1 text-xs font-semibold uppercase tracking-wide text-ink-500">{chosenContact ? "Their details" : "Or type their details"}</p>
+          <Field icon={User} label="Passenger name" value={draft.travellerName} autoComplete="name" onChange={(travellerName) => setDraft({ travellerName })} />
+          <Field icon={Phone} label="Passenger phone" value={draft.travellerPhone} type="tel" inputMode="tel" autoComplete="tel" onChange={(travellerPhone) => setDraft({ travellerPhone })} />
+          <Field icon={ShieldAlert} label="Emergency contact (optional)" value={draft.emergencyPhone} type="tel" inputMode="tel" onChange={(emergencyPhone) => setDraft({ emergencyPhone })} />
         </div>
       )}
       <Stepper label="Adults" note="Age 13 and above" value={draft.adults} min={1} max={MAX_PASSENGERS - draft.children} onChange={(adults) => setDraft({ adults })} />
@@ -156,6 +183,20 @@ function BookLine() {
       </ol>
       {waiting.length > 0 && <p className="px-1 text-xs text-ink-500">{waiting.length} more taxi{waiting.length === 1 ? "" : "s"} waiting. They open for booking as the line moves.</p>}
 
+      {contacts && (
+        <WhoIsRiding
+          passenger={draft.forSomeoneElse && draft.travellerPhone ? { name: draft.travellerName, phone: draft.travellerPhone } : null}
+          saved={saved}
+          onSaved={setSaved}
+          startAdding={contacts.adding}
+          onPick={(person: RidePassenger | null) => {
+            setContacts(null);
+            if (person) setDraft({ forSomeoneElse: true, travellerName: person.name, travellerPhone: person.phone });
+            else setDraft({ forSomeoneElse: false });
+          }}
+          onClose={() => setContacts(null)}
+        />
+      )}
     </main>
   );
 }
@@ -206,11 +247,15 @@ function Stepper({ label, note, value, min, max, onChange }: { label: string; no
   );
 }
 
-function Field({ label, value, onChange, type = "text", autoComplete }: { label: string; value: string; onChange: (v: string) => void; type?: string; autoComplete?: string }) {
+/** A text field: one solid fill from edge to edge, with an icon and a label that stays visible. */
+function Field({ icon: Icon, label, value, onChange, type = "text", inputMode, autoComplete }: { icon: LucideIcon; label: string; value: string; onChange: (v: string) => void; type?: string; inputMode?: "tel" | "text"; autoComplete?: string }) {
   return (
-    <label className="field-box block">
-      <span className="block text-[11px] font-semibold text-ink-500">{label}</span>
-      <input type={type} value={value} autoComplete={autoComplete} onChange={(e) => onChange(e.target.value)} className="w-full bg-transparent text-sm font-semibold text-ink outline-none" />
+    <label className="field-box flex min-h-[3.75rem] items-center gap-3 rounded-2xl px-4 py-2 focus-within:ring-2 focus-within:ring-gold">
+      <Icon className="h-5 w-5 shrink-0 text-gold" strokeWidth={2} aria-hidden />
+      <span className="min-w-0 flex-1">
+        <span className="block text-[11px] font-semibold uppercase tracking-wide text-ink-500">{label}</span>
+        <input type={type} inputMode={inputMode} value={value} autoComplete={autoComplete} onChange={(e) => onChange(e.target.value)} className="w-full bg-transparent text-base font-semibold text-ink outline-none" />
+      </span>
     </label>
   );
 }
