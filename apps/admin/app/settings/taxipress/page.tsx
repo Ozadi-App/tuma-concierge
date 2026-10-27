@@ -123,7 +123,7 @@ function SettingsTab() {
         bookableTaxis: s.bookableTaxis, maxLapChildren: s.maxLapChildren, childSeatFarePercent: n("childSeatFarePercent"),
         luggageEnabled: s.luggageEnabled, assistanceEnabled: s.assistanceEnabled, languageEnabled: s.languageEnabled,
         luggageOptionsShown: Math.min(TAXIPRESS_LUGGAGE_TYPES.length, Math.max(1, n("luggageOptionsShown"))), languages: s.languages,
-        bookForOthersEnabled: s.bookForOthersEnabled, showStops: s.showStops,
+        bookForOthersEnabled: s.bookForOthersEnabled, ticketSharingEnabled: s.ticketSharingEnabled, showStops: s.showStops,
         // A blank luggage price means "priced at the stage".
         luggagePrices: Object.fromEntries(TAXIPRESS_LUGGAGE_TYPES.map((t) => [t, (num[`luggage_${t}`] ?? "") === "" ? null : n(`luggage_${t}`)])) as Record<TaxipressLuggageType, number | null>,
         parcelNotAllowed: notAllowed.split("\n").map((x) => x.trim()).filter(Boolean),
@@ -199,6 +199,10 @@ function SettingsTab() {
         <label className="flex items-center gap-2 text-sm font-bold text-ink">
           <Switch checked={s.bookForOthersEnabled} onChange={(e) => set("bookForOthersEnabled", e.target.checked)} />
           Passengers may book for someone else
+        </label>
+        <label className="flex items-center gap-2 text-sm font-bold text-ink">
+          <Switch checked={s.ticketSharingEnabled} onChange={(e) => set("ticketSharingEnabled", e.target.checked)} />
+          Passengers may send a ticket, and a ticket code shows its details
         </label>
         <label className="flex items-center gap-2 text-sm font-bold text-ink">
           <Switch checked={s.showStops} onChange={(e) => set("showStops", e.target.checked)} />

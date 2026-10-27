@@ -1,11 +1,12 @@
 "use client";
 
-import { receiptUrl, TAXIPRESS_LUGGAGE_LABELS, taxipressTown, type TaxipressBooking } from "@peebee/shared";
-import { ChevronLeft } from "lucide-react";
+import { receiptUrl, TAXIPRESS_LUGGAGE_LABELS, taxipressTown, type RidePassenger, type SavedPassenger, type TaxipressBooking, type TaxipressSendResult } from "@peebee/shared";
+import { ChevronLeft, Send, Share2 } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { CodeQr } from "../../../../../components/CodeQr";
+import { WhoIsRiding } from "../../../../../components/WhoIsRiding";
 import { api, errorMessage } from "../../../../../lib/api";
 import { setPayReturn } from "../../../../../lib/taxipress-draft";
 
@@ -21,6 +22,17 @@ export default function TaxipressTicketPage() {
   const [tick, setTick] = useState(0);
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
+  // Sending the ticket on: the contacts sheet, the people saved from earlier bookings, and what the last send returned.
+  const [picking, setPicking] = useState(false);
+  const [saved, setSaved] = useState<SavedPassenger[]>([]);
+  const [sent, setSent] = useState<TaxipressSendResult | null>(null);
+  const [sendBusy, setSendBusy] = useState(false);
+  const [sendError, setSendError] = useState("");
+  const [sentBefore, setSentBefore] = useState(true);
+  useEffect(() => { api.getPassengers().then((res) => setSaved(res.passengers)).catch(() => undefined); }, []);
+  useEffect(() => {
+    try { setSentBefore(window.localStorage.getItem(`txp-sent:${id}`) === "1"); } catch { setSentBefore(false); }
+  }, [id]);
 
   // Back from a Mobile Money payment: settle it now so the ticket shows Paid without waiting.
   useEffect(() => {
@@ -54,6 +66,36 @@ export default function TaxipressTicketPage() {
 
   const cancelled = booking?.paymentStatus === "cancelled" || booking?.status === "cancelled" || booking?.status === "no_show";
   const taxi = booking?.taxi;
+
+  async function sendTo(person: RidePassenger) {
+    if (!booking) return;
+    setSendBusy(true);
+    setSendError("");
+    try {
+      const result = await api.sendTaxipressTicket(booking.id, person);
+      setSent(result);
+      setSentBefore(true);
+      try { window.localStorage.setItem(`txp-sent:${booking.id}`, "1"); } catch { /* the prompt just shows again */ }
+      setTick((t) => t + 1);
+    } catch (err) {
+      setSendError(errorMessage(err));
+    } finally {
+      setSendBusy(false);
+    }
+  }
+
+  /** The words that carry the ticket to a phone without the app: the code, the trip and what to do. */
+  function shareText(b: TaxipressBooking, code: string) {
+    return `Taxipress ticket ${code}: ${taxipressTown(b.route.fromName)} to ${taxipressTown(b.route.toName)}, taxi ${b.taxi.plate}, ${b.seats} seat${b.seats === 1 ? "" : "s"}. Show this code to the driver when you board. See the details: ${window.location.origin}/ticket/${code}`;
+  }
+
+  async function shareCode(b: TaxipressBooking, code: string) {
+    const text = shareText(b, code);
+    try {
+      if (navigator.share) await navigator.share({ text });
+      else await navigator.clipboard.writeText(text);
+    } catch { /* the sheet was closed */ }
+  }
 
   async function cancel() {
     if (!booking) return;
@@ -115,6 +157,40 @@ export default function TaxipressTicketPage() {
             )}
           </section>
 
+          {booking.sharedWithMe && booking.sentBy && !cancelled && (
+            <p className="rounded-2xl bg-gold/15 p-4 text-center text-sm font-semibold text-ink" role="status">{booking.sentBy} sent you this ticket. Show the code to the driver when you board.</p>
+          )}
+
+          {!booking.sharedWithMe && booking.status === "booked" && !cancelled && booking.ticketCode && (
+            <section className={`home-card space-y-3 border p-5 text-center ${booking.details?.forSomeoneElse && !sentBefore && !sent ? "border-gold bg-gold/10" : "border-[var(--border-faint)] bg-[rgb(var(--surface-card))]"}`}>
+              {sent ? (
+                <>
+                  <p className="text-sm font-bold text-ink">{sent.onPeebee ? `${sent.travellerName} has it in their Peebee tickets.` : `${sent.travellerName} isn't on Peebee yet.`} Send the code too, so they can travel without the app.</p>
+                  <p className="font-mono text-2xl font-bold tracking-widest text-ink">{sent.code}</p>
+                </>
+              ) : (
+                <p className="text-sm font-bold text-ink">{booking.details?.forSomeoneElse && !sentBefore ? `Send ${booking.details.travellerName ?? "them"} their ticket` : "Send this ticket to the person travelling"}</p>
+              )}
+              <div className="flex gap-2">
+                {!sent && booking.details?.forSomeoneElse && booking.details.travellerName && booking.details.travellerPhone ? (
+                  <button type="button" disabled={sendBusy} onClick={() => sendTo({ name: booking.details!.travellerName!, phone: booking.details!.travellerPhone! })} className="flex min-h-12 flex-1 items-center justify-center gap-2 rounded-full bg-gold font-bold text-ink-gold disabled:opacity-60">
+                    <Send className="h-4 w-4" aria-hidden /> {sendBusy ? "Sending…" : `Send to ${booking.details.travellerName.split(" ")[0]}`}
+                  </button>
+                ) : !sent ? (
+                  <button type="button" onClick={() => setPicking(true)} className="flex min-h-12 flex-1 items-center justify-center gap-2 rounded-full bg-gold font-bold text-ink-gold">
+                    <Send className="h-4 w-4" aria-hidden /> Send ticket
+                  </button>
+                ) : null}
+                <button type="button" onClick={() => shareCode(booking, sent?.code ?? booking.ticketCode!)} className="flex min-h-12 flex-1 items-center justify-center gap-2 rounded-full border border-[var(--border-faint)] font-bold text-ink">
+                  <Share2 className="h-4 w-4" aria-hidden /> Share the code
+                </button>
+              </div>
+              {!sent && booking.details?.forSomeoneElse && <button type="button" onClick={() => setPicking(true)} className="text-xs font-semibold text-ink-500 underline-offset-2 hover:underline">Send to someone else</button>}
+              {sendError && <p className="text-sm text-ink-500" role="alert">{sendError}</p>}
+              <p className="text-xs text-ink-500">The code opens the ticket's details on any phone, so it also works for someone without a smartphone.</p>
+            </section>
+          )}
+
           {booking.receiptRef && (
             <section className="home-card space-y-2 border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-5 text-center">
               <p className="text-sm font-bold text-ink">Your receipt</p>
@@ -130,7 +206,7 @@ export default function TaxipressTicketPage() {
           {!cancelled && booking.status === "booked" && taxi.driverPhone && (
             <a href={`tel:${taxi.driverPhone}`} className="flex min-h-12 w-full items-center justify-center rounded-full border border-[var(--border-faint)] font-bold text-ink">Call the driver</a>
           )}
-          {booking.status === "booked" && booking.cancel.allowed && (
+          {booking.status === "booked" && booking.cancel.allowed && !booking.sharedWithMe && (
             confirming ? (
               <div className="space-y-3 rounded-2xl border border-[var(--border-faint)] p-4 text-center text-sm" role="alert">
                 <p className="font-semibold text-ink">{cancelQuote(booking)}</p>
@@ -146,6 +222,15 @@ export default function TaxipressTicketPage() {
           {error && booking.status === "booked" && <p className="text-center text-sm text-ink-500" role="alert">{error}</p>}
           <Link href={`/orders/${booking.orderId}`} className="block text-center text-sm font-semibold text-ink-500 underline-offset-2 hover:underline">Order details and chat</Link>
         </>
+      )}
+      {picking && (
+        <WhoIsRiding
+          passenger={null}
+          saved={saved}
+          onSaved={setSaved}
+          onPick={(person) => { setPicking(false); if (person) void sendTo(person); }}
+          onClose={() => setPicking(false)}
+        />
       )}
     </main>
   );

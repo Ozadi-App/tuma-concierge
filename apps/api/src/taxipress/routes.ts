@@ -11,6 +11,7 @@ import { decorateLine, detailsColumnsReady, detailsReady, stopsFor, taxiProfile 
 import { getR2Bucket, uploadResponseHeaders } from "../storage/r2.js";
 import { getTaxipressSettings, LANGUAGE_CODE, LUGGAGE_TYPES, MAX_LANGUAGES, offeredLanguages, offeredLuggageTypes, setTaxipressSettings } from "./settings.js";
 import { cancelBooking, markNoShow } from "./cancellation.js";
+import { sendTicket } from "./ticket-share.js";
 import { confirmBoarding, settlementReport } from "./settlement.js";
 import { getTaxipressRoute, listActiveTaxipressRoutes, listTaxipressRoutes, taxipressReady } from "./service.js";
 
@@ -79,6 +80,7 @@ taxipressRoutes.get("/taxipress/config", async (c) => {
     languageEnabled: settings.languageEnabled,
     languages: offeredLanguages(settings).map((l) => ({ code: l.code, name: l.name })),
     bookForOthersEnabled: settings.bookForOthersEnabled,
+    ticketSharingEnabled: settings.ticketSharingEnabled,
     cashEnabled: settings.cashEnabled,
     seatChoiceFeeUgx: settings.seatChoiceFeeUgx,
     returnDiscountPercent: settings.returnDiscountPercent,
@@ -229,6 +231,16 @@ taxipressRoutes.post("/taxipress/bookings/:id/cancel", async (c) => {
   try { return c.json({ outcome: await cancelBooking(c.get("user").sub, c.req.param("id") as string) }); } catch (e) { return fail(c, e); }
 });
 
+const sendSchema = z.object({ name: z.string().trim().min(2).max(80), phone: z.string().trim().min(7).max(20).regex(/^[+0-9 ()-]+$/) });
+
+/** The buyer sends a ticket to someone: it shows in their My tickets (if they are on Peebee) and the buyer gets the code to pass on. */
+taxipressRoutes.post("/taxipress/bookings/:id/send", async (c) => {
+  const parsed = sendSchema.safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) return c.json({ error: "invalid_body", message: "Add the person's name and phone number." }, 400);
+  const result = await sendTicket(c.req.param("id") as string, c.get("user").sub, parsed.data);
+  return "error" in result ? c.json({ error: result.error, message: result.message }, result.status) : c.json(result);
+});
+
 taxipressRoutes.get("/taxipress/bookings/:id", async (c) => {
   const booking = await bookingFor(c.req.param("id") as string, c.get("user").sub);
   return booking ? c.json({ booking }) : c.json({ error: "not_found" }, 404);
@@ -282,6 +294,7 @@ const settingsSchema = z.object({
   languages: z.array(z.object({ code: z.string().trim().toLowerCase().regex(LANGUAGE_CODE), name: z.string().trim().min(1).max(40), enabled: z.boolean() })).max(MAX_LANGUAGES)
     .refine((list) => new Set(list.map((l) => l.code)).size === list.length, { message: "Each language can be listed once." }),
   bookForOthersEnabled: z.boolean(),
+  ticketSharingEnabled: z.boolean(),
   showStops: z.boolean(),
 }).partial();
 

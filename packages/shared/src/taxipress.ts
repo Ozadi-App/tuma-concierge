@@ -58,6 +58,8 @@ export type TaxipressSettings = {
   languages: TaxipressLanguageOption[];
   /** A passenger may book a seat for someone else (their name, phone and an emergency contact). */
   bookForOthersEnabled: boolean;
+  /** A passenger may send a ticket to someone else, and a ticket code opens the ticket's details for anyone who has it. */
+  ticketSharingEnabled: boolean;
   /** Show a route's stops (the Relay stages along it) to passengers. */
   showStops: boolean;
 };
@@ -119,6 +121,7 @@ export type TaxipressConfig = {
   /** The languages to show. Absent from an older server: English, Luganda and Swahili. */
   languages?: Array<{ code: string; name: string }>;
   bookForOthersEnabled?: boolean;
+  ticketSharingEnabled?: boolean;
 };
 
 export type TaxipressAdminRoute = {
@@ -284,6 +287,10 @@ export type TaxipressBooking = {
   receiptRef: string | null;
   /** Present once migration 0128 is applied. */
   details?: TaxipressBookingDetails | null;
+  /** True when someone else bought this ticket and sent it to the signed-in traveller. */
+  sharedWithMe?: boolean;
+  /** First name of the person who bought and sent the ticket. */
+  sentBy?: string | null;
   route: { id: string; fromName: string; toName: string; directionLabel: string };
   taxi: { queueId: string; plate: string; seatLayout: "14" | "18"; driverName: string | null; driverPhone: string | null; status: string; position: number | null; seatsLeft: number };
 };
@@ -349,3 +356,24 @@ export function taxipressTown(stageName: string): string {
   const town = name.replace(/\s+(?:(?:old|new|main|central)\s+)?(?:(?:taxi|bus|matatu)\s+)?(?:park|stage|stand|stop|station|terminal|roundabout|junction)$/i, "").trim();
   return town || name;
 }
+
+/** What a ticket code shows to anyone who has it: the trip and the seat, never who paid or how to reach anyone. */
+export type PublicTaxipressTicket = {
+  code: string;
+  status: TaxipressBookingStatus;
+  paymentStatus: TaxipressPaymentStatus;
+  /** What still has to be paid to the driver in cash. */
+  amountDue: number | null;
+  seats: number;
+  adults: number;
+  children: number;
+  bags: number;
+  assistance: string | null;
+  language: string | null;
+  travellerName: string | null;
+  bookedBy: string | null;
+  route: { fromName: string; toName: string; directionLabel: string };
+  taxi: { plate: string; seatLayout: "14" | "18"; driverName: string | null; status: string; position: number | null };
+};
+
+export type TaxipressSendResult = { ok: true; code: string; onPeebee: boolean; travellerName: string; travellerPhone: string };

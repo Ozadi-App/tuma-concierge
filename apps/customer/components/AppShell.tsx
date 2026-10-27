@@ -23,7 +23,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const isFoodDetail=/^\/restaurants\/[^/]+\/items\/[^/]+$/.test(pathname);
   // A shared channel, cause or post link: signed out, it is a clean public page with its own top bar.
   const isPublicChannelPage = !user && /^\/(c|give|post)\/[^/]+\/?$/.test(pathname);
-  const isAuthPage = isPublicChannelPage || pathname === "/login" || pathname === "/activate" || pathname === "/forgot-password" || pathname.startsWith("/verify") || pathname.startsWith("/trip/") || pathname.startsWith("/guest/") || pathname.startsWith("/receipt/");
+  const isAuthPage = isPublicChannelPage || pathname === "/login" || pathname === "/activate" || pathname === "/forgot-password" || pathname.startsWith("/verify") || pathname.startsWith("/trip/") || pathname.startsWith("/guest/") || pathname.startsWith("/receipt/") || pathname.startsWith("/ticket/");
   // "/chat" itself is a normal list screen (conversations) with the usual
   // header + nav; a specific thread ("/chat/<counterpartId>" for order
   // chat, or "/restaurants/<id>/chat" for restaurant chat) takes over the

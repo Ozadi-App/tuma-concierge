@@ -1,7 +1,7 @@
 "use client";
 
 import { taxipressTown, type RidePassenger, type SavedPassenger, type TaxipressLineEntry, type TaxipressQueueView } from "@peebee/shared";
-import { BookUser, Check, ChevronRight, Clock, Minus, Phone, Plus, ShieldAlert, Ticket, User, UserPlus, type LucideIcon } from "lucide-react";
+import { BookUser, Check, ChevronRight, Clock, Minus, Phone, Plus, ShieldAlert, Ticket, User, type LucideIcon } from "lucide-react";
 import { WhoIsRiding } from "../../../../../components/WhoIsRiding";
 import { DriverAvatar } from "../../../../../components/taxipress/DriverAvatar";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
@@ -102,12 +102,12 @@ function BookLine() {
               <button type="button" onClick={() => setContacts({ adding: false })} className="min-h-10 shrink-0 rounded-full px-3 text-sm font-bold text-gold">Change</button>
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-2">
-              <button type="button" onClick={() => setContacts({ adding: false })} className="flex min-h-12 items-center justify-center gap-2 rounded-2xl border border-[var(--border-faint)] px-3 text-sm font-bold text-ink active:bg-[rgb(var(--surface-muted))]">
-                <BookUser className="h-4 w-4 text-gold" strokeWidth={2} aria-hidden /> Saved contacts
+            <div className="flex items-stretch gap-2">
+              <button type="button" onClick={() => setContacts({ adding: true })} aria-label="Add a new contact" className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border-2 border-gold text-gold active:bg-gold/10">
+                <Plus className="h-5 w-5" strokeWidth={2.5} aria-hidden />
               </button>
-              <button type="button" onClick={() => setContacts({ adding: true })} className="flex min-h-12 items-center justify-center gap-2 rounded-2xl border-2 border-gold px-3 text-sm font-bold text-ink active:bg-gold/10">
-                <UserPlus className="h-4 w-4 text-gold" strokeWidth={2} aria-hidden /> Add contact
+              <button type="button" onClick={() => setContacts({ adding: false })} className="flex min-h-12 flex-1 items-center justify-center gap-2 rounded-2xl border border-[var(--border-faint)] px-3 text-sm font-bold text-ink active:bg-[rgb(var(--surface-muted))]">
+                <BookUser className="h-4 w-4 text-gold" strokeWidth={2} aria-hidden /> Saved contacts
               </button>
             </div>
           )}

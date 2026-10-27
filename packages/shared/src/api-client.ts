@@ -2,7 +2,7 @@ import type { PublicReceipt } from "./receipt.js";
 import { applyModuleAvailability, rememberModuleAvailability, type ModuleSettingsUpdate, type ModuleSettings } from "./modules.js";
 import { isPracticeStorageOn } from "./practice.js";
 import { endServerPractice, isServerPractice, type PracticeSessionResult, type ServerRole } from "./practice-server.js";
-import type { TaxipressAssistance, TaxipressLanguage, TaxipressLuggageType, TaxipressTaxiProfile, TaxipressAdminQueueEntry, TaxipressAdminRoute, TaxipressBoardingResult, TaxipressBooking, TaxipressConfig, TaxipressDriverView, TaxipressLineEntry, TaxipressOutcome, TaxipressQueueView, TaxipressRelayRoute, TaxipressReport, TaxipressSettings, TaxipressTaxi } from "./taxipress.js";
+import type { TaxipressAssistance, TaxipressLanguage, TaxipressLuggageType, TaxipressTaxiProfile, TaxipressAdminQueueEntry, TaxipressAdminRoute, TaxipressBoardingResult, TaxipressBooking, TaxipressConfig, TaxipressDriverView, TaxipressLineEntry, TaxipressOutcome, TaxipressQueueView, TaxipressRelayRoute, TaxipressReport, TaxipressSettings, TaxipressTaxi, PublicTaxipressTicket, TaxipressSendResult } from "./taxipress.js";
 import type { BagTrip, RelayAdminOrder, RelayRouteStage, RelayMerchantOrder, RelayOpenLeg, RelayOperator, RelayOperatorParcels, RelayQuote, RelayRoute, RelaySettings, RelayStation, RelayStationParcels, RelayTrack } from "./relay.js";
 import type { AdminRole } from "./permissions.js";
 import { workMethods } from "./work-client.js";
@@ -840,6 +840,14 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized, 
     },
     async getTaxipressBooking(id: string) {
       return request<{ booking: TaxipressBooking }>(`/v1/taxipress/bookings/${encodeURIComponent(id)}`);
+    },
+    /** Public: the details behind a ticket code, for a traveller who is not signed in. */
+    async getTaxipressTicketByCode(code: string) {
+      return request<{ ticket: PublicTaxipressTicket }>(`/v1/taxipress-ticket/${encodeURIComponent(code)}`);
+    },
+    /** Send a ticket you bought to the person travelling; they get it in My tickets, and you get the code to pass on. */
+    async sendTaxipressTicket(id: string, input: { name: string; phone: string }) {
+      return request<TaxipressSendResult>(`/v1/taxipress/bookings/${encodeURIComponent(id)}/send`, { method: "POST", body: JSON.stringify(input) });
     },
     /** Cancel a seat that has not boarded; the refund follows staff's cancellation rules. */
     async cancelTaxipressBooking(id: string) {

@@ -65,6 +65,8 @@ export type TaxipressSettings = {
   /** The languages a passenger may ask the driver to use. Staff add and remove them and choose which are displayed. */
   languages: LanguageOption[];
   bookForOthersEnabled: boolean;
+  /** A passenger may send a ticket to someone else, and a ticket code opens the ticket's details for anyone who has it. */
+  ticketSharingEnabled: boolean;
   showStops: boolean;
 };
 
@@ -172,7 +174,7 @@ export async function getTaxipressSettings(): Promise<TaxipressSettings> {
     getSetting("taxipress_no_show_fee_percent"),
     getSetting("taxipress_rebook_on_removal"),
   ]);
-  const [bookable, lap, childPct, luggageOn, prices, assistOn, langOn, othersOn, stopsOn, luggageShown, languageList] = await Promise.all([
+  const [bookable, lap, childPct, luggageOn, prices, assistOn, langOn, othersOn, stopsOn, luggageShown, languageList, sharingOn] = await Promise.all([
     getSetting("taxipress_bookable_taxis"),
     getSetting("taxipress_max_lap_children"),
     getSetting("taxipress_child_seat_fare_percent"),
@@ -184,6 +186,7 @@ export async function getTaxipressSettings(): Promise<TaxipressSettings> {
     getSetting("taxipress_show_stops"),
     getSetting("taxipress_luggage_options_shown"),
     getSetting("taxipress_languages"),
+    getSetting("taxipress_ticket_sharing_enabled"),
   ]);
   return {
     enabled: enabled === "1",
@@ -225,6 +228,7 @@ export async function getTaxipressSettings(): Promise<TaxipressSettings> {
     languages: languageList == null ? DEFAULT_LANGUAGES.map((l) => ({ ...l })) : cleanLanguages((() => { try { return JSON.parse(languageList); } catch { return null; } })()),
     bookForOthersEnabled: bool(othersOn, true),
     showStops: bool(stopsOn, true),
+    ticketSharingEnabled: bool(sharingOn, true),
   };
 }
 
@@ -268,5 +272,6 @@ export async function setTaxipressSettings(next: Partial<TaxipressSettings>): Pr
   if (next.assistanceEnabled != null) await setSetting("taxipress_assistance_enabled", flag(next.assistanceEnabled));
   if (next.languageEnabled != null) await setSetting("taxipress_language_enabled", flag(next.languageEnabled));
   if (next.bookForOthersEnabled != null) await setSetting("taxipress_book_for_others_enabled", flag(next.bookForOthersEnabled));
+  if (next.ticketSharingEnabled != null) await setSetting("taxipress_ticket_sharing_enabled", flag(next.ticketSharingEnabled));
   if (next.showStops != null) await setSetting("taxipress_show_stops", flag(next.showStops));
 }
