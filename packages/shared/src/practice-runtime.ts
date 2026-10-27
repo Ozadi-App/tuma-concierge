@@ -13,6 +13,7 @@ import {
   PRACTICE_ENTEBBE, PRACTICE_FOOD_RESTAURANTS as DEMO_FOOD_RESTAURANTS, PRACTICE_PRODUCTS as DEMO_MARKETPLACE_PRODUCTS,
   PRACTICE_SPOTLIGHT as DEMO_MARKETPLACE_SPOTLIGHT, PRACTICE_STORES as DEMO_MARKETPLACE_STORES, practiceFoodRestaurant as demoFoodRestaurant, practiceRider,
 } from "./practice-entebbe.js";
+import { practiceSpotlightPosts } from "./practice-spotlight-posts.js";
 import { CAR_MODEL_CATALOG, isVipRate } from "./car-model-catalog.js";
 import { EDUCATION_STREAMS } from "./education/types.js";
 import { handleStudioSandbox } from "./education/studio-sandbox.js";
@@ -1795,6 +1796,9 @@ export function createPracticeFetch(role: PracticeRole, realFetch: typeof fetch 
     // Channels, creator video and ads. Sandbox talks to the real sandbox data; practice mode never creates anything real.
     if (CHANNELS_PATHS.test(url.pathname)) {
       if (sandbox) return realFetch(input, init);
+      // Spotlight shows demo posts from every kind of publisher; everything else in Channels stays off.
+      const demoPosts = practiceSpotlightPosts(url.pathname, method, url.searchParams);
+      if (demoPosts) return jsonResponse(demoPosts);
       if (url.pathname === "/v1/channels/config") return jsonResponse({ enabled: false });
       if (method === "GET") return jsonResponse({ error: "channels_unavailable", message: "Channels are not part of practice mode." }, 503);
       return jsonResponse({ error: "channels_unavailable", message: "Channels are not part of practice mode." }, 503);
