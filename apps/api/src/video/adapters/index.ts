@@ -3,6 +3,7 @@ import { bunnyAdapter } from "./bunny.js";
 import { cloudflareStreamAdapter } from "./cloudflare-stream.js";
 import { cloudinaryAdapter } from "./cloudinary.js";
 import { linkAdapter } from "./link.js";
+import { livepeerAdapter } from "./livepeer.js";
 import { mockAdapter } from "./mock.js";
 import { muxAdapter } from "./mux.js";
 
@@ -12,6 +13,7 @@ export const VIDEO_ADAPTERS: Record<VideoProviderKey, VideoAdapter> = {
   mux: muxAdapter,
   cloudinary: cloudinaryAdapter,
   bunny: bunnyAdapter,
+  livepeer: livepeerAdapter,
   link: linkAdapter,
   mock: mockAdapter,
 };

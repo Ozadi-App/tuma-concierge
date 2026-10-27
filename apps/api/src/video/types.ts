@@ -4,7 +4,7 @@
  * player, so Peebee alone decides what ads run (see ../ads).
  */
 
-export const VIDEO_PROVIDERS = ["cloudflare_stream", "mux", "cloudinary", "bunny", "link", "mock"] as const;
+export const VIDEO_PROVIDERS = ["cloudflare_stream", "mux", "cloudinary", "bunny", "livepeer", "link", "mock"] as const;
 export type VideoProviderKey = (typeof VIDEO_PROVIDERS)[number];
 
 export type VideoSource = "platform" | "byo" | "link";

@@ -54,6 +54,7 @@ const VIDEO_PROVIDERS = [
   "https://stream.mux.com", "https://*.mux.com", "https://storage.googleapis.com",
   "https://res.cloudinary.com", "https://api.cloudinary.com",
   "https://video.bunnycdn.com", "https://*.b-cdn.net",
+  "https://livepeer.studio", "https://*.livepeer.studio", "https://livepeercdn.studio", "https://*.livepeercdn.studio",
 ];
 
 /**
