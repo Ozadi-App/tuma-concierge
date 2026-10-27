@@ -1,3 +1,4 @@
+import { demoPeopleFilter } from "../practice/people.js";
 import { Hono } from "hono";
 import { z } from "zod";
 import type { InArgs } from "@libsql/client";
@@ -76,15 +77,15 @@ adminRoutes.get("/admin/stats", requirePermission("stats.view"), async (c) => {
   const environment = resolveViewEnvironment(c, await getPlatformEnvironment());
   const [users, riders, restaurants, ordersByStage, paymentsByStatus, settled] = await Promise.all([
     db.execute(
-      `SELECT role, COUNT(*) as n FROM users WHERE role IN ('customer', 'rider') GROUP BY role`,
+      `SELECT role, COUNT(*) as n FROM users WHERE role IN ('customer', 'rider') AND ${demoPeopleFilter(environment, "id")} GROUP BY role`,
     ),
     db.execute(
       `SELECT
          SUM(CASE WHEN verified = 1 THEN 1 ELSE 0 END) as verified,
          SUM(CASE WHEN is_online = 1 THEN 1 ELSE 0 END) as online
-       FROM riders`,
+       FROM riders WHERE ${demoPeopleFilter(environment, "user_id")}`,
     ),
-    db.execute(`SELECT COUNT(*) as n FROM restaurants`),
+    db.execute(`SELECT COUNT(*) as n FROM restaurants WHERE ${demoPeopleFilter(environment, "id")}`),
     db.execute({ sql: `SELECT stage, COUNT(*) as n FROM orders WHERE environment = ? GROUP BY stage`, args: [environment] }),
     db.execute({
       sql: `SELECT p.status, COUNT(*) as n FROM payments p JOIN orders o ON o.id = p.order_id WHERE o.environment = ? GROUP BY p.status`,
@@ -234,7 +235,7 @@ adminRoutes.get("/admin/customers", requirePermission("customers.view"), async (
           sql: `SELECT u.id, u.name, u.phone, u.email, u.status, u.created_at, u.profile_photo_key, u.phone_verified_at, u.email_verified_at,
                   (SELECT COUNT(*) FROM orders WHERE customer_id = u.id AND environment = ?) as order_count,
                   ${citySubquery}
-                FROM users u WHERE u.role = 'customer' AND (u.name LIKE ? OR u.phone LIKE ?)
+                FROM users u WHERE u.role = 'customer' AND ${demoPeopleFilter(environment, "u.id")} AND (u.name LIKE ? OR u.phone LIKE ?)
                 ORDER BY u.created_at DESC LIMIT 100`,
           args: [environment, environment, `%${q}%`, `%${q}%`],
         }
@@ -242,7 +243,7 @@ adminRoutes.get("/admin/customers", requirePermission("customers.view"), async (
           sql: `SELECT u.id, u.name, u.phone, u.email, u.status, u.created_at, u.profile_photo_key, u.phone_verified_at, u.email_verified_at,
              (SELECT COUNT(*) FROM orders WHERE customer_id = u.id AND environment = ?) as order_count,
              ${citySubquery}
-           FROM users u WHERE u.role = 'customer' ORDER BY u.created_at DESC LIMIT 100`,
+           FROM users u WHERE u.role = 'customer' AND ${demoPeopleFilter(environment, "u.id")} ORDER BY u.created_at DESC LIMIT 100`,
           args: [environment, environment],
         },
   );

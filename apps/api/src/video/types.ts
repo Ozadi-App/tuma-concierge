@@ -59,6 +59,17 @@ export type PlaybackSources = {
   expiresAt?: string;
 };
 
+/** A live stream a phone camera can send to, and the playlist viewers watch. */
+export type LiveInput = {
+  /** The provider's id for the live input, kept so it can be switched off. */
+  externalId: string;
+  /** Where the host's camera sends to (WebRTC/WHIP). Private to the host. */
+  publishUrl: string;
+  /** What viewers play (HLS). */
+  hlsUrl: string;
+  posterUrl?: string;
+};
+
 export class VideoProviderError extends Error {
   constructor(
     readonly provider: string,
@@ -92,4 +103,8 @@ export interface VideoAdapter {
   getAsset(creds: VideoCredentials, externalId: string): Promise<AssetInfo>;
   playback(creds: VideoCredentials, asset: { externalId: string; hlsUrl?: string | null; mp4Url?: string | null; posterUrl?: string | null }, opts: { signed: boolean; ttlSeconds: number }): Promise<PlaybackSources>;
   deleteAsset(creds: VideoCredentials, externalId: string): Promise<void>;
+  /** Providers that can take a live stream from a phone's camera (WebRTC). Optional. */
+  supportsLive?: boolean;
+  createLiveInput?(creds: VideoCredentials, input: { title?: string; maxDurationSeconds: number }): Promise<LiveInput>;
+  endLiveInput?(creds: VideoCredentials, externalId: string): Promise<void>;
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { receiptUrl, TAXIPRESS_LUGGAGE_LABELS, type TaxipressBooking } from "@peebee/shared";
+import { receiptUrl, TAXIPRESS_LUGGAGE_LABELS, taxipressTown, type TaxipressBooking } from "@peebee/shared";
 import { ChevronLeft } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -81,7 +81,7 @@ export default function TaxipressTicketPage() {
         <>
           <section className="home-card space-y-4 border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-5 text-center">
             <p className="text-xs font-bold uppercase tracking-wide text-ink-500">{booking.route.directionLabel}</p>
-            <h1 className="text-xl font-bold">{booking.route.fromName} → {booking.route.toName}</h1>
+            <h1 className="text-xl font-bold">{taxipressTown(booking.route.fromName)} → {taxipressTown(booking.route.toName)}</h1>
             {cancelled ? (
               <p className="text-sm font-semibold text-ink-500" role="status">{outcomeText(booking)}</p>
             ) : booking.status === "boarded" || booking.status === "completed" ? (
@@ -107,7 +107,7 @@ export default function TaxipressTicketPage() {
             {booking.details?.emergencyPhone && <Row label="Emergency contact" value={booking.details.emergencyPhone} />}
             {luggageText(booking) && <Row label="Luggage" value={luggageText(booking)!} />}
             {booking.details?.assistance && booking.details.assistance !== "none" && <Row label="Assistance" value={{ boarding: "Boarding help", priority: "Priority seating", mobility: "Mobility support" }[booking.details.assistance]} />}
-            {booking.details?.language && <Row label="Language" value={{ en: "English", lg: "Luganda", sw: "Swahili" }[booking.details.language]} />}
+            {booking.details?.language && <Row label="Language" value={({ en: "English", lg: "Luganda", sw: "Swahili" } as Record<string, string>)[booking.details.language] ?? booking.details.language.toUpperCase()} />}
             <Row label="Total" value={ugx(booking.amount)} />
             <Row label="Payment" value={booking.status === "boarded" || booking.status === "completed" ? "Settled" : PAYMENT[booking.paymentStatus]} />
             {!cancelled && booking.status === "booked" && (

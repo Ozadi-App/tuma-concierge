@@ -1,4 +1,4 @@
-import { createApiClient, createPracticeFetch, friendlyErrorMessage } from "@peebee/shared";
+import { configurePracticeSession, createApiClient, createPracticeFetch, friendlyErrorMessage } from "@peebee/shared";
 
 export const TOKEN_KEY = "peebee_learn_token";
 
@@ -26,3 +26,5 @@ export const api = createApiClient({
 });
 
 export const errorMessage = friendlyErrorMessage;
+
+configurePracticeSession({ api, apply: (r) => ({ [TOKEN_KEY]: r.token }) });

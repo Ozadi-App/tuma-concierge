@@ -1,3 +1,4 @@
+import { configurePracticeSession, type PracticeSessionResult, type ServerRole } from "@peebee/shared";
 import type { LearnEnrollment, LearnerCourse, LearnerLessonDetail, QuizAnswer, QuizAttemptStart, QuizResult, ScreenState } from "@peebee/shared";
 
 const BASE = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:10000").replace(/\/$/, "");
@@ -92,3 +93,10 @@ export const tvApi = {
   catalog: (stream?: string) => call<{ ok: true; courses: CatalogCourse[] }>(`/v1/education/catalog/courses?limit=50${stream && stream !== "all" ? `&stream=${encodeURIComponent(stream)}` : ""}`, null),
   catalogCourse: (id: string) => call<{ ok: true; course: CatalogPreview }>(`/v1/education/catalog/courses/${encodeURIComponent(id)}`, null),
 };
+
+/** Practice: a demo living-room screen already paired to the demo learner. Needs no sign-in. */
+export const practiceApi = {
+  getSettings: () => call<{ settings: { practiceModeEnabled: boolean } }>("/v1/settings", null),
+  startPracticeSession: (role: ServerRole) => call<PracticeSessionResult>("/v1/practice/session", null, { method: "POST", body: JSON.stringify({ role }) }),
+};
+configurePracticeSession({ api: practiceApi, apply: (r) => ({ [SECRET_KEY]: r.token }) });

@@ -35,3 +35,14 @@ Admin controls: master switch, pre/mid-roll, minimum video length, mid-roll gap,
 ## Not built yet (planned)
 
 Posts and the Studio UI that call these endpoints; the in-app player UI (beacons and skip button); webhooks from providers (status is checked when the owner opens the video); a self-serve advertiser flow; auction between campaigns; paying creators their ad share.
+
+
+## Where creator video is saved
+
+Admin decides (Video and ads → platform providers, in priority order). The default order is **Cloudinary, then Cloudflare Stream**. A provider with no credentials is skipped, so the first one that is set up does the job.
+
+- **Cloudinary** takes ordinary uploads and plays them back publicly. It cannot lock a video, so members-only and paid posts need a provider that can (Cloudflare Stream).
+- **Cloudflare Stream** handles locked videos and is the only provider that supports going live from a phone.
+- Credentials go in Admin → Video and ads, or in the Worker's environment (`CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`; `CLOUDFLARE_STREAM_ACCOUNT_ID`, `CLOUDFLARE_STREAM_API_TOKEN`).
+- Until a provider is set up, creators see "No video provider is set up yet." instead of a generic error.
+- Pictures and audio are saved in Peebee's own storage; only video is routed through providers.

@@ -9,6 +9,7 @@ import { AuthProvider } from "../lib/auth-context";
 import { CallsProvider } from "../lib/calls-context";
 import "./globals.css";
 import { DataRefresh } from "@peebee/shared/data-refresh";
+import { ServerPracticeFrame } from "@peebee/shared/practice-ui";
 
 const THEME_INIT_SCRIPT = `
 (function () {
@@ -50,6 +51,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           {THEME_INIT_SCRIPT}
         </Script>
         <ServiceWorkerRegister />
+        <ServerPracticeFrame />
         <AuthProvider>
           <CallsProvider>
             <AppShell><DataRefresh>{children}</DataRefresh></AppShell>

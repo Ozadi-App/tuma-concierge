@@ -9,7 +9,7 @@ import { directionLabel } from "../relay/direction.js";
 import { cancelTermsFor, collectedFor } from "./cancel-terms.js";
 import { lineOf, queueReady } from "./queue.js";
 import { decorateLine, loadDetails, luggageCount, priceBooking, saveDetails, type BookingDetails, type BookingDetailsInput } from "./details.js";
-import { getTaxipressSettings } from "./settings.js";
+import { getTaxipressSettings, offeredLanguages, offeredLuggageTypes } from "./settings.js";
 
 type Row = Record<string, unknown>;
 
@@ -236,7 +236,10 @@ export async function bookSeats(c: Context, input: BookInput) {
   const withDetails = input.adults != null;
   const adults = input.adults ?? input.seats ?? 1;
   const children = withDetails ? Math.max(0, input.children ?? 0) : 0;
-  const luggage = withDetails && settings.luggageEnabled ? (input.luggage ?? {}) : {};
+  const offered = offeredLuggageTypes(settings);
+  const luggage = withDetails ? Object.fromEntries(Object.entries(input.luggage ?? {}).filter(([type]) => (offered as string[]).includes(type))) : {};
+  const language = withDetails && input.language && offeredLanguages(settings).some((l) => l.code === input.language) ? input.language : null;
+  if (withDetails && input.language && !language && settings.languageEnabled) return c.json({ error: "language_not_offered", message: "That language isn't offered. Choose one from the list." }, 400);
   const payment = input.payment ?? "app";
   if (withDetails && input.forSomeoneElse && !settings.bookForOthersEnabled) return c.json({ error: "for_others_off", message: "Booking for someone else isn't available right now." }, 409);
   if (withDetails && input.forSomeoneElse && (!input.travellerName || !input.travellerPhone || !input.emergencyPhone)) {
@@ -326,7 +329,7 @@ export async function bookSeats(c: Context, input: BookInput) {
       await saveDetails(bookingId, {
         adults, children, childSeats: priced.childSeats, luggage, luggageAmount: priced.luggageAmount,
         assistance: settings.assistanceEnabled ? (input.assistance ?? null) : null,
-        language: settings.languageEnabled ? (input.language ?? null) : null,
+        language,
         forSomeoneElse: !!input.forSomeoneElse,
         travellerName: input.forSomeoneElse ? (input.travellerName ?? null) : null,
         travellerPhone: input.forSomeoneElse ? (input.travellerPhone ?? null) : null,

@@ -74,6 +74,7 @@ test("promo codes: private stay private, visibility is an admin option, expiry a
   const client = await freshDatabase();
   const admin = await addAdmin(client);
   const seller = await addMerchantStore(client, "u_promo_seller");
+  await client.execute({ sql: "UPDATE stores SET elite_tier = 1, elite_expires_at = NULL WHERE id = ?", args: [seller.storeId] }); // several offers need the Elite plan
   await client.execute({ sql: "INSERT INTO store_products (id, store_id, title, price) VALUES ('p_promo', ?, 'Kettle', 50000)", args: [seller.storeId] });
   const mk = (code: string, extra: object = {}) => seller.call("/merchants/me/discounts", "POST", { code, title: `${code} offer`, kind: "percent", value: 10, min_order_amount: 0, ...extra });
   assert.equal((await mk("SECRET10")).status, 201);

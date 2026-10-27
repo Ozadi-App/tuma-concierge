@@ -8,6 +8,8 @@
  * real wallet or message a real person.
  */
 
+import { practiceModuleOn } from "./modules.js";
+
 type Json = Record<string, any>;
 type Query = URLSearchParams;
 
@@ -350,10 +352,10 @@ export function practiceTalentRequest(path: string, method: string, body: Json, 
 
   if (method === "GET" && p === "/config") {
     return ok({
-      enabled: true, jobTypes: ["gig", "project", "hiring"], workerSearchEnabled: true, paymentModes: ["escrow", "direct"], defaultPaymentMode: "escrow", ridersCanWork: true, freeAccess: false, freeOnboarding: true, trialDays: 14,
-      reviewsEnabled: true, chatEnabled: true,
+      enabled: true, jobTypes: (["gig", "project", "hiring"] as const).filter((t) => practiceModuleOn(t === "gig" ? "hive.hire.gigs" : t === "project" ? "hive.hire.projects" : "hive.hire.hiring")), workerSearchEnabled: practiceModuleOn("hive.hire.search"), paymentModes: ["escrow", "direct"], defaultPaymentMode: "escrow", ridersCanWork: true, freeAccess: false, freeOnboarding: true, trialDays: 14,
+      reviewsEnabled: practiceModuleOn("hive.hire.reviews"), chatEnabled: practiceModuleOn("hive.hire.chat"),
       limits: { minJobUgx: 5000, maxJobUgx: 50_000_000, maxMilestones: 10, maxWorkersPerJob: 20, maxSkills: 15, searchRadiusKm: 25, boostDays: 7, autoConfirmHours: 72, jobExpiryDays: 30 },
-      recurring: { enabled: true, frequencies: ["weekly", "biweekly", "monthly"], maxRuns: 52, maxActive: 5 }, cancellation: { freeMinutes: 30, mode: "flat", feeUgx: LATE_FEE, feePercent: 10, partySharePercent: 70 },
+      recurring: { enabled: practiceModuleOn("hive.hire.recurring"), frequencies: ["weekly", "biweekly", "monthly"], maxRuns: 52, maxActive: 5 }, cancellation: { freeMinutes: 30, mode: "flat", feeUgx: LATE_FEE, feePercent: 10, partySharePercent: 70 },
       categories: CATEGORIES.map(([id, name, segment]) => ({ id, parentId: null, name, segment, icon: null })),
       fees: [
         { kind: "listing", jobType: "gig", model: "flat", flatUgx: 2000, percent: 0, minUgx: 0, maxUgx: 0, freeFirstN: 3, note: "" },

@@ -1,6 +1,6 @@
 "use client";
 
-import type { TaxipressConfig } from "@peebee/shared";
+import { taxipressTown, type TaxipressConfig } from "@peebee/shared";
 import { ArrowRight, ArrowUpDown, ChevronDown, ChevronLeft, ChevronUp, Ticket } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -63,7 +63,7 @@ export default function TaxipressPage() {
       <header>
         <p className="text-xs font-bold uppercase tracking-[0.14em] text-gold">TaxiPress · Step 1 of 3</p>
         <h1 className="mt-1 text-3xl font-black tracking-tight text-ink">Select a route</h1>
-        <p className="mt-1 text-sm text-ink-500">Swap to travel the other way. Open a route to see its stops.</p>
+        <p className="mt-1 text-sm text-ink-500">Swap to travel the other way. Tap a route to see its stops.</p>
       </header>
 
       {!taxipress.enabled ? (
@@ -77,26 +77,27 @@ export default function TaxipressPage() {
             const n = counts[r.id];
             return (
               <li key={card.id} className="overflow-hidden rounded-[28px] bg-[rgb(var(--color-black-700))] text-white shadow-sm">
-                <div className="relative p-4">
+                {/* Tapping anywhere on the card opens (or closes) its stops; the buttons inside do their own thing. */}
+                <div className="relative cursor-pointer p-4" onClick={() => setOpen(isOpen ? null : card.id)}>
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <h2 className="text-2xl font-black leading-tight">{r.fromName} → {r.toName}</h2>
+                      <h2 className="text-2xl font-black leading-tight">{taxipressTown(r.fromName)} → {taxipressTown(r.toName)}</h2>
                       {n != null && <p className="mt-1 text-sm text-white/70">{n === 0 ? "No taxi in the line yet" : `${n} taxi${n === 1 ? "" : "s"} in the line`}</p>}
                     </div>
                     {reverseOf(card) && (
-                      <button type="button" aria-label={`Swap to ${r.toName} → ${r.fromName}`} onClick={() => setSwapped((s) => ({ ...s, [card.id]: !s[card.id] }))} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/15">
+                      <button type="button" aria-label={`Swap to ${taxipressTown(r.toName)} → ${taxipressTown(r.fromName)}`} onClick={(e) => { e.stopPropagation(); setSwapped((s) => ({ ...s, [card.id]: !s[card.id] })); }} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/15">
                         <ArrowUpDown className="h-5 w-5" aria-hidden />
                       </button>
                     )}
                   </div>
                   <div className="mt-3 flex items-center justify-between gap-3">
                     <span className="rounded-full bg-white px-3 py-1.5 text-sm font-bold text-[rgb(10_10_10)]">{ugx(r.farePerSeat)} / seat</span>
-                    <button type="button" onClick={() => router.push(`/ride/taxipress/book/${r.id}`)} className="inline-flex min-h-11 items-center gap-1 text-sm font-bold text-gold">
+                    <button type="button" onClick={(e) => { e.stopPropagation(); router.push(`/ride/taxipress/book/${r.id}`); }} className="inline-flex min-h-11 items-center gap-1 text-sm font-bold text-gold">
                       Select <ArrowRight className="h-4 w-4" aria-hidden />
                     </button>
                   </div>
                   {/* Every route opens to its stops, start to end (just the two stages when none are set). */}
-                  <button type="button" aria-expanded={isOpen} onClick={() => setOpen(isOpen ? null : card.id)} className="mt-2 inline-flex min-h-11 items-center gap-1 text-sm font-semibold text-white/80">
+                  <button type="button" aria-expanded={isOpen} onClick={(e) => { e.stopPropagation(); setOpen(isOpen ? null : card.id); }} className="mt-2 inline-flex min-h-11 items-center gap-1 text-sm font-semibold text-white/80">
                     {isOpen ? "Hide stops" : stops.length > 0 ? `Show ${stops.length + 2} stops` : "Show stops"} {isOpen ? <ChevronUp className="h-4 w-4" aria-hidden /> : <ChevronDown className="h-4 w-4" aria-hidden />}
                   </button>
                 </div>

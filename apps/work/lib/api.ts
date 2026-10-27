@@ -1,4 +1,4 @@
-import { createApiClient, friendlyErrorMessage } from "@peebee/shared";
+import { configurePracticeSession, createApiClient, friendlyErrorMessage } from "@peebee/shared";
 
 export const TOKEN_KEY = "peebee_work_token";
 
@@ -25,3 +25,6 @@ export const api = createApiClient({
 });
 
 export const errorMessage = friendlyErrorMessage;
+
+/** Practice signs in as a demo service provider on the shared practice world; the real session is put back on exit. */
+configurePracticeSession({ api, apply: (r) => ({ [TOKEN_KEY]: r.token }) });

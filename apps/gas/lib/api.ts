@@ -1,4 +1,4 @@
-import { createApiClient, createPracticeFetch, friendlyErrorMessage } from "@peebee/shared";
+import { configurePracticeSession, createApiClient, createPracticeFetch, friendlyErrorMessage } from "@peebee/shared";
 
 export const TOKEN_KEY = "peebee_gas_token";
 export const ATTENDANT_KEY = "peebee_gas_attendant";
@@ -31,3 +31,16 @@ export const api = createApiClient({
 });
 
 export const errorMessage = friendlyErrorMessage;
+
+/** Practice signs in as a pump attendant at a practice station, with a shift already open. */
+configurePracticeSession({
+  api,
+  apply: (r) => ({
+    [TOKEN_KEY]: r.token,
+    [ROLE_KEY]: "attendant",
+    [MODE_KEY]: "attendant",
+    [MANAGER_KEY]: null,
+    [OUTLET_KEY]: r.attendant?.outletId ?? null,
+    [ATTENDANT_KEY]: JSON.stringify({ id: r.attendant?.id, code: r.attendant?.code ?? "", name: r.attendant?.name ?? "", phone: r.attendant?.phone ?? "", pump_lane: r.attendant?.pump_lane ?? "", on_duty: r.attendant?.on_duty ?? true }),
+  }),
+});

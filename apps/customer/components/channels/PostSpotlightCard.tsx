@@ -9,6 +9,8 @@ import { useAuth } from "../../lib/auth-context";
 import { useChannelsConfig } from "../../lib/channels";
 import { Avatar, CommentsSheet, PostActions, PublisherLine, ReportSheet, TipSheet } from "./PostParts";
 import { PostMedia } from "./PostMedia";
+import { LiveViewerBadge, LiveViewerChat } from "../live/ViewerLive";
+import { useLiveFeed } from "../live/useLiveFeed";
 import { usePost } from "./usePost";
 
 /** True while the card is the one on screen, so only that video plays (and its ads run). */
@@ -35,6 +37,9 @@ export function PostSpotlightCard({ post: initial, muted, topInset, bottomPad = 
   const { ref, inView } = useInView();
   const [open, setOpen] = useState(false);
   const p = s.post;
+  // A stream that is on right now: watch its viewer count and comments while this card is the one on screen.
+  const isLive = p.liveStatus === "live";
+  const liveFeed = useLiveFeed(isLive && inView ? p.id : null);
   const channelId = p.publisher?.type === "channel" ? p.publisher.id : null;
 
   async function toggleFollow() {
@@ -58,6 +63,7 @@ export function PostSpotlightCard({ post: initial, muted, topInset, bottomPad = 
           {p.media.images[0] && p.type !== "video" && <div className="absolute inset-0 bg-cover bg-center opacity-60" style={{ backgroundImage: `url(${p.media.images[0]})` }} aria-hidden />}
         </div>
       )}
+      {isLive && <LiveViewerBadge feed={liveFeed} />}
       <div className="pointer-events-none absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-black/45 to-transparent" />
       <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[50%] bg-gradient-to-t from-black/75 via-black/25 to-transparent" />
 
@@ -79,6 +85,7 @@ export function PostSpotlightCard({ post: initial, muted, topInset, bottomPad = 
       </aside>
 
       <div className="absolute inset-x-0 bottom-0 z-20 space-y-2 px-4 pr-20" style={{ paddingBottom: `calc(max(1rem, env(safe-area-inset-bottom)) + ${bottomPad}px)` }}>
+        {isLive && <LiveViewerChat post={p} feed={liveFeed} />}
         <PublisherLine post={p} dark />
         {p.type !== "text" && p.caption && (
           <button type="button" onClick={() => setOpen((o) => !o)} className="block w-full text-left" aria-expanded={open}>

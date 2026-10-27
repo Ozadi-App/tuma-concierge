@@ -112,11 +112,11 @@ export function buildSecurityHeaders({ apiUrl = "", dev = false, adPixels = fals
     // Don't leak the path someone was on (which can name an order or a
     // rider) to third-party sites they click through to.
     { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-    // Geolocation and microphone are used by the apps themselves — the rest
+    // Geolocation, microphone and camera (going live) are used by the apps themselves — the rest
     // is switched off so an injected frame can't reach for them.
     {
       key: "Permissions-Policy",
-      value: "geolocation=(self), microphone=(self), camera=(), payment=(), usb=(), interest-cohort=()",
+      value: "geolocation=(self), microphone=(self), camera=(self), payment=(), usb=(), interest-cohort=()",
     },
     // Two years, subdomains included: after the first visit the browser
     // refuses to speak plain HTTP to this host at all.

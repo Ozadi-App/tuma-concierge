@@ -7,7 +7,7 @@ export { DEFAULT_TIME_FEES, timeFeePolicy, timeFeeNotice } from "./time-fees.js"
 export type { TimeFeeSettings, TimeFeePolicy, OrderTimeFees } from "./time-fees.js";
 export type { PaymentRail as PaymentRailValue } from "./payment-rail.js";
 export { createApiClient, ApiError, friendlyErrorMessage } from "./api-client.js";
-export type { ApiValidationIssue, PharmacyPrescription, PharmacyQuoteItem, FoodNearbyItem } from "./api-client.js";
+export type { ApiValidationIssue, PharmacyPrescription, PharmacyQuoteItem, FoodNearbyItem, PracticeWorldStatus, PracticeWorldCounts } from "./api-client.js";
 export type { CreateApiClientOptions, ApiClient } from "./api-client.js";
 export { CallEngine } from "./call-engine.js";
 export type { CallEngineState, CallEnginePhase, CallEngineOptions } from "./call-engine.js";
@@ -17,6 +17,7 @@ export { CAR_MODEL_CATALOG, isVipRate, getCarBodyType, getCarDefaults } from "./
 export type { CarModel, CarBodyType } from "./car-model-catalog.js";
 export * from "./shopping-units.js";
 export * from "./home-menu.js";
+export * from "./modules.js";
 export * from "./ride-tracking.js";
 export * from "./relay.js";
 export * from "./receipt.js";
@@ -40,6 +41,8 @@ export {
 } from "./permissions.js";
 export type { AdminRole, Permission } from "./permissions.js";
 export { PRACTICE_JOURNEYS, PRACTICE_MODE_STORAGE_KEY } from "./practice.js";
+export { configurePracticeSession, endServerPractice, isServerPractice, launchPractice, launchServerPractice } from "./practice-server.js";
+export type { PracticeSessionApplier, PracticeSessionResult, ServerRole } from "./practice-server.js";
 export type { PracticeJourney, PracticeRole, PracticeStep } from "./practice.js";
 export {
   createPracticeFetch,

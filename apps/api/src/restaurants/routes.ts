@@ -10,6 +10,7 @@
  * than a role claim.
  */
 
+import { demoPeopleFilter } from "../practice/people.js";
 import { Hono } from "hono";
 import { z } from "zod";
 import { logActivity } from "../admin/activity.js";
@@ -206,7 +207,9 @@ restaurantRoutes.patch("/restaurants/me", requireAuth, requireRole("customer"), 
 
 restaurantRoutes.get("/admin/restaurants", requireAuth, requireRole("admin"), requirePermission("restaurants.view"), async (c) => {
   const status = c.req.query("status")?.trim();
-  const conditions: string[] = [];
+  const requested = c.req.query("environment");
+  const viewing = requested === "live" || requested === "sandbox" ? requested : await getPlatformEnvironment();
+  const conditions: string[] = [demoPeopleFilter(viewing, "r.id")];
   const args: string[] = [];
   if (status) {
     conditions.push("r.status = ?");

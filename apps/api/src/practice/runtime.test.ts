@@ -447,6 +447,29 @@ test("Taxipress practice: a boarded seat has a receipt that verifies, and a canc
   t.mock.restoreAll();
 });
 
+test("practice: guest checkout places an order, tracks it by code, and obeys the Practice switch", async () => {
+  installStorage();
+  const { rememberModuleAvailability } = await import("@peebee/shared");
+  const fetcher = createPracticeFetch("customer", (async () => { throw new Error("Must not reach the live API"); }) as typeof fetch);
+  startPracticeMode("customer");
+  const stores = await (await fetcher("https://api.test/v1/marketplace/stores")).json() as { stores: { id: string }[] };
+  const products = await (await fetcher(`https://api.test/v1/marketplace/stores/${stores.stores[0]!.id}/products`)).json() as { products: { id: string }[] };
+  const body = { productId: products.products[0]!.id, quantity: 2, name: "Amina", phone: "0700000000", address: "Entebbe Road", lat: 0.05, lng: 32.46, createAccount: false };
+  const placed = await fetcher("https://api.test/v1/guest/checkout", { method: "POST", body: JSON.stringify(body) });
+  assert.equal(placed.status, 201);
+  const { trackingCode } = await placed.json() as { trackingCode: string };
+  const tracked = await (await fetcher(`https://api.test/v1/guest/track/${trackingCode}`)).json() as { status: string; item: string };
+  assert.equal(tracked.status, "received");
+  assert.ok(tracked.item);
+  assert.equal((await fetcher("https://api.test/v1/guest/track/NOPE")).status, 404);
+
+  rememberModuleAvailability({ "buy.guest": { live: true, practice: false } });
+  assert.equal(((await (await fetcher("https://api.test/v1/guest/config")).json()) as { enabled: boolean }).enabled, false);
+  assert.equal((await fetcher("https://api.test/v1/guest/checkout", { method: "POST", body: JSON.stringify(body) })).status, 403);
+  rememberModuleAvailability({});
+  assert.equal(((await (await fetcher("https://api.test/v1/guest/config")).json()) as { enabled: boolean }).enabled, true);
+});
+
 test("sandbox and practice are two switches over the same demo data: sandbox has no practice bar, practice does", async () => {
   installStorage();
   const win = (globalThis as unknown as { window: { localStorage: Storage; location: { origin: string; reload: () => void } } }).window;
@@ -458,6 +481,7 @@ test("sandbox and practice are two switches over the same demo data: sandbox has
     const path = new URL(String(input), "https://customer.test").pathname;
     realCalls.push(path);
     if (path === "/v1/settings") return new Response(JSON.stringify({ settings: { platformEnvironment } }), { headers: { "Content-Type": "application/json" } });
+    if (path === "/v1/taxipress/config") return new Response(JSON.stringify({ real: true, path, luggageEnabled: false, languages: [{ code: "rw", name: "Kinyarwanda" }] }), { headers: { "Content-Type": "application/json" } });
     return new Response(JSON.stringify({ real: true, path }), { headers: { "Content-Type": "application/json" } });
   }) as typeof fetch;
   const fetcher = createPracticeFetch("customer", real);
@@ -480,9 +504,12 @@ test("sandbox and practice are two switches over the same demo data: sandbox has
   const config = await get("/v1/taxipress/config");
   assert.equal(config.enabled, true);
   assert.equal(config.routes[0].fromName, "Entebbe Stage");
+  assert.equal(config.luggageEnabled, false, "what staff switch off in admin is off in the demo too");
+  assert.deepEqual(config.languages, [{ code: "rw", name: "Kinyarwanda" }], "and so are the languages they chose");
   assert.equal((await get("/v1/wallet")).balance, 2_000_000, "the practice wallet is there");
   assert.ok((await get("/v1/marketplace/stores?lat=0.0612&lng=32.4637")).stores.some((s: { id: string }) => s.id.startsWith("pe_")), "the Entebbe shops");
-  assert.deepEqual(realCalls, [], "none of that touched the server");
+  // The only thing read from the server is the options staff control for Taxipress (luggage, languages, cash and limits).
+  assert.deepEqual(realCalls, ["/v1/taxipress/config"], "nothing else touched the server");
   assert.equal(isPracticeMode(), false, "this is sandbox, so no practice bar: the bar follows isPracticeMode only");
 
   // Signing in, the settings and the practice status stay real, so a developer still uses their own account.
@@ -506,4 +533,35 @@ test("sandbox and practice are two switches over the same demo data: sandbox has
   assert.equal((await get("/v1/taxipress/config")).enabled, true, "still practising: their own switch");
   win.localStorage.removeItem("peebee_practice_mode");
   assert.equal((await get("/v1/taxipress/config")).real, true, "no sandbox, no practice: the server");
+});
+
+
+test("Taxipress demo books the way the app does: who travels and what they bring, not a seat count", async (t) => {
+  installStorage();
+  const fetcher = createPracticeFetch("customer", (async () => { throw new Error("Must not access live Taxipress"); }) as typeof fetch);
+  startPracticeMode("customer");
+  const get = async (path: string) => (await fetcher(`https://api.test${path}`)).json() as Promise<any>;
+  const post = (path: string, body: object = {}) => fetcher(`https://api.test${path}`, { method: "POST", body: JSON.stringify(body) });
+  const config = await get("/v1/taxipress/config");
+  const route = config.routes.find((r: { toName: string }) => r.toName === "Ntinda Stage");
+  const line = await get(`/v1/taxipress/routes/${route.id}/queue`);
+
+  const one = await post("/v1/taxipress/bookings", { queueId: line.line[0].id, adults: 1, children: 0, luggage: { fragile: 1 }, assistance: "none", language: "lg", payment: "cash" });
+  assert.equal(one.status, 201, "one adult is never refused as too many seats");
+  const { booking } = (await one.json()) as { booking: any };
+  assert.equal(booking.seats, 1);
+  assert.equal(booking.amount, route.farePerSeat + 7_000, "the fare plus the fragile bag");
+  assert.equal(booking.details.language, "lg");
+  assert.deepEqual(booking.details.luggage, { fragile: 1 });
+
+  const crowd = await post("/v1/taxipress/bookings", { queueId: line.line[1].id, adults: 5, children: 0 });
+  assert.equal(crowd.status, 400, "five adults are over the limit");
+  assert.match(((await crowd.json()) as { message: string }).message, /up to 4 seats/);
+
+  const family = await post("/v1/taxipress/bookings", { queueId: line.line[1].id, adults: 2, children: 3, payment: "cash" });
+  assert.equal(family.status, 201);
+  const fam = ((await family.json()) as { booking: any }).booking;
+  assert.equal(fam.seats, 3, "two children ride on laps, the third needs a seat");
+  assert.equal(fam.amount, route.farePerSeat * 3);
+  t.mock.restoreAll();
 });

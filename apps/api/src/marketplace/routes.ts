@@ -1,7 +1,10 @@
+import { ridersForThisWorld } from "../practice/people.js";
 import { Hono } from "hono";
 import { z } from "zod";
 import { requireAuth, requireRole } from "../auth/middleware.js";
-import { db, executeBatch } from "../db/client.js";
+import { db, executeBatch, type DbStatement } from "../db/client.js";
+import { postLedgerTransaction } from "../ledger/service.js";
+import { creditWallet, debitWallet } from "../wallet/service.js";
 import { newId } from "../lib/ids.js";
 import { getDeliverySettings, getMarketplaceSettings, getMatchingSettings, getPlatformEnvironment } from "../lib/settings.js";
 import { hasColumn, hasTable } from "../lib/schema.js";
@@ -22,6 +25,8 @@ import { merchantRoleGuard, publicRateLimit } from "../lib/guards.js";
 import { getOptions } from "../lib/option-settings.js";
 import { recordLoyaltyForOrder, settleLoyalty } from "./loyalty.js";
 import { sendStoreSms } from "./sms.js";
+import { createStoreForMerchant } from "./store-create.js";
+import { eliteOnly, planLimits, storePlan } from "./plans.js";
 import { cleanSections, parseSections } from "./sections.js";
 import { soldOutLicenseProducts } from "./digital-sales.js";
 import { proofIsValid } from "../lib/phone-proof.js";
@@ -973,6 +978,15 @@ async function getMerchantStore(merchantId: string): Promise<Row | null> {
   return row;
 }
 
+// The Elite operating-system endpoints need an active Elite plan, checked here and not just hidden in the app.
+for (const path of [
+  "/merchants/me/outlet-inventory", "/merchants/me/draft-orders", "/merchants/me/elite-analytics", "/merchants/me/pos-sales",
+  "/merchants/me/stock-transfers", "/merchants/me/crm-customers", "/merchants/me/suppliers", "/merchants/me/purchase-orders",
+  "/merchants/me/purchase-orders/*", "/merchants/me/bundles", "/merchants/me/bundles/*", "/merchants/me/winback-campaigns",
+]) {
+  marketplaceRoutes.use(path, requireAuth, eliteOnly);
+}
+
 // 1. Get Merchant's Store Profile & Status
 marketplaceRoutes.get("/merchants/me/store", requireAuth, async (c) => {
   const user = c.get("user");
@@ -1013,17 +1027,17 @@ marketplaceRoutes.get("/merchants/me/store", requireAuth, async (c) => {
   const productCount = Number((countRes.rows[0] as Row)?.count || 0);
 
   const isProFree = settings.proPricingMode === "free";
-  const hasEliteCol = await hasColumn("stores", "elite_tier");
-  const isEliteActive = isProFree ? Boolean(settings.eliteEnabled) : hasEliteCol ? Number(store.elite_tier || 0) === 1 : false;
-  const effectiveProTier = isEliteActive ? "elite" : isProFree ? "pro_live" : (store.pro_tier as string || "free");
+  const planInfo = await storePlan(store, settings);
+  const warnDays = Number((await getOptions(["merchant_plan_warn_days"])).merchant_plan_warn_days);
 
   return c.json({
     store: {
       ...store,
-      pro_tier: effectiveProTier,
-      elite_tier: isEliteActive ? 1 : 0,
+      pro_tier: planInfo.isElite ? "elite" : planInfo.plan === "merchant" ? "free" : planInfo.plan,
+      elite_tier: planInfo.isElite ? 1 : 0,
       is_pro_free: isProFree,
       productCount,
+      plan: { ...planInfo, warn: planInfo.daysLeft !== null && planInfo.daysLeft <= warnDays },
     },
     settings,
   });
@@ -1059,44 +1073,8 @@ marketplaceRoutes.post("/merchants/me/store", requireAuth, async (c) => {
   const parsed = createStoreSchema.safeParse(body);
   if (!parsed.success) return c.json({ error: "invalid_body", issues: parsed.error.issues }, 400);
 
-  const storeId = newId("store");
-  const baseSlug = slugify(parsed.data.name);
-  const reservedNames = await getOption<string[]>("storefront_reserved_subdomains");
-  const compactSlug = baseSlug.replace(/-/g, "");
-  if (reservedNames.some((r) => r === baseSlug || r.replace(/-/g, "") === compactSlug)) {
-    return c.json({ error: "reserved_name", message: "That store name can't be used because it could be mistaken for a Peebee page. Please choose another name." }, 400);
-  }
-  const slug = `${baseSlug}-${storeId.slice(-4)}`;
-  const environment = await getPlatformEnvironment();
-  const settings = await getMarketplaceSettings();
-
-  // Automatic 14-day Pro Live trial so sellers experience live selling immediately!
-  const trialExpiresAt = new Date(Date.now() + settings.proTrialDays * 86400000).toISOString();
-
-  await db.execute({
-    sql: `INSERT INTO stores (
-      id, merchant_id, name, slug, category, sub_category, description,
-      announcement, phone, whatsapp_number, address, min_order_amount,
-      pro_tier, pro_expires_at, status, environment
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)`,
-    args: [
-      storeId,
-      merchantId,
-      parsed.data.name,
-      slug,
-      parsed.data.category,
-      parsed.data.sub_category || "general",
-      parsed.data.description || "",
-      parsed.data.announcement || "Welcome to our store! Shop online for fast delivery.",
-      parsed.data.phone || "",
-      parsed.data.whatsapp_number || "",
-      parsed.data.address || "",
-      parsed.data.min_order_amount || settings.minOrderAmountUgx,
-      "pro_live",
-      trialExpiresAt,
-      environment,
-    ],
-  });
+  const made = await createStoreForMerchant(merchantId, parsed.data);
+  if (!made.ok) return c.json({ error: made.error, message: made.message }, 400);
 
   const created = await getMerchantStore(merchantId);
   return c.json({ store: created, trialActive: true });
@@ -1254,88 +1232,106 @@ marketplaceRoutes.post("/merchants/me/store/domain/verify", requireAuth, async (
   });
 });
 
-// 3b. Upgrade Store Tier (Pro Store / Pro Live / Elite Shopify Plus)
+// 3b. Buy or renew a plan (Pro Store / Pro Live / Elite)
 const upgradeTierSchema = z.object({
   tier: z.enum(["pro_store", "pro_live", "elite"]),
   billingCycle: z.enum(["monthly", "yearly"]).default("monthly"),
 });
 
+const PLAN_RANK: Record<string, number> = { merchant: 0, pro_store: 1, pro_live: 2, elite: 3 };
+const PLAN_LABEL: Record<string, string> = { pro_store: "Merchant Pro (Store)", pro_live: "Merchant Pro (Live)", elite: "Merchant Elite" };
+
 marketplaceRoutes.post("/merchants/me/store/tier", requireAuth, async (c) => {
   const user = c.get("user");
   const memberRes = await db.execute({
-    sql: "SELECT merchant_id FROM merchant_members WHERE user_id = ? AND status = 'active' ORDER BY CASE role WHEN 'owner' THEN 0 WHEN 'manager' THEN 1 WHEN 'finance' THEN 2 ELSE 3 END LIMIT 1",
+    sql: "SELECT merchant_id, role FROM merchant_members WHERE user_id = ? AND status = 'active' ORDER BY CASE role WHEN 'owner' THEN 0 WHEN 'manager' THEN 1 WHEN 'finance' THEN 2 ELSE 3 END LIMIT 1",
     args: [user.sub],
   });
-  const merchantId = (memberRes.rows[0] as Row | undefined)?.merchant_id as string | undefined;
-  if (!merchantId) return c.json({ error: "no_merchant_membership" }, 403);
+  const member = memberRes.rows[0] as Row | undefined;
+  if (!member) return c.json({ error: "no_merchant_membership" }, 403);
+  // The owner's wallet pays, so only the owner decides.
+  if (String(member.role) !== "owner") return c.json({ error: "insufficient_role", message: "Only the business owner can change the plan." }, 403);
+  const merchantId = String(member.merchant_id);
 
   const store = await getMerchantStore(merchantId);
-  if (!store) return c.json({ error: "no_store" }, 404);
+  if (!store) return c.json({ error: "no_store", message: "Open your store first, then choose a plan." }, 404);
 
   const parsed = upgradeTierSchema.safeParse(await c.req.json().catch(() => ({})));
   if (!parsed.success) return c.json({ error: "invalid_body", issues: parsed.error.issues }, 400);
+  const { tier, billingCycle } = parsed.data;
 
   const settings = await getMarketplaceSettings();
-  if (parsed.data.tier === "elite" && !settings.eliteEnabled) {
+  if (tier === "elite" && !settings.eliteEnabled) {
     return c.json({ error: "elite_tier_disabled", message: "Merchant Elite tier is currently paused by platform admin." }, 403);
   }
 
-  const days = parsed.data.billingCycle === "yearly" ? 365 : 30;
-  const expiresAt = new Date(Date.now() + days * 86400000).toISOString();
-  const basePrice =
-    parsed.data.tier === "elite"
-      ? settings.elitePriceUgx
-      : parsed.data.tier === "pro_live"
-        ? settings.proLivePriceUgx
-        : settings.proStorePriceUgx;
-  const amountPaid = settings.proPricingMode === "free" ? 0 : parsed.data.billingCycle === "yearly" ? basePrice * 10 : basePrice;
+  const current = await storePlan(store, settings);
+  if (!current.legacy && PLAN_RANK[tier] < PLAN_RANK[current.plan]) {
+    return c.json({ error: "already_on_higher_plan", message: `You're on ${PLAN_LABEL[current.plan] ?? "a higher plan"}. It stays until it ends; you can switch after that.` }, 409);
+  }
 
+  const days = billingCycle === "yearly" ? 365 : 30;
+  const basePrice = tier === "elite" ? settings.elitePriceUgx : tier === "pro_live" ? settings.proLivePriceUgx : settings.proStorePriceUgx;
+  const amount = settings.proPricingMode === "free" ? 0 : billingCycle === "yearly" ? basePrice * 10 : basePrice;
+
+  // Renewing the plan you have adds to its end; anything else starts today.
+  const startFrom = current.plan === tier && current.expiresAt && Date.parse(current.expiresAt) > Date.now() ? Date.parse(current.expiresAt) : Date.now();
+  const expiresAt = new Date(startFrom + days * 86400000).toISOString();
+
+  const environment = await getPlatformEnvironment();
   const hasEliteCol = await hasColumn("stores", "elite_tier");
-  if (parsed.data.tier === "elite") {
-    if (hasEliteCol) {
-      await db.execute({
-        sql: "UPDATE stores SET pro_tier = 'pro_live', elite_tier = 1, elite_expires_at = ?, updated_at = datetime('now') WHERE id = ?",
-        args: [expiresAt, String(store.id)],
-      });
-    } else {
-      await db.execute({
-        sql: "UPDATE stores SET pro_tier = 'pro_live', pro_expires_at = ?, updated_at = datetime('now') WHERE id = ?",
-        args: [expiresAt, String(store.id)],
-      });
-    }
-  } else {
-    if (hasEliteCol) {
-      await db.execute({
-        sql: "UPDATE stores SET pro_tier = ?, elite_tier = 0, pro_expires_at = ?, updated_at = datetime('now') WHERE id = ?",
-        args: [parsed.data.tier, expiresAt, String(store.id)],
-      });
-    } else {
-      await db.execute({
-        sql: "UPDATE stores SET pro_tier = ?, pro_expires_at = ?, updated_at = datetime('now') WHERE id = ?",
-        args: [parsed.data.tier, expiresAt, String(store.id)],
-      });
+  const subId = newId("sub");
+  const label = PLAN_LABEL[tier];
+
+  if (amount > 0) {
+    const balance = await debitWallet(user.sub, amount, { type: "order_payment", environment, note: `Peebee plan: ${label} (${billingCycle})` });
+    if (balance === null) {
+      return c.json({ error: "insufficient_wallet", neededUgx: amount, message: `Add UGX ${amount.toLocaleString("en-UG")} to your Peebee wallet to switch to ${label}.` }, 402);
     }
   }
 
-  // Record in store_subscriptions (uses pro_live for elite if DB check constraint hasn't been relaxed)
-  const subTier = parsed.data.tier === "elite" ? "pro_live" : parsed.data.tier;
-  await db.execute({
-    sql: `INSERT INTO store_subscriptions (id, store_id, merchant_id, tier, amount_paid, billing_cycle, status, expires_at)
-          VALUES (?, ?, ?, ?, ?, ?, 'active', ?)`,
-    args: [newId("sub"), String(store.id), merchantId, subTier, amountPaid, parsed.data.billingCycle, expiresAt],
-  }).catch(() => {});
+  const statements: DbStatement[] = [];
+  if (tier === "elite") {
+    statements.push(hasEliteCol
+      ? { sql: "UPDATE stores SET pro_tier = 'pro_live', pro_expires_at = ?, elite_tier = 1, elite_expires_at = ?, updated_at = datetime('now') WHERE id = ?", args: [expiresAt, expiresAt, String(store.id)] }
+      : { sql: "UPDATE stores SET pro_tier = 'pro_live', pro_expires_at = ?, updated_at = datetime('now') WHERE id = ?", args: [expiresAt, String(store.id)] });
+  } else {
+    statements.push(hasEliteCol
+      ? { sql: "UPDATE stores SET pro_tier = ?, pro_expires_at = ?, elite_tier = 0, updated_at = datetime('now') WHERE id = ?", args: [tier, expiresAt, String(store.id)] }
+      : { sql: "UPDATE stores SET pro_tier = ?, pro_expires_at = ?, updated_at = datetime('now') WHERE id = ?", args: [tier, expiresAt, String(store.id)] });
+  }
+  // store_subscriptions.tier can only hold the two Pro tiers, so Elite is filed under pro_live and named in `plan`.
+  const subTier = tier === "elite" ? "pro_live" : tier;
+  statements.push((await hasColumn("store_subscriptions", "plan"))
+    ? { sql: `INSERT INTO store_subscriptions (id, store_id, merchant_id, tier, plan, amount_paid, billing_cycle, status, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?)`, args: [subId, String(store.id), merchantId, subTier, tier, amount, billingCycle, expiresAt] }
+    : { sql: `INSERT INTO store_subscriptions (id, store_id, merchant_id, tier, amount_paid, billing_cycle, status, expires_at) VALUES (?, ?, ?, ?, ?, ?, 'active', ?)`, args: [subId, String(store.id), merchantId, subTier, amount, billingCycle, expiresAt] });
 
-  const updated = await getMerchantStore(merchantId);
+  try {
+    if (amount > 0) {
+      // The money, the ledger entry, the new plan and the receipt are written together or not at all.
+      await postLedgerTransaction({
+        kind: "merchant_plan", idempotencyKey: `merchant-plan:${subId}`, environment,
+        referenceType: "store_subscription", referenceId: subId, description: `Peebee plan: ${label}`, actorId: user.sub,
+        postings: [
+          { ownerType: "customer", ownerId: user.sub, purpose: "wallet_payable", environment, amount: -amount },
+          { ownerType: "platform", ownerId: "peebee", purpose: "merchant_plan_revenue", environment, amount },
+        ],
+        additionalStatements: statements,
+      });
+    } else {
+      await executeBatch(statements);
+    }
+  } catch (err) {
+    if (amount > 0) await creditWallet(user.sub, amount, { type: "refund", environment, note: `Refund: ${label}` }).catch(() => undefined);
+    console.error("plan purchase failed", err);
+    return c.json({ error: "plan_change_failed", message: "We couldn't switch your plan, and you were not charged. Please try again." }, 503);
+  }
+
+  const updated = (await getMerchantStore(merchantId))!;
+  const planInfo = await storePlan(updated, settings);
   return c.json({
-    ok: true,
-    tier: parsed.data.tier,
-    expiresAt,
-    amountPaid,
-    store: {
-      ...updated,
-      pro_tier: parsed.data.tier,
-      elite_tier: parsed.data.tier === "elite" ? 1 : 0,
-    },
+    ok: true, tier, expiresAt, amountPaid: amount,
+    store: { ...updated, pro_tier: planInfo.isElite ? "elite" : planInfo.plan === "merchant" ? "free" : planInfo.plan, elite_tier: planInfo.isElite ? 1 : 0, plan: planInfo },
   });
 });
 
@@ -1425,9 +1421,7 @@ marketplaceRoutes.post("/merchants/me/products", requireAuth, async (c) => {
 
   // Enforce admin-configured product limit per tier
   const settings = await getMarketplaceSettings();
-  const hasEliteCol = await hasColumn("stores", "elite_tier");
-  const isElite = settings.proPricingMode === "free" || (hasEliteCol && Number(store.elite_tier || 0) === 1);
-  const maxProducts = isElite ? settings.eliteMaxProducts : settings.proMaxProducts;
+  const maxProducts = (await planLimits(await storePlan(store, settings), settings)).products;
   const countRes = await db.execute({
     sql: "SELECT COUNT(*) AS n FROM store_products WHERE store_id = ? AND status != 'archived'",
     args: [String(store.id)],
@@ -1776,9 +1770,7 @@ marketplaceRoutes.post("/merchants/me/collections", requireAuth, async (c) => {
   if (!parsed.success) return c.json({ error: "invalid_body", issues: parsed.error.issues }, 400);
 
   const settings = await getMarketplaceSettings();
-  const hasEliteCol = await hasColumn("stores", "elite_tier");
-  const isElite = settings.proPricingMode === "free" || (hasEliteCol && Number(store.elite_tier || 0) === 1);
-  const maxCols = isElite ? settings.eliteMaxCollections : settings.proMaxCollections;
+  const maxCols = (await planLimits(await storePlan(store, settings), settings)).collections;
   const countRes = await db.execute({
     sql: "SELECT COUNT(*) AS n FROM store_collections WHERE store_id = ? AND status != 'archived'",
     args: [String(store.id)],
@@ -1885,9 +1877,7 @@ marketplaceRoutes.post("/merchants/me/discounts", requireAuth, async (c) => {
   }
 
   const settings = await getMarketplaceSettings();
-  const hasEliteCol = await hasColumn("stores", "elite_tier");
-  const isElite = settings.proPricingMode === "free" || (hasEliteCol && Number(store.elite_tier || 0) === 1);
-  const maxDiscounts = isElite ? settings.eliteMaxDiscounts : settings.proMaxDiscounts;
+  const maxDiscounts = (await planLimits(await storePlan(store, settings), settings)).discounts;
   const countRes = await db.execute({
     sql: "SELECT COUNT(*) AS n FROM store_discounts WHERE store_id = ? AND status = 'active'",
     args: [String(store.id)],
@@ -2144,9 +2134,7 @@ marketplaceRoutes.get("/merchants/me/elite-analytics", requireAuth, async (c) =>
   if (!store) return c.json({ error: "no_store" }, 404);
 
   const settings = await getMarketplaceSettings();
-  const hasEliteCol = await hasColumn("stores", "elite_tier");
-  const isElite = settings.proPricingMode === "free" || (hasEliteCol && Number(store.elite_tier || 0) === 1);
-  const commissionRate = isElite ? settings.eliteCommissionPercent : settings.commissionPercent;
+  const commissionRate = (await planLimits(await storePlan(store, settings), settings)).commissionPercent;
 
   const prodRes = await db.execute({
     sql: "SELECT price, cost_price, inventory_quantity FROM store_products WHERE store_id = ? AND status != 'archived'",
@@ -3234,6 +3222,8 @@ marketplaceRoutes.get("/marketplace/stores", async (c) => {
   const environment = await getPlatformEnvironment();
 
   let query = "SELECT * FROM stores WHERE status = 'active' AND environment = ?";
+  // A store that chose not to be listed in the app is only reachable by its own web address.
+  if (await hasColumn("stores", "listed_in_app")) query += " AND listed_in_app = 1";
   const args: (string | number)[] = [environment];
 
   if (category && (category === "groceries" || category === "stores" || category === "pharmacy")) {
@@ -3293,8 +3283,9 @@ marketplaceRoutes.get("/marketplace/stores/:id", async (c) => {
     return c.json({ error: "store_not_found" }, 404);
   }
 
-  if (Number(store.elite_tier || 0) === 1) {
-    store = { ...store, pro_tier: "elite" };
+  {
+    const sp = await storePlan(store);
+    store = { ...store, pro_tier: sp.isElite ? "elite" : sp.plan === "merchant" ? "free" : sp.plan };
   }
 
   const slug = String(store.slug || store.id);
@@ -3730,6 +3721,18 @@ const marketplaceCheckoutSchema = z.object({
   salesChannel: z.enum(["customer_app", "dedicated_storefront"]).optional(),
 });
 
+/** An order placed on a store's own web storefront needs the merchant to have switched the web store on. */
+async function webStoreRefusal(items: Array<{ storeId: string }>, salesChannel: string | undefined): Promise<{ error: string; message: string } | null> {
+  if (salesChannel !== "dedicated_storefront" || !(await hasColumn("stores", "web_store_enabled"))) return null;
+  for (const storeId of new Set(items.map((i) => i.storeId))) {
+    const row = (await db.execute({ sql: "SELECT web_store_enabled FROM stores WHERE id = ?", args: [storeId] })).rows[0] as Row | undefined;
+    if (row && Number(row.web_store_enabled) !== 1) {
+      return { error: "web_store_off", message: "This store doesn't take orders on its website. Open it in the Peebee app to order." };
+    }
+  }
+  return null;
+}
+
 type AppliedDiscountSummary = {
   id: string;
   storeId: string;
@@ -3862,6 +3865,8 @@ marketplaceRoutes.post("/marketplace/checkout", requireAuth, async (c) => {
 
   const pricing = await priceCheckoutItems(d.items, (await demoCatalogAllowed()) ? DEMO_MARKETPLACE_PRODUCTS : {});
   if (!pricing.ok) return c.json({ error: pricing.error, message: pricing.message, productId: pricing.productId }, pricing.status);
+  const refused = await webStoreRefusal(pricing.items, d.salesChannel);
+  if (refused) return c.json(refused, 403);
   const bag = await planMarketplaceDelivery(pricing.items, d, environment);
   const stops = bag.stops;
   const promoEval = await evaluateBagPromosAndLoyalty(stops, d.promoCode);
@@ -4012,7 +4017,7 @@ marketplaceRoutes.post("/marketplace/checkout", requireAuth, async (c) => {
 
   // One notice per delivery, not one per store.
   try {
-    const onlineRiders = await db.execute("SELECT u.id FROM riders r JOIN users u ON u.id = r.user_id WHERE r.verified = 1 AND r.is_online = 1");
+    const onlineRiders = await db.execute(`SELECT u.id FROM riders r JOIN users u ON u.id = r.user_id WHERE r.verified = 1 AND r.is_online = 1 AND ${ridersForThisWorld("r.user_id")}`);
     const deliveryFee = stops.reduce((sum, stop) => sum + stop.deliveryFee, 0);
     const where = stops.map((stop) => stop.storeName).join(", ");
     for (const rider of onlineRiders.rows as Row[]) {
@@ -4038,6 +4043,8 @@ marketplaceRoutes.post("/marketplace/checkout/quote", requireAuth, async (c) => 
   if (!parsed.success) return c.json({ error: "invalid_body", issues: parsed.error.issues }, 400);
   const pricing = await priceCheckoutItems(parsed.data.items, (await demoCatalogAllowed()) ? DEMO_MARKETPLACE_PRODUCTS : {});
   if (!pricing.ok) return c.json({ error: pricing.error, message: pricing.message, productId: pricing.productId }, pricing.status);
+  const refused = await webStoreRefusal(pricing.items, parsed.data.salesChannel);
+  if (refused) return c.json(refused, 403);
   const bag = await planMarketplaceDelivery(pricing.items, parsed.data, await getPlatformEnvironment());
   const { stops, trip } = bag;
   const relayed = bag.relay;

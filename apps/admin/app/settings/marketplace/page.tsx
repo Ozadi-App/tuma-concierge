@@ -1,5 +1,6 @@
 "use client";
 
+import { ModuleState } from "../../../components/ModuleState";
 import { hasPermission, type MarketplaceSettings } from "@peebee/shared";
 import { AlertCircle, CheckCircle2, Crown, Flame, Layers, Radio, ShoppingBag, Sparkles, Store, Tv, Video } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
@@ -213,20 +214,7 @@ export default function MarketplaceSettingsPage() {
               <span className="block text-sm font-bold text-ink">Enable Marketplace</span>
               <span className="text-xs text-ink-500">Allow customers to browse stores and merchants to sell</span>
             </div>
-            <button
-              type="button"
-              disabled={!canManage}
-              onClick={() => setEnabled(!enabled)}
-              className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${
-                enabled ? "bg-gold" : "bg-neutral-300 dark:bg-neutral-700"
-              }`}
-            >
-              <span
-                className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                  enabled ? "translate-x-5" : "translate-x-0"
-                }`}
-              />
-            </button>
+            <ModuleState on={enabled} />
           </div>
 
           <div className="flex items-center justify-between border-t border-[var(--border-faint)] pt-4">
@@ -234,20 +222,7 @@ export default function MarketplaceSettingsPage() {
               <span className="block text-sm font-bold text-ink">Enable TikTok Live Commerce</span>
               <span className="text-xs text-ink-500">In-stream video selling, pinned catalog items & real-time chat</span>
             </div>
-            <button
-              type="button"
-              disabled={!canManage}
-              onClick={() => setLiveEnabled(!liveEnabled)}
-              className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${
-                liveEnabled ? "bg-gold" : "bg-neutral-300 dark:bg-neutral-700"
-              }`}
-            >
-              <span
-                className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                  liveEnabled ? "translate-x-5" : "translate-x-0"
-                }`}
-              />
-            </button>
+            <ModuleState on={liveEnabled} />
           </div>
         </section>
 

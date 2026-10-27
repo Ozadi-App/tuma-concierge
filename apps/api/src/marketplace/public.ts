@@ -15,7 +15,7 @@ const PUBLIC_STORE_FIELDS = [
   "min_order_amount", "pro_tier", "is_live", "live_channel_title", "live_stream_url", "live_started_at",
   "live_viewer_count", "elite_tier", "custom_domain", "theme_layout", "theme_accent", "hero_headline",
   "hero_subheadline", "hero_cta_text", "seo_title", "seo_description", "loyalty_enabled",
-  "loyalty_cashback_percent", "b2b_wholesale_enabled", "b2b_min_order_amount",
+  "loyalty_cashback_percent", "b2b_wholesale_enabled", "b2b_min_order_amount", "web_store_enabled",
   // computed by the route
   "distance_km", "subdomain_url", "marketplace_url",
 ] as const;

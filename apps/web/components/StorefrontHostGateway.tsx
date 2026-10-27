@@ -20,6 +20,8 @@ const RESERVED_SUBDOMAINS = new Set([
   "learn",
   "tv",
   "preview",
+  "stores",
+  "portal",
 ]);
 
 /**
@@ -38,6 +40,11 @@ export function StorefrontHostGateway({ children }: { children: ReactNode }) {
     const queryStore = params.get("storefront");
     if (queryStore) {
       setStoreHostSlug(queryStore);
+      return;
+    }
+    if (host === "stores.peebee.online") {
+      // The merchant sign-up site. The server normally rewrites this host to /portal; this covers the case where it didn't.
+      window.location.replace("/portal");
       return;
     }
     if (host === "localhost" || host === "127.0.0.1" || host === "peebee.online" || host === "www.peebee.online") {

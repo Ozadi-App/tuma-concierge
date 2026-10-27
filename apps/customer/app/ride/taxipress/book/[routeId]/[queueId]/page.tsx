@@ -1,6 +1,6 @@
 "use client";
 
-import { TAXIPRESS_LUGGAGE_LABELS, TAXIPRESS_LUGGAGE_TYPES, type TaxipressAssistance, type TaxipressLanguage, type TaxipressLuggageType, type TaxipressQueueView } from "@peebee/shared";
+import { TAXIPRESS_LUGGAGE_LABELS, taxipressTown, type TaxipressAssistance, type TaxipressLanguage, type TaxipressLuggageType, type TaxipressQueueView } from "@peebee/shared";
 import { Accessibility, ArrowRight, Armchair, Ban, Box, Briefcase, Bus, Gem, HandHelping, Luggage, Minus, Package, Plus, ShoppingBag, X } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -17,7 +17,6 @@ const ASSISTANCE: Array<{ id: TaxipressAssistance; label: string; icon: typeof B
   { id: "priority", label: "Priority seating", icon: Armchair },
   { id: "mobility", label: "Mobility support", icon: Accessibility },
 ];
-const LANGUAGES: Array<{ id: TaxipressLanguage; label: string }> = [{ id: "en", label: "English" }, { id: "lg", label: "Luganda" }, { id: "sw", label: "Swahili" }];
 
 /** TaxiPress step 3 (optional): luggage, assistance and language, then book and hand over to the checkout. */
 export default function OptionsPage() {
@@ -50,9 +49,9 @@ export default function OptionsPage() {
   const opts = taxipressOptions(taxipress);
   const prices = opts.prices;
   const luggageOn = details && opts.luggage;
-  const luggageAmount = luggageOn ? TAXIPRESS_LUGGAGE_TYPES.reduce((sum, t) => sum + (prices[t] ?? 0) * (d.luggage[t] ?? 0), 0) : 0;
+  const luggageAmount = luggageOn ? opts.luggageTypes.reduce((sum, t) => sum + (prices[t] ?? 0) * (d.luggage[t] ?? 0), 0) : 0;
   const total = ride + luggageAmount;
-  const chosen = luggageAmount > 0 || TAXIPRESS_LUGGAGE_TYPES.some((t) => (d.luggage[t] ?? 0) > 0)
+  const chosen = luggageAmount > 0 || opts.luggageTypes.some((t) => (d.luggage[t] ?? 0) > 0)
     || (opts.assistance && !!d.assistance && d.assistance !== "none")
     || (opts.language && !!d.language);
   const party = d.children > 0 ? `${d.adults}+${d.children}` : `${d.adults}`;
@@ -67,9 +66,9 @@ export default function OptionsPage() {
         ...(details ? {
           adults: d.adults, children: d.children,
           ...(withOptions ? {
-            luggage: luggageOn ? d.luggage : undefined,
+            luggage: luggageOn ? Object.fromEntries(Object.entries(d.luggage).filter(([t]) => (opts.luggageTypes as string[]).includes(t))) : undefined,
             assistance: opts.assistance ? d.assistance : undefined,
-            language: opts.language ? d.language : undefined,
+            language: opts.language && opts.languages.some((l) => l.code === d.language) ? d.language : undefined,
           } : {}),
           ...(d.forSomeoneElse ? { forSomeoneElse: true, travellerName: d.travellerName.trim(), travellerPhone: d.travellerPhone.trim(), emergencyPhone: d.emergencyPhone.trim() || null } : {}),
         } : { seats }),
@@ -127,7 +126,7 @@ export default function OptionsPage() {
           <div className="flex items-center gap-2 rounded-full bg-[rgb(var(--color-black-700))] px-4 py-3 text-white" aria-label="Your booking so far">
             <Bus className="h-4 w-4 shrink-0 text-gold" aria-hidden />
             <span className="min-w-0 flex-1 truncate text-sm">
-              {route.fromName} → {route.toName} · <span className="font-mono">{van.plate}</span>{van.departsAt ? ` · ~${clock(van.departsAt)}` : ""} · {party}
+              {taxipressTown(route.fromName)} → {taxipressTown(route.toName)} · <span className="font-mono">{van.plate}</span>{van.departsAt ? ` · ~${clock(van.departsAt)}` : ""} · {party}
             </span>
             <span className="shrink-0 text-sm font-bold text-gold">{ride.toLocaleString("en-UG")}</span>
           </div>
@@ -141,7 +140,7 @@ export default function OptionsPage() {
             {luggageAmount > 0 && <span className="text-sm text-ink-500">+ {ugx(luggageAmount)}</span>}
           </div>
           <div className="-mx-4 flex snap-x gap-3 overflow-x-auto px-4 pb-1">
-            {TAXIPRESS_LUGGAGE_TYPES.map((t) => {
+            {opts.luggageTypes.map((t) => {
               const n = d.luggage[t] ?? 0;
               const price = prices[t];
               const Icon = LUGGAGE_ICON[t];
@@ -181,10 +180,10 @@ export default function OptionsPage() {
       {details && opts.language && (
         <section aria-label="Preferred language" className="space-y-2">
           <h2 className="px-1 text-base font-bold text-ink">Preferred language</h2>
-          <div role="radiogroup" className="grid grid-cols-3 gap-1 rounded-2xl bg-[rgb(var(--surface-muted))] p-1">
-            {LANGUAGES.map((l) => (
-              <button key={l.id} type="button" role="radio" aria-checked={d.language === l.id} onClick={() => setDraft({ language: d.language === l.id ? null : l.id })} className={`min-h-11 rounded-xl text-sm font-bold ${d.language === l.id ? "bg-[rgb(var(--surface-card))] text-ink shadow-sm" : "text-ink-500"}`}>
-                {l.label}
+          <div role="radiogroup" className="flex flex-wrap gap-1 rounded-2xl bg-[rgb(var(--surface-muted))] p-1">
+            {opts.languages.map((l) => (
+              <button key={l.code} type="button" role="radio" aria-checked={d.language === l.code} onClick={() => setDraft({ language: d.language === l.code ? null : l.code })} className={`min-h-11 flex-1 rounded-xl px-3 text-sm font-bold ${d.language === l.code ? "bg-[rgb(var(--surface-card))] text-ink shadow-sm" : "text-ink-500"}`}>
+                {l.name}
               </button>
             ))}
           </div>

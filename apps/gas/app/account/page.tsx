@@ -17,7 +17,7 @@ import { useRouter } from "next/navigation";
 import { BrandLogo } from "../../components/BrandLogo";
 import { isStandalone, PWA_LOGIN_PROMPT_KEY } from "../../components/PwaInstallPrompt";
 import { useAuth } from "../../lib/auth-context";
-import { startPracticeMode } from "@peebee/shared";
+import { launchPractice, startPracticeMode } from "@peebee/shared";
 
 export default function AccountPage() {
   const router = useRouter();
@@ -189,7 +189,25 @@ export default function AccountPage() {
         </p>
       </section>
 
-      {/* Training / Practice Mode Link */}
+      {/* Practise on the shared practice world: a practice station, real riders' codes and the same screens as live. */}
+      <button
+        type="button"
+        onClick={() => { void launchPractice("gas").then((path) => window.location.assign(path)); }}
+        className="home-card flex w-full items-center justify-between p-4 text-left transition hover:border-gold/50 active:scale-[0.99]"
+      >
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-sky-100 text-sky-700">
+            <Sparkles className="h-5 w-5" />
+          </div>
+          <div>
+            <h3 className="text-sm font-bold text-ink">Practise at a practice station</h3>
+            <p className="text-xs text-ink-500">The real pump screens with practice riders, vouchers and prices. No real fuel or money.</p>
+          </div>
+        </div>
+        <ChevronRight className="h-4 w-4 text-ink-500" />
+      </button>
+
+      {/* Guided training walk-through (built in, no server needed) */}
       <Link
         href="/practice"
         onClick={() => {

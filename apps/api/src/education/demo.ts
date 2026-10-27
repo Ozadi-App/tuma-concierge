@@ -191,6 +191,8 @@ async function installEducator(e: DemoEducator, password: string | undefined): P
 
   // Videos: one tiny placeholder per lesson that has one. Skip those already stored so a second install is quick.
   if (videos.length === 0) return;
+  // Without a file store (local development, tests) the lessons simply have no video.
+  try { getR2Bucket(); } catch { return; }
   const placeholders = videos.map(() => "?").join(",");
   const have = new Set(((await db.execute({ sql: `SELECT lesson_id FROM edu_lesson_media WHERE lesson_id IN (${placeholders})`, args: videos.map((v) => v.lessonId) as never })).rows as Row[]).map((r) => String(r.lesson_id)));
   const rows: DbStatement[] = [];

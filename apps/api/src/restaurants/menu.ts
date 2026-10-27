@@ -391,8 +391,8 @@ menuRoutes.post("/restaurants/me/menu/items/:id/photo", requireAuth, requireRole
  * is public yet. */
 menuRoutes.get("/restaurants/menu-items/:id/photo", requireAuth, async (c) => {
   const id = c.req.param("id") as string;
-  if (id.startsWith("demo-food-") && await getPlatformEnvironment() === "sandbox") {
-    const image = demoFoodImage(id);
+  if ((id.startsWith("demo-food-") || id.startsWith("prac_rest_")) && await getPlatformEnvironment() === "sandbox") {
+    const image = demoFoodImage(id.replace(/^prac_rest_/, "demo-food-"));
     if (image) return c.body(image, 200, { "Content-Type": "image/svg+xml", "Cache-Control": "private, no-store" });
   }
   const user = c.get("user");

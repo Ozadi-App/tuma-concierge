@@ -1,6 +1,6 @@
 "use client";
 
-import { TAXIPRESS_DEFAULT_LUGGAGE_PRICES, type TaxipressConfig } from "@peebee/shared";
+import { TAXIPRESS_DEFAULT_LANGUAGES, TAXIPRESS_DEFAULT_LUGGAGE_PRICES, TAXIPRESS_LUGGAGE_TYPES, type TaxipressConfig } from "@peebee/shared";
 import { useEffect, useState } from "react";
 import { api } from "./api";
 
@@ -43,9 +43,12 @@ export function taxipressOptions(cfg: TaxipressConfig) {
   const prices = { ...TAXIPRESS_DEFAULT_LUGGAGE_PRICES, ...(cfg.luggagePrices ?? {}) };
   return {
     luggage: cfg.luggageEnabled !== false,
+    /** Which luggage types to show: what staff chose, or all of them from a server that doesn't say. */
+    luggageTypes: cfg.luggageTypes ?? TAXIPRESS_LUGGAGE_TYPES,
     prices,
     assistance: cfg.assistanceEnabled !== false,
     language: cfg.languageEnabled !== false,
+    languages: cfg.languages ?? TAXIPRESS_DEFAULT_LANGUAGES,
     forOthers: cfg.bookForOthersEnabled !== false,
   };
 }

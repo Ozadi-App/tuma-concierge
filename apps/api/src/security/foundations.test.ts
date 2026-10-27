@@ -48,7 +48,8 @@ test("every option has a valid default, a recommended choice, and an honest avai
     }
     if (def.kind === "multi") {
       for (const v of def.default) assert.ok(def.options.some((o) => o.value === v), `${def.key}: default ${v} exists`);
-      assert.ok((resolveEffective(def, def.default, schema) as string[]).length >= 1, `${def.key}: something stays enabled`);
+      // A list that may be empty (min 0) stays empty until the migration its choices need is applied.
+      if (def.min !== 0) assert.ok((resolveEffective(def, def.default, schema) as string[]).length >= 1, `${def.key}: something stays enabled`);
     }
     assert.ok(validateValue(def, def.default, schema).ok || def.kind === "enum" || def.kind === "multi", `${def.key}: default validates`);
   }

@@ -25,6 +25,10 @@ export type ChannelsPublicConfig = {
     maxImageMb: number; maxAudioMb: number; schedulingEnabled: boolean; commentsEnabled: boolean; reactionsEnabled: boolean; maxCommentChars: number;
   };
   moderationMode?: "after" | "before";
+  live?: {
+    enabled: boolean; commentsEnabled: boolean; helperEnabled: boolean; maxMinutes: number;
+    broadcastsEnabled?: boolean; premieresEnabled?: boolean; minLeadMinutes?: number; maxLeadDays?: number; maxProgramItems?: number; maxLoops?: number; remindersEnabled?: boolean;
+  };
   monetization?: {
     enabled: boolean; memberships: boolean; payPerView: boolean; tips: boolean; gifts: boolean; giftOptions: string; maxTiers: number; minTierPriceUgx: number; maxTierPriceUgx: number;
     minPayPerViewUgx: number; maxPayPerViewUgx: number; minTipUgx: number; maxTipUgx: number; maxPreviewSeconds: number; earningsToWalletEnabled: boolean;
@@ -52,7 +56,7 @@ export type PostView = {
   poll: { question: string; options: Array<{ text: string; votes: number }>; total: number; myVote: number | null } | null;
   productRef: { type: string; id: string } | null;
   access: PostAccess; priceUgx: number; previewSeconds: number; locked: PostLock | null;
-  status: PostStatus; publishedAt: string | null; scheduledAt: string | null; liveStatus: string | null;
+  status: PostStatus; publishedAt: string | null; scheduledAt: string | null; liveStatus: string | null; event?: AiringView | null;
   counts: { views: number; likes: number; comments: number }; liked: boolean; toChannel: boolean; toSpotlight: boolean; isMine: boolean; removedReason: string | null; createdAt: string;
 };
 
@@ -115,6 +119,27 @@ export type ChannelsAdminOverview = {
   };
 };
 
+/** The host's view of their own stream. `publishUrl` is private to the host. */
+export type LiveHostView = { id: string; postId: string; status: "ready" | "live" | "ended"; title: string | null; provider: string; publishUrl: string | null; mock: boolean; startedAt: string | null; endsAt: string | null };
+/** A broadcast (videos aired back to back) or a premiere (a video's first showing). */
+export type AiringView = {
+  id: string; kind: "broadcast" | "premiere"; status: "scheduled" | "on_air" | "ended"; title: string | null; startsAt: string; endsAt: string;
+  durationSeconds: number; items: number; loops: number; reminders: number; remindMe: boolean;
+};
+export type AiringPlay = {
+  kind: "broadcast" | "premiere"; status: "on_air"; serverNow: string; startsAt: string; endsAt: string;
+  item: { index: number; count: number; title: string; durationSeconds: number; offsetSeconds: number; endsInSeconds: number; loop: number; loops: number };
+  upNext: string | null;
+  playback: { hlsUrl?: string; mp4Url?: string; posterUrl?: string; expiresAt?: string };
+};
+export type MyAiring = AiringView & { postId: string; peakViewers: number };
+
+export type LiveComment = { id: number; author: string; body: string; byHost: boolean; pinned: boolean; hidden?: boolean; at: string };
+export type LiveState = {
+  id: string; status: "scheduled" | "live" | "ended"; title: string | null; role: "host" | "helper" | "viewer"; viewers: number | null; peakViewers: number | null;
+  startedAt: string | null; endsAt: string | null; commentsEnabled: boolean; maxCommentChars: number; comments: LiveComment[]; cursor: number; hiddenIds: number[]; pinned: LiveComment | null; canModerate: boolean;
+};
+
 type Request = <T>(path: string, init?: RequestInit) => Promise<T>;
 
 export function channelsMethods(request: Request) {
@@ -125,6 +150,27 @@ export function channelsMethods(request: Request) {
     return s ? `?${s}` : "";
   };
   return {
+    // --- broadcasts and premieres
+    createBroadcast(input: { publisherType: string; publisherId: string; title: string; assetIds: string[]; startsAt?: string | null; loops?: number }) { return send<{ airing: AiringView }>("POST", "/v1/airings/broadcast", input); },
+    createPremiere(input: { postId: string; startsAt?: string | null }) { return send<{ airing: AiringView }>("POST", "/v1/airings/premiere", input); },
+    myAirings() { return request<{ airings: MyAiring[] }>("/v1/airings/mine"); },
+    airingPlay(ref: string) { return request<AiringPlay>(`/v1/airings/${enc(ref)}/play`); },
+    airingRemind(ref: string, on: boolean) { return send<{ remindMe: boolean; reminders: number }>("POST", `/v1/airings/${enc(ref)}/remind`, { on }); },
+    cancelAiring(ref: string) { return send<{ ok: true }>("POST", `/v1/airings/${enc(ref)}/cancel`); },
+    rescheduleAiring(ref: string, startsAt: string) { return send<{ airing: AiringView }>("POST", `/v1/airings/${enc(ref)}/reschedule`, { startsAt }); },
+    myReadyVideos() { return request<{ assets: Array<{ id: string; title: string | null; durationSeconds: number | null; posterUrl: string | null; createdAt: string }> }>("/v1/video/mine"); },
+
+    // --- going live from a phone
+    liveStart(input: { publisherType: string; publisherId: string; title?: string }) { return send<{ live: LiveHostView }>("POST", "/v1/live/start", input); },
+    liveGo(id: string) { return send<{ live: LiveHostView }>("POST", `/v1/live/${enc(id)}/go`); },
+    liveEnd(id: string) { return send<{ status: "ended"; seconds: number; peakViewers: number; comments: number }>("POST", `/v1/live/${enc(id)}/end`); },
+    liveMine() { return request<{ live: LiveHostView | null; streams: Array<{ id: string; title: string | null; mine: boolean }> }>("/v1/live/mine"); },
+    liveState(id: string, after = 0, beat = false) { return request<LiveState>(`/v1/live/${enc(id)}/state${q({ after: after || undefined, beat: beat ? 1 : undefined })}`); },
+    liveComment(id: string, body: string) { return send<{ id: number }>("POST", `/v1/live/${enc(id)}/comments`, { body }); },
+    liveModerate(id: string, commentId: number, action: "hide" | "pin" | "unpin") { return send<{ ok: true }>("POST", `/v1/live/${enc(id)}/comments/${commentId}/${action}`); },
+    liveHelperCode(id: string) { return send<{ code: string; expiresAt: string }>("POST", `/v1/live/${enc(id)}/helper-code`); },
+    liveJoinHelper(code: string) { return send<{ id: string; title: string | null }>("POST", "/v1/live/helper/join", { code }); },
+
     // --- public config, my channel
     channelsConfig() { return request<ChannelsPublicConfig>("/v1/channels/config"); },
     myChannel() { return request<MyChannelResponse>("/v1/channels/me"); },

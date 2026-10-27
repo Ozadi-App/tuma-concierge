@@ -2,11 +2,13 @@
 // the browser's cache, and only changed data comes from the server.
 //  - ASSET_CACHE keeps a stable name on purpose: build output is
 //    content-hashed, so an older cached page can always still find its chunks.
-//  - PAGE_CACHE holds page HTML and Next.js RSC payloads (stale-while-revalidate).
+//  - PAGE_CACHE holds page HTML and Next.js RSC payloads (network first, the stored copy when the server is slow or away).
 //  - RUNTIME_CACHE holds API reads (stale-while-revalidate, tells the app when
 //    the server copy differs). Cleared on logout.
 const ASSET_CACHE = "peebee-sales-assets-v1";
-const PAGE_CACHE = "peebee-sales-pages-v1";
+// How long a page waits for the server before showing the stored copy.
+const PAGE_WAIT_MS = 4000;
+const PAGE_CACHE = "peebee-sales-pages-v2";
 const RUNTIME_CACHE = "peebee-sales-runtime-v1";
 const KEEP_CACHES = [ASSET_CACHE, PAGE_CACHE, RUNTIME_CACHE];
 const OFFLINE_URL = "/offline.html";
@@ -186,24 +188,26 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // A page open or in-app navigation: show the stored copy immediately, fetch
-  // the current one in the background for next time. With nothing stored and
-  // no signal, fall back to Peebee's own offline screen.
+  // A page open or in-app navigation: the current copy from the server whenever it answers promptly, so every page and the code
+  // it needs always come from the same build. (Showing the stored copy first meant a page you hadn't opened since an update
+  // still ran the old code, and screens of one app could be on different versions.) With a slow or missing connection the
+  // stored copy is shown, and with nothing stored the offline screen.
   if (request.mode === "navigate" || isRscRequest(request, url)) {
     event.respondWith((async () => {
       const cache = await caches.open(PAGE_CACHE);
-      const cached = await cache.match(request);
       const refresh = fetch(request)
         .then(async (response) => {
           if (response.ok && !response.redirected) await storePage(request, response);
           return response;
         })
         .catch(() => null);
-      if (cached) {
-        event.waitUntil(refresh);
-        return cached;
-      }
-      const network = await refresh;
+      event.waitUntil(refresh);
+      const timeout = new Promise((resolve) => setTimeout(() => resolve("slow"), PAGE_WAIT_MS));
+      const first = await Promise.race([refresh, timeout]);
+      if (first && first !== "slow") return first;
+      const cached = await cache.match(request);
+      if (cached) return cached;
+      const network = first === "slow" ? await refresh : null;
       if (network) return network;
       if (request.mode === "navigate") return (await caches.match(OFFLINE_URL)) || Response.error();
       return Response.error();

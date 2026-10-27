@@ -1,3 +1,4 @@
+import { demoPeopleFilter } from "../practice/people.js";
 import { Hono } from "hono";
 import { z } from "zod";
 import { logActivity } from "../admin/activity.js";
@@ -10,6 +11,7 @@ import { baseMimeType, extensionForMime } from "../lib/mime.js";
 import { clientIp } from "../lib/ratelimit.js";
 import { decryptSecret, encryptSecret, isCredentialsEncryptionConfigured } from "../lib/crypto.js";
 import { getPlatformEnvironment, invalidateSettingsCache } from "../lib/settings.js";
+import { hasColumn } from "../lib/schema.js";
 import {
   initiateDisbursement,
   paymentProviderErrorResponse,
@@ -931,6 +933,8 @@ merchantRoutes.post("/admin/merchant-payments/activation", requireAuth, requireR
 });
 
 merchantRoutes.get("/admin/merchants", requireAuth, requireRole("admin"), requirePermission("merchants.view"), async (c) => {
+  const requested = c.req.query("environment");
+  const viewing = requested === "live" || requested === "sandbox" ? requested : await getPlatformEnvironment();
   const result = await db.execute({
     sql: `SELECT m.*, k.status AS kyc_status,
                  CASE WHEN k.owner_id_key IS NULL THEN 0 ELSE 1 END AS has_owner_id_document,
@@ -940,7 +944,7 @@ merchantRoutes.get("/admin/merchants", requireAuth, requireRole("admin"), requir
           FROM merchants m
           LEFT JOIN merchant_kyc_cases k ON k.merchant_id = m.id
           LEFT JOIN merchant_balances b ON b.merchant_id = m.id AND b.environment = m.environment
-          WHERE NOT EXISTS (SELECT 1 FROM restaurants r WHERE r.merchant_id = m.id)
+          WHERE NOT EXISTS (SELECT 1 FROM restaurants r WHERE r.merchant_id = m.id) AND ${demoPeopleFilter(viewing, "m.id")}
            ORDER BY m.created_at DESC`,
     args: [],
   });
@@ -1120,6 +1124,14 @@ merchantRoutes.post("/admin/merchants/:id/status", requireAuth, requireRole("adm
     if (!kyc.rows[0]) {
       return c.json({ error: "merchant_kyc_incomplete", message: "Registration, tax ID, owner ID and business registration document are required before activation." }, 409);
     }
+  }
+  if (parsed.data.status === "active" && (await hasColumn("merchants", "signup_channel"))) {
+    // Stores made on the sign-up website wait, hidden, for this approval.
+    await db.execute({
+      sql: `UPDATE stores SET status = 'active', updated_at = datetime('now')
+            WHERE merchant_id = ? AND status = 'draft' AND EXISTS (SELECT 1 FROM merchants m WHERE m.id = ? AND m.signup_channel = 'portal')`,
+      args: [id, id],
+    });
   }
   await executeBatch([
     {

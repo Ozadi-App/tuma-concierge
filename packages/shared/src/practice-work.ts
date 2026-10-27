@@ -5,6 +5,8 @@
  * Nothing here books a real provider, holds real money or contacts anyone.
  */
 
+import { practiceModuleOn } from "./modules.js";
+
 type Json = Record<string, any>;
 const KEY = "peebee_practice_work_v1";
 const ok = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
@@ -36,11 +38,11 @@ const service = (s: Svc) => ({
   unitPriceUgx: s[7], calloutFeeUgx: s[8], minQuantity: 1, maxQuantity: s[9] ?? 1,
 });
 
-const SETTINGS = {
+const settings = () => ({
   enabled: true, serviceTypes: ["clean", "laundry", "fix"], pricingModes: ["fixed", "quote"], matchingModes: ["broadcast", "customer_picks", "admin_assigns"],
-  defaultMatching: "broadcast", photosEnabled: true, maxPhotosPerJob: 6, maxPhotoKb: 900, chatEnabled: true, trackingEnabled: true,
+  defaultMatching: "broadcast", photosEnabled: practiceModuleOn("hive.work.photos"), maxPhotosPerJob: 6, maxPhotoKb: 900, chatEnabled: practiceModuleOn("hive.work.chat"), trackingEnabled: practiceModuleOn("hive.work.tracking"),
   quoteValidHours: 24, freeCancelMinutes: 10, lateCancelFeePercent: 20, autoConfirmHours: 24, disputeWindowHours: 48, minLeadMinutes: 60, maxAdvanceDays: 14,
-};
+});
 
 /** Sample pins: offsets in ~cells from the customer, by trade. Coarse on purpose, like the live endpoint. */
 const PIN_OFFSETS: Array<["clean" | "laundry" | "fix", number, number]> = [
@@ -81,7 +83,7 @@ function actionsFor(job: Json): string[] {
 export function practiceWorkRequest(path: string, method: string, body: Json, query: URLSearchParams): Response {
   if (method === "GET" && path === "/v1/work/catalog") {
     const type = query.get("type");
-    return ok({ services: PRACTICE_WORK_SERVICES.filter((s) => !type || s[1] === type).map(service), settings: SETTINGS });
+    return ok({ services: PRACTICE_WORK_SERVICES.filter((s) => !type || s[1] === type).map(service), settings: settings() });
   }
   if (method === "GET" && path === "/v1/work/nearby") {
     const lat = Number(query.get("lat")), lng = Number(query.get("lng"));

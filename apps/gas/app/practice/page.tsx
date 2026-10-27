@@ -1,6 +1,6 @@
 "use client";
 
-import { PRACTICE_JOURNEYS, startPracticeMode, exitPracticeMode } from "@peebee/shared";
+import { PRACTICE_JOURNEYS, isServerPractice, startPracticeMode, exitPracticeMode } from "@peebee/shared";
 import {
   ArrowLeft,
   ArrowRight,
@@ -63,7 +63,7 @@ export default function GasPracticePage() {
   const [dispenseDone, setDispenseDone] = useState(false);
 
   useEffect(() => {
-    startPracticeMode("gas");
+    if (!isServerPractice()) startPracticeMode("gas");
     if (typeof window !== "undefined") {
       window.dispatchEvent(new Event("storage"));
     }

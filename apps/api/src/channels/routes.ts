@@ -6,6 +6,7 @@ import { db } from "../db/client.js";
 import { consume } from "../lib/ratelimit.js";
 import { getPlatformEnvironment } from "../lib/settings.js";
 import { getAsset, playbackFor, VideoRequestError } from "../video/service.js";
+import { premiereBlocksPlayback } from "./events.js";
 import { entitlement } from "./access.js";
 import { checkHandle, follow, getChannelByHandle, getChannelById, getMyChannel, handleTaken, normalizeHandle, openChannel, serializeChannel, unfollow, updateChannel, followedChannelIds } from "./channels.js";
 import { ChannelsError, fail, requireChannels, type Row } from "./common.js";
@@ -49,6 +50,11 @@ export function publicConfig(cfg: ChannelsConfig) {
       maxCommentChars: cfg.publishing.maxCommentChars,
     },
     moderationMode: cfg.moderation.mode,
+    live: {
+      enabled: cfg.live.enabled, commentsEnabled: cfg.live.commentsEnabled, helperEnabled: cfg.live.helperEnabled, maxMinutes: cfg.live.maxMinutes,
+      broadcastsEnabled: cfg.live.broadcastsEnabled, premieresEnabled: cfg.live.premieresEnabled, minLeadMinutes: cfg.live.minLeadMinutes, maxLeadDays: cfg.live.maxLeadDays,
+      maxProgramItems: cfg.live.maxProgramItems, maxLoops: cfg.live.maxLoops, remindersEnabled: cfg.live.remindersEnabled,
+    },
     monetization: {
       enabled: cfg.monetization.enabled,
       memberships: cfg.monetization.memberships,
@@ -444,6 +450,9 @@ channelsRoutes.get("/posts/:id/playback", async (c) => {
     if (!post || !post.video_asset_id || (post.status !== "published" && !mine)) throw new ChannelsError("not_found", "Video not found.", 404);
     const asset = await getAsset(post.video_asset_id);
     if (!asset) throw new ChannelsError("not_found", "Video not found.", 404);
+    // A premiere cannot be watched before it starts, except by its own author checking it.
+    const early = mine ? null : await premiereBlocksPlayback(post.id);
+    if (early) throw new ChannelsError("premiere_not_started", "This premieres soon. It cannot be watched yet.", 403, { startsAt: early.startsAt });
     const ent = await entitlement(post as never, user?.id ?? null, cfg);
     c.header("Cache-Control", "private, no-store");
     const adFree = ent.reason === "member" && (await getAdsConfig()).adFreeForMembers;
