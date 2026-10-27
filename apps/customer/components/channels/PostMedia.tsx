@@ -6,6 +6,8 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "../../lib/api";
 import { PollView, LockPanel } from "./PostParts";
 import { PostVideo } from "./PostVideo";
+import { AiringCountdown } from "../live/AiringCountdown";
+import { AiringPlayer } from "../live/AiringPlayer";
 
 /** A live stream (an HLS playlist the creator provides). No ads are inserted into live streams. */
 function LiveVideo({ url, poster, muted, className }: { url: string; poster: string | null; muted: boolean; className?: string }) {
@@ -69,6 +71,14 @@ export function PostMedia({ post, muted, fullscreen = false, onChanged }: { post
         )}
       </div>
     );
+  }
+
+  // A broadcast or premiere: a countdown first, then everyone watching together. A premiere that has ended is an ordinary video.
+  const event = post.event;
+  if (event?.status === "scheduled") return <AiringCountdown post={post} event={event} fullscreen={fullscreen} onStarted={() => void refresh()} />;
+  if (event?.status === "on_air" && !post.locked) return <AiringPlayer post={post} muted={muted} fullscreen={fullscreen} onEnded={() => void refresh()} />;
+  if (event?.status === "ended" && event.kind === "broadcast") {
+    return <div className={`${frame} flex items-center justify-center bg-neutral-950 p-6 text-center text-sm font-semibold text-white/80`}>This broadcast has ended.</div>;
   }
 
   if (post.locked && post.type !== "video") {

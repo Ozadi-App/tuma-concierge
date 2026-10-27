@@ -272,6 +272,13 @@ export function publicAsset(row: VideoAssetRow, viewerIsOwner: boolean) {
   };
 }
 
+/** A creator's own ready videos, newest first, for choosing what to air. */
+export async function readyVideosOf(userId: string): Promise<VideoAssetRow[]> {
+  if (!(await videoReady())) return [];
+  const res = await db.execute({ sql: "SELECT * FROM video_assets WHERE owner_id = ? AND status = 'ready' AND duration_seconds > 0 ORDER BY created_at DESC LIMIT 100", args: [userId] });
+  return res.rows as unknown as VideoAssetRow[];
+}
+
 /** The catalogue a creator sees when choosing how to add video. */
 export async function providerCatalogue(userId: string) {
   const config = await getVideoConfig();

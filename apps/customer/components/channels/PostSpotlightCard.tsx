@@ -38,7 +38,7 @@ export function PostSpotlightCard({ post: initial, muted, topInset, bottomPad = 
   const [open, setOpen] = useState(false);
   const p = s.post;
   // A stream that is on right now: watch its viewer count and comments while this card is the one on screen.
-  const isLive = p.type === "live" && p.liveStatus === "live";
+  const isLive = p.liveStatus === "live";
   const liveFeed = useLiveFeed(isLive && inView ? p.id : null);
   const channelId = p.publisher?.type === "channel" ? p.publisher.id : null;
 

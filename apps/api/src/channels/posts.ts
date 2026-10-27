@@ -4,6 +4,7 @@ import { newId } from "../lib/ids.js";
 import { getPlatformEnvironment } from "../lib/settings.js";
 import { getAsset, type VideoAssetRow } from "../video/service.js";
 import { entitlement, type Entitlement } from "./access.js";
+import { loadEventViews, type EventView } from "./events.js";
 import { absUrl, ChannelsError, parseJson, requireChannels, sqlTime, type Row } from "./common.js";
 import { followedChannelIds } from "./channels.js";
 import { ownMediaPath } from "./media.js";
@@ -84,10 +85,10 @@ type Cleaned = {
 };
 
 /** Checks a post's content against the type, the Admin limits and the access rules. */
-async function validateContent(userId: string, input: PostInput, cfg: ChannelsConfig, publisherType: string, publisherId: string): Promise<Cleaned> {
+async function validateContent(userId: string, input: PostInput, cfg: ChannelsConfig, publisherType: string, publisherId: string, event = false): Promise<Cleaned> {
   const type = input.type;
   // Going live from the phone has its own Admin switch (Go live), so it does not also need "live" in the post types.
-  if (!POST_TYPES.includes(type) || !(cfg.publishing.postTypes.includes(type) || (type === "live" && cfg.live.enabled))) throw new ChannelsError("post_type_unavailable", "That kind of post is not available.", 400);
+  if (!POST_TYPES.includes(type) || !(cfg.publishing.postTypes.includes(type) || (type === "live" && (cfg.live.enabled || (event && cfg.live.broadcastsEnabled))))) throw new ChannelsError("post_type_unavailable", "That kind of post is not available.", 400);
   const caption = (input.caption ?? "").trim();
   if (caption.length > cfg.publishing.maxCaptionChars) throw new ChannelsError("caption_too_long", `Captions can be up to ${cfg.publishing.maxCaptionChars} characters.`, 400);
   const tags = [...new Set((input.tags ?? []).map((t) => t.trim().toLowerCase().replace(/^#/, "")).filter((t) => /^[\p{L}\p{N}_]{1,30}$/u.test(t)))].slice(0, cfg.publishing.maxTags);
@@ -114,7 +115,7 @@ async function validateContent(userId: string, input: PostInput, cfg: ChannelsCo
     const audio = ownMediaPath(input.audioPath);
     if (!audio) throw new ChannelsError("audio_required", "Add an audio file.", 400);
     out.media.audioPath = audio;
-  } else if (type === "live") {
+  } else if (type === "live" && !event) {
     const url = input.liveUrl ? new URL(input.liveUrl.startsWith("http") ? input.liveUrl : "https://invalid") : null;
     if (!url || url.protocol !== "https:" || !/\.m3u8$/i.test(url.pathname)) throw new ChannelsError("live_url_required", "Add the https address of your live stream (an .m3u8 playlist).", 400);
     out.media.liveUrl = url.toString();
@@ -168,7 +169,7 @@ async function validateContent(userId: string, input: PostInput, cfg: ChannelsCo
 }
 
 /** Creates a draft, schedules it, or publishes it. */
-export async function createPost(user: { sub: string; role: string }, input: PostInput): Promise<PostRow> {
+export async function createPost(user: { sub: string; role: string }, input: PostInput, opts: { event?: boolean } = {}): Promise<PostRow> {
   const cfg = await requireChannels();
   const identity = await resolveIdentity(user, input.publisherType, input.publisherId);
   if (!identity) throw new ChannelsError("not_your_identity", "You cannot post as that.", 403);
@@ -181,7 +182,7 @@ export async function createPost(user: { sub: string; role: string }, input: Pos
   if ((await postsToday(identity.type, identity.id)) >= cfg.publishing.postsPerDay) {
     throw new ChannelsError("daily_post_limit", "You have reached today's posting limit.", 429);
   }
-  const cleaned = await validateContent(user.sub, input, cfg, identity.type, identity.id);
+  const cleaned = await validateContent(user.sub, input, cfg, identity.type, identity.id, opts.event === true);
 
   const toSpotlight = input.toSpotlight !== false;
   const toChannel = identity.type === "channel" ? input.toChannel !== false : false;
@@ -361,6 +362,7 @@ type SerializeCtx = {
   votes: Map<string, number>;
   pollTotals: Map<string, number[]>;
   entitlements: Map<string, Entitlement>;
+  events: Map<string, EventView>;
   viewerIsAdmin?: boolean;
 };
 
@@ -392,7 +394,8 @@ export async function buildContext(posts: PostRow[], origin: string, viewerId: s
   }
   const entitlements = new Map<string, Entitlement>();
   for (const p of posts) entitlements.set(p.id, await entitlement(p as never, viewerId, cfg));
-  return { origin, viewerId, cfg, publishers, assets, liked, votes, pollTotals, entitlements };
+  const events = await loadEventViews(ids, viewerId);
+  return { origin, viewerId, cfg, publishers, assets, liked, votes, pollTotals, entitlements, events };
 }
 
 export function serializePost(p: PostRow, ctx: SerializeCtx) {
@@ -434,7 +437,9 @@ export function serializePost(p: PostRow, ctx: SerializeCtx) {
     status: p.status,
     publishedAt: p.published_at ?? null,
     scheduledAt: isAuthor ? p.scheduled_at ?? null : null,
-    liveStatus: p.live_status ?? null,
+    // An airing's clock is read when the post is serialised, which can be a moment after the post row was fetched.
+    liveStatus: ctx.events.get(p.id) ? ({ scheduled: "scheduled", on_air: "live", ended: "ended" } as const)[ctx.events.get(p.id)!.status] : p.live_status ?? null,
+    event: ctx.events.get(p.id) ?? null,
     counts: { views: Number(p.view_count), likes: Number(p.like_count), comments: Number(p.comment_count) },
     liked: ctx.liked.has(p.id),
     toChannel: Number(p.to_channel) === 1,
@@ -481,7 +486,7 @@ export async function spotlightFeed(viewerId: string | null, cfg: ChannelsConfig
     const follow = p.publisher_type === "channel" && following.has(p.publisher_id) ? r.followedBoost : 0;
     const mult = (p.publisher_type === "store" ? r.storeWeight : p.publisher_type === "channel" ? r.channelWeight : r.otherWeight) / 100;
     // A stream that is on right now goes to the top.
-    const liveNow = p.type === "live" && p.live_status === "live" ? 10 : 0;
+    const liveNow = p.live_status === "live" ? 10 : 0;
     return { p, score: (recency + eng + follow + liveNow) * mult };
   });
   scored.sort((a, b) => b.score - a.score || String(b.p.published_at).localeCompare(String(a.p.published_at)));

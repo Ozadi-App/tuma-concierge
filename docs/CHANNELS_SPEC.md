@@ -2,7 +2,7 @@
 
 **Status: v1.0. All phases below are built, and every feature ships switched off.**
 The owner approved the recommended defaults and asked for everything to be built, with every option switchable from Admin so features that need a licence stay off until the business has one. Admin → Settings → Channels holds every option; its screen is drawn from `packages/shared/src/channels-config.ts`.
-Migrations to apply by hand, in order: `0135_video_and_ads.sql`, then `0136_channels.sql`, then `0142_live_streams.sql` (Go live).
+Migrations to apply by hand, in order: `0135_video_and_ads.sql`, then `0136_channels.sql`, then `0142_live_streams.sql` (Go live), then `0144_broadcasts_premieres.sql` (broadcasts and premieres).
 
 How to read this: **Decided** items come from the product owner and are binding. **Default** items are the recommendation used if no one objects. **[OPEN Qn]** items need an answer before the phase that depends on them starts. Section 17 lists every open question in one place.
 
@@ -254,3 +254,18 @@ Anyone who can post can go live from the customer app at `/live`: the camera ope
 - **Needs** migration `0142_live_streams.sql`, a Cloudflare Stream account with the Stream API token saved in Admin → Video and ads (platform account), and the camera permission (the app's security headers now allow `camera=(self)`).
 - **Cost.** Cloudflare bills live streaming by minutes delivered to viewers. Watch the daily limit and time limit settings until usage is known.
 - **Not built.** Replays of finished streams, gifts and tips inside the live screen beyond what the post already offers, guests joining on camera, stream notifications to followers.
+
+
+## Broadcasts and premieres
+
+Two ways to air a video for everyone at the same moment, with live chat, a viewer count and a Remind me button. Neither re-encodes or streams anything from Peebee's servers.
+
+- **Broadcast** (Studio → Broadcast): a programme of the host's own ready videos, in order, aired back to back at a set time, like a TV station. It shows in the Spotlight as a live stream and leaves the feed when the last video ends.
+- **Repeat**: a broadcast can play its whole programme several times in a row. Admin → Channels → Go live sets `live.maxLoops` (most plays in all, 1 turns repeating off) and `live.maxAirtimeHours` (longest total airtime, counting every repeat). The loop count is stored in `live_sessions.loops` (migration 0144); the server works out the loop, video and offset from the clock, and the player shows "Replay n of m".
+- **Premiere** (Studio → Create → Video → "Premiere this video"): a video's first showing. The post goes public straight away with a countdown, but its video **cannot be played before the start time** (the server refuses). At the start everyone watches together; afterwards it is an ordinary video that stays up.
+- **How the sync works.** The server answers "which video is on, and how far in" from the clock (`GET /v1/airings/:id/play`). Each player starts there, corrects any drift of more than about 2.5 seconds, has no scrubbing, and asks again when a video ends. A phone with a wrong clock is corrected by the server's time.
+- **Access rules still apply.** A members-only or paid premiere stays locked while it airs; only people the post lets in can play it.
+- **Admin controls** (Channels → Go live, broadcasts and premieres; both off by default): on/off for each, videos per broadcast, longest broadcast, least notice before an airing, furthest ahead, upcoming airings per publisher, reminders, notifying followers when an airing starts (up to 500, off by default).
+- **Rules.** Only the host's own ready videos; a broadcast needs a name and at least one video; a host can reschedule or cancel until it starts (cancelling a premiere just makes the video available as normal); blocked words, the daily posting rules and drivers on a job apply as for any post. Not available while every post needs approval first.
+- **Needs** migration `0144_broadcasts_premieres.sql` (adds `kind`, `starts_at` and `program_json` to `live_sessions`, and `live_reminders`). Until it is applied both features stay off.
+- **Not built.** Repeating schedules (daily or weekly), a 24/7 loop channel, replays of finished broadcasts, ads inside an airing, and a "watch from the start" option for late joiners.

@@ -1749,7 +1749,7 @@ function rememberPlatformEnvironment(environment: unknown) {
 }
 
 /** Everything the Channels feature serves. */
-const CHANNELS_PATHS = /^\/v1\/(channels|posts|comments|spotlight\/feed|public\/(channels|causes|donations|media)|creator|live|subscriptions|tiers|ads|video|admin\/(channels|video|ads))(\/|$|\?)/;
+const CHANNELS_PATHS = /^\/v1\/(channels|posts|comments|spotlight\/feed|public\/(channels|causes|donations|media)|creator|live|airings|subscriptions|tiers|ads|video|admin\/(channels|video|ads))(\/|$|\?)/;
 
 const TAXIPRESS_STAFF_SETTINGS = [
   "luggageEnabled", "luggageTypes", "luggagePrices", "assistanceEnabled", "languageEnabled", "languages", "bookForOthersEnabled", "maxLapChildren", "childSeatFarePercent",

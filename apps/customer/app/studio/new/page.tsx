@@ -42,6 +42,8 @@ export default function NewPostPage() {
   const [toSpotlight, setToSpotlight] = useState(true);
   const [schedule, setSchedule] = useState(false);
   const [scheduledAt, setScheduledAt] = useState("");
+  const [premiere, setPremiere] = useState(false);
+  const [premiereAt, setPremiereAt] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -78,6 +80,8 @@ export default function NewPostPage() {
     : caption.trim().length > 0 || (pollOn && pollOk);
   const priceOk = access !== "pay_per_view" || (money && price >= money.minPayPerViewUgx && price <= money.maxPayPerViewUgx);
   const scheduleOk = !schedule || (scheduledAt !== "" && new Date(scheduledAt).getTime() > Date.now());
+  const premiereOn = premiere && type === "video" && !!config.live?.premieresEnabled;
+  const premiereOk = !premiereOn || premiereAt !== "";
 
   async function addImages(files: FileList | null) {
     if (!files) return;
@@ -97,6 +101,7 @@ export default function NewPostPage() {
     setBusy(publish ? "publish" : "draft");
     setError(null);
     try {
+      const wantsPremiere = publish && premiereOn;
       const { post } = await api.createPost({
         publisherType: identity.type,
         publisherId: identity.id,
@@ -114,9 +119,20 @@ export default function NewPostPage() {
         minTierId: access === "members" && minTier ? minTier : null,
         toChannel: isChannel ? toChannel : false,
         toSpotlight,
-        publish,
-        scheduledAt: publish && schedule ? new Date(scheduledAt).toISOString() : null,
+        // A premiere is created as a draft and made public by the premiere itself, so nobody can watch it early.
+        publish: wantsPremiere ? false : publish,
+        scheduledAt: publish && schedule && !wantsPremiere ? new Date(scheduledAt).toISOString() : null,
       });
+      if (wantsPremiere) {
+        try {
+          await api.createPremiere({ postId: post.id, startsAt: new Date(premiereAt).toISOString() });
+        } catch (err) {
+          setError(`Your video is saved as a draft, but the premiere could not be set up. ${errorMessage(err)}`);
+          return;
+        }
+        router.push(`/post/${post.id}`);
+        return;
+      }
       router.push(post.status === "published" ? `/post/${post.id}` : "/studio/posts");
     } catch (err) {
       setError(errorMessage(err));
@@ -239,7 +255,18 @@ export default function NewPostPage() {
       <Card title="Where should it show?">
         {isChannel && <label className="flex items-center gap-3 text-sm font-semibold text-ink"><input type="checkbox" checked={toChannel} onChange={(e) => setToChannel(e.target.checked)} className="h-5 w-5" /> On my channel page</label>}
         <label className="flex items-center gap-3 text-sm font-semibold text-ink"><input type="checkbox" checked={toSpotlight} onChange={(e) => setToSpotlight(e.target.checked)} className="h-5 w-5" /> In the Spotlight</label>
-        {pub?.schedulingEnabled && (
+        {type === "video" && config.live?.premieresEnabled && (
+          <div className="space-y-2">
+            <label className="flex items-center gap-3 text-sm font-semibold text-ink"><input type="checkbox" checked={premiere} onChange={(e) => { setPremiere(e.target.checked); if (e.target.checked) setSchedule(false); }} className="h-5 w-5" /> Premiere this video</label>
+            {premiere && (
+              <>
+                <TextField id="np-premiere" label="Premieres at" type="datetime-local" value={premiereAt} onChange={setPremiereAt} hint="Everyone watches together the first time, with live chat. Afterwards it stays up as a normal video." />
+                <Notice tone="info">People see a countdown and can ask to be reminded. The video cannot be watched before this time.</Notice>
+              </>
+            )}
+          </div>
+        )}
+        {pub?.schedulingEnabled && !premiereOn && (
           <div className="space-y-2">
             <label className="flex items-center gap-3 text-sm font-semibold text-ink"><input type="checkbox" checked={schedule} onChange={(e) => setSchedule(e.target.checked)} className="h-5 w-5" /> Schedule for later</label>
             {schedule && <TextField id="np-when" label="Publish at" type="datetime-local" value={scheduledAt} onChange={setScheduledAt} />}
@@ -251,7 +278,7 @@ export default function NewPostPage() {
       {error && <Notice tone="error">{error}</Notice>}
       <div className="sticky bottom-3 z-20 flex gap-2 rounded-full bg-[rgb(var(--surface-card))] p-2 shadow-[var(--shadow-float-capsule)]">
         <Button variant="plain" disabled={busy !== null || !mediaOk} onClick={() => submit(false)} className="flex-1">{busy === "draft" ? "Saving…" : "Save draft"}</Button>
-        <Button disabled={busy !== null || !mediaOk || !pollOk || !priceOk || !scheduleOk || (type === "video" && video?.status !== "ready" && !schedule)} onClick={() => submit(true)} className="flex-[1.4]">{busy === "publish" ? "Posting…" : schedule ? "Schedule" : "Post"}</Button>
+        <Button disabled={busy !== null || !mediaOk || !pollOk || !priceOk || !scheduleOk || !premiereOk || (type === "video" && video?.status !== "ready" && !schedule)} onClick={() => submit(true)} className="flex-[1.4]">{busy === "publish" ? "Posting…" : premiereOn ? "Set the premiere" : schedule ? "Schedule" : "Post"}</Button>
       </div>
       {type === "video" && video && video.status !== "ready" && video.status !== "failed" && <p className="text-center text-xs text-ink-500">You can post as soon as your video is ready, or save a draft now.</p>}
     </div>

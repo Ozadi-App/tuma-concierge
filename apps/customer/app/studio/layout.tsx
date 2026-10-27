@@ -1,6 +1,6 @@
 "use client";
 
-import { Clapperboard, HandCoins, HeartHandshake, Home, ListVideo, PlusCircle, UserRound, Users } from "lucide-react";
+import { Clapperboard, HandCoins, HeartHandshake, Home, ListVideo, PlusCircle, Tv, UserRound, Users } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useChannelsConfig } from "../../lib/channels";
@@ -9,6 +9,7 @@ const TABS = [
   { href: "/studio", label: "Home", icon: Home },
   { href: "/studio/new", label: "Create", icon: PlusCircle },
   { href: "/studio/posts", label: "Posts", icon: ListVideo },
+  { href: "/studio/broadcast", label: "Broadcast", icon: Tv },
   { href: "/studio/money", label: "Money", icon: HandCoins },
   { href: "/studio/members", label: "Members", icon: Users },
   { href: "/studio/causes", label: "Causes", icon: HeartHandshake },
