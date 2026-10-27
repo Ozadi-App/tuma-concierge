@@ -157,6 +157,12 @@ export default function TaxipressTicketPage() {
             )}
           </section>
 
+          {booking.openTicket && booking.status === "booked" && !cancelled && (
+            <p className="rounded-2xl bg-gold/15 p-4 text-center text-sm font-semibold text-ink" role="status">
+              Open ticket · {booking.openTicket.validUntil ? `valid until ${new Date(`${booking.openTicket.validUntil.replace(" ", "T")}Z`).toLocaleDateString("en-UG", { day: "numeric", month: "short", year: "numeric" })}` : "never expires"}. Show the code to the driver of any available taxi on this route when you board.
+            </p>
+          )}
+
           {booking.sharedWithMe && booking.sentBy && !cancelled && (
             <p className="rounded-2xl bg-gold/15 p-4 text-center text-sm font-semibold text-ink" role="status">{booking.sentBy} sent you this ticket. Show the code to the driver when you board.</p>
           )}

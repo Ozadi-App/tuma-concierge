@@ -77,7 +77,7 @@ function SettingsTab() {
       payWithinMinutes: String(next.payWithinMinutes), maxCashBookings: String(next.maxCashBookings),
       freeCancelMinutes: String(next.freeCancelMinutes), cancelRetentionPercent: String(next.cancelRetentionPercent),
       noShowMinutes: String(next.noShowMinutes), noShowFeePercent: String(next.noShowFeePercent),
-      childSeatFarePercent: String(next.childSeatFarePercent), luggageOptionsShown: String(next.luggageOptionsShown),
+      childSeatFarePercent: String(next.childSeatFarePercent), openTicketValidityDays: String(next.openTicketValidityDays), openTicketRefundPercent: String(next.openTicketRefundPercent), luggageOptionsShown: String(next.luggageOptionsShown),
       ...Object.fromEntries(TAXIPRESS_LUGGAGE_TYPES.map((t) => [`luggage_${t}`, next.luggagePrices[t] == null ? "" : String(next.luggagePrices[t])])),
     });
   }, []);
@@ -123,7 +123,7 @@ function SettingsTab() {
         bookableTaxis: s.bookableTaxis, maxLapChildren: s.maxLapChildren, childSeatFarePercent: n("childSeatFarePercent"),
         luggageEnabled: s.luggageEnabled, assistanceEnabled: s.assistanceEnabled, languageEnabled: s.languageEnabled,
         luggageOptionsShown: Math.min(TAXIPRESS_LUGGAGE_TYPES.length, Math.max(1, n("luggageOptionsShown"))), languages: s.languages,
-        bookForOthersEnabled: s.bookForOthersEnabled, ticketSharingEnabled: s.ticketSharingEnabled, showStops: s.showStops,
+        bookForOthersEnabled: s.bookForOthersEnabled, ticketSharingEnabled: s.ticketSharingEnabled, openTicketsEnabled: s.openTicketsEnabled, openTicketValidityDays: n("openTicketValidityDays"), openTicketRefundPercent: n("openTicketRefundPercent"), showStops: s.showStops,
         // A blank luggage price means "priced at the stage".
         luggagePrices: Object.fromEntries(TAXIPRESS_LUGGAGE_TYPES.map((t) => [t, (num[`luggage_${t}`] ?? "") === "" ? null : n(`luggage_${t}`)])) as Record<TaxipressLuggageType, number | null>,
         parcelNotAllowed: notAllowed.split("\n").map((x) => x.trim()).filter(Boolean),
@@ -204,6 +204,17 @@ function SettingsTab() {
           <Switch checked={s.ticketSharingEnabled} onChange={(e) => set("ticketSharingEnabled", e.target.checked)} />
           Passengers may send a ticket, and a ticket code shows its details
         </label>
+        <label className="flex items-center gap-2 text-sm font-bold text-ink">
+          <Switch checked={s.openTicketsEnabled} onChange={(e) => set("openTicketsEnabled", e.target.checked)} />
+          Passengers may buy an open ticket (normal fare, valid on any taxi on the route)
+        </label>
+        {s.openTicketsEnabled && (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Open ticket valid for (days)" hint="0 means it never expires.">{field("openTicketValidityDays", true)}</Field>
+            <Field label="Refund on cancel or expiry (%)" hint="Share of the fare given back when an unused open ticket is cancelled or expires.">{field("openTicketRefundPercent", false)}</Field>
+          </div>
+        )}
+        <p className="text-xs text-ink-500">Open tickets need the database update <span className="font-mono">0145_taxipress_open_tickets.sql</span> to be applied first.</p>
         <label className="flex items-center gap-2 text-sm font-bold text-ink">
           <Switch checked={s.showStops} onChange={(e) => set("showStops", e.target.checked)} />
           Show each route&apos;s stops to passengers

@@ -1,7 +1,7 @@
 "use client";
 
 import { TAXIPRESS_LUGGAGE_LABELS, taxipressTown, type TaxipressAssistance, type TaxipressLanguage, type TaxipressLuggageType, type TaxipressQueueView } from "@peebee/shared";
-import { Accessibility, ArrowRight, Armchair, Ban, Box, Briefcase, Bus, Gem, HandHelping, Luggage, Minus, Package, Plus, ShoppingBag, X } from "lucide-react";
+import { Accessibility, ArrowRight, Armchair, Ban, Box, Briefcase, Bus, Check, Gem, Infinity, HandHelping, Luggage, Minus, Package, Plus, ShoppingBag, X } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -54,6 +54,7 @@ export default function OptionsPage() {
   const chosen = luggageAmount > 0 || opts.luggageTypes.some((t) => (d.luggage[t] ?? 0) > 0)
     || (opts.assistance && !!d.assistance && d.assistance !== "none")
     || (opts.language && !!d.language);
+  const openOffered = taxipress.openTicketsEnabled === true;
   const party = d.children > 0 ? `${d.adults}+${d.children}` : `${d.adults}`;
 
   async function book(withOptions: boolean) {
@@ -70,6 +71,7 @@ export default function OptionsPage() {
             assistance: opts.assistance ? d.assistance : undefined,
             language: opts.language && opts.languages.some((l) => l.code === d.language) ? d.language : undefined,
           } : {}),
+          ...(openOffered && d.openTicket ? { openTicket: true } : {}),
           ...(d.forSomeoneElse ? { forSomeoneElse: true, travellerName: d.travellerName.trim(), travellerPhone: d.travellerPhone.trim(), emergencyPhone: d.emergencyPhone.trim() || null } : {}),
         } : { seats }),
       });
@@ -190,7 +192,20 @@ export default function OptionsPage() {
         </section>
       )}
 
-      {!luggageOn && !opts.assistance && !opts.language && (
+      {openOffered && (
+        <section aria-label="Open ticket" className="space-y-2">
+          <button type="button" aria-pressed={!!d.openTicket} onClick={() => setDraft({ openTicket: !d.openTicket })} className={`flex w-full items-center gap-3 rounded-2xl border p-4 text-left ${d.openTicket ? "border-gold bg-gold/15" : "border-[var(--border-faint)] bg-[rgb(var(--surface-card))]"}`}>
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gold/15 text-gold"><Infinity className="h-5 w-5" aria-hidden /></span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-base font-bold text-ink">Make it an open ticket</span>
+              <span className="block text-xs text-ink-500">Same fare. If you&apos;re late or miss this taxi, use it on any available taxi on this route when you board. Paid in the app.</span>
+            </span>
+            <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border ${d.openTicket ? "border-transparent bg-gold text-ink-gold" : "border-[var(--border-faint)]"}`}>{d.openTicket && <Check className="h-4 w-4" aria-hidden />}</span>
+          </button>
+        </section>
+      )}
+
+      {!luggageOn && !opts.assistance && !opts.language && !openOffered && (
         <section className="home-card space-y-1 border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-5 text-center" role="status">
           <h2 className="text-base font-bold text-ink">No extras to choose</h2>
           <p className="text-sm text-ink-500">Luggage, assistance and language choices aren&apos;t offered right now. Tap Skip below to go to payment.</p>

@@ -7,6 +7,7 @@ import { getMonetizationSettings } from "../lib/settings.js";
 import { notifyUser } from "../lib/webpush.js";
 import { creditWallet, debitWalletAllowNegative } from "../wallet/service.js";
 import { bookingsReady } from "./bookings.js";
+import { moveOpenTicketOnto, openTicketOf } from "./open-tickets.js";
 import { activeEntry, TaxipressError } from "./queue.js";
 import { getTaxipressSettings, type TaxipressSettings } from "./settings.js";
 
@@ -65,7 +66,14 @@ export async function confirmBoarding(driverId: string, rawCode: string): Promis
     args: [code],
   })).rows[0] as Row | undefined;
   if (!booking) throw new TaxipressError(404, "code_not_found", "That code doesn't match a ticket.");
-  if (String(booking.queue_id) !== entry.id) throw new TaxipressError(409, "wrong_taxi", "This ticket is for a different taxi.");
+  const open = await openTicketOf(String(booking.id));
+  if (open?.expired) throw new TaxipressError(409, "ticket_expired", "This open ticket has expired.");
+  if (String(booking.queue_id) !== entry.id) {
+    // An open ticket is good on any taxi on its route: it moves onto this one.
+    const full = (await db.execute({ sql: "SELECT taxipress_route_id, queue_id, seats, order_id, passenger_id, id FROM taxipress_bookings WHERE id = ?", args: [String(booking.id)] })).rows[0] as Row;
+    if (booking.status === "booked" && (await moveOpenTicketOnto(full, entry, driverId))) booking.queue_id = entry.id;
+    else throw new TaxipressError(409, "wrong_taxi", "This ticket is for a different taxi.");
+  }
   if (booking.status === "boarded" || booking.status === "completed") throw new TaxipressError(409, "already_boarded", "This passenger has already boarded.");
   if (booking.status !== "booked") throw new TaxipressError(409, "not_valid", "This booking was cancelled.");
 

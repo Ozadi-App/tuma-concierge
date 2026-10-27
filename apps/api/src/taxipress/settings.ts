@@ -67,6 +67,12 @@ export type TaxipressSettings = {
   bookForOthersEnabled: boolean;
   /** A passenger may send a ticket to someone else, and a ticket code opens the ticket's details for anyone who has it. */
   ticketSharingEnabled: boolean;
+  /** A passenger may buy an open ticket: normal fare, valid on any taxi on the route. Needs migration 0145. */
+  openTicketsEnabled: boolean;
+  /** Days an open ticket stays valid after it is bought. 0 means it never expires. */
+  openTicketValidityDays: number;
+  /** Share of the fare given back when an open ticket is cancelled before use. */
+  openTicketRefundPercent: number;
   showStops: boolean;
 };
 
@@ -174,7 +180,7 @@ export async function getTaxipressSettings(): Promise<TaxipressSettings> {
     getSetting("taxipress_no_show_fee_percent"),
     getSetting("taxipress_rebook_on_removal"),
   ]);
-  const [bookable, lap, childPct, luggageOn, prices, assistOn, langOn, othersOn, stopsOn, luggageShown, languageList, sharingOn] = await Promise.all([
+  const [bookable, lap, childPct, luggageOn, prices, assistOn, langOn, othersOn, stopsOn, luggageShown, languageList, sharingOn, openOn, openDays, openRefund] = await Promise.all([
     getSetting("taxipress_bookable_taxis"),
     getSetting("taxipress_max_lap_children"),
     getSetting("taxipress_child_seat_fare_percent"),
@@ -187,6 +193,9 @@ export async function getTaxipressSettings(): Promise<TaxipressSettings> {
     getSetting("taxipress_luggage_options_shown"),
     getSetting("taxipress_languages"),
     getSetting("taxipress_ticket_sharing_enabled"),
+    getSetting("taxipress_open_tickets_enabled"),
+    getSetting("taxipress_open_ticket_validity_days"),
+    getSetting("taxipress_open_ticket_refund_percent"),
   ]);
   return {
     enabled: enabled === "1",
@@ -229,6 +238,9 @@ export async function getTaxipressSettings(): Promise<TaxipressSettings> {
     bookForOthersEnabled: bool(othersOn, true),
     showStops: bool(stopsOn, true),
     ticketSharingEnabled: bool(sharingOn, true),
+    openTicketsEnabled: bool(openOn, false),
+    openTicketValidityDays: whole(openDays, 0, 3650),
+    openTicketRefundPercent: openRefund == null ? 100 : percent(openRefund),
   };
 }
 
@@ -272,6 +284,9 @@ export async function setTaxipressSettings(next: Partial<TaxipressSettings>): Pr
   if (next.assistanceEnabled != null) await setSetting("taxipress_assistance_enabled", flag(next.assistanceEnabled));
   if (next.languageEnabled != null) await setSetting("taxipress_language_enabled", flag(next.languageEnabled));
   if (next.bookForOthersEnabled != null) await setSetting("taxipress_book_for_others_enabled", flag(next.bookForOthersEnabled));
+  if (next.openTicketsEnabled != null) await setSetting("taxipress_open_tickets_enabled", flag(next.openTicketsEnabled));
+  if (next.openTicketValidityDays != null) await setSetting("taxipress_open_ticket_validity_days", String(next.openTicketValidityDays));
+  if (next.openTicketRefundPercent != null) await setSetting("taxipress_open_ticket_refund_percent", String(next.openTicketRefundPercent));
   if (next.ticketSharingEnabled != null) await setSetting("taxipress_ticket_sharing_enabled", flag(next.ticketSharingEnabled));
   if (next.showStops != null) await setSetting("taxipress_show_stops", flag(next.showStops));
 }

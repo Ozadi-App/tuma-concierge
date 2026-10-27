@@ -15,6 +15,8 @@ export type TaxipressDraft = {
   luggage: Partial<Record<TaxipressLuggageType, number>>;
   assistance: TaxipressAssistance;
   language: TaxipressLanguage | null;
+  /** Buy an open ticket: normal fare, valid on any taxi on the route. */
+  openTicket?: boolean;
 };
 
 const KEY = "peebee.taxipress.draft";
