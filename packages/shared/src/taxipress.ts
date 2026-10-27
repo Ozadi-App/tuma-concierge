@@ -60,6 +60,12 @@ export type TaxipressSettings = {
   bookForOthersEnabled: boolean;
   /** A passenger may send a ticket to someone else, and a ticket code opens the ticket's details for anyone who has it. */
   ticketSharingEnabled: boolean;
+  /** A passenger may buy an open ticket: the normal fare, valid on any taxi on the route. */
+  openTicketsEnabled: boolean;
+  /** Days an open ticket stays valid after it is bought. 0 means it never expires. */
+  openTicketValidityDays: number;
+  /** Share of the fare given back when an open ticket is cancelled or expires unused. */
+  openTicketRefundPercent: number;
   /** Show a route's stops (the Relay stages along it) to passengers. */
   showStops: boolean;
 };
@@ -122,6 +128,7 @@ export type TaxipressConfig = {
   languages?: Array<{ code: string; name: string }>;
   bookForOthersEnabled?: boolean;
   ticketSharingEnabled?: boolean;
+  openTicketsEnabled?: boolean;
 };
 
 export type TaxipressAdminRoute = {
@@ -288,6 +295,8 @@ export type TaxipressBooking = {
   /** Present once migration 0128 is applied. */
   details?: TaxipressBookingDetails | null;
   /** True when someone else bought this ticket and sent it to the signed-in traveller. */
+  /** Set for an open ticket: valid on any taxi on this route until validUntil (null = never expires). */
+  openTicket?: { validUntil: string | null; expired: boolean } | null;
   sharedWithMe?: boolean;
   /** First name of the person who bought and sent the ticket. */
   sentBy?: string | null;

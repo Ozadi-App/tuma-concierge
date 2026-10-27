@@ -51,7 +51,7 @@ const TAXIS: PracticeTaxi[] = [
 ];
 
 type Details = { adults: number; children: number; childSeats: number; luggage: Record<string, number>; luggageAmount: number; assistance: string | null; language: string | null; forSomeoneElse: boolean; travellerName: string | null; travellerPhone: string | null; emergencyPhone: string | null };
-type Booking = { id: string; queueId: string; seats: number; amount: number; method: "app" | "cash"; paid: boolean; code: string; at: number; details?: Details; cancelled?: { refunded: number; fee: number } };
+type Booking = { id: string; queueId: string; seats: number; amount: number; method: "app" | "cash"; paid: boolean; code: string; at: number; open?: boolean; details?: Details; cancelled?: { refunded: number; fee: number } };
 type State = { bookings: Booking[] };
 
 function load(): State {
@@ -108,6 +108,7 @@ function lineFor(s: State, routeId: string) {
 /** Same rules as live with its defaults: a seat can be cancelled until it boards; inside the free window (10 minutes) the whole fare comes back. */
 function cancelTerms(b: Booking) {
   const p = phase(b);
+  if (b.open && !b.cancelled && p !== "boarded") return { allowed: true, reason: null, free: true, fee: 0, refund: b.paid ? b.amount : 0 };
   if (b.cancelled || p === "boarded" || p === "on_road" || p === "arrived") return { allowed: false, reason: b.cancelled ? "This booking was already cancelled." : "This seat can't be cancelled now.", free: false, fee: 0, refund: 0 };
   return { allowed: true, reason: null, free: true, fee: 0, refund: b.paid ? b.amount : 0 };
 }
@@ -124,7 +125,7 @@ function view(s: State, b: Booking) {
     status: b.cancelled ? "cancelled" : p === "arrived" ? "completed" : p === "boarded" || p === "on_road" ? "boarded" : "booked",
     seats: b.seats, farePerSeat: fareOf(route.id), amount: b.amount, paymentMethod: b.method, details: b.details ?? null,
     paymentStatus: b.cancelled ? "cancelled" : b.paid ? "paid" : b.method === "cash" ? "pay_driver" : "unpaid",
-    ticketCode: b.code, createdAt: iso(b.at), payBy: null,
+    ticketCode: b.code, createdAt: iso(b.at), payBy: null, openTicket: b.open ? { validUntil: null, expired: false } : null,
     cancel: cancelTerms(b),
     outcome: b.cancelled ? { kind: "cancelled", refunded: b.cancelled.refunded, fee: b.cancelled.fee } : null,
     receiptRef: !b.cancelled && (p === "boarded" || p === "on_road" || p === "arrived") ? `practice-tps-${b.id}` : null,
@@ -146,7 +147,7 @@ export function practiceTaxipressRequest(path: string, method: string, body: Jso
     return ok({
       enabled: true,
       routes: ROUTES.map((r) => ({ id: r.id, directionLabel: r.directionLabel, routeCode: r.routeCode, fromName: r.fromName, toName: r.toName, farePerSeat: r.fare ?? FARE })),
-      cashEnabled: true, seatChoiceFeeUgx: 0, returnDiscountPercent: 0, maxSeatsPerBooking: MAX_SEATS, payWithinMinutes: 10,
+      cashEnabled: true, openTicketsEnabled: true, seatChoiceFeeUgx: 0, returnDiscountPercent: 0, maxSeatsPerBooking: MAX_SEATS, payWithinMinutes: 10,
       parcelFitText: "If it fits on a seat or under it, it can go.", parcelNotAllowed: ["Fuel", "Live animals"],
     });
   }
@@ -208,7 +209,7 @@ export function practiceTaxipressRequest(path: string, method: string, body: Jso
     const childSeats = Math.max(0, children - lap);
     const seats = adults + childSeats;
     const maxSeats = Number.isFinite(Number(staffOptions.maxSeatsPerBooking)) && Number(staffOptions.maxSeatsPerBooking) > 0 ? Number(staffOptions.maxSeatsPerBooking) : MAX_SEATS;
-    const method_ = body.payment === "cash" ? "cash" : "app";
+    const method_ = body.payment === "cash" || body.openTicket ? (body.openTicket ? "app" : "cash") : "app";
     if (!taxi || taxiStatus(s, taxi) === "on_road") return err(409, "not_available", "That taxi isn't taking seats any more. Choose another.");
     if (!Number.isFinite(adults) || adults < 1) return err(400, "invalid_passengers", "At least one adult travels on a booking.");
     if (seats > maxSeats) return err(400, "too_many_seats", `You can book up to ${maxSeats} seat${maxSeats === 1 ? "" : "s"} at a time. This booking needs ${seats}.`);
@@ -231,7 +232,7 @@ export function practiceTaxipressRequest(path: string, method: string, body: Jso
     if (method_ === "app" && !practiceWalletSpend(amount, `Taxipress ${routeOf(taxi.routeId).directionLabel} · ${taxi.plate} · ${seats} seat${seats === 1 ? "" : "s"}`)) {
       return err(409, "insufficient_funds", `Your practice wallet has UGX ${practiceWalletBalance().toLocaleString("en-UG")}. This booking needs UGX ${amount.toLocaleString("en-UG")}.`);
     }
-    const b: Booking = { id: `practice-tp-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, queueId: taxi.id, seats, amount, method: method_, paid: method_ === "app", code: newCode(), at: Date.now(),
+    const b: Booking = { id: `practice-tp-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, queueId: taxi.id, seats, amount, method: method_, paid: method_ === "app", code: newCode(), at: Date.now(), open: body.openTicket === true ? true : undefined,
       details: body.adults != null ? {
         adults, children, childSeats, luggage, luggageAmount, assistance: typeof body.assistance === "string" ? body.assistance : null, language: typeof body.language === "string" ? body.language : null,
         forSomeoneElse: body.forSomeoneElse === true, travellerName: typeof body.travellerName === "string" ? body.travellerName : null,
