@@ -119,7 +119,7 @@ One shared composer and one shared post model, used everywhere. Each module's ow
 ## 7. Video infrastructure (built)
 
 See `docs/video-and-ads.md`. Summary:
-- One adapter contract: Cloudflare Stream, Mux, Cloudinary, Bunny Stream, plain video links.
+- One adapter contract: Cloudflare Stream, Livepeer Studio (live only), Mux, Cloudinary, Bunny Stream, plain video links.
 - Creators use the platform's provider, connect their own account, or paste a link. Keys are encrypted and never returned.
 - Peebee plays everything in its own player, so provider ads and earnings never apply.
 - Admin controls: on/off, bring-your-own on/off, which providers, longest video, uploads per day, locked-video address lifetime.
@@ -245,13 +245,13 @@ Numbering is stable; answers move into §18.
 
 Anyone who can post can go live from the customer app at `/live`: the camera opens, they type what is happening and tap **Go live**. No stream address, encoder or other app.
 
-- **How it works.** The API asks the video provider for a live input and returns a private WebRTC (WHIP) address to the host only. The phone sends its camera straight to the provider; viewers watch the same stream as HLS in the Spotlight. Cloudflare Stream is the provider that supports this today (recording is off, so nothing is stored). The demo provider is used in sandbox.
+- **How it works.** The API asks the video provider for a live input and returns a private WebRTC (WHIP) address to the host only. The phone sends its camera straight to the provider; viewers watch the same stream as HLS in the Spotlight. Cloudflare Stream and Livepeer Studio support this (recording is off, so nothing is stored). The first platform provider in Admin → Video and ads that has credentials and can go live is used; Livepeer has a free start. The demo provider is used in sandbox.
 - **Viewers.** The Spotlight shows a live stream first, with the number watching and live comments. Viewers and the host poll every few seconds; there is no always-open connection. A viewer counts while their heartbeat is under 35 seconds old.
 - **Host controls.** Viewer count, comments, reply, flip camera, mute, end. Hide or pin any comment. Leaving the screen does not end the stream: reopening `/live` offers "Carry on" or "End it".
 - **Helper device.** The host's own second phone opens `/live/helper` and gets the same stream with no camera. Someone else can help with a 6-digit code (valid for a time set in Admin). Helpers can read, reply, hide and pin; only the host can end.
 - **Safety rails.** One stream per host at a time; a stream ends by itself at the time limit, or 3 minutes after the host stops checking in; a stream set up but never started is cleared after 15 minutes. Posting rules (identity, drivers on a job, blocked words) apply. Going live is refused while every post needs approval first.
 - **Admin controls** (Channels → Go live, all default off or safe): on/off, followers needed, longest stream, streams per day, comments on/off and their length and spacing, helper device and code lifetime, who sees the viewer count, whether streams appear in the Spotlight, verified publishers only.
-- **Needs** migration `0142_live_streams.sql`, a Cloudflare Stream account with the Stream API token saved in Admin → Video and ads (platform account), and the camera permission (the app's security headers now allow `camera=(self)`).
+- **Needs** migration `0142_live_streams.sql`, a live provider (Cloudflare Stream, or Livepeer Studio with its API key) saved in Admin → Video and ads (platform account), and the camera permission (the app's security headers now allow `camera=(self)`).
 - **Cost.** Cloudflare bills live streaming by minutes delivered to viewers. Watch the daily limit and time limit settings until usage is known.
 - **Not built.** Replays of finished streams, gifts and tips inside the live screen beyond what the post already offers, guests joining on camera, stream notifications to followers.
 

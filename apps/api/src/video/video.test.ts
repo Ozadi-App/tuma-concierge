@@ -36,7 +36,7 @@ test("video config: bad values fall back and limits are clamped", () => {
   assert.equal(c.maxVideosPerDay, 1);
   assert.deepEqual(c.platformProviders, ["mux"], "mock, link and unknown names are never platform providers");
   assert.deepEqual(c.byoProviders, ["bunny"], "the demo provider is never offered");
-  assert.deepEqual(parseVideoConfig("garbage").platformProviders, ["cloudinary", "cloudflare_stream"]);
+  assert.deepEqual(parseVideoConfig("garbage").platformProviders, ["cloudinary", "cloudflare_stream", "livepeer"]);
 });
 
 test("provider signatures match their documented recipes", () => {
@@ -98,4 +98,33 @@ test("VAST: tracking points at signed beacons and text is escaped", () => {
   assert.match(xml, /<Duration>00:00:15<\/Duration>/);
   assert.match(xml, /Fish &amp; &lt;chips&gt;/);
   assert.match(xml, /v1\/ads\/click\/TOKEN/);
+});
+
+test("livepeer: starts a live stream, sends no recording, and keeps the stream key to the host", async () => {
+  const { livepeerAdapter } = await import("./adapters/livepeer.js");
+  const calls: Array<{ url: string; method: string; body?: string; auth?: string }> = [];
+  const real = globalThis.fetch;
+  globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+    const u = String(url);
+    calls.push({ url: u, method: init?.method ?? "GET", body: init?.body as string | undefined, auth: (init?.headers as Record<string, string> | undefined)?.Authorization });
+    if (init?.method === "HEAD") return new Response(null, { status: 307, headers: { location: "https://sao.livepeer.studio/webrtc/KEY123" } });
+    if (init?.method === "POST") return new Response(JSON.stringify({ id: "s1", streamKey: "KEY123", playbackId: "pb9" }), { status: 200 });
+    return new Response("{}", { status: 200 });
+  }) as typeof fetch;
+  try {
+    const live = await livepeerAdapter.createLiveInput!({ apiKey: "K" }, { title: "Hello", maxDurationSeconds: 600 });
+    assert.equal(live.externalId, "s1");
+    assert.equal(live.publishUrl, "https://sao.livepeer.studio/webrtc/KEY123");
+    assert.equal(live.hlsUrl, "https://livepeercdn.studio/hls/pb9/index.m3u8");
+    assert.ok(!live.hlsUrl.includes("KEY123"), "viewers never get the stream key");
+    const create = calls.find((c) => c.method === "POST")!;
+    assert.equal(create.auth, "Bearer K");
+    assert.equal(JSON.parse(create.body!).record, false, "nothing is recorded or stored");
+    await livepeerAdapter.endLiveInput!({ apiKey: "K" }, "s1");
+    assert.ok(calls.some((c) => c.method === "DELETE" && c.url.endsWith("/stream/s1")));
+    await assert.rejects(() => livepeerAdapter.createLiveInput!({}, { maxDurationSeconds: 60 }), /not_configured/);
+    await assert.rejects(() => livepeerAdapter.createUpload({ apiKey: "K" }, { maxDurationSeconds: 60, protectedPlayback: false }), /unsupported/);
+  } finally {
+    globalThis.fetch = real;
+  }
 });
