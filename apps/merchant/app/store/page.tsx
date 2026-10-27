@@ -1,6 +1,7 @@
 "use client";
 
 import { SectionContentEditor } from "../../components/SectionContentEditor";
+import { PlanLadder, type PlanInfo } from "../../components/store/PlanLadder";
 import { Select } from "@peebee/shared/select";
 import type {
   MarketplaceSettings,
@@ -97,6 +98,7 @@ interface ProStore {
   min_order_amount?: number;
   pro_tier?: string;
   elite_tier?: number;
+  plan?: PlanInfo;
   custom_domain?: string | null;
   domain_verified?: number;
   domain_verify_token?: string | null;
@@ -804,6 +806,12 @@ export default function MerchantProStorePage() {
     }
   }
 
+  async function handlePlanChanged(updated: any, message: string) {
+    setStore((prev) => (prev ? { ...prev, ...updated } : updated));
+    setNotice(message);
+    await refreshEliteData();
+  }
+
   async function handleVerifyDomain() {
     setVerifyingDomain(true);
     setError("");
@@ -1269,7 +1277,7 @@ export default function MerchantProStorePage() {
   const isProFree = settings?.proPricingMode !== "paid";
   const proStorePrice = settings?.proStorePriceUgx ?? 35000;
   const elitePrice = settings?.elitePriceUgx ?? 150000;
-  const isElite = Boolean(store?.elite_tier) || store?.pro_tier === "elite" || isProFree;
+  const isElite = Boolean(store?.plan?.isElite) || Boolean(store?.elite_tier) || store?.pro_tier === "elite";
 
   // 1. Initial State: No store created yet -> Chap Chap 2-Minute Onboarding Wizard
   if (!store) {
@@ -1393,68 +1401,17 @@ export default function MerchantProStorePage() {
           </button>
         </div>
 
-        {/* 3-Tier Merchant Upgrade Ladder (Free Code -> Pro Marketplace -> Elite Shopify Plus) */}
-        <div className="mt-4 grid grid-cols-3 gap-2">
-          <Link
-            href="/outlets"
-            className="rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] p-2.5 text-left transition hover:border-gold/40"
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-bold uppercase text-ink-500">Tier 1 · Free</span>
-              <Check className="h-3.5 w-3.5 text-green-600" />
-            </div>
-            <p className="mt-0.5 text-xs font-extrabold text-ink">Merchant Code</p>
-            <p className="text-[10px] text-ink-500 truncate">QR & Rider Payments</p>
-          </Link>
-
-          <button
-            type="button"
-            disabled={upgradingTier}
-            onClick={() => handleUpgradeTier("pro_live")}
-            className={`rounded-2xl border p-2.5 text-left transition ${
-              !isElite
-                ? "border-gold bg-gold/15 text-ink"
-                : "border-[var(--border-faint)] bg-[rgb(var(--surface-muted))] text-ink"
-            }`}
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-bold uppercase text-gold">Tier 2 · Pro</span>
-              <Check className="h-3.5 w-3.5 text-gold" />
-            </div>
-            <p className="mt-0.5 text-xs font-extrabold text-ink">Marketplace</p>
-            <p className="text-[10px] text-ink-500 truncate">
-              {isProFree ? "Free Launch" : `${ugx(proStorePrice)}/mo`} · {settings?.commissionPercent ?? 10}% fee
-            </p>
-          </button>
-
-          <button
-            type="button"
-            disabled={upgradingTier}
-            onClick={() => {
-              if (isElite) {
-                setActiveTab("elite");
-              } else {
-                handleUpgradeTier("elite");
-              }
-            }}
-            className={`rounded-2xl border p-2.5 text-left transition ${
-              isElite
-                ? "border-gold bg-gold text-ink-gold shadow-sm"
-                : "border-gold/40 bg-gold/10 text-ink hover:bg-gold/20"
-            }`}
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-black uppercase flex items-center gap-1">
-                <Crown className="h-3 w-3" /> Tier 3 · Elite
-              </span>
-              {isElite && <Check className="h-3.5 w-3.5" />}
-            </div>
-            <p className="mt-0.5 text-xs font-black">Advanced OS</p>
-            <p className={`text-[10px] truncate ${isElite ? "text-ink-gold/80 font-semibold" : "text-ink-500"}`}>
-              {isProFree ? "Unlocked" : `${ugx(elitePrice)}/mo`} · {settings?.eliteCommissionPercent ?? 5}% fee
-            </p>
-          </button>
-        </div>
+        {/* Merchant / Pro / Elite plans */}
+        <PlanLadder
+          plan={store.plan}
+          isProFree={isProFree}
+          proPrice={settings?.proLivePriceUgx ?? 75000}
+          elitePrice={elitePrice}
+          eliteEnabled={settings?.eliteEnabled !== false}
+          commissionPercent={settings?.commissionPercent ?? 10}
+          eliteCommissionPercent={settings?.eliteCommissionPercent ?? 5}
+          onChanged={handlePlanChanged}
+        />
 
         {/* Dual-Channel Auto-Sync Status: Peebee Customer App vs Dedicated Storefront */}
         <div className="mt-3 grid grid-cols-1 gap-2 border-t border-[var(--border-faint)] pt-3 sm:grid-cols-2">
@@ -1614,6 +1571,8 @@ export default function MerchantProStorePage() {
             </div>
           )}
 
+          {isElite && (
+          <>
           {/* Elite Sub-Navigation Pills */}
           <div className="flex gap-1.5 overflow-x-auto pb-1">
             {[
@@ -4775,6 +4734,8 @@ export default function MerchantProStorePage() {
                 )}
               </div>
             </div>
+          )}
+          </>
           )}
         </div>
       )}
