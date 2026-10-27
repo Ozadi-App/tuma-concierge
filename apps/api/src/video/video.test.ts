@@ -128,3 +128,19 @@ test("livepeer: starts a live stream, sends no recording, and keeps the stream k
     globalThis.fetch = real;
   }
 });
+
+test("provider calls never follow a redirect, and do not use the unsupported 'error' mode", async () => {
+  const { providerJson } = await import("./http.js");
+  const real = globalThis.fetch;
+  const seen: Array<RequestInit | undefined> = [];
+  globalThis.fetch = (async (_url: string | URL | Request, init?: RequestInit) => {
+    seen.push(init);
+    return new Response(null, { status: 302, headers: { location: "https://evil.example/x" } });
+  }) as typeof fetch;
+  try {
+    await assert.rejects(() => providerJson("p", "https://api.example.com/x", {}), /rejected/);
+    assert.equal(seen[0]?.redirect, "manual", "Workers only accept follow or manual");
+  } finally {
+    globalThis.fetch = real;
+  }
+});

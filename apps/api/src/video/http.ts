@@ -16,12 +16,18 @@ export async function providerJson<T = Record<string, unknown>>(
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   let res: Response;
   try {
-    res = await fetch(url, { ...init, signal: controller.signal, redirect: "error" });
+    res = await fetch(url, { ...init, signal: controller.signal, redirect: "manual" });
   } catch (err) {
     console.error(`${provider} request failed:`, err);
     throw new VideoProviderError(provider, "unavailable", "The video provider could not be reached. Please try again.", err instanceof Error ? `${err.name}: ${err.message}`.slice(0, 200) : undefined);
   } finally {
     clearTimeout(timer);
+  }
+  // Cloudflare Workers do not implement redirect: "error", so redirects are never followed (a provider call must not
+  // be sent somewhere else with the keys) and are refused here instead.
+  if (res.status >= 300 && res.status < 400) {
+    console.error(`${provider} redirected (${res.status}) to ${res.headers.get("location") ?? "?"}`);
+    throw new VideoProviderError(provider, "rejected", "The video provider answered from an unexpected address.");
   }
   if (res.status === 404 && init.allow404) return null;
   if (!res.ok) {
