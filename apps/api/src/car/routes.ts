@@ -1,3 +1,4 @@
+import { visibleInWorld } from "../practice/people.js";
 import { Hono } from "hono";
 import { z } from "zod";
 import { CAR_MODEL_CATALOG } from "@peebee/shared";
@@ -8,6 +9,7 @@ import { newId } from "../lib/ids.js";
 import { hasColumn, hasTable } from "../lib/schema.js";
 import { getCarSettings, getMatchingSettings, getPlatformEnvironment, isServiceEnabled } from "../lib/settings.js";
 import { servicePaused } from "../lib/service-gate.js";
+import { isModuleLive } from "../lib/modules.js";
 import { isInLine } from "../taxipress/queue.js";
 import { computeBidding, loadBiddingContext, validateBid } from "../orders/bidding.js";
 import { currentVisibilityRadiusKm, orderMatchPoint } from "../orders/matching.js";
@@ -37,14 +39,21 @@ carRoutes.use("/car/*", async (c, next) => {
   await next();
 });
 
+/** Luxury and Ambulance stay visible to owners registering a vehicle, but customers stop seeing them while their module is off. */
+async function hideSwitchedOffGroups(rows: Row[]): Promise<Row[]> {
+  const [luxury, ambulance] = await Promise.all([isModuleLive("ride.luxury"), isModuleLive("ride.ambulance")]);
+  return rows.map((r) => (r.service_group === "luxury" && !luxury) || (r.service_group === "ambulance" && !ambulance) ? { ...r, has_vehicles: 0 } : r);
+}
+
 carRoutes.get("/car/config", async (c) => {
   c.header("Cache-Control", "private, no-store");
   const settings = await getCarSettings();
   // Luxury and Ambulance groups, hourly rates and descriptions exist once migration 0101 is applied.
   // `has_vehicles` lets the customer app show Luxury / Ambulance only once Peebee has approved at least one such vehicle,
   // while owners can still see the category to register one.
+  const world = await getPlatformEnvironment();
   const categoryExtras = (await hasColumn("vehicle_categories", "service_group"))
-    ? ", service_group, rate_per_hour, description, EXISTS (SELECT 1 FROM vehicles v WHERE v.category_id = vehicle_categories.id AND v.status = 'approved') AS has_vehicles"
+    ? `, service_group, rate_per_hour, description, EXISTS (SELECT 1 FROM vehicles v WHERE v.category_id = vehicle_categories.id AND v.status = 'approved' AND ${visibleInWorld(world, "v.owner_id")}) AS has_vehicles`
     : "";
   const categories = await db.execute(
     `SELECT id, kind, name, seats, cargo_type, size_label, reference_image_key, rate_per_km, minimum_fare${categoryExtras}
@@ -58,7 +67,7 @@ carRoutes.get("/car/config", async (c) => {
     : null;
   const selfDrive = settings.selfDrive.enabled && settings.selfDrive.platformPercent != null && (await hasTable("rentals")) ? { maxDays: settings.selfDrive.maxDays } : null;
   const serviceTiers = await hasColumn("car_bookings", "service_tier") && await hasColumn("car_bookings", "vehicle_size") && await hasColumn("vehicles", "accepts_convenient") ? settings.servicePricing : null;
-  return c.json({ onDemandEnabled: settings.onDemandEnabled, matchingMode: settings.matchingMode, emergencyNumber: settings.emergencyNumber ?? "999", maxHireHours: MAX_HIRE_HOURS, scheduled, carpool, selfDrive, serviceTiers, vehiclePhotos: settings.vehiclePhotos, kyc: settings.kyc, deals: settings.deals.enabled && (await hasTable("driver_requests")) && (await hasColumn("vehicle_assignments", "fee_type")) ? { shareEnabled: settings.deals.shareEnabled, rentEnabled: settings.deals.rentEnabled, minOwnerSharePercent: settings.deals.minOwnerSharePercent, maxOwnerSharePercent: settings.deals.maxOwnerSharePercent, maxRentPerDay: settings.deals.maxRentPerDay } : null, categories: categories.rows });
+  return c.json({ onDemandEnabled: settings.onDemandEnabled, matchingMode: settings.matchingMode, emergencyNumber: settings.emergencyNumber ?? "999", maxHireHours: MAX_HIRE_HOURS, scheduled, carpool, selfDrive, serviceTiers, vehiclePhotos: settings.vehiclePhotos, kyc: settings.kyc, deals: settings.deals.enabled && (await hasTable("driver_requests")) && (await hasColumn("vehicle_assignments", "fee_type")) ? { shareEnabled: settings.deals.shareEnabled, rentEnabled: settings.deals.rentEnabled, minOwnerSharePercent: settings.deals.minOwnerSharePercent, maxOwnerSharePercent: settings.deals.maxOwnerSharePercent, maxRentPerDay: settings.deals.maxRentPerDay } : null, categories: await hideSwitchedOffGroups(categories.rows as Row[]) });
 });
 
 carRoutes.get("/car/service-options", async (c) => {
@@ -530,6 +539,8 @@ carRoutes.post("/car/bookings", async (c) => {
     : await activeCategory(parsed.data.categoryId!);
   if (!category) return c.json({ error: "invalid_category" }, 400);
   if (category.kind === "cargo" && !(await isServiceEnabled("cargo"))) return servicePaused(c, "cargo");
+  if (category.service_group === "luxury" && !(await isModuleLive("ride.luxury"))) return c.json({ error: "service_paused", service: "ride", message: "Luxury cars are paused right now. Please try again later." }, 403);
+  if (category.service_group === "ambulance" && !(await isModuleLive("ride.ambulance"))) return c.json({ error: "service_paused", service: "ride", message: "Ambulance booking is paused right now. If this is an emergency, call the emergency number." }, 403);
 
   // "Later": a pickup time inside the admin's window. "Now": needs book-now switched on.
   let scheduledAt: string | null = null;

@@ -4,6 +4,7 @@ import { AppShell } from "../components/AppShell";
 import { AuthProvider } from "../lib/auth-context";
 import { ServiceWorkerRegister } from "../components/ServiceWorkerRegister";
 import { DataRefresh } from "@peebee/shared/data-refresh";
+import { ServerPracticeFrame } from "@peebee/shared/practice-ui";
 
 const THEME_INIT_SCRIPT = `
 (function () {
@@ -57,7 +58,7 @@ export default function RootLayout({
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
       </head>
-      <body><ServiceWorkerRegister />
+      <body><ServiceWorkerRegister /><ServerPracticeFrame />
         <AuthProvider>
           <AppShell><DataRefresh>{children}</DataRefresh></AppShell>
         </AuthProvider>

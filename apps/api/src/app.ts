@@ -35,6 +35,8 @@ import { restaurantRoutes } from "./restaurants/routes.js";
 import { sellerOrderRoutes } from "./restaurants/seller-orders.js";
 import { riderRoutes } from "./riders/routes.js";
 import { settingsRoutes } from "./settings/routes.js";
+import { practiceRoutes } from "./practice/routes.js";
+import { practiceScope } from "./practice/scope.js";
 import { speechRoutes } from "./speech/routes.js";
 import { stageAdminRoutes, stageRoutes } from "./stages/routes.js";
 import { userRoutes } from "./users/routes.js";
@@ -244,6 +246,8 @@ app.get("/v1", (c) =>
   }),
 );
 
+// Requests made with a practice session token are answered from the practice database; see practice/scope.ts.
+app.use("/v1/*", practiceScope);
 app.route("/v1/auth", authRoutes);
 app.route("/v1", onboardingRoutes);
 app.route("/v1/auth", verifyRoutes);
@@ -299,6 +303,7 @@ app.route("/v1", emailKeyRoutes);
 app.route("/v1", mobileNumberRoutes);
 app.route("/v1", callRoutes);
 app.route("/v1", settingsRoutes);
+app.route("/v1", practiceRoutes);
 app.route("/v1", speechRoutes);
 app.route("/v1", walletRoutes);
 app.route("/v1", carRoutes);

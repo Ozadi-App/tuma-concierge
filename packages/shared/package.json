@@ -8,6 +8,7 @@
   "exports": {
     "./demo-food": "./src/demo-food.ts",
     "./demo-marketplace": "./src/demo-marketplace.ts",
+    "./practice-entebbe": "./src/practice-entebbe.ts",
     ".": "./src/index.ts",
     "./select": "./src/Select.tsx",
     "./select.css": "./select.css",

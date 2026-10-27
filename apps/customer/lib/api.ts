@@ -1,4 +1,4 @@
-import { createApiClient, createPracticeFetch, friendlyErrorMessage } from "@peebee/shared";
+import { configurePracticeSession, createApiClient, createPracticeFetch, friendlyErrorMessage } from "@peebee/shared";
 
 export const TOKEN_KEY = "peebee_customer_token";
 export const USER_KEY = "peebee_customer_user";
@@ -25,6 +25,9 @@ export const api = createApiClient({
   getToken: getStoredToken,
   onUnauthorized,
 });
+
+/** Practice signs in as a demo persona on the shared practice world; the real session is put back on exit. */
+configurePracticeSession({ api, apply: (r) => ({ [TOKEN_KEY]: r.token, [USER_KEY]: JSON.stringify(r.user) }) });
 
 /** Extracts a human-readable message from an ApiClient error — never a
  * raw "API 400: xxx" string. */

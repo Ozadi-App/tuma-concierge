@@ -1,8 +1,14 @@
 import type { MatchingMode } from "@peebee/shared";
+import { MODULES, getModule, type ModuleDef } from "@peebee/shared";
 import { DEFAULT_HOME_MENU, DEFAULT_RIDE_TRACKING_SETTINGS, DEFAULT_SHOPPING_UNIT_SETTINGS, DEFAULT_TIME_FEES, type JobExpirySettings, type TimeFeeSettings } from "@peebee/shared";
 import { db } from "../db/client.js";
+import { inPractice } from "../db/practice-context.js";
 
 const DEFAULTS = {
+  /** Live switches for modules that have no older setting of their own: {"ride.boda": false}. Missing = on. See ./modules.ts. */
+  modules_live: "{}",
+  /** Practice-world switches for every module: {"ride.car": false}. Missing = on. */
+  modules_practice: "{}",
   ride_tracking: JSON.stringify(DEFAULT_RIDE_TRACKING_SETTINGS),
   shopping_units_config: JSON.stringify(DEFAULT_SHOPPING_UNIT_SETTINGS),
   /** The customer app's main menu names, the Hive shortcuts and the Hire banner. */
@@ -724,6 +730,8 @@ const DEFAULTS = {
   taxipress_language_enabled: "1",
   taxipress_book_for_others_enabled: "1",
   taxipress_show_stops: "1",
+  taxipress_luggage_options_shown: "6",
+  taxipress_languages: JSON.stringify([{ code: "en", name: "English", enabled: true }, { code: "lg", name: "Luganda", enabled: true }, { code: "sw", name: "Swahili", enabled: true }]),
   // Standalone Services Platform
   services_platform_enabled: "1",
   services_platform_commission_percent: "5",
@@ -1111,11 +1119,76 @@ async function loadSettings(): Promise<Map<string, string>> {
   return settingsLoading;
 }
 
+const MODULE_BY_LIVE_KEY = new Map<string, ModuleDef>(MODULES.filter((x) => x.liveKey).map((x) => [x.liveKey!, x]));
+
+function parseFlagMap(raw: string | undefined): Record<string, boolean> {
+  try {
+    const parsed = JSON.parse(raw || "{}");
+    return parsed && typeof parsed === "object" ? (parsed as Record<string, boolean>) : {};
+  } catch { return {}; }
+}
+
+/** A module's own Live switch as stored, ignoring the modules above it. */
+export function rawModuleLive(def: ModuleDef, values: Map<string, string>): boolean {
+  if (def.liveKey) {
+    const v = values.get(def.liveKey) ?? DEFAULTS[def.liveKey as SettingKey] ?? (def.defaultOn ? "1" : "0");
+    return def.defaultOn ? v !== "0" : v === "1";
+  }
+  return parseFlagMap(values.get("modules_live"))[def.key] !== false;
+}
+
+/** True when every module above this one is on in Live. */
+export function ancestorsLive(def: ModuleDef, values: Map<string, string>): boolean {
+  for (let up = def.parent ? getModule(def.parent) : undefined; up; up = up.parent ? getModule(up.parent) : undefined) {
+    if (!rawModuleLive(up, values)) return false;
+  }
+  return true;
+}
+
+/** A module's own Practice switch (on unless an admin turned it off) and every module above it. */
+function practiceModuleOn(def: ModuleDef, values: Map<string, string>): boolean {
+  const flags = parseFlagMap(values.get("modules_practice"));
+  for (let d: ModuleDef | undefined = def; d; d = d.parent ? getModule(d.parent) : undefined) if (flags[d.key] === false) return false;
+  return true;
+}
+
+/** Values the practice world needs that the live platform may leave unset (a booking window, the platform's cut of a rental). */
+const PRACTICE_VALUES: Partial<Record<SettingKey, string>> = {
+  car_scheduled_max_advance_hours: "72",
+  car_selfdrive_platform_percent: "15",
+  car_carpool_max_repeat_weeks: "4",
+};
+
+/**
+ * Reads a setting. A module's Live switch reads as off while any module above it (its cluster, or Peebee Car for
+ * Carpool) is off, so every existing gate obeys the Services page without knowing about it. Inside a practice request
+ * the module switches are the Practice ones instead, so something off in Live can still be tried in Practice.
+ */
 export async function getSetting(key: SettingKey): Promise<string> {
+  const values = await loadSettings();
+  const def = MODULE_BY_LIVE_KEY.get(key);
+  if (inPractice()) {
+    if (def) return practiceModuleOn(def, values) ? "1" : "0";
+    const forced = PRACTICE_VALUES[key];
+    if (forced !== undefined) return forced;
+  }
+  if (def?.parent && !ancestorsLive(def, values)) return "0";
+  return values.get(key) ?? DEFAULTS[key];
+}
+
+/** The stored value, ignoring modules above. Only the Services page and its tests need this. */
+export async function getSettingRaw(key: SettingKey): Promise<string> {
   return (await loadSettings()).get(key) ?? DEFAULTS[key];
 }
 
-export async function setSetting(key: SettingKey, value: string): Promise<void> {
+/**
+ * Saves a setting. A module's Live switch is owned by the Services page (setModuleFlags), so an older settings page
+ * that saves the value it was shown, "off" because a cluster above it is off, must not turn the module off for good:
+ * a write equal to what getSetting would already return changes nothing.
+ */
+export async function setSetting(key: SettingKey, value: string, opts: { force?: boolean } = {}): Promise<void> {
+  const def = MODULE_BY_LIVE_KEY.get(key);
+  if (def?.parent && !opts.force && value === "0" && !ancestorsLive(def, await loadSettings())) return;
   await db.execute({
     sql: `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, datetime('now'))
           ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`,
@@ -1127,6 +1200,8 @@ export async function setSetting(key: SettingKey, value: string): Promise<void> 
 export type PlatformEnvironment = "live" | "sandbox";
 
 export async function getPlatformEnvironment(): Promise<PlatformEnvironment> {
+  // The practice world is always sandbox: sandbox is what forces mock payments and switches on the demo drivers.
+  if (inPractice()) return "sandbox";
   return (await getSetting("platform_environment")) === "sandbox" ? "sandbox" : "live";
 }
 

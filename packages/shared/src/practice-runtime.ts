@@ -1,8 +1,10 @@
+import { endServerPractice, isServerPractice } from "./practice-server.js";
 import { practiceTalentRequest, resetPracticeTalent } from "./practice-talent.js";
-import { practiceTaxipressRequest, resetPracticeTaxipress } from "./practice-taxipress.js";
+import { practiceTaxipressRequest, rememberPracticeTaxipressOptions, resetPracticeTaxipress } from "./practice-taxipress.js";
 import { practiceWalletView, practiceWalletBalance, practiceWalletSpend, practiceWalletRefund, resetPracticeWallet } from "./practice-wallet.js";
 import { practiceWorkRequest, resetPracticeWork } from "./practice-work.js";
 import { PRACTICE_MODE_STORAGE_KEY, type PracticeRole } from "./practice.js";
+import { practiceModuleOn } from "./modules.js";
 import { roundFare } from "./fare.js";
 import { haversineKm } from "./geo.js";
 import { demoFoodImage, demoFoodMenu } from "./demo-food.js";
@@ -464,6 +466,7 @@ export function startPracticeMode(role: PracticeRole): string {
 
 export function exitPracticeMode(role: PracticeRole) {
   if (!canUseStorage()) return;
+  if (endServerPractice()) return;
   window.localStorage.removeItem(PRACTICE_MODE_STORAGE_KEY);
   window.localStorage.removeItem(stateKey(role));
   resetPracticeTalent();
@@ -761,6 +764,71 @@ function practiceError(message = "That action is outside this practice scenario.
   return jsonResponse({ error: "practice_action_unavailable", message }, 409);
 }
 
+/**
+ * The Practice switches from admin → Services, applied to the simulated API the way the real API applies the Live ones.
+ * Most routes of a switched-off module answer 403 like the live service-paused refusal; the configuration reads that the
+ * apps use to decide what to show come back as "off" instead, so tiles disappear rather than error.
+ */
+const PRACTICE_MODULE_PREFIXES: ReadonlyArray<readonly [prefix: string, module: string, label: string]> = [
+  ["/v1/car/rentals", "ride.car.selfdrive", "Self-drive hire"],
+  ["/v1/car/carpool", "ride.car.carpool", "Carpool"],
+  ["/v1/car/deals", "ride.car.deals", "Owner-driver deals"],
+  ["/v1/car/", "ride.car", "Peebee Car"],
+  ["/v1/taxipress/", "ride.taxipress", "Taxipress"],
+  ["/v1/orders/practice-tp-order-", "ride.taxipress", "Taxipress"],
+  ["/v1/relay/", "deliver.relay", "Relay delivery"],
+  ["/v1/pharmacy/", "buy.pharmacy", "Pharmacy"],
+  ["/v1/marketplace/", "buy.marketplace", "The marketplace"],
+  ["/v1/guest/", "buy.guest", "Guest checkout"],
+  ["/v1/gas/", "buy.gas", "Fuel"],
+  ["/v1/work/", "hive.work", "Home services"],
+  ["/v1/talent/", "hive.hire", "Peebee Hire"],
+  ["/v1/education/", "learn", "Peebee Learn"],
+];
+
+function practiceModuleGate(path: string, method: string, body: Record<string, unknown>): Response | null {
+  const paused = (label: string) => jsonResponse({ error: "service_paused", message: `${label} is switched off in Practice right now.` }, 403);
+  if (method === "POST" && path === "/v1/orders" && body.isRide && !practiceModuleOn("ride.boda")) return paused("Boda rides");
+  for (const [prefix, module, label] of PRACTICE_MODULE_PREFIXES) {
+    if (!path.startsWith(prefix) || practiceModuleOn(module)) continue;
+    if (path === "/v1/talent/config") return jsonResponse({ enabled: false, workerSearchEnabled: false });
+    if (path === "/v1/guest/config") return jsonResponse({ enabled: false, cardAvailable: false, maxQuantity: 1, suggestAccount: false, codeStatusEnabled: false });
+    if (path === "/v1/taxipress/config") return jsonResponse({ enabled: false, routes: [], cashEnabled: false, seatChoiceFeeUgx: 0, returnDiscountPercent: 0, maxSeatsPerBooking: 0, payWithinMinutes: 0, parcelFitText: "", parcelNotAllowed: [] });
+    return paused(label);
+  }
+  return null;
+}
+
+const PRACTICE_GUEST_KEY = "peebee_practice_guest_orders_v1";
+type PracticeGuestOrder = { code: string; orderId: string; item: string; placedAt: number; total: number };
+const readGuestOrders = (): PracticeGuestOrder[] => { try { return canUseStorage() ? JSON.parse(window.localStorage.getItem(PRACTICE_GUEST_KEY) ?? "[]") : []; } catch { return []; } };
+
+/** Guest checkout in practice: a shared product link bought without an account, then tracked by code. Status moves on by itself. */
+function practiceGuestRequest(path: string, method: string, body: Record<string, unknown>): Response {
+  if (method === "GET" && path === "/v1/guest/config") return jsonResponse({ enabled: true, cardAvailable: false, maxQuantity: 5, suggestAccount: true, codeStatusEnabled: true });
+  if (method === "POST" && path === "/v1/guest/checkout") {
+    const productId = String(body.productId ?? "");
+    const quantity = Math.floor(Number(body.quantity));
+    const product = Object.values(DEMO_MARKETPLACE_PRODUCTS).flat().find((p) => p.id === productId);
+    if (!product || !(quantity >= 1 && quantity <= 5)) return practiceError("Choose a practice product and one to five of it.");
+    if (!String(body.name ?? "").trim() || !String(body.phone ?? "").trim() || !String(body.address ?? "").trim()) return practiceError("Enter a name, phone number and address.");
+    const code = `PB-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+    const total = product.price * quantity + 3_000;
+    const order: PracticeGuestOrder = { code, orderId: `practice-guest-${Date.now()}`, item: product.title, placedAt: Date.now(), total };
+    if (canUseStorage()) window.localStorage.setItem(PRACTICE_GUEST_KEY, JSON.stringify([order, ...readGuestOrders()].slice(0, 20)));
+    return jsonResponse({ orderId: order.orderId, trackingCode: code, token: "practice-guest-token", total, accountCreated: false, existingAccount: false }, 201);
+  }
+  const track = path.match(/^\/v1\/guest\/track\/([^/]+)$/);
+  if (method === "GET" && track) {
+    const order = readGuestOrders().find((o) => o.code === decodeURIComponent(track[1]!).toUpperCase());
+    if (!order) return jsonResponse({ error: "not_found", message: "We couldn't find that tracking code." }, 404);
+    const elapsed = Date.now() - order.placedAt;
+    const status = elapsed < 10_000 ? "received" : elapsed < 25_000 ? "preparing" : elapsed < 45_000 ? "on_the_way" : elapsed < 60_000 ? "arrived" : "delivered";
+    return jsonResponse({ trackingCode: order.code, placedAt: new Date(order.placedAt).toISOString(), canCreateAccount: true, hasAccount: false, codeStatusEnabled: true, item: order.item, status });
+  }
+  return practiceError("Creating an account from a guest order isn't part of practice. Your live account was not changed.");
+}
+
 function handlePracticeRequest(role: PracticeRole, path: string, method: string, body: Record<string, unknown>, query = new URLSearchParams()): Response {
   let state = loadState(role);
   const save = (patch: Partial<PracticeState>) => {
@@ -768,6 +836,10 @@ function handlePracticeRequest(role: PracticeRole, path: string, method: string,
     saveState(state);
   };
 
+  const paused = practiceModuleGate(path, method, body);
+  if (paused) return paused;
+
+  if (role === "customer" && path.startsWith("/v1/guest/")) return practiceGuestRequest(path, method, body);
   if (role === "customer" && path.startsWith("/v1/talent/")) return practiceTalentRequest(path, method, body, query);
   if (role === "customer" && path.startsWith("/v1/work/")) return practiceWorkRequest(path, method, body, query);
   if (role === "customer" && (path.startsWith("/v1/taxipress/") || path.startsWith("/v1/orders/practice-tp-order-") || path.startsWith("/v1/public/receipts/practice-"))) return practiceTaxipressRequest(path, method, body);
@@ -776,10 +848,10 @@ function handlePracticeRequest(role: PracticeRole, path: string, method: string,
     if (path === "/v1/car/rentals/listings") return jsonResponse({ days: 1, vehicles: PRACTICE_RENTAL_CARS });
     if (path === "/v1/car/rentals/mine") return jsonResponse({ rentals: canUseStorage() ? JSON.parse(window.localStorage.getItem(PRACTICE_RENTALS_KEY) ?? "[]") : [] });
     if (path === "/v1/car/rentals/renter-profile") return jsonResponse({ status: "approved", isSimulated: true, ninMasked: "••••••••••0000", residentialAddress: "Practice address · Entebbe", residenceMethod: "bill", hasNationalId: true, hasRentReceipt: false, hasLandlordLetter: false, hasResidenceBill: true, tenancyStart: null, tenancyEnd: null, reviewNotes: null });
-    if (path === "/v1/car/config") return jsonResponse({ onDemandEnabled: true, matchingMode: "first_to_claim", emergencyNumber: "999", maxHireHours: 24, scheduled: { maxAdvanceHours: 72, minLeadMinutes: 30 }, carpool: { maxSeatsPerBooking: 3, maxRepeatWeeks: 0 }, selfDrive: null, serviceTiers: { ratePerKm: 2_000, minimumFare: 8_000, comfortPremiumPercent: 30, xlPremiumPercent: 50, xlMinSeats: 6 }, vehiclePhotos: false, kyc: null, deals: null, categories: [
+    if (path === "/v1/car/config") return jsonResponse({ onDemandEnabled: practiceModuleOn("ride.car.ondemand"), matchingMode: "first_to_claim", emergencyNumber: "999", maxHireHours: 24, scheduled: practiceModuleOn("ride.car.scheduled") ? { maxAdvanceHours: 72, minLeadMinutes: 30 } : null, carpool: practiceModuleOn("ride.car.carpool") ? { maxSeatsPerBooking: 3, maxRepeatWeeks: 0 } : null, selfDrive: practiceModuleOn("ride.car.selfdrive") ? { maxDays: 7 } : null, serviceTiers: { ratePerKm: 2_000, minimumFare: 8_000, comfortPremiumPercent: 30, xlPremiumPercent: 50, xlMinSeats: 6 }, vehiclePhotos: false, kyc: null, deals: null, categories: [
       { id: PRACTICE_CAR_CATEGORY_ID, kind: "passenger", name: "Normal · Saloon", seats: 4, cargo_type: null, size_label: null, reference_image_key: null, rate_per_km: 2_000, minimum_fare: 8_000 },
       { id: "practice-car-large", kind: "passenger", name: "Large · Minivan", seats: 7, cargo_type: null, size_label: null, reference_image_key: null, rate_per_km: 3_000, minimum_fare: 12_000 },
-      ...PRACTICE_SPECIAL_CATEGORIES.map(({ rider: _rider, ...category }) => ({ ...category, cargo_type: null, size_label: null, reference_image_key: null })),
+      ...PRACTICE_SPECIAL_CATEGORIES.filter((category) => practiceModuleOn(category.service_group === "luxury" ? "ride.luxury" : "ride.ambulance")).map(({ rider: _rider, ...category }) => ({ ...category, cargo_type: null, size_label: null, reference_image_key: null })),
     ] });
     if (path === "/v1/car/category-nearby") return jsonResponse({ nearby: practiceSpecialCategory(query.get("categoryId")) ? 1 : 2 });
     if (path === "/v1/car/carpool/trips") return jsonResponse({ trips: practiceRideshareTrips(query), maxSeatsPerBooking: 3 });
@@ -1679,8 +1751,29 @@ function rememberPlatformEnvironment(environment: unknown) {
 /** Everything the Channels feature serves. */
 const CHANNELS_PATHS = /^\/v1\/(channels|posts|comments|spotlight\/feed|public\/(channels|causes|donations|media)|creator|live|airings|subscriptions|tiers|ads|video|admin\/(channels|video|ads))(\/|$|\?)/;
 
+const TAXIPRESS_STAFF_SETTINGS = [
+  "luggageEnabled", "luggageTypes", "luggagePrices", "assistanceEnabled", "languageEnabled", "languages", "bookForOthersEnabled", "maxLapChildren", "childSeatFarePercent",
+  "cashEnabled", "seatChoiceFeeUgx", "returnDiscountPercent", "maxSeatsPerBooking", "payWithinMinutes", "parcelFitText", "parcelNotAllowed",
+] as const;
+
+async function overlayTaxipressSettings(sample: Response, real: () => Promise<Response>): Promise<Response> {
+  try {
+    const live = (await (await real()).json()) as Record<string, unknown>;
+    const base = (await sample.clone().json()) as Record<string, unknown>;
+    for (const key of TAXIPRESS_STAFF_SETTINGS) if (live[key] !== undefined) base[key] = live[key];
+    rememberPracticeTaxipressOptions(base);
+    return jsonResponse(base);
+  } catch {
+    // Offline or refused: the sample's own defaults apply.
+    rememberPracticeTaxipressOptions({});
+    return sample;
+  }
+}
+
 export function createPracticeFetch(role: PracticeRole, realFetch: typeof fetch = fetch): typeof fetch {
   return (async (input: RequestInfo | URL, init?: RequestInit) => {
+    // Practising against the shared world: the server answers, nothing is simulated here.
+    if (isServerPractice()) return realFetch(input, init);
     const request = input instanceof Request ? input : null;
     const url = new URL(request?.url ?? String(input), typeof window !== "undefined" ? window.location.origin : "http://localhost");
     const method = (init?.method ?? request?.method ?? "GET").toUpperCase();
@@ -1706,6 +1799,10 @@ export function createPracticeFetch(role: PracticeRole, realFetch: typeof fetch 
       if (method === "GET") return jsonResponse({ error: "channels_unavailable", message: "Channels are not part of practice mode." }, 503);
       return jsonResponse({ error: "channels_unavailable", message: "Channels are not part of practice mode." }, 503);
     }
-    return handlePracticeRequest(role, url.pathname, method, parseBody(init), url.searchParams);
+    const sample = handlePracticeRequest(role, url.pathname, method, parseBody(init), url.searchParams);
+    // Taxipress's routes and taxis are the sample's, but the options staff control (luggage, assistance, languages, cash, limits)
+    // are the platform's real settings, so what admin changes shows up here too.
+    if (role === "customer" && method === "GET" && url.pathname === "/v1/taxipress/config") return overlayTaxipressSettings(sample, () => realFetch(input, init));
+    return sample;
   }) as typeof fetch;
 }

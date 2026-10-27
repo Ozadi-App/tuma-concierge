@@ -5,7 +5,7 @@ import { PracticePromptDialog } from "@peebee/shared/practice-ui";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useAuth } from "../lib/auth-context";
-import { isPracticeMode, startPracticeMode } from "@peebee/shared";
+import { isPracticeMode, launchPractice } from "@peebee/shared";
 
 const THREE_MINUTES_MS = 3 * 60 * 1000; // 180,000 ms (3 minutes)
 export const PRACTICE_PROPOSED_KEY = "peebee_gas_practice_proposed";
@@ -65,11 +65,9 @@ export function PracticeProposalPrompt() {
   function handleStartPractice() {
     sessionStorage.setItem(PRACTICE_PROPOSED_KEY, "1");
     setOpen(false);
-    startPracticeMode("gas");
-    if (typeof window !== "undefined") {
-      window.dispatchEvent(new Event("storage"));
-    }
-    router.push("/practice");
+    void launchPractice("gas").then((path) => {
+      if (typeof window !== "undefined") window.location.assign(path);
+    });
   }
 
   function handleDismiss() {

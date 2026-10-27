@@ -1,3 +1,5 @@
+import { getPlatformEnvironment } from "../lib/settings.js";
+import { demoPeopleFilter, visibleInWorld } from "../practice/people.js";
 import { Hono, type Context } from "hono";
 import { z } from "zod";
 import { db } from "../db/client.js";
@@ -276,10 +278,11 @@ stageRoutes.get("/stages/mine", async (c) => {
  * join a circle admin already registered for their stage. */
 stageRoutes.get("/stages/discover", async (c) => {
   const user = c.get("user");
+  const world = await getPlatformEnvironment();
   const res = await db.execute({
     sql: `SELECT s.*, (SELECT COUNT(*) FROM stage_members m2 WHERE m2.stage_id = s.id AND m2.status = 'active') AS member_count
           FROM stages s
-          WHERE s.status = 'active' AND s.approval_status = 'approved'
+          WHERE s.status = 'active' AND s.approval_status = 'approved' AND ${visibleInWorld(world, "s.id")}
             AND NOT EXISTS (SELECT 1 FROM stage_members m WHERE m.stage_id = s.id AND m.rider_id = ? AND m.status = 'active')
           ORDER BY s.created_at DESC LIMIT 100`,
     args: [user.sub],
@@ -1811,9 +1814,11 @@ async function assertAdminLedgerVisible(c: Context) {
 stageAdminRoutes.get("/admin/stages", async (c) => {
   const denied = await assertAdminLedgerVisible(c);
   if (denied) return denied;
+  const requested = c.req.query("environment");
+  const viewing = requested === "live" || requested === "sandbox" ? requested : await getPlatformEnvironment();
   const res = await db.execute({
     sql: `SELECT s.*, (SELECT COUNT(*) FROM stage_members m WHERE m.stage_id = s.id AND m.status = 'active') AS member_count
-          FROM stages s ORDER BY s.created_at DESC LIMIT 200`,
+          FROM stages s WHERE ${demoPeopleFilter(viewing, "s.id")} ORDER BY s.created_at DESC LIMIT 200`,
     args: [],
   });
   return c.json({ stages: res.rows });

@@ -21,6 +21,7 @@ function onUnauthorized() {
 
 export const api = createApiClient({
   baseUrl: process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:10000",
+  rawSettings: true,
   getToken: getStoredToken,
   onUnauthorized,
 });

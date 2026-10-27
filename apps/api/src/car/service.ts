@@ -1,3 +1,4 @@
+import { visibleInWorld } from "../practice/people.js";
 import { roundFare } from "@peebee/shared";
 import { db } from "../db/client.js";
 import { haversineKm } from "../lib/geo.js";
@@ -115,7 +116,7 @@ export async function nearbyCategoryDrivers(categoryId: string, lat: number, lng
           JOIN car_partners p ON p.user_id = s.driver_id AND p.driver_status = 'approved'
           JOIN vehicles v ON v.id = s.vehicle_id AND v.status = 'approved' AND v.category_id = ?
           JOIN vehicle_assignments a ON a.vehicle_id = v.id AND a.driver_id = s.driver_id AND a.status = 'active'
-          WHERE s.online = 1 AND s.lat IS NOT NULL AND s.lng IS NOT NULL
+          WHERE s.online = 1 AND s.lat IS NOT NULL AND s.lng IS NOT NULL AND ${visibleInWorld(environment, "s.driver_id")}
             AND s.driver_id NOT IN (SELECT rider_id FROM orders WHERE rider_id IS NOT NULL AND environment = ? AND stage NOT IN ('Settle', 'Cancelled'))`,
     args: [categoryId, environment],
   });
@@ -154,7 +155,7 @@ export async function findCarCandidate(
           JOIN vehicles v ON v.id = s.vehicle_id AND v.status = 'approved' ${tier ? "" : "AND v.category_id = ?"}
           ${tier ? `JOIN vehicle_categories cat ON cat.id = v.category_id AND cat.kind = 'passenger'${standardOnly}` : ""}
           JOIN vehicle_assignments a ON a.vehicle_id = v.id AND a.driver_id = s.driver_id AND a.status = 'active'
-          WHERE s.online = 1
+          WHERE s.online = 1 AND ${visibleInWorld(String(order.environment) === "sandbox" ? "sandbox" : "live", "s.driver_id")}
           AND u.id NOT IN (SELECT rider_id FROM orders WHERE rider_id IS NOT NULL AND stage NOT IN ('Settle', 'Cancelled') AND environment = ?)
           AND u.id NOT IN (SELECT rider_id FROM order_rider_exclusions WHERE order_id = ?)`,
     args: [...(tier ? [] : [String(booking.category_id)]), String(order.environment), orderId],

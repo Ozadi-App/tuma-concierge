@@ -48,10 +48,14 @@ export type TaxipressSettings = {
   /** A child's seat costs this share of the adult fare. */
   childSeatFarePercent: number;
   luggageEnabled: boolean;
+  /** How many luggage options passengers are shown: the first this many of TAXIPRESS_LUGGAGE_TYPES. */
+  luggageOptionsShown: number;
   /** Price per item, by luggage type. null means it is assessed at the stage. */
   luggagePrices: Record<TaxipressLuggageType, number | null>;
   assistanceEnabled: boolean;
   languageEnabled: boolean;
+  /** The languages passengers may ask for. Staff add and remove them and choose which are displayed. */
+  languages: TaxipressLanguageOption[];
   /** A passenger may book a seat for someone else (their name, phone and an emergency contact). */
   bookForOthersEnabled: boolean;
   /** Show a route's stops (the Relay stages along it) to passengers. */
@@ -71,7 +75,10 @@ export const TAXIPRESS_LUGGAGE_LABELS: Record<TaxipressLuggageType, { name: stri
   commercial: { name: "Commercial", note: "Priced at the stage" },
 };
 export type TaxipressAssistance = "none" | "boarding" | "priority" | "mobility";
-export type TaxipressLanguage = "en" | "lg" | "sw";
+/** A language code staff have set up (en, lg and sw to begin with; staff can add more). */
+export type TaxipressLanguage = string;
+export type TaxipressLanguageOption = { code: string; name: string; enabled: boolean };
+export const TAXIPRESS_DEFAULT_LANGUAGES: Array<{ code: string; name: string }> = [{ code: "en", name: "English" }, { code: "lg", name: "Luganda" }, { code: "sw", name: "Swahili" }];
 
 /** What the customer app needs to decide whether to show Taxipress, and what to say. */
 export type TaxipressConfig = {
@@ -104,9 +111,13 @@ export type TaxipressConfig = {
   maxLapChildren?: number;
   childSeatFarePercent?: number;
   luggageEnabled?: boolean;
+  /** The luggage types to show, in order. Absent from an older server: show them all. */
+  luggageTypes?: TaxipressLuggageType[];
   luggagePrices?: Record<TaxipressLuggageType, number | null>;
   assistanceEnabled?: boolean;
   languageEnabled?: boolean;
+  /** The languages to show. Absent from an older server: English, Luganda and Swahili. */
+  languages?: Array<{ code: string; name: string }>;
   bookForOthersEnabled?: boolean;
 };
 
@@ -327,3 +338,14 @@ export type TaxipressReport =
       owing: Array<{ id: string; name: string | null; phone: string | null; balance: number; plate: string }>;
       refunds: { count: number; refunded: number; fees: number; cancelled: number; noShows: number; taxiRemoved: number };
     };
+
+/**
+ * The town or city a stage belongs to, for route titles: "Entebbe Taxi Park" → "Entebbe", "Kampala Old Taxi Park" →
+ * "Kampala", "Busega Roundabout" → "Busega". The stage's own name is kept for the stops list. A name with nothing
+ * to strip (or that would strip to nothing) is returned as it is.
+ */
+export function taxipressTown(stageName: string): string {
+  const name = String(stageName ?? "").trim();
+  const town = name.replace(/\s+(?:(?:old|new|main|central)\s+)?(?:(?:taxi|bus|matatu)\s+)?(?:park|stage|stand|stop|station|terminal|roundabout|junction)$/i, "").trim();
+  return town || name;
+}

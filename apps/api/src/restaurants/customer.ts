@@ -19,6 +19,7 @@ import { roadKm, roadLegsKm } from "../lib/road-distance.js";
 import { newId } from "../lib/ids.js";
 import { getDeliverySettings, getMatchingSettings, getMaxOrderValue, getPlatformEnvironment, isServiceEnabled } from "../lib/settings.js";
 import { servicePaused } from "../lib/service-gate.js";
+import { inPractice } from "../db/practice-context.js";
 import type { MatchingMode } from "@peebee/shared";
 import { roundFare } from "@peebee/shared";
 import { DEMO_FOOD_RESTAURANTS, demoFoodMenu, demoFoodRestaurant } from "@peebee/shared/demo-food";
@@ -46,7 +47,7 @@ customerRestaurantRoutes.get("/restaurants", requireAuth, async (c) => {
     args: [environment],
   });
   const scheduled = await Promise.all(res.rows.map((row) => reconcileFoodHours(row)));
-  const restaurants = environment === "sandbox"
+  const restaurants = environment === "sandbox" && !inPractice()
     ? [...scheduled.filter((row) => !demoFoodRestaurant(String(row.id))), ...DEMO_FOOD_RESTAURANTS.map((restaurant) => ({ ...restaurant, demo_checkout_enabled: true }))].sort((a, b) => Number(b.is_open) - Number(a.is_open) || String(a.name).localeCompare(String(b.name)))
     : scheduled.sort((a, b) => Number(b.is_open) - Number(a.is_open) || String(a.name).localeCompare(String(b.name)));
   return c.json({ restaurants });

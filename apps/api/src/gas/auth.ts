@@ -39,9 +39,9 @@ function secretKey() {
   return encoder.encode(`gas-session:${secret}`);
 }
 
-export async function signGasToken(actor: { kind: GasActor["kind"]; id: string; outletId: string }): Promise<string> {
+export async function signGasToken(actor: { kind: GasActor["kind"]; id: string; outletId: string; practice?: boolean }): Promise<string> {
   const { sessionHours } = await getGasSettings();
-  return new SignJWT({ kind: actor.kind, outlet: actor.outletId })
+  return new SignJWT({ kind: actor.kind, outlet: actor.outletId, ...(actor.practice ? { prc: 1 } : {}) })
     .setProtectedHeader({ alg: "HS256" })
     .setSubject(actor.id)
     .setJti(crypto.randomUUID())
@@ -61,6 +61,16 @@ async function readToken(c: Context): Promise<{ kind: GasActor["kind"]; id: stri
     return { kind: payload.kind, id: payload.sub, outletId: payload.outlet };
   } catch {
     return null;
+  }
+}
+
+/** Does this pump session belong to the practice world? Used to send its requests to the sandbox. */
+export async function gasTokenIsPractice(token: string): Promise<boolean> {
+  try {
+    const { payload } = await jwtVerify(token, secretKey(), { issuer: ISSUER, audience: AUDIENCE });
+    return payload.prc === 1;
+  } catch {
+    return false;
   }
 }
 

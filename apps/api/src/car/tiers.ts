@@ -1,3 +1,4 @@
+import { visibleInWorld } from "../practice/people.js";
 import { roundFare } from "@peebee/shared";
 import { db } from "../db/client.js";
 import { haversineKm } from "../lib/geo.js";
@@ -49,7 +50,7 @@ export async function nearbyTierCounts(lat: number, lng: number, radiusKm: numbe
           JOIN vehicles v ON v.id = s.vehicle_id AND v.status = 'approved'
           JOIN vehicle_categories cat ON cat.id = v.category_id AND cat.kind = 'passenger'${standardOnly}
           JOIN vehicle_assignments a ON a.vehicle_id = v.id AND a.driver_id = s.driver_id AND a.status = 'active'
-          WHERE s.online = 1 AND s.lat IS NOT NULL AND s.lng IS NOT NULL
+          WHERE s.online = 1 AND s.lat IS NOT NULL AND s.lng IS NOT NULL AND ${visibleInWorld(environment, "s.driver_id")}
             AND s.driver_id NOT IN (SELECT rider_id FROM orders WHERE rider_id IS NOT NULL AND environment = ? AND stage NOT IN ('Settle', 'Cancelled'))`,
     args: [environment],
   });

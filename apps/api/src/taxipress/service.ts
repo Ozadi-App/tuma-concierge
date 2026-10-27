@@ -1,3 +1,5 @@
+import { visibleHere } from "../practice/people.js";
+import { getPlatformEnvironment } from "../lib/settings.js";
 import { db } from "../db/client.js";
 import { hasTable } from "../lib/schema.js";
 import { directionLabel, routeCodeLabel } from "../relay/direction.js";
@@ -58,7 +60,8 @@ export async function listTaxipressRoutes(): Promise<TaxipressRoute[]> {
 
 /** The routes customers can see: switched on, with the relay route underneath on too. */
 export async function listActiveTaxipressRoutes(): Promise<TaxipressRoute[]> {
-  return (await listTaxipressRoutes()).filter((route) => route.active && route.relayActive);
+  const world = await getPlatformEnvironment();
+  return (await listTaxipressRoutes()).filter((route) => route.active && route.relayActive && visibleHere(world, route.relayRouteId));
 }
 
 export async function getTaxipressRoute(id: string): Promise<TaxipressRoute | null> {

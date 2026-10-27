@@ -1,6 +1,6 @@
 "use client";
 
-import type { TaxipressBooking } from "@peebee/shared";
+import { taxipressTown, type TaxipressBooking } from "@peebee/shared";
 import { ChevronRight, Ticket } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -49,7 +49,7 @@ export default function MyTicketsPage() {
             <Link href={`/ride/taxipress/ticket/${b.id}`} className="home-card flex items-center gap-3 border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-4">
               <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gold/15 text-gold"><Ticket className="h-5 w-5" aria-hidden /></span>
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-base font-bold text-ink">{b.route.fromName} → {b.route.toName}</span>
+                <span className="block truncate text-base font-bold text-ink">{taxipressTown(b.route.fromName)} → {taxipressTown(b.route.toName)}</span>
                 <span className="block truncate text-xs text-ink-500"><span className="font-mono">{b.taxi.plate}</span> · {PAY[b.paymentStatus]}</span>
               </span>
               <span className="shrink-0 text-xs font-bold text-gold">{state(b)}</span>

@@ -3,7 +3,8 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { AuthJourney } from '@peebee/shared/auth';
 import { GoogleSignInButton } from '../../components/GoogleSignInButton';
-import { request } from '../../lib/api';
+import { practiceApi, request } from '../../lib/api';
+import { ServerPracticeCard } from '@peebee/shared/practice-ui';
 import { finishSignIn } from '../../lib/access';
 export default function Login(){
   const [signup,setSignup]=useState(false),[name,setName]=useState(''),[identifier,setIdentifier]=useState(''),[password,setPassword]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false);
@@ -17,5 +18,6 @@ export default function Login(){
     <label className="block text-sm font-semibold">{signup?'Email':'Phone or email'}<input type={signup?'email':'text'} autoComplete="username" required maxLength={160} value={identifier} onChange={e=>setIdentifier(e.target.value)} className="sales-input mt-2"/></label>
     <label className="block text-sm font-semibold">Password<input type="password" minLength={signup?10:1} maxLength={100} autoComplete={signup?'new-password':'current-password'} required value={password} onChange={e=>setPassword(e.target.value)} className="sales-input mt-2"/></label>
     {error&&<p role="alert" className="text-sm">{error}</p>}<GoogleSignInButton/>
-<button className="sales-primary w-full" disabled={busy}>{busy?'Please wait…':signup?'Create account & request approval':'Sign in'}</button></fieldset></form><Link href="/forgot-password" className="mt-4 text-center text-sm font-semibold text-gold">Forgot password?</Link><p className="mt-5 text-xs text-ink-500">Sales-agent access requires admin approval.</p></AuthJourney>;
+<button className="sales-primary w-full" disabled={busy}>{busy?'Please wait…':signup?'Create account & request approval':'Sign in'}</button></fieldset></form><Link href="/forgot-password" className="mt-4 text-center text-sm font-semibold text-gold">Forgot password?</Link><p className="mt-5 text-xs text-ink-500">Sales-agent access requires admin approval.</p>{!signup&&<ServerPracticeCard role="sales" api={practiceApi} body="Try Peebee Sales as a demo agent: a book of businesses you signed up, with messages sent and accounts waiting to activate. Nothing here is real." buttonLabel="Practise as a sales agent" />}
+  </AuthJourney>;
 }

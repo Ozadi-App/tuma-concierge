@@ -1,5 +1,6 @@
 "use client";
 
+import { ModuleState } from "../../../components/ModuleState";
 import { Switch } from "../../../components/ui/Switch";
 import { Select } from "../../../components/ui/Select";
 
@@ -281,10 +282,7 @@ export default function DeliveryPricingPage() {
         </section>
         <section className="home-card space-y-3">
           <label className="flex items-center gap-2 text-sm font-bold text-ink">
-            <Switch
-              checked={rideForOtherEnabled}
-              onChange={(e) => setRideForOtherEnabled(e.target.checked)}
-            />
+            <ModuleState on={rideForOtherEnabled} />
             Let customers book a ride for someone else
           </label>
           <p className="text-xs text-ink-500">
