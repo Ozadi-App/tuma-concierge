@@ -64,6 +64,12 @@ public class MainActivity extends BridgeActivity {
 
         mainWebView.setWebChromeClient(new BridgeWebChromeClient(getBridge()) {
             @Override
+            public android.graphics.Bitmap getDefaultVideoPoster() {
+                // Transparent 1x1 pixel so empty <video> elements don't show Android WebView's giant play icon
+                return android.graphics.Bitmap.createBitmap(1, 1, android.graphics.Bitmap.Config.ARGB_8888);
+            }
+
+            @Override
             public boolean onCreateWindow(WebView view, boolean isDialog, boolean isUserGesture, Message resultMsg) {
                 closePopupWebView();
 
