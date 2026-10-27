@@ -19,7 +19,7 @@ export async function providerJson<T = Record<string, unknown>>(
     res = await fetch(url, { ...init, signal: controller.signal, redirect: "error" });
   } catch (err) {
     console.error(`${provider} request failed:`, err);
-    throw new VideoProviderError(provider, "unavailable", "The video provider could not be reached. Please try again.");
+    throw new VideoProviderError(provider, "unavailable", "The video provider could not be reached. Please try again.", err instanceof Error ? `${err.name}: ${err.message}`.slice(0, 200) : undefined);
   } finally {
     clearTimeout(timer);
   }

@@ -89,6 +89,6 @@ videoAdminRoutes.post("/admin/video/credentials/:provider/test", ...gate, async 
     await VIDEO_ADAPTERS[provider].verifyCredentials(creds);
     return c.json({ ok: true });
   } catch (err) {
-    return c.json({ ok: false, message: err instanceof VideoProviderError ? err.clientMessage : "The check failed." });
+    return c.json({ ok: false, message: err instanceof VideoProviderError ? (err.code === "unavailable" && err.upstreamMessage ? `${err.clientMessage} (${err.upstreamMessage})` : err.clientMessage) : "The check failed." });
   }
 });
