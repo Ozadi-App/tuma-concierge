@@ -18,7 +18,7 @@ import type { ChannelsConfig } from "@peebee/shared";
  * always-open connection to keep. The host's private publish address never reaches a viewer.
  */
 
-/** A camera stream only. Once migration 0143 is in, broadcasts and premieres share the table and are told apart by `kind`. */
+/** A camera stream only. Once migration 0144 is in, broadcasts and premieres share the table and are told apart by `kind`. */
 const cameraOnly = async (alias = "") => ((await hasColumn("live_sessions", "kind")) ? `AND ${alias}kind = 'camera'` : "");
 
 export type LiveRow = Row & {

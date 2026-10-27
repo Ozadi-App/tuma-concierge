@@ -29,7 +29,7 @@ type EventRow = Row & {
   started_at: string | null; ended_at: string | null; viewer_peak: number;
 };
 
-/** The airing columns exist once migration 0143 is applied; until then both features stay off. */
+/** The airing columns exist once migration 0144 is applied; until then both features stay off. */
 export async function eventsReady(): Promise<boolean> {
   return (await hasTable("live_sessions")) && (await hasColumn("live_sessions", "kind")) && (await hasTable("live_reminders"));
 }

@@ -1,4 +1,4 @@
--- Migration 0143: broadcasts and premieres.
+-- Migration 0144: broadcasts and premieres.
 -- Additive only. Needs 0136 (Channels) and 0142 (live streams). A broadcast is pre-recorded videos aired back to back
 -- at a set time; a premiere is a video's first showing. Both reuse a live_sessions row as the "airing" so they get the
 -- same live chat and viewer count. The code checks that these columns exist (hasColumn) and keeps both features off
