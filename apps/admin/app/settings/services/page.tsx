@@ -1,9 +1,11 @@
 "use client";
 
-import { MODULES, MODULE_CLUSTERS, childrenOf, resolveModuleAvailability, type ModuleDef, type ModuleFlags, type ModuleWorld } from "@peebee/shared";
+import { DEFAULT_MODULE_NOTICE, MODULES, syncedFlag, getModule, MODULE_CLUSTERS, MODULE_NOTICE_MESSAGE_MAX, MODULE_NOTICE_REASONS, childrenOf, cleanModuleNotice, resolveModuleAvailability, type ModuleDef, type ModuleFlags, type ModuleNotice, type ModuleNotices, type ModuleWorld } from "@peebee/shared";
+import { ChevronDown } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { SettingsPageShell, SettingsSaveBar } from "../../../components/SettingsPageShell";
+import { Select } from "../../../components/ui/Select";
 import { Switch } from "../../../components/ui/Switch";
 import { api, errorMessage } from "../../../lib/api";
 
@@ -15,7 +17,11 @@ const WORLDS: Array<{ id: ModuleWorld; label: string; blurb: string }> = [
 export default function ServicesPage() {
   const [saved, setSaved] = useState<ModuleFlags | null>(null);
   const [flags, setFlags] = useState<ModuleFlags | null>(null);
+  const [savedNotices, setSavedNotices] = useState<ModuleNotices>({});
+  const [notices, setNotices] = useState<ModuleNotices>({});
   const [world, setWorld] = useState<ModuleWorld>("live");
+  const [savedSync, setSavedSync] = useState(false);
+  const [sync, setSync] = useState(false);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -23,23 +29,41 @@ export default function ServicesPage() {
 
   useEffect(() => {
     api.adminGetModules()
-      .then(({ modules }) => { setSaved(modules.flags); setFlags(structuredClone(modules.flags)); })
+      .then(({ modules }) => { setSavedSync(!!modules.sync); setSync(!!modules.sync); setSaved(modules.flags); setFlags(structuredClone(modules.flags)); setSavedNotices(modules.notices ?? {}); setNotices(structuredClone(modules.notices ?? {})); })
       .catch((err) => setError(errorMessage(err)))
       .finally(() => setLoading(false));
   }, []);
 
-  const available = useMemo(() => (flags ? resolveModuleAvailability(flags) : null), [flags]);
+  const available = useMemo(() => (flags ? resolveModuleAvailability(flags, sync) : null), [flags, sync]);
   const changes = useMemo(() => {
-    const out: { live: Record<string, boolean>; practice: Record<string, boolean> } = { live: {}, practice: {} };
+    const out: { live: Record<string, boolean>; practice: Record<string, boolean>; notices: Record<string, ModuleNotice | null>; sync?: boolean } = { live: {}, practice: {}, notices: {} };
+    if (sync !== savedSync) out.sync = sync;
     if (!flags || !saved) return out;
     for (const def of MODULES) for (const w of ["live", "practice"] as const) if (flags[def.key]![w] !== saved[def.key]![w]) out[w][def.key] = flags[def.key]![w];
+    for (const key of new Set([...Object.keys(notices), ...Object.keys(savedNotices)])) {
+      if (JSON.stringify(notices[key] ?? null) !== JSON.stringify(savedNotices[key] ?? null)) out.notices[key] = notices[key] ?? null;
+    }
     return out;
-  }, [flags, saved]);
-  const dirty = Object.keys(changes.live).length + Object.keys(changes.practice).length;
+  }, [flags, saved, notices, savedNotices, sync, savedSync]);
+  const dirty = (changes.sync === undefined ? 0 : 1) + Object.keys(changes.live).length + Object.keys(changes.practice).length + Object.keys(changes.notices).length;
+
+  function setNotice(key: string, notice: ModuleNotice | null) {
+    setDone(false);
+    setNotices((n) => { const next = { ...n }; if (notice) next[key] = notice; else delete next[key]; return next; });
+  }
 
   function toggle(key: string, w: ModuleWorld, on: boolean) {
     setDone(false);
-    setFlags((f) => (f ? { ...f, [key]: { ...f[key]!, [w]: on } } : f));
+    // Kept the same: a switch in either world sets both (Channels has no Practice, so it only has Live).
+    const both = sync && getModule(key)?.practice.coverage !== "none";
+    setFlags((f) => (f ? { ...f, [key]: both ? { live: on, practice: on } : { ...f[key]!, [w]: on } } : f));
+  }
+
+  function setKeepSame(on: boolean) {
+    setDone(false);
+    setSync(on);
+    // Switching it on makes the worlds agree at once: off in one is off in the other.
+    if (on) setFlags((f) => (f ? Object.fromEntries(MODULES.map((m) => [m.key, syncedFlag(m, f[m.key]!, true)])) : f));
   }
 
   async function onSubmit(e: React.FormEvent) {
@@ -48,44 +72,46 @@ export default function ServicesPage() {
     setBusy(true); setError(null); setDone(false);
     try {
       const { modules } = await api.adminUpdateModules(changes);
-      setSaved(modules.flags); setFlags(structuredClone(modules.flags)); setDone(true);
+      setSavedSync(!!modules.sync); setSync(!!modules.sync); setSaved(modules.flags); setFlags(structuredClone(modules.flags)); setSavedNotices(modules.notices ?? {}); setNotices(structuredClone(modules.notices ?? {})); setDone(true);
     } catch (err) { setError(errorMessage(err)); }
     finally { setBusy(false); }
   }
 
-  const current = WORLDS.find((w) => w.id === world)!;
+  // Kept the same: one list, shown as Live (Practice is identical, except Channels which has no Practice).
+  const shown: ModuleWorld = sync ? "live" : world;
+  const current = WORLDS.find((w) => w.id === shown)!;
 
   return (
-    <SettingsPageShell title="Services" description="Every cluster and module on the platform, switched on or off for Live and for Practice." loading={loading}>
+    <SettingsPageShell title="Services" description="Switch a whole service on or off, or just one thing inside it. Off disappears from every app; the code stays ready for when it is back on." loading={loading}>
       {flags && available && (
         <form onSubmit={onSubmit} className="space-y-5">
-          <div role="tablist" aria-label="World" className="grid grid-cols-2 gap-1 rounded-full bg-[rgb(var(--surface-muted))] p-1 sm:inline-grid sm:min-w-[22rem]">
+          <div className="home-card flex items-start gap-3">
+            <Switch aria-label="Keep Live and Practice the same" checked={sync} onChange={(e) => setKeepSame(e.target.checked)} className="mt-0.5 shrink-0" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-bold text-ink">Keep Live and Practice the same</p>
+              <p className="text-xs text-ink-500">
+                {sync
+                  ? "On: a module is on only when it is on in both. Switch something off in either and it goes off in both; one list below controls both."
+                  : "Off: Live and Practice each have their own switches, so you can try a module in Practice before switching it on in Live."}
+              </p>
+            </div>
+          </div>
+          {!sync && <div role="tablist" aria-label="World" className="grid grid-cols-2 gap-1 rounded-full bg-[rgb(var(--surface-muted))] p-1 sm:inline-grid sm:min-w-[22rem]">
             {WORLDS.map((w) => (
               <button key={w.id} type="button" role="tab" aria-selected={world === w.id} onClick={() => setWorld(w.id)}
                 className={`min-h-10 rounded-full px-4 text-sm font-bold transition ${world === w.id ? "bg-[rgb(var(--surface-card))] text-ink shadow-sm" : "text-ink-500"}`}>
                 {w.label}
               </button>
             ))}
-          </div>
-          <p className="max-w-2xl text-sm text-ink-500">{current.blurb}</p>
-          {world === "practice" && (
+          </div>}
+          {!sync && <p className="max-w-2xl text-sm text-ink-500">{current.blurb}</p>}
+          {!sync && world === "practice" && (
             <p className="text-xs text-ink-500">Practice as a whole, and what each module&rsquo;s practice world contains, is managed in <Link href="/practice" className="font-bold text-ink underline">Practice</Link>.</p>
           )}
 
-          {MODULE_CLUSTERS.map((cluster) => {
-            const roots = MODULES.filter((m) => m.cluster === cluster.id && !m.parent);
-            return (
-              <section key={cluster.id} className="home-card space-y-3">
-                <header>
-                  <h2 className="text-base font-bold text-ink">{cluster.label}</h2>
-                  <p className="text-xs text-ink-500">{cluster.description}</p>
-                </header>
-                <ul className="space-y-1">
-                  {roots.map((m) => <ModuleRow key={m.key} def={m} depth={0} world={world} flags={flags} available={available} onToggle={toggle} />)}
-                </ul>
-              </section>
-            );
-          })}
+          {MODULE_CLUSTERS.map((cluster) => (
+            <ClusterCard key={cluster.id} cluster={cluster} world={shown} flags={flags} available={available} onToggle={toggle} notices={notices} onNotice={setNotice} />
+          ))}
           <SettingsSaveBar busy={busy} error={error} saved={done} />
         </form>
       )}
@@ -94,15 +120,58 @@ export default function ServicesPage() {
   );
 }
 
-function ModuleRow({ def, depth, world, flags, available, onToggle }: {
+type Available = ReturnType<typeof resolveModuleAvailability>;
+type Toggle = (key: string, world: ModuleWorld, on: boolean) => void;
+type NoticeProps = { notices: ModuleNotices; onNotice: (key: string, notice: ModuleNotice | null) => void };
+
+/** A cluster (Ride, Buy, Learn...): its own switch in the header, and everything inside it listed below. */
+function ClusterCard({ cluster, world, flags, available, onToggle, notices, onNotice }: {
+  cluster: (typeof MODULE_CLUSTERS)[number]; world: ModuleWorld; flags: ModuleFlags; available: Available; onToggle: Toggle;
+} & NoticeProps) {
+  const [open, setOpen] = useState(true);
+  const root = MODULES.find((m) => m.key === cluster.id);
+  const inside = MODULES.filter((m) => m.cluster === cluster.id && m.key !== cluster.id);
+  const on = inside.filter((m) => available[m.key]![world]).length;
+  const rootOn = root ? flags[root.key]![world] : true;
+  const liveOnly = root?.practice.coverage === "none";
+  return (
+    <section className="home-card space-y-3">
+      <header className="flex items-start gap-3">
+        {root && !(world === "practice" && liveOnly) ? (
+          <Switch aria-label={`${cluster.label} in ${world}`} checked={rootOn} onChange={(e) => onToggle(root.key, world, e.target.checked)} className="mt-1 shrink-0" />
+        ) : null}
+        <div className="min-w-0 flex-1">
+          <h2 className="text-base font-bold text-ink">
+            {cluster.label}{" "}
+            <span className="text-xs font-normal text-ink-500">
+              {world === "practice" && liveOnly ? "Not part of Practice" : !rootOn ? "Off — everything inside is hidden" : `${on} of ${inside.length} on`}
+            </span>
+          </h2>
+          <p className="text-xs text-ink-500">{cluster.description}</p>
+        </div>
+        {inside.length > 0 && (
+          <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-label={`${open ? "Hide" : "Show"} what is inside ${cluster.label}`} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-ink-500">
+            <ChevronDown className={`h-4 w-4 transition-transform ${open ? "rotate-180" : ""}`} aria-hidden />
+          </button>
+        )}
+      </header>
+      {root && !rootOn && !(world === "practice" && liveOnly) && <NoticeEditor def={root} notice={notices[root.key]} onChange={(n) => onNotice(root.key, n)} />}
+      {open && rootOn && !(world === "practice" && liveOnly) && root && childrenOf(root.key).length > 0 && (
+        <ul className="space-y-1 border-t border-[var(--border-faint)] pt-2">
+          {childrenOf(root.key).map((c) => <ModuleRow key={c.key} def={c} depth={0} world={world} flags={flags} available={available} onToggle={onToggle} notices={notices} onNotice={onNotice} />)}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function ModuleRow({ def, depth, world, flags, available, onToggle, notices, onNotice }: {
   def: ModuleDef; depth: number; world: ModuleWorld; flags: ModuleFlags;
-  available: ReturnType<typeof resolveModuleAvailability>;
-  onToggle: (key: string, world: ModuleWorld, on: boolean) => void;
-}) {
+  available: Available;
+  onToggle: Toggle;
+} & NoticeProps) {
   const own = flags[def.key]![world];
-  const effective = available[def.key]![world];
   const practiceOnly = world === "live" && flags[def.key]!.practice && !flags[def.key]!.live;
-  const parentBlocks = own && !effective;
   return (
     <li>
       <div className="flex items-start gap-3 rounded-xl px-2 py-2" style={{ marginLeft: depth * 20 }}>
@@ -110,17 +179,50 @@ function ModuleRow({ def, depth, world, flags, available, onToggle }: {
         <div className="min-w-0 flex-1">
           <p className="text-sm font-bold text-ink">
             {def.label}{" "}
-            <span className="font-normal text-ink-500">— {parentBlocks ? "on, but paused by a module above" : own ? "on" : "off"}</span>
+            <span className="font-normal text-ink-500">— {own ? "on" : "off"}</span>
           </p>
           <p className="text-xs text-ink-500">{def.description}</p>
           {practiceOnly && <p className="mt-0.5 text-xs font-semibold text-ink">On in Practice only. Switch it on here to make it live.</p>}
+          {!own && childrenOf(def.key).length > 0 && <p className="mt-0.5 text-xs text-ink-500">{countInside(def.key)} inside are hidden while this is off.</p>}
+          {!own && <NoticeEditor def={def} notice={notices[def.key]} onChange={(n) => onNotice(def.key, n)} />}
         </div>
       </div>
-      {childrenOf(def.key).length > 0 && (
+      {own && childrenOf(def.key).length > 0 && (
         <ul className="space-y-1">
-          {childrenOf(def.key).map((c) => <ModuleRow key={c.key} def={c} depth={depth + 1} world={world} flags={flags} available={available} onToggle={onToggle} />)}
+          {childrenOf(def.key).map((c) => <ModuleRow key={c.key} def={c} depth={depth + 1} world={world} flags={flags} available={available} onToggle={onToggle} notices={notices} onNotice={onNotice} />)}
         </ul>
       )}
     </li>
   );
+}
+
+/** What people see on the screens of a module that is off: why, an optional message, and an optional launch or return date. */
+function NoticeEditor({ def, notice, onChange }: { def: ModuleDef; notice: ModuleNotice | undefined; onChange: (notice: ModuleNotice | null) => void }) {
+  const current = notice ?? DEFAULT_MODULE_NOTICE;
+  const reason = MODULE_NOTICE_REASONS.find((r) => r.id === current.reason)!;
+  // An untouched "Not available" with no words is the default, so it is stored as nothing.
+  const update = (patch: Partial<ModuleNotice>) => {
+    const merged = { ...current, ...patch };
+    // Keep the message as typed (a trailing space is how the next word starts); the server trims what it stores.
+    const next: ModuleNotice = { reason: merged.reason, ...(merged.message?.trim() ? { message: merged.message } : {}), ...(merged.returnAt && cleanModuleNotice({ reason: merged.reason, returnAt: merged.returnAt })?.returnAt ? { returnAt: merged.returnAt } : {}) };
+    onChange(next.reason === "unavailable" && !next.message && !next.returnAt ? null : next);
+  };
+  return (
+    <div className="mt-2 space-y-2 rounded-xl border border-[var(--border-faint)] p-3">
+      <p className="text-xs font-bold text-ink">What people see for {def.label}</p>
+      <div className="grid gap-2 sm:grid-cols-2">
+        <Select aria-label={`Why ${def.label} is off`} value={current.reason} onValueChange={(v) => update({ reason: v as ModuleNotice["reason"] })}>
+          {MODULE_NOTICE_REASONS.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
+        </Select>
+        <input type="date" aria-label={`${reason.dateLabel} date for ${def.label}`} value={(current.returnAt ?? "").slice(0, 10)} onChange={(e) => update({ returnAt: e.target.value })} />
+      </div>
+      <input type="text" maxLength={MODULE_NOTICE_MESSAGE_MAX} placeholder="Optional message, for example: We are adding more taxis" aria-label={`Message for ${def.label}`} value={current.message ?? ""} onChange={(e) => update({ message: e.target.value })} className="w-full" />
+      <p className="text-xs text-ink-500">{reason.hint} Shown on every screen of this module and everything under it.</p>
+    </div>
+  );
+}
+
+/** How many modules sit anywhere under this one. */
+function countInside(key: string): number {
+  return childrenOf(key).reduce((n, c) => n + 1 + countInside(c.key), 0);
 }

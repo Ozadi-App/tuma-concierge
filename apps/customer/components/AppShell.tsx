@@ -1,5 +1,9 @@
 "use client";
 
+import { ModuleRouteGate } from "@peebee/shared/module-gate";
+import { MODULE_ROUTES } from "../lib/module-routes";
+import { useModules } from "../lib/modules";
+
 import { useEffect, useSyncExternalStore } from "react";
 import { noteInAppNavigation } from "../lib/nav-primary-action";
 import { usePathname } from "next/navigation";
@@ -15,6 +19,8 @@ import { isNavigationOverlayOpen, subscribeToNavigationOverlay } from "../lib/lo
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const moduleOn = useModules();
+  const gated = <ModuleRouteGate rules={MODULE_ROUTES} pathname={pathname} modules={moduleOn}>{children}</ModuleRouteGate>;
   const { user } = useAuth();
   // Lets the nav's Back use router.back() only when there is an in-app screen to return to.
   useEffect(() => { noteInAppNavigation(); }, [pathname]);
@@ -56,7 +62,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <main
         className={`mx-auto max-w-lg ${showHeader ? "min-h-[calc(100dvh-4rem)]" : "min-h-dvh"} ${showNav && !isSpotlight ? "customer-nav-content-clearance" : ""}`}
       >
-        {foodBusinessId ? <FoodBusinessTheme key={foodBusinessId} id={foodBusinessId}>{children}</FoodBusinessTheme> : children}
+        {foodBusinessId ? <FoodBusinessTheme key={foodBusinessId} id={foodBusinessId}>{gated}</FoodBusinessTheme> : gated}
       </main>
       {showNav && <BottomNav />}
       </ChatDrawerShell>

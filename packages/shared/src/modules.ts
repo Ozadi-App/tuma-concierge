@@ -7,12 +7,14 @@
  * available when every module above it is also on, in the same world.
  *
  * `liveKey` points a module at the setting that already gates it on the server, so the old switches and these
- * share one value. Modules without one are stored in `modules_live` (default on).
+ * share one value. `channel` does the same for a switch inside the Channels config. Modules with neither are stored
+ * in `modules_live` (default on).
  */
+import { sanitizeChannelsConfig } from "./channels-config.js";
 
 export type ModuleWorld = "live" | "practice";
 
-export type ModuleClusterId = "ride" | "deliver" | "buy" | "learn" | "hive" | "money";
+export type ModuleClusterId = "ride" | "deliver" | "buy" | "learn" | "hive" | "channels" | "money";
 
 export type ModuleClusterDef = { id: ModuleClusterId; label: string; description: string };
 
@@ -29,6 +31,8 @@ export type ModuleDef = {
   /** The `settings` row that already gates this module in Live. `defaultOn` is what that row means when empty. */
   liveKey?: string;
   defaultOn?: boolean;
+  /** A switch inside the Channels config: a yes/no at `path`, or (with `includes`) whether that value is in the list at `path`. */
+  channel?: { path: string; includes?: string };
   /** What the Practice world holds for this module: people, content, orders, places. */
   practice: { coverage: PracticeCoverage; has: string[]; missing?: string[] };
 };
@@ -39,13 +43,21 @@ export const MODULE_CLUSTERS: readonly ModuleClusterDef[] = [
   { id: "buy", label: "Buy", description: "Shopping lists, food, stores, pharmacy and fuel." },
   { id: "learn", label: "Learn", description: "Schools, courses, live classes and certificates." },
   { id: "hive", label: "Hive", description: "Home services and the Peebee Hire marketplace." },
+  { id: "channels", label: "Channels", description: "Creator channels: what people can post, go live with, and earn from." },
   { id: "money", label: "Money", description: "Paid memberships and reading aloud." },
 ];
 
 const m = (
   key: string, cluster: ModuleClusterId, label: string, description: string,
-  practice: ModuleDef["practice"], extra: Partial<Pick<ModuleDef, "parent" | "liveKey" | "defaultOn">> = {},
+  practice: ModuleDef["practice"], extra: Partial<Pick<ModuleDef, "parent" | "liveKey" | "defaultOn" | "channel">> = {},
 ): ModuleDef => ({ key, cluster, label, description, practice, ...extra });
+
+const NO_PRACTICE: ModuleDef["practice"] = { coverage: "none", has: [], missing: ["Channels are not part of Practice"] };
+
+/** A Channels module: its switch is a value inside the Channels config, so Admin → Channels and Services stay one setting. */
+const c = (key: string, label: string, description: string, path: string, parent?: string, includes?: string): ModuleDef => ({
+  key, cluster: "channels", label, description, practice: NO_PRACTICE, ...(parent ? { parent } : {}), channel: { path, ...(includes ? { includes } : {}) },
+});
 
 export const MODULES: readonly ModuleDef[] = [
   // Ride
@@ -142,11 +154,41 @@ export const MODULES: readonly ModuleDef[] = [
   m("hive.hire.chat", "hive", "Messaging", "Employer and applicant chat.", { coverage: "full", has: ["applications", "conversations"] }, { parent: "hive.hire", liveKey: "talent_chat_enabled", defaultOn: true }),
   m("hive.hire.recurring", "hive", "Repeat jobs", "Rebook the same worker daily, weekly or monthly.", { coverage: "full", has: ["recurring jobs"] }, { parent: "hive.hire", liveKey: "talent_recurring_enabled", defaultOn: true }),
 
+
+  // Channels. Live only: Practice does not simulate channels, so these have no Practice switch.
+  c("channels", "Channels", "Creator channels, posts and everything below. Off hides all of it; store and other module posts in the Spotlight stay.", "enabled"),
+  c("channels.open", "Opening a channel", "Anyone can open or convert to a channel. Off stops new channels.", "general.channelsOpen", "channels"),
+  c("channels.posts.video", "Video posts", "Creators can post videos.", "publishing.postTypes", "channels", "video"),
+  c("channels.posts.image", "Photo posts", "Creators can post single images.", "publishing.postTypes", "channels", "image"),
+  c("channels.posts.carousel", "Carousel posts", "Creators can post image carousels.", "publishing.postTypes", "channels", "carousel"),
+  c("channels.posts.text", "Text and poll posts", "Creators can post text and polls.", "publishing.postTypes", "channels", "text"),
+  c("channels.posts.audio", "Audio posts", "Creators can post audio.", "publishing.postTypes", "channels", "audio"),
+  c("channels.scheduling", "Scheduling posts", "Creators can schedule posts for later.", "publishing.schedulingEnabled", "channels"),
+  c("channels.comments", "Comments", "People can comment on posts.", "publishing.commentsEnabled", "channels"),
+  c("channels.likes", "Likes", "People can like posts.", "publishing.reactionsEnabled", "channels"),
+  c("channels.live", "Going live", "People can go live from their phone camera.", "live.enabled", "channels"),
+  c("channels.live.comments", "Live comments", "Viewers can comment while a stream is on.", "live.commentsEnabled", "channels.live"),
+  c("channels.live.helper", "Helper device", "The host can use a second device to read, hide and pin comments.", "live.helperEnabled", "channels.live"),
+  c("channels.live.broadcasts", "Broadcasts", "A channel airs pre-recorded videos back to back like a TV station.", "live.broadcastsEnabled", "channels.live"),
+  c("channels.live.premieres", "Premieres", "A channel premieres a video with a countdown and live chat.", "live.premieresEnabled", "channels.live"),
+  c("channels.live.reminders", "Airing reminders", "People can tap Remind me before an airing starts.", "live.remindersEnabled", "channels.live"),
+  c("channels.money", "Money from audiences", "Memberships, paid posts, tips and gifts.", "monetization.enabled", "channels"),
+  c("channels.money.memberships", "Memberships", "Creators sell monthly memberships.", "monetization.memberships", "channels.money"),
+  c("channels.money.payperview", "Pay-per-view posts", "Creators charge for single posts.", "monetization.payPerView", "channels.money"),
+  c("channels.money.tips", "Tips", "People can tip a creator.", "monetization.tips", "channels.money"),
+  c("channels.money.gifts", "Gifts", "People can send gifts on posts and live streams.", "monetization.gifts", "channels.money"),
+  c("channels.causes", "Causes", "Fundraising campaigns and donations.", "causes.enabled", "channels"),
+  c("channels.rewards", "Rewards", "Points for views and cash-outs.", "rewards.enabled", "channels"),
+  c("channels.withdrawals", "Cash withdrawals", "Paying creators out.", "kyc.withdrawalsEnabled", "channels"),
+
   // Money
   m("money", "money", "Money", "Paid memberships and reading aloud.", { coverage: "full", has: ["wallets", "mobile money"] }),
   m("money.pro", "money", "Peebee Pro", "Paid subscription for riders and stores.", { coverage: "full", has: ["rider Pro card", "store Pro", "renewals"] }, { parent: "money", liveKey: "pro_subscription_enabled", defaultOn: false }),
   m("money.luganda_audio", "money", "Luganda list reading", "Read shopping lists aloud in Luganda.", { coverage: "full", has: ["audio samples"] }, { parent: "money", liveKey: "luganda_audio_enabled", defaultOn: false }),
 ];
+
+/** The modules the Practice world simulates: everything except those marked as not part of it (Channels). */
+export const PRACTICE_MODULES: readonly ModuleDef[] = MODULES.filter((x) => x.practice.coverage !== "none");
 
 export const MODULE_KEYS: readonly string[] = MODULES.map((x) => x.key);
 
@@ -168,12 +210,12 @@ export type ModuleFlags = Record<string, { live: boolean; practice: boolean }>;
 /** What a module is actually doing: its own switch AND every module above it. */
 export type ModuleAvailability = Record<string, { live: boolean; practice: boolean }>;
 
-export function resolveModuleAvailability(flags: ModuleFlags): ModuleAvailability {
+export function resolveModuleAvailability(flags: ModuleFlags, sync = false): ModuleAvailability {
   const out: ModuleAvailability = {};
   const resolve = (def: ModuleDef): { live: boolean; practice: boolean } => {
     const done = out[def.key];
     if (done) return done;
-    const own = flags[def.key] ?? { live: true, practice: true };
+    const own = syncedFlag(def, flags[def.key] ?? { live: true, practice: true }, sync);
     const up = def.parent ? resolve(BY_KEY.get(def.parent)!) : { live: true, practice: true };
     return (out[def.key] = { live: own.live && up.live, practice: own.practice && up.practice });
   };
@@ -181,11 +223,61 @@ export function resolveModuleAvailability(flags: ModuleFlags): ModuleAvailabilit
   return out;
 }
 
-/** The wire shape of GET /v1/settings `modules`: raw flags (for the admin editor) and resolved availability (for apps). */
-export type ModuleSettings = { flags: ModuleFlags; available: ModuleAvailability };
+/**
+ * Why a module is off, and what people see where it used to be. Admin picks the reason when switching a module off;
+ * a message and a date are optional on top of the reason's own wording.
+ */
+export type ModuleNoticeReason = "coming_soon" | "maintenance" | "unavailable";
+export type ModuleNotice = { reason: ModuleNoticeReason; message?: string; /** A launch or return date, `YYYY-MM-DD` or a full ISO time. */ returnAt?: string };
 
-/** Admin write: only the flags that changed, per world. */
-export type ModuleSettingsUpdate = { live?: Record<string, boolean>; practice?: Record<string, boolean> };
+export const MODULE_NOTICE_MESSAGE_MAX = 200;
+
+export const MODULE_NOTICE_REASONS: readonly { id: ModuleNoticeReason; label: string; headline: string; dateLabel: string; hint: string }[] = [
+  { id: "coming_soon", label: "Coming soon", headline: "Coming soon", dateLabel: "Launching", hint: "Not launched yet. Add a launch date if you have one." },
+  { id: "maintenance", label: "Back soon", headline: "Back soon", dateLabel: "Expected back", hint: "Switched off for maintenance or an upgrade. Add when it returns." },
+  { id: "unavailable", label: "Not available", headline: "Not available right now", dateLabel: "Expected", hint: "A plain notice when there is no more to say." },
+];
+
+export const DEFAULT_MODULE_NOTICE: ModuleNotice = { reason: "unavailable" };
+
+/** Stored notices, by module. Only modules that are off carry one when served, so a stale note never shows on a live module. */
+export type ModuleNotices = Record<string, ModuleNotice>;
+
+/**
+ * With "keep Live and Practice the same" on, a module is on only if it is on in both worlds, so something off in one is
+ * off in the other. Modules Practice does not simulate (Channels) have no Practice switch to compare, so they keep Live's.
+ */
+export function syncedFlag(def: ModuleDef, own: { live: boolean; practice: boolean }, sync: boolean): { live: boolean; practice: boolean } {
+  if (!sync || def.practice.coverage === "none") return own;
+  const both = own.live && own.practice;
+  return { live: both, practice: both };
+}
+
+/** The wire shape of GET /v1/settings `modules`: raw flags (for the admin editor), resolved availability (for apps), and why things are off. */
+export type ModuleSettings = { flags: ModuleFlags; available: ModuleAvailability; notices?: ModuleNotices; /** Live and Practice are kept the same. */ sync?: boolean };
+
+/** Admin write: only the flags that changed, per world. A notice of `null` clears it. */
+export type ModuleSettingsUpdate = { live?: Record<string, boolean>; practice?: Record<string, boolean>; notices?: Record<string, ModuleNotice | null>; sync?: boolean };
+
+/** The notice to show for a module that is off: its own, else the nearest module above it that has one, else a plain "not available". */
+export function noticeFor(key: string, notices: ModuleNotices | null | undefined): ModuleNotice {
+  for (let def = getModule(key); def; def = def.parent ? getModule(def.parent) : undefined) {
+    const n = notices?.[def.key];
+    if (n) return n;
+  }
+  return DEFAULT_MODULE_NOTICE;
+}
+
+/** Trims and bounds a notice from the outside world; returns null for anything that is not one. */
+export function cleanModuleNotice(input: unknown): ModuleNotice | null {
+  if (!input || typeof input !== "object") return null;
+  const raw = input as Record<string, unknown>;
+  const reason = MODULE_NOTICE_REASONS.find((r) => r.id === raw.reason)?.id;
+  if (!reason) return null;
+  const message = typeof raw.message === "string" ? raw.message.trim().slice(0, MODULE_NOTICE_MESSAGE_MAX) : "";
+  const returnAt = typeof raw.returnAt === "string" && raw.returnAt.length <= 40 && Number.isFinite(Date.parse(raw.returnAt)) ? raw.returnAt : "";
+  return { reason, ...(message ? { message } : {}), ...(returnAt ? { returnAt } : {}) };
+}
 
 export const MODULE_SWITCHES_STORAGE_KEY = "peebee_module_availability";
 
@@ -242,4 +334,27 @@ export function applyModuleAvailability<T extends object>(settings: T, available
     if (node && last in node) node[last] = on;
   }
   return next as T;
+}
+
+function channelValue(config: unknown, path: string): unknown {
+  return path.split(".").reduce<unknown>((o, k) => (o && typeof o === "object" ? (o as Record<string, unknown>)[k] : undefined), config);
+}
+
+/** Is a Channels module's switch on in this stored Channels config (JSON text)? */
+export function channelModuleOn(def: ModuleDef, rawConfig: string | undefined): boolean {
+  if (!def.channel) return true;
+  let parsed: unknown = {};
+  try { parsed = JSON.parse(rawConfig || "{}"); } catch { /* an unreadable config reads as defaults */ }
+  const value = channelValue(sanitizeChannelsConfig(parsed), def.channel.path);
+  return def.channel.includes ? Array.isArray(value) && value.includes(def.channel.includes) : value === true;
+}
+
+/** The Channels-config patch that turns a Channels module on or off, given the config as it is now. */
+export function channelModulePatch(def: ModuleDef, current: unknown, on: boolean): Record<string, unknown> {
+  const { path, includes } = def.channel!;
+  if (!includes) return { [path]: on };
+  const list = channelValue(current, path);
+  const next = new Set(Array.isArray(list) ? (list as string[]) : []);
+  if (on) next.add(includes); else next.delete(includes);
+  return { [path]: [...next] };
 }

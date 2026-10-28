@@ -152,6 +152,19 @@ function isRscRequest(request, url) {
   return request.headers.has("RSC") || url.searchParams.has("_rsc");
 }
 
+// The platform's settings (Admin → Services switches among them) always come fresh when online, so a change shows the
+// next time the app asks. Offline, the last copy is used.
+async function networkFirst(request, cacheName) {
+  const cache = await caches.open(cacheName);
+  try {
+    const response = await fetch(request, { cache: "no-store" });
+    if (response.ok) await cache.put(request, response.clone());
+    return response;
+  } catch {
+    return (await cache.match(request)) || Response.error();
+  }
+}
+
 self.addEventListener("fetch", (event) => {
   const { request } = event;
   const url = new URL(request.url);
@@ -186,6 +199,11 @@ self.addEventListener("fetch", (event) => {
   // Never return a cached car config that can revive retired car-type choices.
   if (/^\/v1\/car\/(config|service-options)$/.test(url.pathname)) {
     event.respondWith(fetch(request, { cache: "no-store" }));
+    return;
+  }
+
+  if (url.pathname === "/v1/settings") {
+    event.respondWith(networkFirst(request, RUNTIME_CACHE));
     return;
   }
 

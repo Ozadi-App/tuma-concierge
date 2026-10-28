@@ -11,6 +11,8 @@
     "./practice-entebbe": "./src/practice-entebbe.ts",
     ".": "./src/index.ts",
     "./select": "./src/Select.tsx",
+    "./use-modules": "./src/use-modules.ts",
+    "./module-gate": "./src/ModuleGate.tsx",
     "./select.css": "./select.css",
     "./activation": "./src/ActivationPage.tsx",
     "./auth": "./src/AuthScene.tsx",

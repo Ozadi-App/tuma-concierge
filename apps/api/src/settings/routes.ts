@@ -1,3 +1,4 @@
+import { MODULE_NOTICE_MESSAGE_MAX } from "@peebee/shared";
 import { Hono } from "hono";
 import { getRoadSettings } from "../lib/road-distance.js";
 import { z } from "zod";
@@ -802,6 +803,12 @@ settingsRoutes.put(
 const modulesUpdateSchema = z.object({
   live: z.record(z.string(), z.boolean()).optional(),
   practice: z.record(z.string(), z.boolean()).optional(),
+  notices: z.record(z.string(), z.object({
+    reason: z.enum(["coming_soon", "maintenance", "unavailable"]),
+    message: z.string().max(MODULE_NOTICE_MESSAGE_MAX).optional(),
+    returnAt: z.string().max(40).refine((v) => v === "" || Number.isFinite(Date.parse(v)), "Not a date").optional(),
+  }).nullable()).optional(),
+  sync: z.boolean().optional(),
   practiceModeEnabled: z.boolean().optional(),
 });
 
@@ -833,13 +840,17 @@ settingsRoutes.put("/admin/modules", requireAuth, requireRole("admin"), requireP
       if (before.modules.flags[key]?.[world] !== on) changed.push(`${key} ${world} ${on ? "on" : "off"}`);
     }
   }
+  for (const [key, n] of Object.entries(parsed.data.notices ?? {})) {
+    if (JSON.stringify(before.modules.notices?.[key] ?? null) !== JSON.stringify(after.modules.notices?.[key] ?? null)) changed.push(n ? `${key} notice "${n.reason}"` : `${key} notice cleared`);
+  }
+  if (before.modules.sync !== after.modules.sync) changed.push(`keep Live and Practice the same ${after.modules.sync ? "on" : "off"}`);
   if (before.practiceModeEnabled !== after.practiceModeEnabled) changed.push(`practice mode ${after.practiceModeEnabled ? "on" : "off"}`);
   if (changed.length) {
     await logActivity({
       actor: user, action: "modules.update", entityType: "modules",
       summary: `Switched: ${changed.join(", ")}`,
-      before: { flags: before.modules.flags, practiceModeEnabled: before.practiceModeEnabled },
-      after: { flags: after.modules.flags, practiceModeEnabled: after.practiceModeEnabled },
+      before: { flags: before.modules.flags, notices: before.modules.notices, practiceModeEnabled: before.practiceModeEnabled },
+      after: { flags: after.modules.flags, notices: after.modules.notices, practiceModeEnabled: after.practiceModeEnabled },
       revertible: false, ip: clientIp(c),
     });
   }

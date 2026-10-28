@@ -4,10 +4,11 @@ import { Briefcase, Building2, CreditCard, LayoutGrid, Store, UserRound, WalletC
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "../lib/auth-context";
+import { filterByModule, useModules } from "../lib/modules";
 
 const tabs = [
   { href: "/", label: "Overview", icon: LayoutGrid },
-  { href: "/store", label: "Products", icon: Store },
+  { href: "/store", label: "Products", icon: Store, module: "buy.marketplace" },
   { href: "/services", label: "Services", icon: Briefcase },
   { href: "/payments", label: "Payments", icon: CreditCard },
   { href: "/wallet", label: "Wallet", icon: WalletCards },
@@ -18,11 +19,12 @@ const tabs = [
 export function BottomNav() {
   const pathname = usePathname();
   const { merchant } = useAuth();
+  const moduleOn = useModules();
 
   if (pathname === "/login" || pathname === "/apply" || pathname === "/activate") return null;
 
   const visibleTabs =
-    merchant?.member_role === "cashier" ? tabs.filter((tab) => tab.href !== "/wallet") : tabs;
+    filterByModule(merchant?.member_role === "cashier" ? tabs.filter((tab) => tab.href !== "/wallet") : tabs, moduleOn);
 
   return (
     <nav

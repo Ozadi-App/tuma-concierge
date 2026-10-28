@@ -1,5 +1,9 @@
 "use client";
 
+import { ModuleRouteGate } from "@peebee/shared/module-gate";
+import { MODULE_ROUTES } from "../lib/module-routes";
+import { useModules } from "../lib/modules";
+
 import {
   Bell,
   CheckCircle2,
@@ -17,6 +21,7 @@ import { PharmacyNav } from "./PharmacyNav";
 export function AppShell({ children }: { children: any }) {
   const { pharmacy, pharmacist, toggleOpen, ready } = useAuth();
   const pathname = usePathname();
+  const moduleOn = useModules();
   const router = useRouter();
   const isPublicPage = pathname === "/login" || pathname === "/activate";
 
@@ -65,7 +70,7 @@ export function AppShell({ children }: { children: any }) {
       </header>
 
       {/* Main Content Area */}
-      <main className="mx-auto max-w-lg px-4 pt-4">{children}</main>
+      <main className="mx-auto max-w-lg px-4 pt-4"><ModuleRouteGate rules={MODULE_ROUTES} pathname={pathname} modules={moduleOn}>{children}</ModuleRouteGate></main>
 
       {/* Persistent Bottom Nav */}
       <PharmacyNav />

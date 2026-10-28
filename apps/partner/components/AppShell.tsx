@@ -1,5 +1,9 @@
 "use client";
 
+import { ModuleRouteGate } from "@peebee/shared/module-gate";
+import { MODULE_ROUTES } from "../lib/module-routes";
+import { useModules } from "../lib/modules";
+
 import { BrandLogo } from "./BrandLogo";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -11,6 +15,7 @@ import { ServiceBanner } from "./ServiceBanner";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const moduleOn = useModules();
   const { mode, setMode } = useAuth();
   const activeTheme = useResolvedTheme();
   const isDarkMode = activeTheme === "dark";
@@ -74,7 +79,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       )}
       {!bare && <ServiceBanner />}
       <main className={`mx-auto min-h-dvh max-w-xl ${bare ? "" : "pb-[calc(88px+env(safe-area-inset-bottom))]"}`}>
-        {children}
+        <ModuleRouteGate rules={MODULE_ROUTES} pathname={pathname} modules={moduleOn}>{children}</ModuleRouteGate>
       </main>
       {!bare && <BottomNav />}
     </AuthGate>

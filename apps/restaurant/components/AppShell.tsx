@@ -1,5 +1,9 @@
 "use client";
 
+import { ModuleRouteGate } from "@peebee/shared/module-gate";
+import { MODULE_ROUTES } from "../lib/module-routes";
+import { useModules } from "../lib/modules";
+
 import { usePathname } from "next/navigation";
 import { BusinessTheme } from "@peebee/shared/business-theme";
 import { useAuth } from "../lib/auth-context";
@@ -12,6 +16,7 @@ import { PracticeModeBanner, PracticeModeGuard, PracticeModePrompt } from "./Pra
 export function AppShell({ children }: { children: React.ReactNode }) {
   const {restaurant}=useAuth();
   const pathname = usePathname();
+  const moduleOn = useModules();
   const isAuthPage = pathname === "/login" || pathname === "/activate" || pathname === "/forgot-password" || pathname.startsWith("/verify");
   // A specific chat thread ("/chat/<customerId>") is a full-screen
   // takeover — its own header/footer replace BrandHeader/BottomNav so the
@@ -33,7 +38,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           showNav ? "pb-[calc(88px+env(safe-area-inset-bottom))]" : ""
         }`}
       >
-        {children}
+        <ModuleRouteGate rules={MODULE_ROUTES} pathname={pathname} modules={moduleOn}>{children}</ModuleRouteGate>
       </main>
       {showNav && <BottomNav />}
     </AuthGate>
