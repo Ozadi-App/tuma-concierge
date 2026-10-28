@@ -323,6 +323,7 @@ export function friendlyErrorMessage(err: unknown): string {
       const written = err.message.replace(/^API \d+: /, "");
       if (written && written !== err.code && !/^[a-z0-9_]+$/.test(written)) return written;
     }
+    if (err.status >= 500 && err.message.includes("Server error (admin only)")) return err.message.replace(/^API \d+: /, "");
     if (err.status >= 500) return "Something went wrong on our end. Please try again in a moment.";
     // The server's own message, when it wrote one — most 4xx handlers in
     // this codebase already pass a plain-English `message` alongside the
