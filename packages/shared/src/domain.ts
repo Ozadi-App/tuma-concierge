@@ -846,6 +846,10 @@ export type DeliverySettings = {
   /** Demo/sandbox mode — every payment runs through the mock adapters
    * regardless of saved credentials. See PaymentProviderInfo/IntegrationsStatus. */
   paymentsDemoMode: boolean;
+  /** Flutterwave mobile money: true = Peebee's own in-app prompt (default), false = Flutterwave's hosted page. */
+  paymentsFlutterwaveDirectMobileMoney: boolean;
+  /** Flutterwave cards: true = Peebee's own card form (needs PCI accreditation; default off), false = Flutterwave's hosted page. */
+  paymentsFlutterwaveDirectCard: boolean;
   /** Dark-launch switch for the merchant allocation flow. Live enablement is
    * additionally gated by an active regulated-custody approval server-side. */
   merchantPaymentsEnabled: boolean;

@@ -12,6 +12,7 @@ import {
   paymentProviderHttpStatus,
   UnsupportedNetworkError,
 } from "../payments/service.js";
+import { cardSchema } from "../payments/card.js";
 import { appBaseUrl } from "../verify/service.js";
 import { creditWallet, getWalletCap, resolveCustomerByIdentifier, transferWallet } from "./service.js";
 
@@ -49,13 +50,17 @@ walletRoutes.get("/wallet", requireAuth, requireRole("customer"), async (c) => {
 const topupSchema = z.object({
   amount: z.number().int().positive(),
   msisdn: z.string().min(6).max(20).optional(),
+  method: z.enum(["mobile_money", "card"]).optional(),
+  // Only sent when the admin has Peebee's own card form switched on (Flutterwave direct card).
+  card: cardSchema.optional(),
 });
 
 walletRoutes.post("/wallet/topup", requireAuth, requireRole("customer"), async (c) => {
   const user = c.get("user");
   const parsed = topupSchema.safeParse(await c.req.json().catch(() => ({})));
   if (!parsed.success) return c.json({ error: "invalid_body", issues: parsed.error.issues }, 400);
-  const { amount, msisdn } = parsed.data;
+  const { amount, method, card } = parsed.data;
+  const msisdn = method === "card" ? undefined : parsed.data.msisdn;
 
   const environment = await getPlatformEnvironment();
   const column = environment === "sandbox" ? "wallet_balance_sandbox" : "wallet_balance";
@@ -82,6 +87,8 @@ walletRoutes.post("/wallet/topup", requireAuth, requireRole("customer"), async (
       msisdn,
       amount,
       name: user.name,
+      method,
+      card,
       returnUrl: `${appBaseUrl("customer")}/wallet?topup_return=${topupId}`,
       forceMock: environment === "sandbox",
     });
@@ -95,14 +102,14 @@ walletRoutes.post("/wallet/topup", requireAuth, requireRole("customer"), async (
         amount,
         initiated.provider,
         initiated.providerRef,
-        initiated.network ? "mobile_money" : "card",
+        method ?? (initiated.network ? "mobile_money" : "card"),
         msisdn ?? null,
         initiated.network,
         environment,
       ],
     });
 
-    return c.json({ topupId, status: "pending", network: initiated.network, redirectUrl: initiated.redirectUrl }, 201);
+    return c.json({ topupId, status: "pending", network: initiated.network, redirectUrl: initiated.redirectUrl, nextAction: initiated.nextAction }, 201);
   } catch (err) {
     if (err instanceof UnsupportedNetworkError) {
       return c.json({ error: "unsupported_network", message: err.message }, 400);

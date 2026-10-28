@@ -56,6 +56,8 @@ import { synthesizeLuganda } from "../speech/gemini.js";
 import { isProSubscriptionCurrent } from "../riders/pro-subscription.js";
 import type { MatchingMode, MobileMoneyNetwork } from "@peebee/shared";
 import { roundFare } from "@peebee/shared";
+import { cardSchema } from "../payments/card.js";
+import type { PaymentNextAction } from "../payments/gateway.js";
 import { snapshotTimeFees, getOrderTimeFees, cancelCustomerOrder, finishWaiting, closeWaiting } from "./time-fees.js";
 import {
   initiateCollection,
@@ -1742,9 +1744,11 @@ orderRoutes.post("/orders/:id/customer-delete", async (c) => {
 
 const fundSchema = z
   .object({
-    paymentMethod: z.enum(["mobile_money", "wallet", "cash"]).optional(),
+    paymentMethod: z.enum(["mobile_money", "card", "wallet", "cash"]).optional(),
     acceptedAmount: z.number().nonnegative().optional(),
     msisdn: z.string().min(6).max(20).optional(),
+    // Only sent when the admin has Peebee's own card form switched on (Flutterwave direct card).
+    card: cardSchema.optional(),
     useWallet: z.boolean().optional(),
     // Pay from someone else's wallet instead of your own — only valid
     // when that owner has an active wallet_shares grant to this customer.
@@ -1753,9 +1757,9 @@ const fundSchema = z
     // omitted or "primary" means their original wallet.
     walletId: z.string().optional(),
   })
-  .refine((data) => data.paymentMethod === "cash" || !!data.msisdn || !!data.useWallet, { message: "Provide a mobile money number or pay from wallet" })
+  .refine((data) => data.paymentMethod === "cash" || data.paymentMethod === "card" || !!data.msisdn || !!data.useWallet, { message: "Provide a mobile money number or pay from wallet" })
   .refine((data) => !data.paymentMethod || data.paymentMethod === "cash" ||
-    (data.paymentMethod === "wallet" ? data.useWallet === true : !data.useWallet && !!data.msisdn),
+    (data.paymentMethod === "wallet" ? data.useWallet === true : !data.useWallet && (data.paymentMethod === "card" || !!data.msisdn)),
     { message: "The payment details must match the selected method" });
 
 orderRoutes.get("/orders/:id/checkout", async (c) => {
@@ -1972,10 +1976,13 @@ orderRoutes.post("/orders/:id/fund", async (c) => {
   let network: MobileMoneyNetwork | null;
   let provider: string;
   let redirectUrl: string | undefined;
+  let nextAction: PaymentNextAction | undefined;
   try {
     const initiated = await initiateCollection({
       referenceId: paymentId,
-      msisdn: parsed.data.msisdn,
+      msisdn: parsed.data.paymentMethod === "card" ? undefined : parsed.data.msisdn,
+      method: parsed.data.paymentMethod === "card" || parsed.data.paymentMethod === "mobile_money" ? parsed.data.paymentMethod : undefined,
+      card: parsed.data.card,
       amount,
       name: user.name,
       returnUrl: (await isGuestOrder(id)) ? guestReturnUrl(id) : taxipress ? taxipressReturnUrl(taxipress.bookingId, id) : paymentReturnUrl(id),
@@ -1985,6 +1992,7 @@ orderRoutes.post("/orders/:id/fund", async (c) => {
     network = initiated.network;
     provider = initiated.provider;
     redirectUrl = initiated.redirectUrl;
+    nextAction = initiated.nextAction;
   } catch (err) {
     await executeBatch([
       { sql: "UPDATE payments SET status = 'failed', updated_at = datetime('now') WHERE id = ?", args: [paymentId] },
@@ -2048,6 +2056,7 @@ orderRoutes.post("/orders/:id/fund", async (c) => {
     order: await getOrder(id),
     payment: { id: paymentId, status: "pending", network },
     redirectUrl,
+    nextAction,
   });
 });
 

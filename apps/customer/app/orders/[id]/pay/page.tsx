@@ -2,13 +2,14 @@
 
 import { Select } from "@peebee/shared/select";
 
-import type { CustomerWalletSummary, OrderDetail, WalletShareReceived } from "@peebee/shared";
+import type { CardInput, CustomerWalletSummary, OrderDetail, PaymentNextAction, PaymentOptions, WalletShareReceived } from "@peebee/shared";
 import { detectMobileMoneyNetwork, mobileMoneyNetworkLabel } from "@peebee/shared";
-import { Banknote, Smartphone, Wallet } from "lucide-react";
+import { Banknote, CreditCard, Smartphone, Wallet } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApplicantPicker } from "../../../../components/ApplicantPicker";
+import { CardFields, CardHostedNote, CardPaymentSteps, cardFromForm, emptyCard, type CardForm } from "../../../../components/CardPayment";
 import { MobileNumberPicker } from "../../../../components/MobileNumberPicker";
 import { OrderBreakdown } from "../../../../components/OrderBreakdown";
 import { api, errorMessage } from "../../../../lib/api";
@@ -24,10 +25,11 @@ function afterPay(id: string, ticketId?: string | null) {
   try { return sessionStorage.getItem(payReturnKey(id)) || fallback; } catch { return fallback; }
 }
 
-type Method = "mobile_money" | "wallet" | "cash";
+type Method = "mobile_money" | "card" | "wallet" | "cash";
 type Quote = Awaited<ReturnType<typeof api.getOrderCheckout>>;
 const METHODS = [
   { id: "mobile_money", label: "Mobile Money", icon: Smartphone },
+  { id: "card", label: "Card", icon: CreditCard },
   { id: "wallet", label: "Wallet", icon: Wallet },
   { id: "cash", label: "Cash", icon: Banknote },
 ] as const;
@@ -44,6 +46,10 @@ export default function PaymentPage() {
   const [shares, setShares] = useState<WalletShareReceived[]>([]);
   const [walletKey, setWalletKey] = useState("primary");
   const [walletError, setWalletError] = useState<string | null>(null);
+  // Card is offered only when Flutterwave is active. `direct` = Peebee's own form (admin switch), otherwise Flutterwave's hosted page.
+  const [payOptions, setPayOptions] = useState<PaymentOptions | null>(null);
+  const [cardForm, setCardForm] = useState<CardForm>(emptyCard);
+  const [cardStep, setCardStep] = useState<{ paymentId: string; card: CardInput; action: PaymentNextAction } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const paying = useRef(false);
@@ -118,12 +124,19 @@ export default function PaymentPage() {
     return () => { active = false; };
   }, []);
 
+  useEffect(() => {
+    api.getPaymentOptions().then(setPayOptions).catch(() => setPayOptions(null));
+  }, []);
+  const cardAvailable = !!payOptions?.card.available;
+  const cardDirect = cardAvailable && !!payOptions?.card.direct;
+  const cardInput = cardFromForm(cardForm);
+
   const choices = [
     ...(wallets ?? []).map((w) => ({ key: w.id, name: w.isPrimary ? `${w.name} (main wallet)` : w.name, balance: w.balance, walletId: w.id, ownerId: undefined as string | undefined })),
     ...shares.map((w) => ({ key: `shared:${w.id}`, name: `${w.wallet_name} — ${w.owner_name}`, balance: w.owner_balance, walletId: w.wallet_id ?? "primary", ownerId: w.owner_id })),
   ];
   const selectedWallet = choices.find((w) => w.key === walletKey);
-  const amount = quote ? (method === "mobile_money" ? quote.mobileMoney : quote[method]) : null;
+  const amount = quote ? (method === "mobile_money" || method === "card" ? quote.mobileMoney : quote[method]) : null;
   const network = detectMobileMoneyNetwork(phone);
   const pending = detail?.payments.some((p) => p.type === "collection" && ["pending", "unknown"].includes(p.status)) ?? false;
   const combinedStops = detail?.bundleStops ?? [];
@@ -131,10 +144,11 @@ export default function PaymentPage() {
   const payFirst = !!quote?.payBeforeRider;
   const ready = !pending && (payFirst || (detail?.order.stage === "Match" && !!detail.order.rider_id
     && (combinedStops.length < 2 || combinedStops.every((stop) => stop.stage === "Match"))));
-  const methods = payFirst ? METHODS.filter((m) => m.id !== "cash") : METHODS;
+  const methods = METHODS.filter((m) => (m.id !== "cash" || !payFirst) && (m.id !== "card" || cardAvailable));
   const insufficient = method === "wallet" && selectedWallet?.balance != null && amount != null && selectedWallet.balance < amount;
-  const disabled = busy || (method === "cash" && !!cashBlocked) || !online || !ready || amount == null ||
+  const disabled = busy || !!cardStep || (method === "cash" && !!cashBlocked) || !online || !ready || amount == null ||
     (method === "mobile_money" && !network) ||
+    (method === "card" && cardDirect && !cardInput) ||
     (method === "wallet" && (!selectedWallet || selectedWallet.balance == null || insufficient));
 
   async function pay() {
@@ -146,9 +160,15 @@ export default function PaymentPage() {
       const result = await api.fundOrder(id, {
         paymentMethod: method, acceptedAmount: amount,
         ...(method === "mobile_money" ? { msisdn: phone } : {}),
+        ...(method === "card" && cardDirect && cardInput ? { card: cardInput } : {}),
         ...(method === "wallet" ? { useWallet: true, walletId: selectedWallet?.walletId, walletOwnerId: selectedWallet?.ownerId } : {}),
       });
       if (result.redirectUrl) { window.location.href = result.redirectUrl; return; }
+      if (method === "card" && cardInput && result.payment?.id && result.nextAction) {
+        setCardStep({ paymentId: result.payment.id, card: cardInput, action: result.nextAction });
+        return;
+      }
+      setCardForm(emptyCard);
       if (result.funded || result.payment?.status === "successful") {
         // A combined delivery is paid once (quote.bundle); only an older part-paid one still chains to the next pickup.
         const nextUnpaidPickup = quote?.bundle ? undefined : detail?.bundleStops?.find((stop) => stop.id !== id && stop.stage === "Match");
@@ -182,7 +202,7 @@ export default function PaymentPage() {
       {detail && !detail.order.rider_id && payFirst && (
         <p className="rounded-xl bg-gold/10 p-3 text-sm leading-6 text-ink">Pay now. We&apos;ll assign your riders and matatu for same-day delivery.</p>
       )}
-      <fieldset disabled={busy || pending} className={`grid gap-2 ${methods.length === 2 ? "grid-cols-2" : "grid-cols-3"}`}>
+      <fieldset disabled={busy || pending} className={`grid gap-2 ${methods.length === 3 ? "grid-cols-3" : "grid-cols-2"}`}>
         <legend className="sr-only">Payment method</legend>
         {methods.map(({ id: value, label, icon: Icon }) => (
           <label key={value} className={`flex min-h-24 flex-col items-center justify-center gap-2 rounded-2xl border-2 p-2 text-center text-sm font-bold ${value === "cash" && cashBlocked ? "cursor-not-allowed opacity-50" : "cursor-pointer"} ${method === value ? "border-gold bg-gold/10 text-ink" : "border-[var(--border-faint)] text-ink-500"}`}>
@@ -199,6 +219,20 @@ export default function PaymentPage() {
           <MobileNumberPicker purpose="payment" value={phone} onChange={setPhone} prominent autoSave />
           <p className="mt-3 text-sm text-ink-500">Enter your MTN MoMo or Airtel Money number. We detect the network automatically.</p>
         </fieldset>
+        {method === "card" && (cardStep ? (
+          <CardPaymentSteps
+            paymentId={cardStep.paymentId}
+            card={cardStep.card}
+            initial={cardStep.action}
+            onCancel={() => { setCardStep(null); setCardForm(emptyCard); void load(); }}
+            onPending={() => { setCardStep(null); setCardForm(emptyCard); void load(); }}
+          />
+        ) : (
+          <div className="space-y-3">
+            <h2 className="text-lg font-bold text-ink">Pay by card</h2>
+            {cardDirect ? <CardFields value={cardForm} onChange={setCardForm} disabled={busy || pending} /> : <CardHostedNote />}
+          </div>
+        ))}
         {method === "wallet" && (
           <div className="space-y-3">
             <h2 className="text-lg font-bold text-ink">Pay from your wallet</h2>
@@ -255,7 +289,7 @@ export default function PaymentPage() {
             <p className="text-sm text-ink-500">Finding your rider. You can choose your payment option while you wait.</p>}
         </section>
       )}
-      {pending && <p role="status" className="rounded-xl bg-gold/10 p-4 text-sm">Approve the payment request on your phone. We’re waiting for confirmation. You will not be charged again.</p>}
+      {pending && <p role="status" className="rounded-xl bg-gold/10 p-4 text-sm">{method === "card" ? "We’re waiting for your bank to confirm the card payment. You will not be charged again." : "Approve the payment request on your phone. We’re waiting for confirmation. You will not be charged again."}</p>}
       {!pending && ready && detail?.payments.some((p) => p.type === "collection" && p.status === "failed") && <p role="status" className="text-sm text-ink-500">Your previous payment did not complete. You can try again or choose another payment option.</p>}
       {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
       {!online && <p role="alert" className="text-sm text-ink-500">Connect to the internet to continue.</p>}

@@ -133,6 +133,14 @@ const DEFAULTS = {
    * aggregator. "1" = demo mode on, anything else = off. See
    * ../payments/service.ts resolveProvider(). */
   payments_demo_mode: "0",
+  /** Flutterwave mobile money: "1" = Peebee pushes the approval prompt to the
+   * customer's phone itself (Direct Charge, never leaves the app); "0" = the
+   * Flutterwave-hosted mobile money page. */
+  payments_flutterwave_direct_mobile_money: "1",
+  /** Flutterwave cards: "1" = the customer types the card into Peebee's own
+   * form (Direct Charge — needs PCI DSS accreditation first); "0" = the
+   * Flutterwave-hosted card page. Off until accreditation is verified. */
+  payments_flutterwave_direct_card: "0",
   /** Merchant-funded shopping is deliberately dark-launched. Live traffic
    * also requires a current regulated-custody approval; this flag alone can
    * never bypass that gate. */
@@ -1387,6 +1395,18 @@ export async function getPaymentsDemoMode(): Promise<boolean> {
 
 export async function setPaymentsDemoMode(enabled: boolean): Promise<void> {
   await setSetting("payments_demo_mode", enabled ? "1" : "0");
+}
+
+export async function getFlutterwaveDirectMobileMoney(): Promise<boolean> {
+  return (await getSetting("payments_flutterwave_direct_mobile_money")) !== "0";
+}
+
+export async function getFlutterwaveDirectCard(): Promise<boolean> {
+  return (await getSetting("payments_flutterwave_direct_card")) === "1";
+}
+
+export async function setFlutterwaveDirect(field: "mobile_money" | "card", enabled: boolean): Promise<void> {
+  await setSetting(field === "card" ? "payments_flutterwave_direct_card" : "payments_flutterwave_direct_mobile_money", enabled ? "1" : "0");
 }
 
 export async function getWalletSettings(): Promise<{ unverifiedCap: number; verifiedCap: number; maxTopup: number }> {
