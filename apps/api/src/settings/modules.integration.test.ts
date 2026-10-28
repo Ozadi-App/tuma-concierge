@@ -96,6 +96,40 @@ test("Live and Practice switches are independent, and a module obeys the ones ab
     await setModuleFlags({ live: { "ride.taxipress": true } });
   });
 
+  await t.test("kept the same: off in either world is off in both, and a switch in one sets both", async () => {
+    await setModuleFlags({ live: { "ride.luxury": false }, practice: { "ride.luxury": true, "ride.ambulance": false } });
+    assert.equal((await getModuleSettings()).sync, false, "off by default: each world keeps its own switches");
+    assert.equal((await getModuleSettings()).available["ride.luxury"]!.practice, true);
+
+    await setModuleFlags({ sync: true });
+    const first = await getModuleSettings();
+    assert.equal(first.sync, true);
+    assert.deepEqual(first.flags["ride.luxury"], { live: false, practice: false }, "off in Live, so Practice goes off too");
+    assert.deepEqual(first.flags["ride.ambulance"], { live: false, practice: false }, "off in Practice, so Live goes off too");
+    assert.equal(await isModuleLive("ride.ambulance"), false);
+    assert.equal(await isModuleLive("ride.boda"), true);
+
+    await setModuleFlags({ practice: { "ride.luxury": true } });
+    assert.deepEqual((await getModuleSettings()).flags["ride.luxury"], { live: true, practice: true }, "a switch in Practice sets Live as well");
+    await setModuleFlags({ live: { "ride.boda": false } });
+    assert.deepEqual((await getModuleSettings()).flags["ride.boda"], { live: false, practice: false });
+    assert.equal(await isModuleLive("ride.boda"), false);
+
+    await setModuleFlags({ sync: false });
+    await setModuleFlags({ live: { "ride.boda": true } });
+    assert.deepEqual((await getModuleSettings()).flags["ride.boda"], { live: true, practice: false }, "once not kept the same, worlds drift apart again");
+    await setModuleFlags({ live: { "ride.ambulance": true, "ride.luxury": true }, practice: { "ride.boda": true, "ride.ambulance": true } });
+  });
+
+  await t.test("kept the same does not touch Channels, which has no Practice", async () => {
+    await setModuleFlags({ sync: true });
+    await setModuleFlags({ live: { "channels.comments": false } });
+    const { flags } = await getModuleSettings();
+    assert.equal(flags["channels.comments"]!.live, false);
+    assert.equal(flags["channels.comments"]!.practice, true, "Practice side is not compared");
+    await setModuleFlags({ live: { "channels.comments": true }, sync: false });
+  });
+
   await t.test("a module can be on in Practice and off in Live", async () => {
     await setModuleFlags({ practice: { "ride.taxipress": true }, live: { "ride.taxipress": false } });
     const { flags, available } = await getModuleSettings();

@@ -808,6 +808,7 @@ const modulesUpdateSchema = z.object({
     message: z.string().max(MODULE_NOTICE_MESSAGE_MAX).optional(),
     returnAt: z.string().max(40).refine((v) => v === "" || Number.isFinite(Date.parse(v)), "Not a date").optional(),
   }).nullable()).optional(),
+  sync: z.boolean().optional(),
   practiceModeEnabled: z.boolean().optional(),
 });
 
@@ -842,6 +843,7 @@ settingsRoutes.put("/admin/modules", requireAuth, requireRole("admin"), requireP
   for (const [key, n] of Object.entries(parsed.data.notices ?? {})) {
     if (JSON.stringify(before.modules.notices?.[key] ?? null) !== JSON.stringify(after.modules.notices?.[key] ?? null)) changed.push(n ? `${key} notice "${n.reason}"` : `${key} notice cleared`);
   }
+  if (before.modules.sync !== after.modules.sync) changed.push(`keep Live and Practice the same ${after.modules.sync ? "on" : "off"}`);
   if (before.practiceModeEnabled !== after.practiceModeEnabled) changed.push(`practice mode ${after.practiceModeEnabled ? "on" : "off"}`);
   if (changed.length) {
     await logActivity({

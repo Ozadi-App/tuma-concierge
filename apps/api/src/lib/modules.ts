@@ -1,4 +1,4 @@
-import { MODULES, channelModulePatch, cleanModuleNotice, getModule, resolveModuleAvailability, type ModuleFlags, type ModuleNotices, type ModuleSettings, type ModuleSettingsUpdate } from "@peebee/shared";
+import { MODULES, channelModulePatch, cleanModuleNotice, getModule, resolveModuleAvailability, syncedFlag, type ModuleFlags, type ModuleNotices, type ModuleSettings, type ModuleSettingsUpdate } from "@peebee/shared";
 import { getChannelsConfig, saveChannelsConfig } from "../channels/settings.js";
 import { getSetting, getSettingRaw, rawModuleLive, setSetting, type SettingKey } from "./settings.js";
 
@@ -32,9 +32,15 @@ function parseNotices(raw: string): ModuleNotices {
   } catch { return {}; }
 }
 
+export async function isModuleSync(): Promise<boolean> {
+  return (await getSettingRaw("modules_sync")) === "1";
+}
+
 export async function getModuleSettings(): Promise<ModuleSettings> {
-  const flags = await getModuleFlags();
-  return { flags, available: resolveModuleAvailability(flags), notices: await getModuleNotices(flags) };
+  const [stored, sync] = await Promise.all([getModuleFlags(), isModuleSync()]);
+  // Kept the same: show each module's switch as what it really is, on only if on in both worlds.
+  const flags = sync ? Object.fromEntries(MODULES.map((x) => [x.key, syncedFlag(x, stored[x.key]!, true)])) : stored;
+  return { flags, available: resolveModuleAvailability(flags, sync), notices: await getModuleNotices(flags), sync };
 }
 
 /** Is this module on in Live right now, counting every module above it? */
@@ -46,7 +52,13 @@ export async function isModuleLive(key: string): Promise<boolean> {
   const chain = [def];
   for (let up = def.parent ? getModule(def.parent) : undefined; up; up = up.parent ? getModule(up.parent) : undefined) chain.push(up);
   await Promise.all(chain.filter((x) => x.liveKey).map(async (x) => values.set(x.liveKey!, await getSettingRaw(x.liveKey as SettingKey))));
-  return chain.every((x) => rawModuleLive(x, values));
+  if (!chain.every((x) => rawModuleLive(x, values))) return false;
+  // Kept the same as Practice: off there means off here too.
+  if (await isModuleSync()) {
+    const practice = parse(await getSettingRaw("modules_practice"));
+    if (chain.some((x) => x.practice.coverage !== "none" && practice[x.key] === false)) return false;
+  }
+  return true;
 }
 
 /** Only the keys that exist: anything else in an update is a mistake worth refusing. */
@@ -54,7 +66,36 @@ export function unknownModuleKeys(update: ModuleSettingsUpdate): string[] {
   return [...Object.keys(update.live ?? {}), ...Object.keys(update.practice ?? {}), ...Object.keys(update.notices ?? {})].filter((k) => !getModule(k));
 }
 
+/**
+ * Saves switches. With Live and Practice kept the same, a switch changed in either world is saved to both (off wins if
+ * a request names both with different values), and turning the setting on first makes the two agree: anything off in
+ * one world is switched off in the other.
+ */
 export async function setModuleFlags(update: ModuleSettingsUpdate): Promise<void> {
+  const wasSync = await isModuleSync();
+  const sync = update.sync ?? wasSync;
+  if (sync !== wasSync) {
+    await setSetting("modules_sync", sync ? "1" : "0");
+    if (sync) {
+      const stored = await getModuleFlags();
+      const agree: Record<string, boolean> = {};
+      for (const def of MODULES) if (def.practice.coverage !== "none" && stored[def.key]!.live !== stored[def.key]!.practice) agree[def.key] = false;
+      if (Object.keys(agree).length) await applyModuleFlags({ live: agree, practice: agree });
+    }
+  }
+  let { live, practice } = update;
+  if (sync) {
+    live = { ...live }; practice = { ...practice };
+    for (const key of new Set([...Object.keys(live), ...Object.keys(practice)])) {
+      if (getModule(key)?.practice.coverage === "none") continue;
+      const on = (live[key] ?? true) && (practice[key] ?? true);
+      live[key] = on; practice[key] = on;
+    }
+  }
+  await applyModuleFlags({ live, practice, notices: update.notices });
+}
+
+async function applyModuleFlags(update: ModuleSettingsUpdate): Promise<void> {
   if (update.notices && Object.keys(update.notices).length) {
     const notices = parseNotices(await getSettingRaw("modules_notices"));
     for (const [key, n] of Object.entries(update.notices)) {
