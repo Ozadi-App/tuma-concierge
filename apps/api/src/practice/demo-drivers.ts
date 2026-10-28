@@ -25,7 +25,7 @@ export async function runDemoDriverAutopilot(limit = 12): Promise<number> {
   const drivers = (await db.execute({ sql: `SELECT driver_id FROM car_driver_state WHERE online = 1 AND driver_id LIKE ${DEMO_DRIVER} AND driver_id <> ? ORDER BY driver_id`, args: [PERSONA] })).rows.map((r) => String(r.driver_id));
   const waiting = await db.execute({
     sql: `SELECT o.id FROM orders o JOIN car_bookings b ON b.order_id = o.id
-          WHERE b.status = 'requested' AND o.rider_id IS NULL AND o.stage IN ('Create', 'Match') AND o.customer_id LIKE 'prac\\_cust\\_%' ESCAPE '\\'
+          WHERE b.status = 'requested' AND +o.rider_id IS NULL AND o.stage IN ('Create', 'Match') AND o.customer_id >= 'prac_cust_' AND o.customer_id < 'prac_cust' || char(96)
             AND o.created_at <= datetime('now', ?) AND NOT EXISTS (SELECT 1 FROM order_applications a WHERE a.order_id = o.id)
           ORDER BY o.created_at LIMIT ?`,
     args: [`-${DEMO_DRIVER_PATIENCE_SECONDS} seconds`, limit],
