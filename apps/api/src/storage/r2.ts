@@ -20,6 +20,8 @@ export type R2Bucket = {
     options?: { httpMetadata?: { contentType?: string } },
   ): Promise<unknown>;
   get(key: string, options?: { range?: { offset: number; length?: number } }): Promise<R2Object | null>;
+  /** Whether an object exists, without reading it. The real binding has it; small stand-ins may not. */
+  head?(key: string): Promise<{ size: number } | null>;
   delete(key: string): Promise<void>;
 };
 

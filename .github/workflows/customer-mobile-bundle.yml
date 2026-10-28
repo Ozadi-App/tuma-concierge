@@ -1,0 +1,88 @@
+name: Publish customer app update (Android)
+
+# The Android app carries its own copy of the customer screens. After each live deploy of main finishes, this builds that
+# copy and publishes it to our update server (apps/api/src/app-updates), so phones get fixes without a new APK. Whether a
+# published version reaches phones at once, or waits for someone to make it live, is chosen in Admin → App updates.
+#
+# Skipped when the merge changed nothing the Android app is built from.
+#
+# Required repository secret:
+# - APP_UPDATES_PUBLISH_TOKEN  (24+ characters; must equal the API worker's secret of the same name)
+# Until it is set this workflow does nothing.
+
+on:
+  workflow_run:
+    workflows: ["Deploy to Cloudflare"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: customer-mobile-bundle
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    env:
+      API_URL: https://api.peebee.online
+      APP_UPDATES_PUBLISH_TOKEN: ${{ secrets.APP_UPDATES_PUBLISH_TOKEN }}
+      SOURCE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+    steps:
+      - name: Check the publish token is set
+        id: token
+        run: |
+          if [ -z "$APP_UPDATES_PUBLISH_TOKEN" ]; then
+            echo "::notice::APP_UPDATES_PUBLISH_TOKEN is not set, so no app update is published. See Admin → App updates."
+            echo "ready=no" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=yes" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.token.outputs.ready == 'yes'
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          fetch-depth: 2
+
+      - name: Did the merge change the Android app?
+        id: changed
+        if: steps.token.outputs.ready == 'yes'
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "build=yes" >> "$GITHUB_OUTPUT"
+          elif git diff --name-only HEAD^1 HEAD -- apps/customer apps/customer-mobile packages/shared pnpm-lock.yaml | grep -q .; then
+            echo "build=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::Nothing the Android app is built from changed in this merge."
+            echo "build=no" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: pnpm/action-setup@v4
+        if: steps.changed.outputs.build == 'yes'
+      - uses: actions/setup-node@v4
+        if: steps.changed.outputs.build == 'yes'
+        with:
+          node-version: "22"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+        if: steps.changed.outputs.build == 'yes'
+
+      - name: Build the Android app's screens
+        if: steps.changed.outputs.build == 'yes'
+        run: pnpm --filter customer-mobile build
+
+      - name: Publish (only the files the server does not have are uploaded)
+        if: steps.changed.outputs.build == 'yes'
+        run: |
+          set -euo pipefail
+          SHORT=${SOURCE_SHA::7}
+          ID="$(date -u +%Y%m%d-%H%M)-$SHORT"
+          MIN=$(node -p "require('./apps/customer-mobile/update-compat.json').minNativeVersionCode")
+          SUBJECT=$(git log -1 --format=%s "$SOURCE_SHA" | tr -cd '[:alnum:] ._#():,/-' | cut -c1-60)
+          echo "Publishing $ID, needs Android build $MIN or newer"
+          node scripts/publish-app-update.mjs customer apps/customer-mobile/www "$ID" --label "$SHORT $SUBJECT" --min-native "$MIN"

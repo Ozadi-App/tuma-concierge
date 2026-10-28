@@ -1,4 +1,5 @@
 import type { PublicReceipt } from "./receipt.js";
+import type { AppUpdatesSettings, AppUpdatesUpdate } from "./app-updates.js";
 import { applyModuleAvailability, rememberModuleAvailability, type ModuleSettingsUpdate, type ModuleSettings } from "./modules.js";
 import { isPracticeStorageOn } from "./practice.js";
 import { endServerPractice, isServerPractice, type PracticeSessionResult, type ServerRole } from "./practice-server.js";
@@ -2029,6 +2030,13 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized, 
     /** Admin: change Live and/or Practice switches for any modules. */
     async adminUpdateModules(input: ModuleSettingsUpdate & { practiceModeEnabled?: boolean}) {
       return request<{ modules: ModuleSettings; practiceModeEnabled: boolean }>("/v1/admin/modules", { method: "PUT", body: JSON.stringify(input) });
+    },
+    /** Admin: over-the-air updates for the mobile apps (which version phones get, on/off). */
+    async adminGetAppUpdates() {
+      return request<AppUpdatesSettings>("/v1/admin/app-updates");
+    },
+    async adminUpdateAppUpdates(input: AppUpdatesUpdate) {
+      return request<AppUpdatesSettings>("/v1/admin/app-updates", { method: "PUT", body: JSON.stringify(input) });
     },
     async adminGetModules() {
       return request<{ modules: ModuleSettings; practiceModeEnabled: boolean }>("/v1/admin/modules");
