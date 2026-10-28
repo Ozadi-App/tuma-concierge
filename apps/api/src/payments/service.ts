@@ -310,7 +310,7 @@ export async function paymentMethodOptions() {
     getPlatformEnvironment(),
     getFlutterwaveDirectMobileMoney(),
     getFlutterwaveDirectCard(),
-    getCredential("flutterwave", "encryptionKey").then(Boolean),
+    getCredential("flutterwave", "encryptionKey").then((key) => key?.length === 24),
   ]);
   const flutterwave = active.includes("flutterwave");
   const simulated = demoMode || environment === "sandbox";

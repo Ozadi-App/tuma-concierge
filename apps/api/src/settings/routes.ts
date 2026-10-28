@@ -80,7 +80,7 @@ import {
   clearMapsCredential as clearMapsCredentialField,
   saveMapsCredentials,
 } from "../maps/credentials.js";
-import { clearCredential, PROVIDER_CREDENTIAL_FIELDS, saveCredentials } from "../payments/credentials.js";
+import { clearCredential, credentialLengthError, PROVIDER_CREDENTIAL_FIELDS, saveCredentials } from "../payments/credentials.js";
 import { paymentsIntegrationStatus } from "../payments/service.js";
 import { getShoppingUnitSettings, shoppingUnitSettingsSchema } from "./shopping-units.js";
 import { getHomeMenuSettings, homeMenuSchema } from "./home-menu.js";
@@ -949,6 +949,9 @@ settingsRoutes.put(
     const validKeys = new Set(PROVIDER_CREDENTIAL_FIELDS[provider].map((f) => f.key));
     const unknown = Object.keys(bodyParsed.data.fields).filter((k) => !validKeys.has(k));
     if (unknown.length > 0) return c.json({ error: "unknown_field", fields: unknown }, 400);
+
+    const lengthError = credentialLengthError(provider, bodyParsed.data.fields);
+    if (lengthError) return c.json({ error: "invalid_credential", message: lengthError }, 400);
 
     const changed = await saveCredentials(provider, bodyParsed.data.fields);
 
