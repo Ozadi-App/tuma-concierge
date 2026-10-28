@@ -30,3 +30,16 @@ export function describeModuleNotice(notice: ModuleNotice): { headline: string; 
   }
   return { headline: reason.headline, dateLine, message: notice.message ?? null };
 }
+
+/**
+ * CSS that hides every link into the screens of a switched-off module, and the list item or card it sits in. This is the
+ * catch-all behind each app's own lists: whatever card, tab or menu entry links to a module that is off disappears, even
+ * where nobody wrote a check for it. An app's home path (an `exact` rule) is never hidden.
+ */
+export function hiddenLinksCss(rules: readonly ModuleRouteRule[], isOn: (module: string) => boolean): string {
+  const off = rules.filter((r) => !r.exact && r.prefix !== "/" && !isOn(r.module));
+  return off
+    .flatMap((r) => [`a[href="${r.prefix}"]`, `a[href^="${r.prefix}/"]`, `a[href^="${r.prefix}?"]`])
+    .map((sel) => `${sel},li:has(>${sel}){display:none!important}`)
+    .join("");
+}

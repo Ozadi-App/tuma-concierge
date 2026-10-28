@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { describeModuleNotice, moduleForPath, type ModuleRouteRule } from "./module-routes.js";
+import { describeModuleNotice, hiddenLinksCss, moduleForPath, type ModuleRouteRule } from "./module-routes.js";
 import type { ModulesView } from "./use-modules.js";
 
 /**
@@ -26,6 +26,8 @@ export function ModuleNoticeScreen({ title, modules, moduleKey }: { title: strin
 /** Shows the page, or the notice in its place when the module that owns this path is off. Paths no rule names always show. */
 export function ModuleRouteGate({ rules, pathname, modules, children }: { rules: readonly ModuleRouteRule[]; pathname: string; modules: ModulesView; children: ReactNode }) {
   const rule = moduleForPath(pathname, rules);
-  if (rule && !modules(rule.module)) return <ModuleNoticeScreen title={rule.title} modules={modules} moduleKey={rule.module} />;
-  return <>{children}</>;
+  const css = hiddenLinksCss(rules, modules);
+  const hide = css ? <style>{css}</style> : null;
+  if (rule && !modules(rule.module)) return <>{hide}<ModuleNoticeScreen title={rule.title} modules={modules} moduleKey={rule.module} /></>;
+  return <>{hide}{children}</>;
 }

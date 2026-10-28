@@ -39,14 +39,13 @@ export function ServiceTiles({
     </>
   );
   const cls = "service-shortcut relative isolate flex min-w-0 flex-col items-center gap-1.5 overflow-visible transition-transform active:scale-95";
+  // A service an admin switched off is not shown at all: no greyed tile, nothing to tap.
+  const shown = tiles.filter((tile) => !paused[tile.key]);
+  if (shown.length === 0) return null;
   return (
-    <div className="grid grid-cols-4 gap-3 overflow-visible">
-      {tiles.map((tile) =>
-        paused[tile.key] ? (
-          <button key={tile.key} data-service={tile.key} type="button" disabled className={cls}>
-            {inner(tile)}
-          </button>
-        ) : tile.href ? (
+    <div className="grid gap-3 overflow-visible" style={{ gridTemplateColumns: `repeat(${shown.length}, minmax(0, 1fr))` }}>
+      {shown.map((tile) =>
+        tile.href ? (
           <Link key={tile.key} data-service={tile.key} href={tile.href} className={cls}>
             {inner(tile)}
           </Link>

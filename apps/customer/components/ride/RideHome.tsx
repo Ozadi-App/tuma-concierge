@@ -19,6 +19,7 @@ import {
 import { saveSelfDriveRoute } from "../../lib/selfdrive-route";
 import { useSpecialCarServices } from "../../lib/special-car";
 import { useTaxipress } from "../../lib/taxipress";
+import { filterByModule, useModules } from "../../lib/modules";
 import { useLivePolling } from "../../lib/use-live-polling";
 import { useRoadRoute } from "../../lib/useRoadRoute";
 import { FeeProposalCard } from "../home/FeeProposalCard";
@@ -93,6 +94,14 @@ export function RideHome() {
   const router = useRouter();
   const special = useSpecialCarServices();
   const taxipress = useTaxipress();
+  // Admin → Services: a ride type that is switched off is not offered anywhere on this screen.
+  const moduleOn = useModules();
+  const bodaOn = moduleOn("ride.boda");
+  const carOn = moduleOn("ride.car");
+  const moveOn = moduleOn("ride.move");
+  const luxuryOn = moduleOn("ride.luxury");
+  const carpoolOn = moduleOn("ride.car.carpool");
+  const selfdriveOn = moduleOn("ride.car.selfdrive");
   const [cfg, setCfg] = useState<CarConfig | null>(null);
   const [rates, setRates] = useState<{ ratePerKm: number; minimum: number } | null>(null);
   const [places, setPlaces] = useState<PlacesBootstrap>({ saved: [], recent: [] });
@@ -102,7 +111,10 @@ export function RideHome() {
   const [here, setHere] = useState<Place | null>(null);
   const [nearbyCars, setNearbyCars] = useState<number | null>(null);
 
-  const [prefer, setPrefer] = useState<Prefer>("boda");
+  const [picked, setPrefer] = useState<Prefer | null>(null);
+  // The pick is the customer's choice, else the first ride type that is on (Boda is not always on).
+  const typeOn: Record<Prefer, boolean> = { boda: bodaOn, car: carOn, move: moveOn, luxury: luxuryOn };
+  const prefer: Prefer = picked && typeOn[picked] ? picked : bodaOn ? "boda" : carOn ? "car" : moveOn ? "move" : luxuryOn ? "luxury" : "boda";
   const [whenAt, setWhenAt] = useState<string | null>(null);
   const [whenOpen, setWhenOpen] = useState(false);
   const [passenger, setPassenger] = useState<RidePassenger | null>(null);
@@ -172,10 +184,10 @@ export function RideHome() {
 
   const cargoCats = (cfg?.categories ?? []).filter((c) => c.kind === "cargo" || c.id.startsWith("peebee-cargo-"));
   const cargoList = cargoCats.length > 0 ? cargoCats : FALLBACK_CARGO;
-  const lightestCargo = [...cargoList].sort((a, b) => a.minimum_fare - b.minimum_fare)[0];
+  const lightestCargo = moveOn ? [...cargoList].sort((a, b) => a.minimum_fare - b.minimum_fare)[0] : undefined;
   const luxuryCats = (cfg?.categories ?? []).filter((c) => c.service_group === "luxury" && Number(c.has_vehicles ?? 0) > 0);
   const ambulanceCats = (cfg?.categories ?? []).filter((c) => c.service_group === "ambulance" && Number(c.has_vehicles ?? 0) > 0);
-  const cheapestLuxury = [...luxuryCats].sort((a, b) => a.minimum_fare - b.minimum_fare)[0];
+  const cheapestLuxury = luxuryOn ? [...luxuryCats].sort((a, b) => a.minimum_fare - b.minimum_fare)[0] : undefined;
   const emergencyNumber = cfg?.emergencyNumber || "999";
 
   // ---- the fare board, once a destination is set ----------------------
@@ -233,7 +245,7 @@ export function RideHome() {
     const later = whenAt != null;
     const multi = stops.length > 0;
     const out: BoardOption[] = [];
-    out.push({
+    if (bodaOn) out.push({
       id: "boda", prefer: "boda", title: "Boda", icon: Bike, direct: true,
       sub: later ? "Boda rides are booked for now" : multi ? `${stops.length} stop${stops.length === 1 ? "" : "s"} · +${formatUgx(rideQuote?.stopFees ?? 0)} stop fees` : "Quickest through traffic",
       // The server quote when there is one; otherwise the same rate the server uses (single destination only).
@@ -242,7 +254,7 @@ export function RideHome() {
       blocked: later ? "Now only" : multi && rideQuoteState === "failed" ? "Stops unavailable" : undefined,
       handoff: { mode: "boda", autoBook: true },
     });
-    if (tiers) {
+    if (tiers && carOn) {
       const o = carOptions?.find((x) => x.size === carSize && x.tier === carTier);
       const sizeInfo = CAR_SIZES.find((z) => z.id === carSize)!;
       const base = `${sizeInfo.label} · ${carTier === "comfort" ? "Comfort" : "Convenient"}`;
@@ -276,7 +288,7 @@ export function RideHome() {
       });
     }
     return out;
-  }, [route, whenAt, km, rates, tiers, carOptions, carSize, carTier, quotes, lightestCargo, cheapestLuxury, stops.length, rideQuote, rideQuoteState]);
+  }, [route, whenAt, km, rates, tiers, bodaOn, carOn, carOptions, carSize, carTier, quotes, lightestCargo, cheapestLuxury, stops.length, rideQuote, rideQuoteState]);
 
   const bookable = options.filter((o) => !o.blocked && !o.pending && o.fare != null);
   const bestValue = bookable.length > 1 ? bookable.reduce((a, b) => (b.fare! < a.fare! ? b : a)).id : null;
@@ -416,22 +428,24 @@ export function RideHome() {
   const scheduledTrip = active && trip.car?.scheduledFor && new Date(trip.car.scheduledFor).getTime() > Date.now() ? trip.car.scheduledFor : null;
 
   // ---- ride types ------------------------------------------------------
-  type ModeItem = { id: string; label: string; icon: LucideIcon; sub: string; prefer?: Prefer; href?: string; onGo?: () => void };
+  type ModeItem = { id: string; module?: string; label: string; icon: LucideIcon; sub: string; prefer?: Prefer; href?: string; onGo?: () => void };
   const bodaFrom = rates ? bodaFare(0, rates.ratePerKm, rates.minimum) : null;
-  const modes: ModeItem[] = [
-    { id: "boda", label: "Boda", icon: Bike, sub: bodaFrom ? `from ${bodaFrom.toLocaleString("en-UG")}` : "Quick in town", prefer: "boda" },
+  const allModes: ModeItem[] = [
+    { id: "boda", module: "ride.boda", label: "Boda", icon: Bike, sub: bodaFrom ? `from ${bodaFrom.toLocaleString("en-UG")}` : "Quick in town", prefer: "boda" },
     // Taxipress (when it is on) sits right after Boda.
-    ...(taxipress.enabled ? [{ id: "taxipress", label: "Taxipress", icon: Bus, sub: "Book a seat", href: "/ride/taxipress" }] : []),
+    ...(taxipress.enabled ? [{ id: "taxipress", module: "ride.taxipress", label: "Taxipress", icon: Bus, sub: "Book a seat", href: "/ride/taxipress" }] : []),
     tiers
-      ? { id: "car", label: "Car", icon: Car, sub: nearbyCars ? `${nearbyCars} nearby` : `from ${tiers.minimumFare.toLocaleString("en-UG")}`, prefer: "car" }
-      : { id: "car", label: "Car", icon: Car, sub: "Book a car", href: "/ride/car" },
-    { id: "rideshare", label: "Rideshare", icon: UsersRound, sub: "Shared seats", href: "/carpool" },
-    { id: "selfdrive", label: "Selfdrive", icon: CarFront, sub: "Drive yourself", href: "/rent", onGo: () => route && saveSelfDriveRoute(route) },
-    { id: "move", label: "Move", icon: Truck, sub: lightestCargo ? `from ${Math.round(lightestCargo.minimum_fare / 1000)}k` : "Vans & trucks", prefer: "move" },
-    ...(special.luxury ? [{ id: "luxury", label: "VIP", icon: Crown, sub: "By the hour", prefer: "luxury" as Prefer }] : []),
+      ? { id: "car", module: "ride.car", label: "Car", icon: Car, sub: nearbyCars ? `${nearbyCars} nearby` : `from ${tiers.minimumFare.toLocaleString("en-UG")}`, prefer: "car" }
+      : { id: "car", module: "ride.car", label: "Car", icon: Car, sub: "Book a car", href: "/ride/car" },
+    { id: "rideshare", module: "ride.car.carpool", label: "Rideshare", icon: UsersRound, sub: "Shared seats", href: "/carpool" },
+    { id: "selfdrive", module: "ride.car.selfdrive", label: "Selfdrive", icon: CarFront, sub: "Drive yourself", href: "/rent", onGo: () => route && saveSelfDriveRoute(route) },
+    { id: "move", module: "ride.move", label: "Move", icon: Truck, sub: lightestCargo ? `from ${Math.round(lightestCargo.minimum_fare / 1000)}k` : "Vans & trucks", prefer: "move" },
+    ...(special.luxury ? [{ id: "luxury", module: "ride.luxury", label: "VIP", icon: Crown, sub: "By the hour", prefer: "luxury" as Prefer }] : []),
     // Parcel moved here from the old Send button.
-    { id: "parcel", label: "Parcel", icon: Package, sub: "Send a package", href: "/deliver/parcel" },
+    { id: "parcel", module: "deliver.parcel", label: "Parcel", icon: Package, sub: "Send a package", href: "/deliver/parcel" },
   ];
+
+  const modes = filterByModule(allModes, moduleOn);
 
   const sheetStyle = { height: expanded ? "calc(100% - 12px)" : "min(60%, 500px)" };
   const whoLabel = passenger ? `For ${passenger.name.split(" ")[0]}` : "For me";
@@ -604,16 +618,16 @@ export function RideHome() {
               )}
               {offerError && <p role="alert" className="px-1 text-xs font-semibold text-[rgb(var(--color-red,200_40_40))]">{offerError}</p>}
 
-              <div className="grid grid-cols-2 gap-2">
-                <Link href="/carpool" className="ride-link-tile flex min-h-14 items-center gap-2.5 rounded-2xl px-3">
+              {(carpoolOn || selfdriveOn) && <div className="grid grid-cols-2 gap-2">
+                {carpoolOn && <Link href="/carpool" className="ride-link-tile flex min-h-14 items-center gap-2.5 rounded-2xl px-3">
                   <UsersRound className="h-5 w-5 shrink-0" aria-hidden />
                   <span className="min-w-0"><span className="block text-sm font-bold text-ink">Rideshare</span><span className="block truncate text-[11px] text-ink-500">Shared seats on this way</span></span>
-                </Link>
-                <Link href="/rent" onClick={() => saveSelfDriveRoute(route)} className="ride-link-tile flex min-h-14 items-center gap-2.5 rounded-2xl px-3">
+                </Link>}
+                {selfdriveOn && <Link href="/rent" onClick={() => saveSelfDriveRoute(route)} className="ride-link-tile flex min-h-14 items-center gap-2.5 rounded-2xl px-3">
                   <CarFront className="h-5 w-5 shrink-0" aria-hidden />
                   <span className="min-w-0"><span className="block text-sm font-bold text-ink">Selfdrive</span><span className="block truncate text-[11px] text-ink-500">Drive it yourself</span></span>
-                </Link>
-              </div>
+                </Link>}
+              </div>}
               <p className="flex items-start gap-2 px-1 text-xs text-ink-500">
                 <Wallet className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
                 You pay on the next screen. Mobile Money is held in escrow and released to your rider after the trip.
