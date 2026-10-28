@@ -4,29 +4,32 @@ import { CarFront, KeyRound, LayoutGrid, Route, Users, UserRound, WalletCards } 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "../lib/auth-context";
+import { filterByModule, useModules } from "../lib/modules";
 
 export function BottomNav() {
   const pathname = usePathname();
   const { mode } = useAuth();
+  const moduleOn = useModules();
 
   if (pathname === "/login") return null;
 
-  const tabs =
+  const allTabs: { href: string; label: string; icon: typeof LayoutGrid; module?: string }[] =
     mode === "driver"
       ? [
           { href: "/", label: "Home", icon: LayoutGrid },
-          { href: "/jobs", label: "Jobs", icon: Route },
-          { href: "/trips", label: "Trips", icon: Users },
+          { href: "/jobs", label: "Jobs", icon: Route, module: "ride.car" },
+          { href: "/trips", label: "Trips", icon: Users, module: "ride.car" },
           { href: "/wallet", label: "Earnings", icon: WalletCards },
           { href: "/account", label: "Account", icon: UserRound },
         ]
       : [
           { href: "/", label: "Home", icon: LayoutGrid },
-          { href: "/vehicles", label: "Vehicles", icon: CarFront },
-          { href: "/rentals", label: "Rentals", icon: KeyRound },
+          { href: "/vehicles", label: "Vehicles", icon: CarFront, module: "ride.car" },
+          { href: "/rentals", label: "Rentals", icon: KeyRound, module: "ride.car.selfdrive" },
           { href: "/wallet", label: "Earnings", icon: WalletCards },
           { href: "/account", label: "Account", icon: UserRound },
         ];
+  const tabs = filterByModule(allTabs, moduleOn);
 
   return (
     <nav
