@@ -1,0 +1,86 @@
+name: Customer iOS Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - "claude/*ios*"
+    paths:
+      - "apps/customer/**"
+      - "apps/customer-mobile/**"
+      - "packages/shared/**"
+      - ".github/workflows/customer-ios.yml"
+
+concurrency:
+  group: customer-ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-ios:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build customer-mobile static web bundle
+        run: pnpm --filter customer-mobile build
+
+      - name: Sync Capacitor iOS & install CocoaPods
+        working-directory: apps/customer-mobile
+        run: |
+          pnpm exec cap copy ios
+          pnpm exec cap update ios
+
+      - name: Build iOS Simulator app (.app)
+        working-directory: apps/customer-mobile/ios/App
+        run: |
+          xcodebuild \
+            -workspace App.xcworkspace \
+            -scheme App \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -derivedDataPath build/sim \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Build iOS Device app & package unsigned .ipa
+        working-directory: apps/customer-mobile/ios/App
+        run: |
+          xcodebuild \
+            -workspace App.xcworkspace \
+            -scheme App \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build/device \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build
+          mkdir -p build/ipa/Payload
+          cp -R build/device/Build/Products/Release-iphoneos/App.app build/ipa/Payload/
+          cd build/ipa
+          zip -qry ../../peebee-customer-unsigned.ipa Payload
+
+      - name: Upload iOS Simulator .app artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: peebee-customer-ios-simulator-app
+          path: apps/customer-mobile/ios/App/build/sim/Build/Products/Debug-iphonesimulator/App.app
+          retention-days: 14
+
+      - name: Upload unsigned iOS .ipa artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: peebee-customer-ios-unsigned-ipa
+          path: apps/customer-mobile/ios/App/peebee-customer-unsigned.ipa
+          retention-days: 14

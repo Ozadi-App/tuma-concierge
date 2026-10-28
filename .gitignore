@@ -49,3 +49,4 @@ local.db-wal
 apps/customer-mobile/.stage
 apps/customer-mobile/www
 apps/customer-mobile/*.apk
+apps/customer-mobile/*.ipa

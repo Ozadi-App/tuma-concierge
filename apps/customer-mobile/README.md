@@ -17,16 +17,28 @@ pnpm --filter customer-mobile build
 The API URL comes from `apps/customer/.env.production` (or `NEXT_PUBLIC_API_URL`).
 For a bundle that talks to a local API set `ALLOW_LOCAL_API=1`.
 
-## Create / sync the native projects
+## Build Android & iOS
+
+### Android (`.apk`)
 
 ```bash
-cd apps/customer-mobile
-pnpm build
-pnpm exec cap add android      # once; needs Android Studio / SDK to build
-pnpm exec cap add ios          # once; needs a Mac with Xcode + CocoaPods
-pnpm exec cap sync
-pnpm exec cap open android     # or: cap open ios
+pnpm apk:customer
+# Output: apps/customer-mobile/android/app/build/outputs/apk/debug/app-debug.apk
 ```
+
+### iOS (`.app` / `.ipa`)
+
+The native Xcode project lives in `apps/customer-mobile/ios/App`.
+
+On a Mac with Xcode + CocoaPods:
+
+```bash
+pnpm --filter customer-mobile ios:simulator   # Simulator Debug .app
+pnpm --filter customer-mobile ipa:unsigned    # Release iOS device build
+cd apps/customer-mobile && pnpm exec cap open ios
+```
+
+On Windows / Linux (or in CI), `.github/workflows/customer-ios.yml` builds both the iOS Simulator `.app` and an unsigned `.ipa` on `macos-latest` and uploads them as workflow artifacts.
 
 ## What the build changes in the copy
 
@@ -50,15 +62,8 @@ pnpm exec cap open android     # or: cap open ios
 Push-notification deep links, and any code that sets `window.location` to a
 dynamic path, must go through `toNative()` from `native/routes.ts`.
 
-## Not done yet
+## Native platform configuration
 
-- Native push (FCM / APNs), background location, camera, other plugins.
-- App icons / splash screens, signing, store listings.
-- Verification on real devices: full-page loads of exported URLs
-  (`window.location.href = ...`, practice mode) rely on the webview resolving
-  `/login/` to `login/index.html`.
-- The same treatment for the rider, merchant and other apps.
-- UI updates only reach users with a new app release.
-
-The API allows this app's origins (`https://app.peebee.local`,
-`capacitor://app.peebee.local`) without any `CORS_ORIGINS` change.
+- **Origins**: `https://app.peebee.online` (Android) and `capacitor://app.peebee.online` (iOS), both allowed in `apps/api/src/app.ts` regardless of `CORS_ORIGINS`.
+- **Android (`MainActivity.java`)**: Peebee launcher icons & splash screen, native Google Sign-In picker with popup WebView fallback, camera/microphone/location permissions.
+- **iOS (`BridgeViewController` in `AppDelegate.swift`, `Info.plist`)**: Peebee 1024×1024 AppIcon & 2732×2732 LaunchScreen splash, in-app `WKWebView` popup window support for Google OAuth (`createWebViewWith` / `webViewDidClose`) with Mobile Safari User-Agent compatibility, edge-swipe back navigation, inline media playback, and camera/microphone/location/photo library usage descriptions.
