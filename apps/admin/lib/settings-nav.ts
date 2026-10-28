@@ -16,6 +16,7 @@ import {
   Route,
   Store,
   Settings as SettingsIcon,
+  Smartphone,
   Wallet as WalletIcon,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -49,6 +50,13 @@ export const SETTINGS_LINKS: SettingsLink[] = [
     label: "Services",
     description: "Every cluster and module, on or off in Live and in Practice — dependent apps and features pause with them.",
     icon: Power,
+  },
+  {
+    href: "/settings/app-updates",
+    label: "App updates",
+    description: "Send fixes to the Android app without a new APK: see the published versions, choose the live one, roll back.",
+    icon: Smartphone,
+    show: (role) => hasPermission(role, "settings.manage"),
   },
   {
     href: "/settings/ai-keys",

@@ -62,6 +62,47 @@ On Windows / Linux (or in CI), `.github/workflows/customer-ios.yml` builds both 
 Push-notification deep links, and any code that sets `window.location` to a
 dynamic path, must go through `toNative()` from `native/routes.ts`.
 
+## Over-the-air updates (customer app, Android)
+
+The APK carries its own copy of the screens, so a fix to `apps/customer` would not reach a phone until a new APK was
+installed. The app therefore asks our own update server whether a newer copy of the screens is live, and switches to it.
+
+How it fits together:
+
+- **Phone** (`@capgo/capacitor-updater`, configured in `capacitor.config.ts`): when the app comes to the foreground it
+  asks `POST /v1/app-updates/customer/check`, gets the list of files of the new copy, downloads only the files it does
+  not already have (the ones inside the APK or from earlier updates are reused, matched by checksum), and switches to it the next time
+  the app goes to the background. `native/ServiceWorkerRegister.tsx` tells the plugin the new copy started; if it does
+  not, the plugin goes back to the last copy that worked (`appReadyTimeout`).
+- **Server** (`apps/api/src/app-updates`): stores each file once, by its SHA-256, in the existing R2 bucket, plus a list of
+  files per version; the versions, and which one is live, are kept in the `settings` table. No migration. It checks each
+  upload against its checksum (the phone checks again), refuses a version without `index.html`, keeps the last ten
+  versions and deletes files no kept version uses. A typical release downloads a few hundred KB, not the whole app.
+- **Admin → App updates**: switch updates on or off, choose whether a new version goes live by itself, make any
+  published version live (this is also how you roll back), delete old ones.
+- **Pipeline** (`.github/workflows/customer-mobile-bundle.yml`): after each live deploy of `main` that changed the
+  customer app, `packages/shared` or this folder, builds the screens and uploads the files the server does not have yet (`scripts/publish-app-update.mjs`). It does nothing until the
+  repository secret below exists.
+
+One-time setup:
+
+1. Make a long random secret (24+ characters) and store it twice, with the same value: as the API worker's secret
+   `APP_UPDATES_PUBLISH_TOKEN` (Cloudflare → Workers → peebee-api → Settings → Variables and Secrets) and as the
+   repository secret of the same name (GitHub → Settings → Secrets and variables → Actions).
+2. Build and install a new APK once, so the phone has the updater inside it:
+   `pnpm install && pnpm --filter customer-mobile apk:debug`. Phones on an older APK cannot update themselves.
+3. Run the workflow once by hand (Actions → Publish customer app update → Run workflow) or merge the next change.
+   The version appears in Admin → App updates.
+
+When a new APK is needed again: any change that needs something native (a new permission, plugin, `MainActivity`
+changes, a Capacitor upgrade). Raise `minNativeVersionCode` in `update-compat.json` and `versionCode` in
+`android/app/build.gradle` together, so phones on older builds are told to update the app instead of being sent
+screens they cannot run.
+
+Not covered: the files are protected by HTTPS, a checksum and the publish token, but they are not signed with a
+separate key. Anyone holding the publish token, or write access to the R2 bucket, could change what phones run, so
+treat both like production credentials.
+
 ## Native platform configuration
 
 - **Origins**: `https://app.peebee.online` (Android) and `capacitor://app.peebee.online` (iOS), both allowed in `apps/api/src/app.ts` regardless of `CORS_ORIGINS`.

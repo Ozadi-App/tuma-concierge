@@ -2,7 +2,7 @@ import { hasPermission, type AdminRole } from "@peebee/shared";
 import type { LucideIcon } from "lucide-react";
 import {
   Activity, Banknote, Briefcase, Bus, Car, Clapperboard, ClipboardList, Compass, CreditCard, FlaskConical, GraduationCap, Home, KeyRound, Languages,
-  LayoutDashboard, MapPin, Mic, Package, Phone, PiggyBank, Power, Route, Ruler, ShieldCheck, Store, User, UserRound, Users, UsersRound, Video, Wallet, Waypoints,
+  LayoutDashboard, MapPin, Mic, Package, Phone, PiggyBank, Power, Route, Ruler, ShieldCheck, Smartphone, Store, User, UserRound, Users, UsersRound, Video, Wallet, Waypoints,
 } from "lucide-react";
 
 export type NavItem = {
@@ -40,6 +40,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: "/orders", label: "Orders", icon: Package, hint: "Parcels, shopping, rides, food" },
       { href: "/settings/services", label: "Services", icon: Power, hint: "Every module, on or off in Live and in Practice", keywords: "pause enable modules clusters features live practice" },
+      { href: "/settings/app-updates", label: "App updates", icon: Smartphone, hint: "Send fixes to the Android app without a new APK", keywords: "android apk ota over the air update version rollback mobile capacitor", visible: can("settings.manage") },
       { href: "/practice", label: "Practice", icon: FlaskConical, hint: "The simulated world for every app", keywords: "demo sandbox sample data training simulate", visible: can("settings.manage") },
       {
         href: "/settings/car", label: "Peebee Car", icon: Car, hint: "Rides, carpool, self-drive", visible: can("car.view"),

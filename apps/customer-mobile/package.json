@@ -13,6 +13,10 @@
     "cap": "cap"
   },
   "dependencies": {
+    "@capacitor/android": "^7",
+    "@capacitor/core": "^7",
+    "@capacitor/ios": "^7",
+    "@capgo/capacitor-updater": "7.53.0",
     "@peebee/shared": "workspace:*",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.468.0",
@@ -21,12 +25,10 @@
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-leaflet": "^5.0.0",
-    "react-photo-view": "1.2.7",
-    "@capacitor/android": "^7",
-    "@capacitor/core": "^7",
-    "@capacitor/ios": "^7"
+    "react-photo-view": "1.2.7"
   },
   "devDependencies": {
+    "@capacitor/cli": "^7",
     "@types/leaflet": "^1.9.22",
     "@types/node": "^22.10.0",
     "@types/qrcode": "^1.5.6",
@@ -35,7 +37,6 @@
     "autoprefixer": "^10.4.20",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.17",
-    "typescript": "^5.7.3",
-    "@capacitor/cli": "^7"
+    "typescript": "^5.7.3"
   }
 }
