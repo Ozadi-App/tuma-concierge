@@ -187,6 +187,9 @@ export const MODULES: readonly ModuleDef[] = [
   m("money.luganda_audio", "money", "Luganda list reading", "Read shopping lists aloud in Luganda.", { coverage: "full", has: ["audio samples"] }, { parent: "money", liveKey: "luganda_audio_enabled", defaultOn: false }),
 ];
 
+/** The modules the Practice world simulates: everything except those marked as not part of it (Channels). */
+export const PRACTICE_MODULES: readonly ModuleDef[] = MODULES.filter((x) => x.practice.coverage !== "none");
+
 export const MODULE_KEYS: readonly string[] = MODULES.map((x) => x.key);
 
 const BY_KEY = new Map(MODULES.map((x) => [x.key, x]));

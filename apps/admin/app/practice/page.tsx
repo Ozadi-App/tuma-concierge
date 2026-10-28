@@ -1,6 +1,6 @@
 "use client";
 
-import { MODULES, MODULE_CLUSTERS, resolveModuleAvailability, type ModuleFlags, type PracticeWorldStatus } from "@peebee/shared";
+import { MODULES, MODULE_CLUSTERS, PRACTICE_MODULES, resolveModuleAvailability, type ModuleFlags, type PracticeWorldStatus } from "@peebee/shared";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { SettingsPageShell } from "../../components/SettingsPageShell";
@@ -45,8 +45,8 @@ export default function PracticePage() {
 
   const available = useMemo(() => (flags ? resolveModuleAvailability(flags) : null), [flags]);
   const totals = useMemo(() => {
-    const filled = MODULES.filter((m) => (world?.coverage?.[m.key] ?? 0) > 0).length;
-    return { filled, empty: MODULES.length - filled, known: !!world?.coverage };
+    const filled = PRACTICE_MODULES.filter((m) => (world?.coverage?.[m.key] ?? 0) > 0).length;
+    return { filled, empty: PRACTICE_MODULES.length - filled, known: !!world?.coverage };
   }, [world]);
 
   return (
@@ -90,15 +90,15 @@ export default function PracticePage() {
           <section className="home-card space-y-2">
             <h2 className="text-base font-bold text-ink">What the practice world holds</h2>
             <p className="text-xs text-ink-500">
-              {totals.known ? `${totals.filled} of ${MODULES.length} modules have demo data${totals.empty ? `; ${totals.empty} are empty and listed below` : ""}.` : "Lay the practice world down to see what each module holds."} The number beside each module is how many demo records it has right now.
+              {totals.known ? `${totals.filled} of ${PRACTICE_MODULES.length} modules have demo data${totals.empty ? `; ${totals.empty} are empty and listed below` : ""}.` : "Lay the practice world down to see what each module holds."} The number beside each module is how many demo records it has right now.
             </p>
           </section>
 
-          {MODULE_CLUSTERS.map((cluster) => (
+          {MODULE_CLUSTERS.filter((c) => PRACTICE_MODULES.some((m) => m.cluster === c.id)).map((cluster) => (
             <section key={cluster.id} className="home-card space-y-3">
               <h2 className="text-base font-bold text-ink">{cluster.label}</h2>
               <ul className="divide-y divide-[var(--border-faint)]">
-                {MODULES.filter((m) => m.cluster === cluster.id).map((m) => {
+                {PRACTICE_MODULES.filter((m) => m.cluster === cluster.id).map((m) => {
                   const on = available[m.key]!.practice;
                   return (
                     <li key={m.key} className="space-y-1 py-3 first:pt-0 last:pb-0" style={{ paddingLeft: (m.key.split(".").length - 1) * 16 }}>
