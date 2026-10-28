@@ -155,7 +155,7 @@ function ClusterCard({ cluster, world, flags, available, onToggle, notices, onNo
           </button>
         )}
       </header>
-      {root && isOff(flags, root.key) && <NoticeEditor def={root} notice={notices[root.key]} onChange={(n) => onNotice(root.key, n)} />}
+      {root && !rootOn && !(world === "practice" && liveOnly) && <NoticeEditor def={root} notice={notices[root.key]} onChange={(n) => onNotice(root.key, n)} />}
       {open && rootOn && !(world === "practice" && liveOnly) && root && childrenOf(root.key).length > 0 && (
         <ul className="space-y-1 border-t border-[var(--border-faint)] pt-2">
           {childrenOf(root.key).map((c) => <ModuleRow key={c.key} def={c} depth={0} world={world} flags={flags} available={available} onToggle={onToggle} notices={notices} onNotice={onNotice} />)}
@@ -184,7 +184,7 @@ function ModuleRow({ def, depth, world, flags, available, onToggle, notices, onN
           <p className="text-xs text-ink-500">{def.description}</p>
           {practiceOnly && <p className="mt-0.5 text-xs font-semibold text-ink">On in Practice only. Switch it on here to make it live.</p>}
           {!own && childrenOf(def.key).length > 0 && <p className="mt-0.5 text-xs text-ink-500">{countInside(def.key)} inside are hidden while this is off.</p>}
-          {isOff(flags, def.key) && <NoticeEditor def={def} notice={notices[def.key]} onChange={(n) => onNotice(def.key, n)} />}
+          {!own && <NoticeEditor def={def} notice={notices[def.key]} onChange={(n) => onNotice(def.key, n)} />}
         </div>
       </div>
       {own && childrenOf(def.key).length > 0 && (
@@ -194,11 +194,6 @@ function ModuleRow({ def, depth, world, flags, available, onToggle, notices, onN
       )}
     </li>
   );
-}
-
-/** Off in either world: the module needs something to tell people in its place. */
-function isOff(flags: ModuleFlags, key: string): boolean {
-  return !flags[key]!.live || !flags[key]!.practice;
 }
 
 /** What people see on the screens of a module that is off: why, an optional message, and an optional launch or return date. */
