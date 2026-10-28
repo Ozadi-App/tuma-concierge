@@ -1,6 +1,6 @@
 "use client";
 
-import { DEFAULT_MODULE_NOTICE, MODULES, MODULE_CLUSTERS, MODULE_NOTICE_MESSAGE_MAX, MODULE_NOTICE_REASONS, childrenOf, cleanModuleNotice, resolveModuleAvailability, type ModuleDef, type ModuleFlags, type ModuleNotice, type ModuleNotices, type ModuleWorld } from "@peebee/shared";
+import { DEFAULT_MODULE_NOTICE, MODULES, syncedFlag, getModule, MODULE_CLUSTERS, MODULE_NOTICE_MESSAGE_MAX, MODULE_NOTICE_REASONS, childrenOf, cleanModuleNotice, resolveModuleAvailability, type ModuleDef, type ModuleFlags, type ModuleNotice, type ModuleNotices, type ModuleWorld } from "@peebee/shared";
 import { ChevronDown } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
@@ -20,6 +20,8 @@ export default function ServicesPage() {
   const [savedNotices, setSavedNotices] = useState<ModuleNotices>({});
   const [notices, setNotices] = useState<ModuleNotices>({});
   const [world, setWorld] = useState<ModuleWorld>("live");
+  const [savedSync, setSavedSync] = useState(false);
+  const [sync, setSync] = useState(false);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -27,22 +29,23 @@ export default function ServicesPage() {
 
   useEffect(() => {
     api.adminGetModules()
-      .then(({ modules }) => { setSaved(modules.flags); setFlags(structuredClone(modules.flags)); setSavedNotices(modules.notices ?? {}); setNotices(structuredClone(modules.notices ?? {})); })
+      .then(({ modules }) => { setSavedSync(!!modules.sync); setSync(!!modules.sync); setSaved(modules.flags); setFlags(structuredClone(modules.flags)); setSavedNotices(modules.notices ?? {}); setNotices(structuredClone(modules.notices ?? {})); })
       .catch((err) => setError(errorMessage(err)))
       .finally(() => setLoading(false));
   }, []);
 
-  const available = useMemo(() => (flags ? resolveModuleAvailability(flags) : null), [flags]);
+  const available = useMemo(() => (flags ? resolveModuleAvailability(flags, sync) : null), [flags, sync]);
   const changes = useMemo(() => {
-    const out: { live: Record<string, boolean>; practice: Record<string, boolean>; notices: Record<string, ModuleNotice | null> } = { live: {}, practice: {}, notices: {} };
+    const out: { live: Record<string, boolean>; practice: Record<string, boolean>; notices: Record<string, ModuleNotice | null>; sync?: boolean } = { live: {}, practice: {}, notices: {} };
+    if (sync !== savedSync) out.sync = sync;
     if (!flags || !saved) return out;
     for (const def of MODULES) for (const w of ["live", "practice"] as const) if (flags[def.key]![w] !== saved[def.key]![w]) out[w][def.key] = flags[def.key]![w];
     for (const key of new Set([...Object.keys(notices), ...Object.keys(savedNotices)])) {
       if (JSON.stringify(notices[key] ?? null) !== JSON.stringify(savedNotices[key] ?? null)) out.notices[key] = notices[key] ?? null;
     }
     return out;
-  }, [flags, saved, notices, savedNotices]);
-  const dirty = Object.keys(changes.live).length + Object.keys(changes.practice).length + Object.keys(changes.notices).length;
+  }, [flags, saved, notices, savedNotices, sync, savedSync]);
+  const dirty = (changes.sync === undefined ? 0 : 1) + Object.keys(changes.live).length + Object.keys(changes.practice).length + Object.keys(changes.notices).length;
 
   function setNotice(key: string, notice: ModuleNotice | null) {
     setDone(false);
@@ -51,7 +54,16 @@ export default function ServicesPage() {
 
   function toggle(key: string, w: ModuleWorld, on: boolean) {
     setDone(false);
-    setFlags((f) => (f ? { ...f, [key]: { ...f[key]!, [w]: on } } : f));
+    // Kept the same: a switch in either world sets both (Channels has no Practice, so it only has Live).
+    const both = sync && getModule(key)?.practice.coverage !== "none";
+    setFlags((f) => (f ? { ...f, [key]: both ? { live: on, practice: on } : { ...f[key]!, [w]: on } } : f));
+  }
+
+  function setKeepSame(on: boolean) {
+    setDone(false);
+    setSync(on);
+    // Switching it on makes the worlds agree at once: off in one is off in the other.
+    if (on) setFlags((f) => (f ? Object.fromEntries(MODULES.map((m) => [m.key, syncedFlag(m, f[m.key]!, true)])) : f));
   }
 
   async function onSubmit(e: React.FormEvent) {
@@ -60,32 +72,45 @@ export default function ServicesPage() {
     setBusy(true); setError(null); setDone(false);
     try {
       const { modules } = await api.adminUpdateModules(changes);
-      setSaved(modules.flags); setFlags(structuredClone(modules.flags)); setSavedNotices(modules.notices ?? {}); setNotices(structuredClone(modules.notices ?? {})); setDone(true);
+      setSavedSync(!!modules.sync); setSync(!!modules.sync); setSaved(modules.flags); setFlags(structuredClone(modules.flags)); setSavedNotices(modules.notices ?? {}); setNotices(structuredClone(modules.notices ?? {})); setDone(true);
     } catch (err) { setError(errorMessage(err)); }
     finally { setBusy(false); }
   }
 
-  const current = WORLDS.find((w) => w.id === world)!;
+  // Kept the same: one list, shown as Live (Practice is identical, except Channels which has no Practice).
+  const shown: ModuleWorld = sync ? "live" : world;
+  const current = WORLDS.find((w) => w.id === shown)!;
 
   return (
     <SettingsPageShell title="Services" description="Switch a whole service on or off, or just one thing inside it. Off disappears from every app; the code stays ready for when it is back on." loading={loading}>
       {flags && available && (
         <form onSubmit={onSubmit} className="space-y-5">
-          <div role="tablist" aria-label="World" className="grid grid-cols-2 gap-1 rounded-full bg-[rgb(var(--surface-muted))] p-1 sm:inline-grid sm:min-w-[22rem]">
+          <div className="home-card flex items-start gap-3">
+            <Switch aria-label="Keep Live and Practice the same" checked={sync} onChange={(e) => setKeepSame(e.target.checked)} className="mt-0.5 shrink-0" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-bold text-ink">Keep Live and Practice the same</p>
+              <p className="text-xs text-ink-500">
+                {sync
+                  ? "On: a module is on only when it is on in both. Switch something off in either and it goes off in both; one list below controls both."
+                  : "Off: Live and Practice each have their own switches, so you can try a module in Practice before switching it on in Live."}
+              </p>
+            </div>
+          </div>
+          {!sync && <div role="tablist" aria-label="World" className="grid grid-cols-2 gap-1 rounded-full bg-[rgb(var(--surface-muted))] p-1 sm:inline-grid sm:min-w-[22rem]">
             {WORLDS.map((w) => (
               <button key={w.id} type="button" role="tab" aria-selected={world === w.id} onClick={() => setWorld(w.id)}
                 className={`min-h-10 rounded-full px-4 text-sm font-bold transition ${world === w.id ? "bg-[rgb(var(--surface-card))] text-ink shadow-sm" : "text-ink-500"}`}>
                 {w.label}
               </button>
             ))}
-          </div>
-          <p className="max-w-2xl text-sm text-ink-500">{current.blurb}</p>
-          {world === "practice" && (
+          </div>}
+          {!sync && <p className="max-w-2xl text-sm text-ink-500">{current.blurb}</p>}
+          {!sync && world === "practice" && (
             <p className="text-xs text-ink-500">Practice as a whole, and what each module&rsquo;s practice world contains, is managed in <Link href="/practice" className="font-bold text-ink underline">Practice</Link>.</p>
           )}
 
           {MODULE_CLUSTERS.map((cluster) => (
-            <ClusterCard key={cluster.id} cluster={cluster} world={world} flags={flags} available={available} onToggle={toggle} notices={notices} onNotice={setNotice} />
+            <ClusterCard key={cluster.id} cluster={cluster} world={shown} flags={flags} available={available} onToggle={toggle} notices={notices} onNotice={setNotice} />
           ))}
           <SettingsSaveBar busy={busy} error={error} saved={done} />
         </form>

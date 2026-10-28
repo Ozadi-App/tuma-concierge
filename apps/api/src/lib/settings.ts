@@ -9,6 +9,8 @@ const DEFAULTS = {
   modules_live: "{}",
   /** Practice-world switches for every module: {"ride.car": false}. Missing = on. */
   modules_practice: "{}",
+  /** "1" keeps Live and Practice the same: a module is on only if it is on in both, and a switch in one world sets both. */
+  modules_sync: "0",
   /** Why a module is off and what people see instead: {"ride.car": {"reason": "coming_soon", "returnAt": "2026-12-01"}}. See ./modules.ts. */
   modules_notices: "{}",
   ride_tracking: JSON.stringify(DEFAULT_RIDE_TRACKING_SETTINGS),
@@ -1159,6 +1161,14 @@ function practiceModuleOn(def: ModuleDef, values: Map<string, string>): boolean 
   return true;
 }
 
+/** True when every module in the chain, the module and those above it, is on in Live (its own switch, not the sync rule). */
+function liveChainOn(def: ModuleDef, values: Map<string, string>): boolean {
+  for (let d: ModuleDef | undefined = def; d; d = d.parent ? getModule(d.parent) : undefined) if (!rawModuleLive(d, values)) return false;
+  return true;
+}
+
+const syncOn = (values: Map<string, string>) => (values.get("modules_sync") ?? DEFAULTS.modules_sync) === "1";
+
 /** Values the practice world needs that the live platform may leave unset (a booking window, the platform's cut of a rental). */
 const PRACTICE_VALUES: Partial<Record<SettingKey, string>> = {
   car_scheduled_max_advance_hours: "72",
@@ -1175,11 +1185,13 @@ export async function getSetting(key: SettingKey): Promise<string> {
   const values = await loadSettings();
   const def = MODULE_BY_LIVE_KEY.get(key);
   if (inPractice()) {
-    if (def) return practiceModuleOn(def, values) ? "1" : "0";
+    if (def) return practiceModuleOn(def, values) && (!syncOn(values) || liveChainOn(def, values)) ? "1" : "0";
     const forced = PRACTICE_VALUES[key];
     if (forced !== undefined) return forced;
   }
   if (def?.parent && !ancestorsLive(def, values)) return "0";
+  // Kept the same as Practice: off there means off here too.
+  if (def && syncOn(values) && !practiceModuleOn(def, values)) return "0";
   return values.get(key) ?? DEFAULTS[key];
 }
 

@@ -210,12 +210,12 @@ export type ModuleFlags = Record<string, { live: boolean; practice: boolean }>;
 /** What a module is actually doing: its own switch AND every module above it. */
 export type ModuleAvailability = Record<string, { live: boolean; practice: boolean }>;
 
-export function resolveModuleAvailability(flags: ModuleFlags): ModuleAvailability {
+export function resolveModuleAvailability(flags: ModuleFlags, sync = false): ModuleAvailability {
   const out: ModuleAvailability = {};
   const resolve = (def: ModuleDef): { live: boolean; practice: boolean } => {
     const done = out[def.key];
     if (done) return done;
-    const own = flags[def.key] ?? { live: true, practice: true };
+    const own = syncedFlag(def, flags[def.key] ?? { live: true, practice: true }, sync);
     const up = def.parent ? resolve(BY_KEY.get(def.parent)!) : { live: true, practice: true };
     return (out[def.key] = { live: own.live && up.live, practice: own.practice && up.practice });
   };
@@ -243,11 +243,21 @@ export const DEFAULT_MODULE_NOTICE: ModuleNotice = { reason: "unavailable" };
 /** Stored notices, by module. Only modules that are off carry one when served, so a stale note never shows on a live module. */
 export type ModuleNotices = Record<string, ModuleNotice>;
 
+/**
+ * With "keep Live and Practice the same" on, a module is on only if it is on in both worlds, so something off in one is
+ * off in the other. Modules Practice does not simulate (Channels) have no Practice switch to compare, so they keep Live's.
+ */
+export function syncedFlag(def: ModuleDef, own: { live: boolean; practice: boolean }, sync: boolean): { live: boolean; practice: boolean } {
+  if (!sync || def.practice.coverage === "none") return own;
+  const both = own.live && own.practice;
+  return { live: both, practice: both };
+}
+
 /** The wire shape of GET /v1/settings `modules`: raw flags (for the admin editor), resolved availability (for apps), and why things are off. */
-export type ModuleSettings = { flags: ModuleFlags; available: ModuleAvailability; notices?: ModuleNotices };
+export type ModuleSettings = { flags: ModuleFlags; available: ModuleAvailability; notices?: ModuleNotices; /** Live and Practice are kept the same. */ sync?: boolean };
 
 /** Admin write: only the flags that changed, per world. A notice of `null` clears it. */
-export type ModuleSettingsUpdate = { live?: Record<string, boolean>; practice?: Record<string, boolean>; notices?: Record<string, ModuleNotice | null> };
+export type ModuleSettingsUpdate = { live?: Record<string, boolean>; practice?: Record<string, boolean>; notices?: Record<string, ModuleNotice | null>; sync?: boolean };
 
 /** The notice to show for a module that is off: its own, else the nearest module above it that has one, else a plain "not available". */
 export function noticeFor(key: string, notices: ModuleNotices | null | undefined): ModuleNotice {
