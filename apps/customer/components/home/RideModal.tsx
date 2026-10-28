@@ -1,5 +1,6 @@
 "use client";
 
+import { useModules } from "../../lib/modules";
 import { DEFAULT_RIDE_TRACKING_SETTINGS, roundFare } from "@peebee/shared";
 import type { CarCategory, RidePassenger, RideStopInput, SavedPassenger } from "@peebee/shared";
 import { Ambulance, ChevronRight, Crown, Route, Truck, User, Users } from "lucide-react";
@@ -81,6 +82,13 @@ export function RideModal({
   initialStops?: RideStopInput[];
 }) {
   const t = useTranslate();
+  // Admin → Services: a ride type that is switched off is not offered.
+  const moduleOn = useModules();
+  const bodaOn = moduleOn("ride.boda");
+  const carModuleOn = moduleOn("ride.car");
+  const moveOn = moduleOn("ride.move");
+  const luxuryOn = moduleOn("ride.luxury");
+  const ambulanceOn = moduleOn("ride.ambulance");
   const router = useRouter();
   // The first thing a rider books is where: pickup and destination come
   // from the shared place flow, then this screen just confirms the fare.
@@ -395,14 +403,14 @@ export function RideModal({
 
         {!serviceLocked && (tierPricing || carpoolOn || rentOn || effectiveCargo.length > 0) && (!carMenuOpen ? (
           <div role="group" aria-label="Choose a ride" className="flex gap-2">
-            <button type="button" aria-pressed={mode === "boda"} onClick={() => setMode("boda")} className={`min-h-10 flex-1 rounded-full px-3 text-sm font-bold ${mode === "boda" ? "bg-gold text-ink-gold" : "bg-gold/15 text-ink"}`}>{t("car_tab_boda")}</button>
-            <button type="button" onClick={() => { setMode("car"); setCarMenuOpen(true); }} className="min-h-10 flex-1 rounded-full bg-gold/15 px-3 text-sm font-bold text-ink">{t("car_tab_car")}</button>
+            {bodaOn && <button type="button" aria-pressed={mode === "boda"} onClick={() => setMode("boda")} className={`min-h-10 flex-1 rounded-full px-3 text-sm font-bold ${mode === "boda" ? "bg-gold text-ink-gold" : "bg-gold/15 text-ink"}`}>{t("car_tab_boda")}</button>}
+            {(carModuleOn || moveOn || luxuryOn || ambulanceOn) && <button type="button" onClick={() => { setMode("car"); setCarMenuOpen(true); }} className="min-h-10 flex-1 rounded-full bg-gold/15 px-3 text-sm font-bold text-ink">{t("car_tab_car")}</button>}
           </div>
         ) : (
           <div className="space-y-2">
             <button type="button" onClick={() => { setMode("boda"); setCarMenuOpen(false); }} className="min-h-9 text-sm font-bold text-gold">← Choose Boda or Car</button>
             <div role="group" aria-label="Choose a car service" className="flex flex-wrap gap-2">
-              {tierPricing && (
+              {tierPricing && carModuleOn && (
                 <button
                   type="button"
                   aria-pressed={mode === "car" && carSubMode === "passenger"}
@@ -414,7 +422,7 @@ export function RideModal({
                   Car
                 </button>
               )}
-              <button
+              {moveOn && <button
                 type="button"
                 aria-pressed={mode === "car" && carSubMode === "cargo"}
                 onClick={() => { setMode("car"); setCarSubMode("cargo"); }}
@@ -423,14 +431,14 @@ export function RideModal({
                 }`}
               >
                 Cargo / Truck
-              </button>
-              {luxuryCats.length > 0 && (
+              </button>}
+              {luxuryOn && luxuryCats.length > 0 && (
                 <button type="button" aria-pressed={mode === "car" && carSubMode === "luxury"} onClick={() => { setMode("car"); setCarSubMode("luxury"); }}
                   className={`flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-full px-3 text-sm font-bold transition-colors ${mode === "car" && carSubMode === "luxury" ? "bg-gold text-ink-gold" : "bg-gold/15 text-ink"}`}>
                   <Crown className="h-4 w-4" aria-hidden /> VIP
                 </button>
               )}
-              {ambulanceCats.length > 0 && (
+              {ambulanceOn && ambulanceCats.length > 0 && (
                 <button type="button" aria-pressed={mode === "car" && carSubMode === "ambulance"} onClick={() => { setMode("car"); setCarSubMode("ambulance"); }}
                   className={`flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-full px-3 text-sm font-bold transition-colors ${mode === "car" && carSubMode === "ambulance" ? "bg-gold text-ink-gold" : "bg-gold/15 text-ink"}`}>
                   <Ambulance className="h-4 w-4" aria-hidden /> Ambulance
