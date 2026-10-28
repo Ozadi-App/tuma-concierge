@@ -102,6 +102,18 @@ const defaultOrigins = [
   "https://work.peebee.online",
 ];
 
+/** Origins of the bundled mobile apps (Capacitor serves the UI from inside the
+ * app under the hostname set in each app's capacitor.config.ts). These are
+ * always allowed, whatever CORS_ORIGINS lists. */
+const nativeAppOrigins = [
+  "https://app.peebee.online",
+  "capacitor://app.peebee.online",
+  "https://mobile.peebee.online",
+  "capacitor://mobile.peebee.online",
+  "https://app.peebee.local",
+  "capacitor://app.peebee.local",
+];
+
 /** Anything a developer runs on their own machine can call the API from the
  * browser — which is exactly what you want locally, and exactly what you
  * don't want in production, where it means any page a victim opens on their
@@ -118,7 +130,8 @@ app.use("*", (c, next) => {
     .map((s) => s.trim())
     .filter(Boolean);
   const base = configured.length > 0 ? configured : defaultOrigins;
-  const allowOrigins = isDev ? [...new Set([...base, ...devOrigins])] : base.filter((o) => !isLocalhost(o));
+  const web = isDev ? [...new Set([...base, ...devOrigins])] : base.filter((o) => !isLocalhost(o));
+  const allowOrigins = [...web, ...nativeAppOrigins];
 
   return cors({
     origin: (origin) => {
