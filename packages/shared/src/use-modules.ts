@@ -19,6 +19,9 @@ export type ModulesView = ((key: string) => boolean) & {
   notice: (key: string) => ModuleNotice;
 };
 
+/** How long the switches are kept before asking again. Coming back to the app after this long asks at once. */
+const MODULES_CACHE_MS = 15_000;
+
 type Loaded = { available: ModuleAvailability; notices: ModuleNotices };
 
 export function createUseModules(load: () => Promise<{ settings: { modules?: ModuleSettings } }>): () => ModulesView {
@@ -26,7 +29,7 @@ export function createUseModules(load: () => Promise<{ settings: { modules?: Mod
   let inflight: Promise<Loaded | null> | null = null;
 
   const fetchAvailability = (): Promise<Loaded | null> => {
-    if (cached && Date.now() - cached.at < 60_000) return Promise.resolve(cached.value);
+    if (cached && Date.now() - cached.at < MODULES_CACHE_MS) return Promise.resolve(cached.value);
     inflight ??= load()
       .then((res) => {
         const modules = res.settings.modules;
@@ -42,8 +45,12 @@ export function createUseModules(load: () => Promise<{ settings: { modules?: Mod
     const [loaded, setLoaded] = useState<Loaded | null>(cached?.value ?? null);
     useEffect(() => {
       let live = true;
-      void fetchAvailability().then((v) => { if (live) setLoaded(v); });
-      return () => { live = false; };
+      const refresh = () => { void fetchAvailability().then((v) => { if (live && v) setLoaded(v); }); };
+      refresh();
+      // Back in the app after a while: pick up whatever Admin switched meanwhile.
+      const onVisible = () => { if (document.visibilityState === "visible") refresh(); };
+      document.addEventListener("visibilitychange", onVisible);
+      return () => { live = false; document.removeEventListener("visibilitychange", onVisible); };
     }, []);
     const world: ModuleWorld = isPracticeMode() ? "practice" : "live";
     return Object.assign((key: string) => isModuleOn(key, world, loaded?.available), { notice: (key: string) => noticeFor(key, loaded?.notices) });
