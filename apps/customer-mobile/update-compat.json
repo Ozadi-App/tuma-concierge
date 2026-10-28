@@ -1,0 +1,4 @@
+{
+  "minNativeVersionCode": 2,
+  "about": "The oldest Android build (versionCode in android/app/build.gradle) that can run the screens this repository builds. Raise it when the screens need something a new APK adds (a permission, a plugin, native code): phones on older builds are then told to update the app itself instead of being sent screens they cannot run."
+}

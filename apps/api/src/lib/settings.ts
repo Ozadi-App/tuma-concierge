@@ -13,6 +13,11 @@ const DEFAULTS = {
   modules_sync: "0",
   /** Why a module is off and what people see instead: {"ride.car": {"reason": "coming_soon", "returnAt": "2026-12-01"}}. See ./modules.ts. */
   modules_notices: "{}",
+  /** Over-the-air updates for the mobile apps: the master switch, whether a newly published version goes live by itself,
+   * and each app's published versions with the one phones get. See ../app-updates. */
+  app_updates_enabled: "1",
+  app_updates_auto_live: "1",
+  app_updates_customer: '{"live":null,"versions":[]}',
   ride_tracking: JSON.stringify(DEFAULT_RIDE_TRACKING_SETTINGS),
   shopping_units_config: JSON.stringify(DEFAULT_SHOPPING_UNIT_SETTINGS),
   /** The customer app's main menu names, the Hive shortcuts and the Hire banner. */
