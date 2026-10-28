@@ -131,8 +131,8 @@ function ClusterCard({ cluster, world, flags, available, onToggle, notices, onNo
         )}
       </header>
       {root && isOff(flags, root.key) && <NoticeEditor def={root} notice={notices[root.key]} onChange={(n) => onNotice(root.key, n)} />}
-      {open && !(world === "practice" && liveOnly) && root && childrenOf(root.key).length > 0 && (
-        <ul className={`space-y-1 border-t border-[var(--border-faint)] pt-2 ${rootOn ? "" : "opacity-60"}`}>
+      {open && rootOn && !(world === "practice" && liveOnly) && root && childrenOf(root.key).length > 0 && (
+        <ul className="space-y-1 border-t border-[var(--border-faint)] pt-2">
           {childrenOf(root.key).map((c) => <ModuleRow key={c.key} def={c} depth={0} world={world} flags={flags} available={available} onToggle={onToggle} notices={notices} onNotice={onNotice} />)}
         </ul>
       )}
@@ -146,9 +146,7 @@ function ModuleRow({ def, depth, world, flags, available, onToggle, notices, onN
   onToggle: Toggle;
 } & NoticeProps) {
   const own = flags[def.key]![world];
-  const effective = available[def.key]![world];
   const practiceOnly = world === "live" && flags[def.key]!.practice && !flags[def.key]!.live;
-  const parentBlocks = own && !effective;
   return (
     <li>
       <div className="flex items-start gap-3 rounded-xl px-2 py-2" style={{ marginLeft: depth * 20 }}>
@@ -156,14 +154,15 @@ function ModuleRow({ def, depth, world, flags, available, onToggle, notices, onN
         <div className="min-w-0 flex-1">
           <p className="text-sm font-bold text-ink">
             {def.label}{" "}
-            <span className="font-normal text-ink-500">— {parentBlocks ? "on, but paused by a module above" : own ? "on" : "off"}</span>
+            <span className="font-normal text-ink-500">— {own ? "on" : "off"}</span>
           </p>
           <p className="text-xs text-ink-500">{def.description}</p>
           {practiceOnly && <p className="mt-0.5 text-xs font-semibold text-ink">On in Practice only. Switch it on here to make it live.</p>}
+          {!own && childrenOf(def.key).length > 0 && <p className="mt-0.5 text-xs text-ink-500">{countInside(def.key)} inside are hidden while this is off.</p>}
           {isOff(flags, def.key) && <NoticeEditor def={def} notice={notices[def.key]} onChange={(n) => onNotice(def.key, n)} />}
         </div>
       </div>
-      {childrenOf(def.key).length > 0 && (
+      {own && childrenOf(def.key).length > 0 && (
         <ul className="space-y-1">
           {childrenOf(def.key).map((c) => <ModuleRow key={c.key} def={c} depth={depth + 1} world={world} flags={flags} available={available} onToggle={onToggle} notices={notices} onNotice={onNotice} />)}
         </ul>
@@ -201,4 +200,9 @@ function NoticeEditor({ def, notice, onChange }: { def: ModuleDef; notice: Modul
       <p className="text-xs text-ink-500">{reason.hint} Shown on every screen of this module and everything under it.</p>
     </div>
   );
+}
+
+/** How many modules sit anywhere under this one. */
+function countInside(key: string): number {
+  return childrenOf(key).reduce((n, c) => n + 1 + countInside(c.key), 0);
 }
