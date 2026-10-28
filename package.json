@@ -51,7 +51,9 @@
     "deploy:preview-hub:preview": "pnpm --filter preview-hub deploy:preview",
     "deploy:preview-hub": "pnpm --filter preview-hub deploy",
     "build:customer-mobile": "pnpm --filter customer-mobile build",
-    "apk:customer": "pnpm --filter customer-mobile apk:debug"
+    "apk:customer": "pnpm --filter customer-mobile apk:debug",
+    "ios:customer": "pnpm --filter customer-mobile sync:ios",
+    "ipa:customer": "pnpm --filter customer-mobile ipa:unsigned"
   },
   "engines": {
     "node": ">=22"

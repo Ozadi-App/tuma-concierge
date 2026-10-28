@@ -5,7 +5,11 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "sync:android": "cap sync android",
+    "sync:ios": "cap sync ios",
+    "copy:ios": "cap copy ios",
     "apk:debug": "node scripts/build.mjs && cap sync android && cd android && ./gradlew assembleDebug",
+    "ios:simulator": "node scripts/build.mjs && cap sync ios && xcodebuild -workspace ios/App/App.xcworkspace -scheme App -configuration Debug -sdk iphonesimulator -derivedDataPath ios/App/build CODE_SIGNING_ALLOWED=NO build",
+    "ipa:unsigned": "node scripts/build.mjs && cap sync ios && xcodebuild -workspace ios/App/App.xcworkspace -scheme App -configuration Release -sdk iphoneos -derivedDataPath ios/App/build CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=\"\" build",
     "cap": "cap"
   },
   "dependencies": {
