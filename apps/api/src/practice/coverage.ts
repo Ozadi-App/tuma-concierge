@@ -1,4 +1,4 @@
-import { MODULES } from "@peebee/shared";
+import { PRACTICE_MODULES } from "@peebee/shared";
 import { db } from "../db/client.js";
 
 const P = "'prac\\_%' ESCAPE '\\'";
@@ -105,7 +105,7 @@ export const MODULE_PROBES: Record<string, string> = {
 /** How many demo rows each module has right now. Run inside runInPractice. */
 export async function moduleCoverage(): Promise<Record<string, number>> {
   const out: Record<string, number> = {};
-  for (const m of MODULES) {
+  for (const m of PRACTICE_MODULES) {
     const sql = MODULE_PROBES[m.key];
     if (!sql) { out[m.key] = 0; continue; }
     try {

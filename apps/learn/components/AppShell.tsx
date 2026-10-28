@@ -1,5 +1,9 @@
 "use client";
 
+import { ModuleRouteGate } from "@peebee/shared/module-gate";
+import { MODULE_ROUTES } from "../lib/module-routes";
+import { useModules } from "../lib/modules";
+
 import { exitPracticeMode, isUserVerified } from "@peebee/shared";
 import { PracticeModeFrame, usePracticeModeActive } from "@peebee/shared/practice-ui";
 import { FlaskConical } from "lucide-react";
@@ -20,6 +24,7 @@ const AUTH_SCENE_PAGES = [...PUBLIC_PAGES, "/verify", ...UNGATED_PAGES];
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const moduleOn = useModules();
   const router = useRouter();
   const { user, ready } = useLearnAuth();
   const isPracticeActive = usePracticeModeActive();
@@ -76,7 +81,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </header>
       )}
 
-      <main className={isMeetingRoom ? "mx-auto max-w-5xl" : "customer-nav-content-clearance mx-auto max-w-5xl px-4 py-5"}>{children}</main>
+      <main className={isMeetingRoom ? "mx-auto max-w-5xl" : "customer-nav-content-clearance mx-auto max-w-5xl px-4 py-5"}><ModuleRouteGate rules={MODULE_ROUTES} pathname={pathname} modules={moduleOn}>{children}</ModuleRouteGate></main>
 
       {!isMeetingRoom && <BottomNav />}
     </div>

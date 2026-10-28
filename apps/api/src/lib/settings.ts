@@ -1,5 +1,5 @@
 import type { MatchingMode } from "@peebee/shared";
-import { MODULES, getModule, type ModuleDef } from "@peebee/shared";
+import { MODULES, channelModuleOn, getModule, type ModuleDef } from "@peebee/shared";
 import { DEFAULT_HOME_MENU, DEFAULT_RIDE_TRACKING_SETTINGS, DEFAULT_SHOPPING_UNIT_SETTINGS, DEFAULT_TIME_FEES, type JobExpirySettings, type TimeFeeSettings } from "@peebee/shared";
 import { db } from "../db/client.js";
 import { inPractice } from "../db/practice-context.js";
@@ -9,6 +9,8 @@ const DEFAULTS = {
   modules_live: "{}",
   /** Practice-world switches for every module: {"ride.car": false}. Missing = on. */
   modules_practice: "{}",
+  /** Why a module is off and what people see instead: {"ride.car": {"reason": "coming_soon", "returnAt": "2026-12-01"}}. See ./modules.ts. */
+  modules_notices: "{}",
   ride_tracking: JSON.stringify(DEFAULT_RIDE_TRACKING_SETTINGS),
   shopping_units_config: JSON.stringify(DEFAULT_SHOPPING_UNIT_SETTINGS),
   /** The customer app's main menu names, the Hive shortcuts and the Hire banner. */
@@ -1134,6 +1136,7 @@ function parseFlagMap(raw: string | undefined): Record<string, boolean> {
 
 /** A module's own Live switch as stored, ignoring the modules above it. */
 export function rawModuleLive(def: ModuleDef, values: Map<string, string>): boolean {
+  if (def.channel) return channelModuleOn(def, values.get("channels_config"));
   if (def.liveKey) {
     const v = values.get(def.liveKey) ?? DEFAULTS[def.liveKey as SettingKey] ?? (def.defaultOn ? "1" : "0");
     return def.defaultOn ? v !== "0" : v === "1";

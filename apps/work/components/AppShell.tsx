@@ -1,5 +1,9 @@
 "use client";
 
+import { ModuleRouteGate } from "@peebee/shared/module-gate";
+import { MODULE_ROUTES } from "../lib/module-routes";
+import { useModules } from "../lib/modules";
+
 import { isUserVerified } from "@peebee/shared";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
@@ -17,6 +21,7 @@ const AUTH_SCENE_PAGES = [...PUBLIC_PAGES, "/verify", ...UNGATED_PAGES];
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const moduleOn = useModules();
   const router = useRouter();
   const { user, provider, ready } = useAuth();
   const isPublic = PUBLIC_PAGES.includes(pathname);
@@ -63,7 +68,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           )}
         </div>
       </header>
-      <main className={`mx-auto max-w-lg px-4 py-4 ${showNav ? "customer-nav-content-clearance" : ""}`}>{children}</main>
+      <main className={`mx-auto max-w-lg px-4 py-4 ${showNav ? "customer-nav-content-clearance" : ""}`}><ModuleRouteGate rules={MODULE_ROUTES} pathname={pathname} modules={moduleOn}>{children}</ModuleRouteGate></main>
       {showNav && <BottomNav />}
     </div>
   );

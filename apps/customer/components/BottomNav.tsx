@@ -60,6 +60,7 @@ import { useLivePolling } from "../lib/use-live-polling";
 import { BottomDrawer } from "./BottomDrawer";
 import { CartDrawer } from "./CartDrawer";
 import { useCart } from "../lib/cart";
+import { filterByModule, useModules } from "../lib/modules";
 import { SPOTLIGHT_FILTERS, setSpotlightFilter, useSpotlightFilter, type SpotlightFilter } from "../lib/spotlight-filter";
 import { goBackOr, useNavBack, useNavPrimaryAction } from "../lib/nav-primary-action";
 
@@ -76,16 +77,16 @@ function SwappingLabel({ first, second, seconds }: { first: string; second: stri
 }
 
 type MenuGroup = "original" | "ride" | "shopping" | "food" | "hive" | "learn" | "spotlight";
-type MenuItem = { id: string; label: string; /** A second name that swaps with `label`. */ alt?: { label: string; seconds: number }; icon: LucideIcon; href?: string; group?: Exclude<MenuGroup, "original" | "spotlight">; disabled?: boolean; /** A Spotlight filter this button switches on. */ spotlight?: SpotlightFilter };
+type MenuItem = { id: string; label: string; /** The Services module that shows or hides this button. */ module?: string; /** A second name that swaps with `label`. */ alt?: { label: string; seconds: number }; icon: LucideIcon; href?: string; group?: Exclude<MenuGroup, "original" | "spotlight">; disabled?: boolean; /** A Spotlight filter this button switches on. */ spotlight?: SpotlightFilter };
 
 // Five main buttons: Ride, Buy, Eat, Learn and Hive. Learn goes straight to its own home; the others open a row of shortcuts.
 // The names come from the admin's home menu setting; these are the buttons' icons and where they lead.
 const originalMenu = (menu: HomeMenuSettings): MenuItem[] => [
-  { id: "ride", label: menu.clusters.ride.label, icon: Route, group: "ride" },
-  { id: "shopping", label: menu.clusters.shopping.label, icon: ShoppingBag, group: "shopping" },
-  { id: "food", label: menu.clusters.food.label, icon: UtensilsCrossed, group: "food" },
-  { id: "learn", label: menu.clusters.learn.label, icon: BookOpen, href: "/learn" },
-  { id: "hive", label: menu.clusters.hive.label, alt: menu.hive.altLabel ? { label: menu.hive.altLabel, seconds: menu.hive.labelSeconds } : undefined, icon: BriefcaseBusiness, group: "hive" },
+  { id: "ride", label: menu.clusters.ride.label, icon: Route, group: "ride", module: "ride" },
+  { id: "shopping", label: menu.clusters.shopping.label, icon: ShoppingBag, group: "shopping", module: "buy" },
+  { id: "food", label: menu.clusters.food.label, icon: UtensilsCrossed, group: "food", module: "buy.food" },
+  { id: "learn", label: menu.clusters.learn.label, icon: BookOpen, href: "/learn", module: "learn" },
+  { id: "hive", label: menu.clusters.hive.label, module: "hive", alt: menu.hive.altLabel ? { label: menu.hive.altLabel, seconds: menu.hive.labelSeconds } : undefined, icon: BriefcaseBusiness, group: "hive" },
 ];
 
 const HIVE_ITEM: Record<HiveShortcutId, { icon: LucideIcon; href: string }> = {
@@ -99,27 +100,27 @@ const HIVE_ITEM: Record<HiveShortcutId, { icon: LucideIcon; href: string }> = {
 
 /** Hive's row of shortcuts: the admin's names and order, with any switched off left out. */
 const hiveItems = (menu: HomeMenuSettings, hire: HireAvailability): MenuItem[] =>
-  menu.hive.shortcuts.filter((s) => s.enabled && (s.id === "workers" ? hire.workers : s.id === "hire" ? hire.hire : true)).map((s) => ({ id: s.id, label: s.label, icon: HIVE_ITEM[s.id].icon, href: HIVE_ITEM[s.id].href }));
+  menu.hive.shortcuts.filter((s) => s.enabled && (s.id === "workers" ? hire.workers : s.id === "hire" ? hire.hire : true)).map((s) => ({ id: s.id, label: s.label, icon: HIVE_ITEM[s.id].icon, href: HIVE_ITEM[s.id].href, module: s.id === "workers" || s.id === "hire" ? "hive.hire" : "hive.work" }));
 
 /** Ride's shortcuts, in the order Peebee shows them. Luxury and Ambulance appear once there is an approved vehicle of that kind. */
 const rideItems = (special: SpecialCarServices, taxipress: boolean): MenuItem[] => [
-  { id: "boda", label: "Boda", icon: Bike, href: "/ride/boda" },
-  { id: "car", label: "Car", icon: Car, href: "/ride/car" },
-  { id: "rideshare", label: "Rideshare", icon: UsersRound, href: "/carpool" },
-  { id: "selfdrive", label: "Selfdrive", icon: CarFront, href: "/rent" },
-  { id: "move", label: "Move", icon: Truck, href: "/ride/move" },
-  ...(special.luxury ? [{ id: "luxury", label: "VIP", icon: Crown, href: "/ride/luxury" }] : []),
-  { id: "parcel", label: "Parcel", icon: Package, href: "/deliver/parcel" },
-  ...(taxipress ? [{ id: "taxipress", label: "Taxipress", icon: Bus, href: "/ride/taxipress" }] : []),
-  ...(special.ambulance ? [{ id: "ambulance", label: "Ambulance", icon: Ambulance, href: "/ride/ambulance" }] : []),
+  { id: "boda", label: "Boda", icon: Bike, href: "/ride/boda", module: "ride.boda" },
+  { id: "car", label: "Car", icon: Car, href: "/ride/car", module: "ride.car" },
+  { id: "rideshare", label: "Rideshare", icon: UsersRound, href: "/carpool", module: "ride.car.carpool" },
+  { id: "selfdrive", label: "Selfdrive", icon: CarFront, href: "/rent", module: "ride.car.selfdrive" },
+  { id: "move", label: "Move", icon: Truck, href: "/ride/move", module: "ride.move" },
+  ...(special.luxury ? [{ id: "luxury", label: "VIP", icon: Crown, href: "/ride/luxury", module: "ride.luxury" }] : []),
+  { id: "parcel", label: "Parcel", icon: Package, href: "/deliver/parcel", module: "deliver.parcel" },
+  ...(taxipress ? [{ id: "taxipress", label: "Taxipress", icon: Bus, href: "/ride/taxipress", module: "ride.taxipress" }] : []),
+  ...(special.ambulance ? [{ id: "ambulance", label: "Ambulance", icon: Ambulance, href: "/ride/ambulance", module: "ride.ambulance" }] : []),
 ];
 
 const staticSubmenuItems: Record<"shopping" | "food", MenuItem[]> = {
   shopping: [
-    { id: "shoplist", label: "List", icon: ListChecks, href: "/shoplist" },
-    { id: "markets", label: "Groceries", icon: ShoppingBasket, href: "/groceries" },
-    { id: "stores", label: "Stores", icon: Store, href: "/stores" },
-    { id: "pharmacy", label: "Pharma", icon: Pill, href: "/pharmacy" },
+    { id: "shoplist", label: "List", icon: ListChecks, href: "/shoplist", module: "buy.shopping" },
+    { id: "markets", label: "Groceries", icon: ShoppingBasket, href: "/groceries", module: "buy.shopping" },
+    { id: "stores", label: "Stores", icon: Store, href: "/stores", module: "buy.marketplace" },
+    { id: "pharmacy", label: "Pharma", icon: Pill, href: "/pharmacy", module: "buy.pharmacy" },
     // Past orders. /orders itself is the shopping lists, so those stay under List.
     { id: "orders", label: "Orders", icon: Receipt, href: "/orders/history" },
   ],
@@ -138,9 +139,9 @@ const spotlightItems: MenuItem[] = SPOTLIGHT_FILTERS.map((f) => ({ id: `sp-${f.i
 
 /** Learn's row. Levels (Sprouts, Basics, Academy, Campus, Skills) are chosen on Discover. */
 const learnItems: MenuItem[] = [
-  { id: "myclass", label: "My Class", icon: GraduationCap, href: "/learn/my" },
-  { id: "live", label: "Live", icon: Radio, href: "/learn/live" },
-  { id: "tv", label: "TV", icon: Tv, href: "/learn/tv" },
+  { id: "myclass", label: "My Class", icon: GraduationCap, href: "/learn/my", module: "learn" },
+  { id: "live", label: "Live", icon: Radio, href: "/learn/live", module: "learn.live" },
+  { id: "tv", label: "TV", icon: Tv, href: "/learn/tv", module: "learn.tv" },
   { id: "discover", label: "Discover", icon: Compass, href: "/learn" },
   { id: "connect", label: "Connect", icon: MessagesSquare, href: "/learn/connect" },
 ];
@@ -223,13 +224,15 @@ export function BottomNav({ overlay = false }: { overlay?: boolean }) {
   // With a sub menu open on "/", it stays Home so the person can get back to the main menu.
   const onHomeScreen = pathname === "/" && menuGroup === "original";
 
-  const menuItems: MenuItem[] =
+  const moduleOn = useModules();
+  // A button whose module is switched off in Admin → Services is left out of every row.
+  const menuItems: MenuItem[] = filterByModule(
     menuGroup === "original" ? originalMenu(homeMenu)
     : menuGroup === "ride" ? rideItems(special, taxipress.enabled)
     : menuGroup === "hive" ? hiveItems(homeMenu, hireAvailability)
     : menuGroup === "learn" ? learnItems
     : menuGroup === "spotlight" ? spotlightItems
-    : staticSubmenuItems[menuGroup];
+    : staticSubmenuItems[menuGroup], moduleOn);
   // Ride can grow to eight; past five the row scrolls sideways instead of squeezing the names.
   const scrolls = menuItems.length > 5;
 
