@@ -7,12 +7,14 @@
  * available when every module above it is also on, in the same world.
  *
  * `liveKey` points a module at the setting that already gates it on the server, so the old switches and these
- * share one value. Modules without one are stored in `modules_live` (default on).
+ * share one value. `channel` does the same for a switch inside the Channels config. Modules with neither are stored
+ * in `modules_live` (default on).
  */
+import { sanitizeChannelsConfig } from "./channels-config.js";
 
 export type ModuleWorld = "live" | "practice";
 
-export type ModuleClusterId = "ride" | "deliver" | "buy" | "learn" | "hive" | "money";
+export type ModuleClusterId = "ride" | "deliver" | "buy" | "learn" | "hive" | "channels" | "money";
 
 export type ModuleClusterDef = { id: ModuleClusterId; label: string; description: string };
 
@@ -29,6 +31,8 @@ export type ModuleDef = {
   /** The `settings` row that already gates this module in Live. `defaultOn` is what that row means when empty. */
   liveKey?: string;
   defaultOn?: boolean;
+  /** A switch inside the Channels config: a yes/no at `path`, or (with `includes`) whether that value is in the list at `path`. */
+  channel?: { path: string; includes?: string };
   /** What the Practice world holds for this module: people, content, orders, places. */
   practice: { coverage: PracticeCoverage; has: string[]; missing?: string[] };
 };
@@ -39,13 +43,21 @@ export const MODULE_CLUSTERS: readonly ModuleClusterDef[] = [
   { id: "buy", label: "Buy", description: "Shopping lists, food, stores, pharmacy and fuel." },
   { id: "learn", label: "Learn", description: "Schools, courses, live classes and certificates." },
   { id: "hive", label: "Hive", description: "Home services and the Peebee Hire marketplace." },
+  { id: "channels", label: "Channels", description: "Creator channels: what people can post, go live with, and earn from." },
   { id: "money", label: "Money", description: "Paid memberships and reading aloud." },
 ];
 
 const m = (
   key: string, cluster: ModuleClusterId, label: string, description: string,
-  practice: ModuleDef["practice"], extra: Partial<Pick<ModuleDef, "parent" | "liveKey" | "defaultOn">> = {},
+  practice: ModuleDef["practice"], extra: Partial<Pick<ModuleDef, "parent" | "liveKey" | "defaultOn" | "channel">> = {},
 ): ModuleDef => ({ key, cluster, label, description, practice, ...extra });
+
+const NO_PRACTICE: ModuleDef["practice"] = { coverage: "none", has: [], missing: ["Channels are not part of Practice"] };
+
+/** A Channels module: its switch is a value inside the Channels config, so Admin → Channels and Services stay one setting. */
+const c = (key: string, label: string, description: string, path: string, parent?: string, includes?: string): ModuleDef => ({
+  key, cluster: "channels", label, description, practice: NO_PRACTICE, ...(parent ? { parent } : {}), channel: { path, ...(includes ? { includes } : {}) },
+});
 
 export const MODULES: readonly ModuleDef[] = [
   // Ride
@@ -141,6 +153,33 @@ export const MODULES: readonly ModuleDef[] = [
   m("hive.hire.reviews", "hive", "Ratings", "Employers and workers rate each other.", { coverage: "full", has: ["workers", "rating history"] }, { parent: "hive.hire", liveKey: "talent_reviews_enabled", defaultOn: true }),
   m("hive.hire.chat", "hive", "Messaging", "Employer and applicant chat.", { coverage: "full", has: ["applications", "conversations"] }, { parent: "hive.hire", liveKey: "talent_chat_enabled", defaultOn: true }),
   m("hive.hire.recurring", "hive", "Repeat jobs", "Rebook the same worker daily, weekly or monthly.", { coverage: "full", has: ["recurring jobs"] }, { parent: "hive.hire", liveKey: "talent_recurring_enabled", defaultOn: true }),
+
+
+  // Channels. Live only: Practice does not simulate channels, so these have no Practice switch.
+  c("channels", "Channels", "Creator channels, posts and everything below. Off hides all of it; store and other module posts in the Spotlight stay.", "enabled"),
+  c("channels.open", "Opening a channel", "Anyone can open or convert to a channel. Off stops new channels.", "general.channelsOpen", "channels"),
+  c("channels.posts.video", "Video posts", "Creators can post videos.", "publishing.postTypes", "channels", "video"),
+  c("channels.posts.image", "Photo posts", "Creators can post single images.", "publishing.postTypes", "channels", "image"),
+  c("channels.posts.carousel", "Carousel posts", "Creators can post image carousels.", "publishing.postTypes", "channels", "carousel"),
+  c("channels.posts.text", "Text and poll posts", "Creators can post text and polls.", "publishing.postTypes", "channels", "text"),
+  c("channels.posts.audio", "Audio posts", "Creators can post audio.", "publishing.postTypes", "channels", "audio"),
+  c("channels.scheduling", "Scheduling posts", "Creators can schedule posts for later.", "publishing.schedulingEnabled", "channels"),
+  c("channels.comments", "Comments", "People can comment on posts.", "publishing.commentsEnabled", "channels"),
+  c("channels.likes", "Likes", "People can like posts.", "publishing.reactionsEnabled", "channels"),
+  c("channels.live", "Going live", "People can go live from their phone camera.", "live.enabled", "channels"),
+  c("channels.live.comments", "Live comments", "Viewers can comment while a stream is on.", "live.commentsEnabled", "channels.live"),
+  c("channels.live.helper", "Helper device", "The host can use a second device to read, hide and pin comments.", "live.helperEnabled", "channels.live"),
+  c("channels.live.broadcasts", "Broadcasts", "A channel airs pre-recorded videos back to back like a TV station.", "live.broadcastsEnabled", "channels.live"),
+  c("channels.live.premieres", "Premieres", "A channel premieres a video with a countdown and live chat.", "live.premieresEnabled", "channels.live"),
+  c("channels.live.reminders", "Airing reminders", "People can tap Remind me before an airing starts.", "live.remindersEnabled", "channels.live"),
+  c("channels.money", "Money from audiences", "Memberships, paid posts, tips and gifts.", "monetization.enabled", "channels"),
+  c("channels.money.memberships", "Memberships", "Creators sell monthly memberships.", "monetization.memberships", "channels.money"),
+  c("channels.money.payperview", "Pay-per-view posts", "Creators charge for single posts.", "monetization.payPerView", "channels.money"),
+  c("channels.money.tips", "Tips", "People can tip a creator.", "monetization.tips", "channels.money"),
+  c("channels.money.gifts", "Gifts", "People can send gifts on posts and live streams.", "monetization.gifts", "channels.money"),
+  c("channels.causes", "Causes", "Fundraising campaigns and donations.", "causes.enabled", "channels"),
+  c("channels.rewards", "Rewards", "Points for views and cash-outs.", "rewards.enabled", "channels"),
+  c("channels.withdrawals", "Cash withdrawals", "Paying creators out.", "kyc.withdrawalsEnabled", "channels"),
 
   // Money
   m("money", "money", "Money", "Paid memberships and reading aloud.", { coverage: "full", has: ["wallets", "mobile money"] }),
@@ -242,4 +281,27 @@ export function applyModuleAvailability<T extends object>(settings: T, available
     if (node && last in node) node[last] = on;
   }
   return next as T;
+}
+
+function channelValue(config: unknown, path: string): unknown {
+  return path.split(".").reduce<unknown>((o, k) => (o && typeof o === "object" ? (o as Record<string, unknown>)[k] : undefined), config);
+}
+
+/** Is a Channels module's switch on in this stored Channels config (JSON text)? */
+export function channelModuleOn(def: ModuleDef, rawConfig: string | undefined): boolean {
+  if (!def.channel) return true;
+  let parsed: unknown = {};
+  try { parsed = JSON.parse(rawConfig || "{}"); } catch { /* an unreadable config reads as defaults */ }
+  const value = channelValue(sanitizeChannelsConfig(parsed), def.channel.path);
+  return def.channel.includes ? Array.isArray(value) && value.includes(def.channel.includes) : value === true;
+}
+
+/** The Channels-config patch that turns a Channels module on or off, given the config as it is now. */
+export function channelModulePatch(def: ModuleDef, current: unknown, on: boolean): Record<string, unknown> {
+  const { path, includes } = def.channel!;
+  if (!includes) return { [path]: on };
+  const list = channelValue(current, path);
+  const next = new Set(Array.isArray(list) ? (list as string[]) : []);
+  if (on) next.add(includes); else next.delete(includes);
+  return { [path]: [...next] };
 }

@@ -1,5 +1,5 @@
 import type { MatchingMode } from "@peebee/shared";
-import { MODULES, getModule, type ModuleDef } from "@peebee/shared";
+import { MODULES, channelModuleOn, getModule, type ModuleDef } from "@peebee/shared";
 import { DEFAULT_HOME_MENU, DEFAULT_RIDE_TRACKING_SETTINGS, DEFAULT_SHOPPING_UNIT_SETTINGS, DEFAULT_TIME_FEES, type JobExpirySettings, type TimeFeeSettings } from "@peebee/shared";
 import { db } from "../db/client.js";
 import { inPractice } from "../db/practice-context.js";
@@ -1134,6 +1134,7 @@ function parseFlagMap(raw: string | undefined): Record<string, boolean> {
 
 /** A module's own Live switch as stored, ignoring the modules above it. */
 export function rawModuleLive(def: ModuleDef, values: Map<string, string>): boolean {
+  if (def.channel) return channelModuleOn(def, values.get("channels_config"));
   if (def.liveKey) {
     const v = values.get(def.liveKey) ?? DEFAULTS[def.liveKey as SettingKey] ?? (def.defaultOn ? "1" : "0");
     return def.defaultOn ? v !== "0" : v === "1";

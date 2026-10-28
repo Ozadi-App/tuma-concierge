@@ -1,6 +1,7 @@
 "use client";
 
 import { MODULES, MODULE_CLUSTERS, childrenOf, resolveModuleAvailability, type ModuleDef, type ModuleFlags, type ModuleWorld } from "@peebee/shared";
+import { ChevronDown } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { SettingsPageShell, SettingsSaveBar } from "../../../components/SettingsPageShell";
@@ -56,7 +57,7 @@ export default function ServicesPage() {
   const current = WORLDS.find((w) => w.id === world)!;
 
   return (
-    <SettingsPageShell title="Services" description="Every cluster and module on the platform, switched on or off for Live and for Practice." loading={loading}>
+    <SettingsPageShell title="Services" description="Switch a whole service on or off, or just one thing inside it. Off disappears from every app; the code stays ready for when it is back on." loading={loading}>
       {flags && available && (
         <form onSubmit={onSubmit} className="space-y-5">
           <div role="tablist" aria-label="World" className="grid grid-cols-2 gap-1 rounded-full bg-[rgb(var(--surface-muted))] p-1 sm:inline-grid sm:min-w-[22rem]">
@@ -72,20 +73,9 @@ export default function ServicesPage() {
             <p className="text-xs text-ink-500">Practice as a whole, and what each module&rsquo;s practice world contains, is managed in <Link href="/practice" className="font-bold text-ink underline">Practice</Link>.</p>
           )}
 
-          {MODULE_CLUSTERS.map((cluster) => {
-            const roots = MODULES.filter((m) => m.cluster === cluster.id && !m.parent);
-            return (
-              <section key={cluster.id} className="home-card space-y-3">
-                <header>
-                  <h2 className="text-base font-bold text-ink">{cluster.label}</h2>
-                  <p className="text-xs text-ink-500">{cluster.description}</p>
-                </header>
-                <ul className="space-y-1">
-                  {roots.map((m) => <ModuleRow key={m.key} def={m} depth={0} world={world} flags={flags} available={available} onToggle={toggle} />)}
-                </ul>
-              </section>
-            );
-          })}
+          {MODULE_CLUSTERS.map((cluster) => (
+            <ClusterCard key={cluster.id} cluster={cluster} world={world} flags={flags} available={available} onToggle={toggle} />
+          ))}
           <SettingsSaveBar busy={busy} error={error} saved={done} />
         </form>
       )}
@@ -94,10 +84,53 @@ export default function ServicesPage() {
   );
 }
 
+type Available = ReturnType<typeof resolveModuleAvailability>;
+type Toggle = (key: string, world: ModuleWorld, on: boolean) => void;
+
+/** A cluster (Ride, Buy, Learn...): its own switch in the header, and everything inside it listed below. */
+function ClusterCard({ cluster, world, flags, available, onToggle }: {
+  cluster: (typeof MODULE_CLUSTERS)[number]; world: ModuleWorld; flags: ModuleFlags; available: Available; onToggle: Toggle;
+}) {
+  const [open, setOpen] = useState(true);
+  const root = MODULES.find((m) => m.key === cluster.id);
+  const inside = MODULES.filter((m) => m.cluster === cluster.id && m.key !== cluster.id);
+  const on = inside.filter((m) => available[m.key]![world]).length;
+  const rootOn = root ? flags[root.key]![world] : true;
+  const liveOnly = root?.practice.coverage === "none";
+  return (
+    <section className="home-card space-y-3">
+      <header className="flex items-start gap-3">
+        {root && !(world === "practice" && liveOnly) ? (
+          <Switch aria-label={`${cluster.label} in ${world}`} checked={rootOn} onChange={(e) => onToggle(root.key, world, e.target.checked)} className="mt-1 shrink-0" />
+        ) : null}
+        <div className="min-w-0 flex-1">
+          <h2 className="text-base font-bold text-ink">
+            {cluster.label}{" "}
+            <span className="text-xs font-normal text-ink-500">
+              {world === "practice" && liveOnly ? "Not part of Practice" : !rootOn ? "Off — everything inside is hidden" : `${on} of ${inside.length} on`}
+            </span>
+          </h2>
+          <p className="text-xs text-ink-500">{cluster.description}</p>
+        </div>
+        {inside.length > 0 && (
+          <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-label={`${open ? "Hide" : "Show"} what is inside ${cluster.label}`} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-ink-500">
+            <ChevronDown className={`h-4 w-4 transition-transform ${open ? "rotate-180" : ""}`} aria-hidden />
+          </button>
+        )}
+      </header>
+      {open && !(world === "practice" && liveOnly) && root && childrenOf(root.key).length > 0 && (
+        <ul className={`space-y-1 border-t border-[var(--border-faint)] pt-2 ${rootOn ? "" : "opacity-60"}`}>
+          {childrenOf(root.key).map((c) => <ModuleRow key={c.key} def={c} depth={0} world={world} flags={flags} available={available} onToggle={onToggle} />)}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 function ModuleRow({ def, depth, world, flags, available, onToggle }: {
   def: ModuleDef; depth: number; world: ModuleWorld; flags: ModuleFlags;
-  available: ReturnType<typeof resolveModuleAvailability>;
-  onToggle: (key: string, world: ModuleWorld, on: boolean) => void;
+  available: Available;
+  onToggle: Toggle;
 }) {
   const own = flags[def.key]![world];
   const effective = available[def.key]![world];

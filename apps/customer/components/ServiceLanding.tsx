@@ -5,11 +5,12 @@ import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
 import type { HiveShortcutId } from "@peebee/shared";
 import { useHireAvailability, useHomeMenu } from "../lib/home-menu";
+import { filterByModule, useModules } from "../lib/modules";
 import { useSpecialCarServices } from "../lib/special-car";
 import { useTaxipress } from "../lib/taxipress";
 
 type LandingGroup = "ride" | "shopping";
-type LandingItem = { title: string; description: string; icon: LucideIcon; href?: string; wide?: boolean };
+type LandingItem = { title: string; description: string; icon: LucideIcon; href?: string; wide?: boolean; /** The Services module that shows or hides this card. */ module?: string };
 
 const landingContent: Record<LandingGroup, { eyebrow: string; title: string; description: string; items: LandingItem[] }> = {
   ride: {
@@ -17,12 +18,12 @@ const landingContent: Record<LandingGroup, { eyebrow: string; title: string; des
     title: "Ride with Peebee",
     description: "Choose a ride that fits your trip. Compare the options before you book.",
     items: [
-      { title: "Boda", description: "A quick ride through town.", icon: Bike, href: "/ride/boda" },
-      { title: "Car", description: "A comfortable ride for your journey.", icon: Car, href: "/ride/car" },
-      { title: "Rideshare", description: "Share a trip and travel together.", icon: UsersRound, href: "/carpool" },
-      { title: "Selfdrive", description: "Choose a car and drive yourself.", icon: CarFront, href: "/rent" },
-      { title: "Move", description: "Vans and trucks for moving and cargo.", icon: Truck, href: "/ride/move" },
-      { title: "Parcel", description: "Send a package to someone.", icon: Package, href: "/deliver/parcel" },
+      { title: "Boda", description: "A quick ride through town.", icon: Bike, href: "/ride/boda", module: "ride.boda" },
+      { title: "Car", description: "A comfortable ride for your journey.", icon: Car, href: "/ride/car", module: "ride.car" },
+      { title: "Rideshare", description: "Share a trip and travel together.", icon: UsersRound, href: "/carpool", module: "ride.car.carpool" },
+      { title: "Selfdrive", description: "Choose a car and drive yourself.", icon: CarFront, href: "/rent", module: "ride.car.selfdrive" },
+      { title: "Move", description: "Vans and trucks for moving and cargo.", icon: Truck, href: "/ride/move", module: "ride.move" },
+      { title: "Parcel", description: "Send a package to someone.", icon: Package, href: "/deliver/parcel", module: "deliver.parcel" },
     ],
   },
   shopping: {
@@ -30,10 +31,10 @@ const landingContent: Record<LandingGroup, { eyebrow: string; title: string; des
     title: "Buy",
     description: "Build a list for your next shop, browse groceries & stores, or watch spotlight streams.",
     items: [
-      { title: "List", description: "Create and send a shopping list.", icon: ListChecks, href: "/shoplist" },
-      { title: "Groceries", description: "Browse nearby markets and groceries.", icon: ShoppingBasket, href: "/groceries" },
-      { title: "Stores", description: "Shop from verified local stores.", icon: Store, href: "/stores" },
-      { title: "Pharma", description: "Get everyday health essentials.", icon: Pill, href: "/pharmacy" },
+      { title: "List", description: "Create and send a shopping list.", icon: ListChecks, href: "/shoplist", module: "buy.shopping" },
+      { title: "Groceries", description: "Browse nearby markets and groceries.", icon: ShoppingBasket, href: "/groceries", module: "buy.shopping" },
+      { title: "Stores", description: "Shop from verified local stores.", icon: Store, href: "/stores", module: "buy.marketplace" },
+      { title: "Pharma", description: "Get everyday health essentials.", icon: Pill, href: "/pharmacy", module: "buy.pharmacy" },
       { title: "Spotlight", description: "Watch live shopping streams, reels & creator carousels.", icon: Flame, href: "/spotlight" },
     ],
   },
@@ -41,18 +42,21 @@ const landingContent: Record<LandingGroup, { eyebrow: string; title: string; des
 
 /** Luxury and Ambulance appear on the Ride home screen once Peebee has an approved vehicle of that kind. */
 const specialRideItems: { key: "luxury" | "ambulance"; item: LandingItem }[] = [
-  { key: "luxury", item: { title: "VIP", description: "Chauffeur cars for weddings, parties and red carpet.", icon: Crown, href: "/ride/luxury" } },
-  { key: "ambulance", item: { title: "Ambulance", description: "Emergency transport, sent to you at once.", icon: Ambulance, href: "/ride/ambulance", wide: true } },
+  { key: "luxury", item: { title: "VIP", description: "Chauffeur cars for weddings, parties and red carpet.", icon: Crown, href: "/ride/luxury", module: "ride.luxury" } },
+  { key: "ambulance", item: { title: "Ambulance", description: "Emergency transport, sent to you at once.", icon: Ambulance, href: "/ride/ambulance", wide: true, module: "ride.ambulance" } },
 ];
 
 /** Taxipress appears once staff have switched it on and a route is running. It is a full-width card, with Ambulance stacked right below it. */
-const taxipressItem: LandingItem = { title: "Taxipress", description: "Book a seat on the next taxi along a fixed route.", icon: Bus, href: "/ride/taxipress", wide: true };
+const taxipressItem: LandingItem = { title: "Taxipress", description: "Book a seat on the next taxi along a fixed route.", icon: Bus, href: "/ride/taxipress", wide: true, module: "ride.taxipress" };
 
 export function ServiceLanding({ group }: { group: LandingGroup }) {
   const special = useSpecialCarServices();
   const taxipress = useTaxipress();
+  const moduleOn = useModules();
   const base = landingContent[group];
-  const content = group === "ride" ? { ...base, items: [...base.items, ...(taxipress.enabled ? [taxipressItem] : []), ...specialRideItems.filter((s) => special[s.key]).map((s) => s.item)] } : base;
+  const withExtras = group === "ride" ? { ...base, items: [...base.items, ...(taxipress.enabled ? [taxipressItem] : []), ...specialRideItems.filter((s) => special[s.key]).map((s) => s.item)] } : base;
+  // A card whose module is switched off in Admin → Services is left out; the code behind it stays ready.
+  const content = { ...withExtras, items: filterByModule(withExtras.items, moduleOn) };
   // Wide cards (Taxipress, Ambulance) stack full-width under the two-column grid; the rest stay in it.
   const gridItems = content.items.filter((item) => !item.wide);
   const wideItems = content.items.filter((item) => item.wide);
