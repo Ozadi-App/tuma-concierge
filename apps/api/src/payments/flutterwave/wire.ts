@@ -24,6 +24,7 @@
 import { detectMobileMoneyNetwork, normalizeUgandaMsisdn } from "@peebee/shared";
 import { getFlutterwaveDirectCard, getFlutterwaveDirectMobileMoney } from "../../lib/settings.js";
 import { getCredential, isProviderConfigured } from "../credentials.js";
+import { appBaseUrl } from "../../verify/service.js";
 import { tripleDesEcbEncrypt } from "./des.js";
 import {
   PaymentProviderError,
@@ -132,7 +133,12 @@ async function createPaymentLink(input: GatewayChargeInput, options: string): Pr
         phonenumber: input.msisdn,
         name: input.name,
       },
-      customizations: { title: "Peebee" },
+      // All Flutterwave lets us style on its hosted page: name, logo and a line under it.
+      customizations: {
+        title: "Peebee",
+        description: input.narrative,
+        logo: `${appBaseUrl("customer")}/icons/icon-512.png`,
+      },
       payment_options: options,
       meta: { narrative: input.narrative },
     }),

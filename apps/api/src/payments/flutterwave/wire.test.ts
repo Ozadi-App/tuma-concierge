@@ -99,6 +99,10 @@ test("flutterwave routes each payment to the flow the admin switched on", async 
     assert.equal(calls[0].body.payment_options, "card");
     assert.ok(result.redirectUrl);
     assert.ok(!JSON.stringify(calls[0].body).includes(card.number), "card number must never reach the hosted call");
+    const branding = calls[0].body.customizations as Record<string, string>;
+    assert.equal(branding.title, "Peebee");
+    assert.equal(branding.description, "test");
+    assert.match(branding.logo, /^https?:\/\/.+\/icons\/icon-512\.png$/);
   });
 
   await t.test("direct card on but no encryption key still falls back to the hosted page", async () => {
