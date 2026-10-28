@@ -220,11 +220,51 @@ export function resolveModuleAvailability(flags: ModuleFlags): ModuleAvailabilit
   return out;
 }
 
-/** The wire shape of GET /v1/settings `modules`: raw flags (for the admin editor) and resolved availability (for apps). */
-export type ModuleSettings = { flags: ModuleFlags; available: ModuleAvailability };
+/**
+ * Why a module is off, and what people see where it used to be. Admin picks the reason when switching a module off;
+ * a message and a date are optional on top of the reason's own wording.
+ */
+export type ModuleNoticeReason = "coming_soon" | "maintenance" | "unavailable";
+export type ModuleNotice = { reason: ModuleNoticeReason; message?: string; /** A launch or return date, `YYYY-MM-DD` or a full ISO time. */ returnAt?: string };
 
-/** Admin write: only the flags that changed, per world. */
-export type ModuleSettingsUpdate = { live?: Record<string, boolean>; practice?: Record<string, boolean> };
+export const MODULE_NOTICE_MESSAGE_MAX = 200;
+
+export const MODULE_NOTICE_REASONS: readonly { id: ModuleNoticeReason; label: string; headline: string; dateLabel: string; hint: string }[] = [
+  { id: "coming_soon", label: "Coming soon", headline: "Coming soon", dateLabel: "Launching", hint: "Not launched yet. Add a launch date if you have one." },
+  { id: "maintenance", label: "Back soon", headline: "Back soon", dateLabel: "Expected back", hint: "Switched off for maintenance or an upgrade. Add when it returns." },
+  { id: "unavailable", label: "Not available", headline: "Not available right now", dateLabel: "Expected", hint: "A plain notice when there is no more to say." },
+];
+
+export const DEFAULT_MODULE_NOTICE: ModuleNotice = { reason: "unavailable" };
+
+/** Stored notices, by module. Only modules that are off carry one when served, so a stale note never shows on a live module. */
+export type ModuleNotices = Record<string, ModuleNotice>;
+
+/** The wire shape of GET /v1/settings `modules`: raw flags (for the admin editor), resolved availability (for apps), and why things are off. */
+export type ModuleSettings = { flags: ModuleFlags; available: ModuleAvailability; notices?: ModuleNotices };
+
+/** Admin write: only the flags that changed, per world. A notice of `null` clears it. */
+export type ModuleSettingsUpdate = { live?: Record<string, boolean>; practice?: Record<string, boolean>; notices?: Record<string, ModuleNotice | null> };
+
+/** The notice to show for a module that is off: its own, else the nearest module above it that has one, else a plain "not available". */
+export function noticeFor(key: string, notices: ModuleNotices | null | undefined): ModuleNotice {
+  for (let def = getModule(key); def; def = def.parent ? getModule(def.parent) : undefined) {
+    const n = notices?.[def.key];
+    if (n) return n;
+  }
+  return DEFAULT_MODULE_NOTICE;
+}
+
+/** Trims and bounds a notice from the outside world; returns null for anything that is not one. */
+export function cleanModuleNotice(input: unknown): ModuleNotice | null {
+  if (!input || typeof input !== "object") return null;
+  const raw = input as Record<string, unknown>;
+  const reason = MODULE_NOTICE_REASONS.find((r) => r.id === raw.reason)?.id;
+  if (!reason) return null;
+  const message = typeof raw.message === "string" ? raw.message.trim().slice(0, MODULE_NOTICE_MESSAGE_MAX) : "";
+  const returnAt = typeof raw.returnAt === "string" && raw.returnAt.length <= 40 && Number.isFinite(Date.parse(raw.returnAt)) ? raw.returnAt : "";
+  return { reason, ...(message ? { message } : {}), ...(returnAt ? { returnAt } : {}) };
+}
 
 export const MODULE_SWITCHES_STORAGE_KEY = "peebee_module_availability";
 

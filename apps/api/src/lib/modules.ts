@@ -1,4 +1,4 @@
-import { MODULES, channelModulePatch, getModule, resolveModuleAvailability, type ModuleFlags, type ModuleSettings, type ModuleSettingsUpdate } from "@peebee/shared";
+import { MODULES, channelModulePatch, cleanModuleNotice, getModule, resolveModuleAvailability, type ModuleFlags, type ModuleNotices, type ModuleSettings, type ModuleSettingsUpdate } from "@peebee/shared";
 import { getChannelsConfig, saveChannelsConfig } from "../channels/settings.js";
 import { getSetting, getSettingRaw, rawModuleLive, setSetting, type SettingKey } from "./settings.js";
 
@@ -19,9 +19,22 @@ export async function getModuleFlags(): Promise<ModuleFlags> {
   return Object.fromEntries(MODULES.map((x) => [x.key, { live: rawModuleLive(x, values), practice: practice[x.key] !== false }]));
 }
 
+/** Stored notices, kept only for modules that are off in some world (a note on a module that is on is not shown). */
+async function getModuleNotices(flags: ModuleFlags): Promise<ModuleNotices> {
+  const stored = parseNotices(await getSettingRaw("modules_notices"));
+  return Object.fromEntries(Object.entries(stored).filter(([key]) => flags[key] && (!flags[key]!.live || !flags[key]!.practice)));
+}
+
+function parseNotices(raw: string): ModuleNotices {
+  try {
+    const value = JSON.parse(raw || "{}") as Record<string, unknown>;
+    return Object.fromEntries(Object.entries(value).flatMap(([key, n]) => { const c = cleanModuleNotice(n); return c ? [[key, c]] : []; }));
+  } catch { return {}; }
+}
+
 export async function getModuleSettings(): Promise<ModuleSettings> {
   const flags = await getModuleFlags();
-  return { flags, available: resolveModuleAvailability(flags) };
+  return { flags, available: resolveModuleAvailability(flags), notices: await getModuleNotices(flags) };
 }
 
 /** Is this module on in Live right now, counting every module above it? */
@@ -38,10 +51,18 @@ export async function isModuleLive(key: string): Promise<boolean> {
 
 /** Only the keys that exist: anything else in an update is a mistake worth refusing. */
 export function unknownModuleKeys(update: ModuleSettingsUpdate): string[] {
-  return [...Object.keys(update.live ?? {}), ...Object.keys(update.practice ?? {})].filter((k) => !getModule(k));
+  return [...Object.keys(update.live ?? {}), ...Object.keys(update.practice ?? {}), ...Object.keys(update.notices ?? {})].filter((k) => !getModule(k));
 }
 
 export async function setModuleFlags(update: ModuleSettingsUpdate): Promise<void> {
+  if (update.notices && Object.keys(update.notices).length) {
+    const notices = parseNotices(await getSettingRaw("modules_notices"));
+    for (const [key, n] of Object.entries(update.notices)) {
+      const clean = n && cleanModuleNotice(n);
+      if (clean) notices[key] = clean; else delete notices[key];
+    }
+    await setSetting("modules_notices", JSON.stringify(notices));
+  }
   const liveJson = parse(await getSettingRaw("modules_live"));
   let liveJsonChanged = false;
   let channelsPatch: Record<string, unknown> = {};

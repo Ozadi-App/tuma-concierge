@@ -1,10 +1,11 @@
 "use client";
 
-import { MODULES, MODULE_CLUSTERS, childrenOf, resolveModuleAvailability, type ModuleDef, type ModuleFlags, type ModuleWorld } from "@peebee/shared";
+import { DEFAULT_MODULE_NOTICE, MODULES, MODULE_CLUSTERS, MODULE_NOTICE_MESSAGE_MAX, MODULE_NOTICE_REASONS, childrenOf, cleanModuleNotice, resolveModuleAvailability, type ModuleDef, type ModuleFlags, type ModuleNotice, type ModuleNotices, type ModuleWorld } from "@peebee/shared";
 import { ChevronDown } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { SettingsPageShell, SettingsSaveBar } from "../../../components/SettingsPageShell";
+import { Select } from "../../../components/ui/Select";
 import { Switch } from "../../../components/ui/Switch";
 import { api, errorMessage } from "../../../lib/api";
 
@@ -16,6 +17,8 @@ const WORLDS: Array<{ id: ModuleWorld; label: string; blurb: string }> = [
 export default function ServicesPage() {
   const [saved, setSaved] = useState<ModuleFlags | null>(null);
   const [flags, setFlags] = useState<ModuleFlags | null>(null);
+  const [savedNotices, setSavedNotices] = useState<ModuleNotices>({});
+  const [notices, setNotices] = useState<ModuleNotices>({});
   const [world, setWorld] = useState<ModuleWorld>("live");
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -24,19 +27,27 @@ export default function ServicesPage() {
 
   useEffect(() => {
     api.adminGetModules()
-      .then(({ modules }) => { setSaved(modules.flags); setFlags(structuredClone(modules.flags)); })
+      .then(({ modules }) => { setSaved(modules.flags); setFlags(structuredClone(modules.flags)); setSavedNotices(modules.notices ?? {}); setNotices(structuredClone(modules.notices ?? {})); })
       .catch((err) => setError(errorMessage(err)))
       .finally(() => setLoading(false));
   }, []);
 
   const available = useMemo(() => (flags ? resolveModuleAvailability(flags) : null), [flags]);
   const changes = useMemo(() => {
-    const out: { live: Record<string, boolean>; practice: Record<string, boolean> } = { live: {}, practice: {} };
+    const out: { live: Record<string, boolean>; practice: Record<string, boolean>; notices: Record<string, ModuleNotice | null> } = { live: {}, practice: {}, notices: {} };
     if (!flags || !saved) return out;
     for (const def of MODULES) for (const w of ["live", "practice"] as const) if (flags[def.key]![w] !== saved[def.key]![w]) out[w][def.key] = flags[def.key]![w];
+    for (const key of new Set([...Object.keys(notices), ...Object.keys(savedNotices)])) {
+      if (JSON.stringify(notices[key] ?? null) !== JSON.stringify(savedNotices[key] ?? null)) out.notices[key] = notices[key] ?? null;
+    }
     return out;
-  }, [flags, saved]);
-  const dirty = Object.keys(changes.live).length + Object.keys(changes.practice).length;
+  }, [flags, saved, notices, savedNotices]);
+  const dirty = Object.keys(changes.live).length + Object.keys(changes.practice).length + Object.keys(changes.notices).length;
+
+  function setNotice(key: string, notice: ModuleNotice | null) {
+    setDone(false);
+    setNotices((n) => { const next = { ...n }; if (notice) next[key] = notice; else delete next[key]; return next; });
+  }
 
   function toggle(key: string, w: ModuleWorld, on: boolean) {
     setDone(false);
@@ -49,7 +60,7 @@ export default function ServicesPage() {
     setBusy(true); setError(null); setDone(false);
     try {
       const { modules } = await api.adminUpdateModules(changes);
-      setSaved(modules.flags); setFlags(structuredClone(modules.flags)); setDone(true);
+      setSaved(modules.flags); setFlags(structuredClone(modules.flags)); setSavedNotices(modules.notices ?? {}); setNotices(structuredClone(modules.notices ?? {})); setDone(true);
     } catch (err) { setError(errorMessage(err)); }
     finally { setBusy(false); }
   }
@@ -74,7 +85,7 @@ export default function ServicesPage() {
           )}
 
           {MODULE_CLUSTERS.map((cluster) => (
-            <ClusterCard key={cluster.id} cluster={cluster} world={world} flags={flags} available={available} onToggle={toggle} />
+            <ClusterCard key={cluster.id} cluster={cluster} world={world} flags={flags} available={available} onToggle={toggle} notices={notices} onNotice={setNotice} />
           ))}
           <SettingsSaveBar busy={busy} error={error} saved={done} />
         </form>
@@ -86,11 +97,12 @@ export default function ServicesPage() {
 
 type Available = ReturnType<typeof resolveModuleAvailability>;
 type Toggle = (key: string, world: ModuleWorld, on: boolean) => void;
+type NoticeProps = { notices: ModuleNotices; onNotice: (key: string, notice: ModuleNotice | null) => void };
 
 /** A cluster (Ride, Buy, Learn...): its own switch in the header, and everything inside it listed below. */
-function ClusterCard({ cluster, world, flags, available, onToggle }: {
+function ClusterCard({ cluster, world, flags, available, onToggle, notices, onNotice }: {
   cluster: (typeof MODULE_CLUSTERS)[number]; world: ModuleWorld; flags: ModuleFlags; available: Available; onToggle: Toggle;
-}) {
+} & NoticeProps) {
   const [open, setOpen] = useState(true);
   const root = MODULES.find((m) => m.key === cluster.id);
   const inside = MODULES.filter((m) => m.cluster === cluster.id && m.key !== cluster.id);
@@ -118,20 +130,21 @@ function ClusterCard({ cluster, world, flags, available, onToggle }: {
           </button>
         )}
       </header>
+      {root && isOff(flags, root.key) && <NoticeEditor def={root} notice={notices[root.key]} onChange={(n) => onNotice(root.key, n)} />}
       {open && !(world === "practice" && liveOnly) && root && childrenOf(root.key).length > 0 && (
         <ul className={`space-y-1 border-t border-[var(--border-faint)] pt-2 ${rootOn ? "" : "opacity-60"}`}>
-          {childrenOf(root.key).map((c) => <ModuleRow key={c.key} def={c} depth={0} world={world} flags={flags} available={available} onToggle={onToggle} />)}
+          {childrenOf(root.key).map((c) => <ModuleRow key={c.key} def={c} depth={0} world={world} flags={flags} available={available} onToggle={onToggle} notices={notices} onNotice={onNotice} />)}
         </ul>
       )}
     </section>
   );
 }
 
-function ModuleRow({ def, depth, world, flags, available, onToggle }: {
+function ModuleRow({ def, depth, world, flags, available, onToggle, notices, onNotice }: {
   def: ModuleDef; depth: number; world: ModuleWorld; flags: ModuleFlags;
   available: Available;
   onToggle: Toggle;
-}) {
+} & NoticeProps) {
   const own = flags[def.key]![world];
   const effective = available[def.key]![world];
   const practiceOnly = world === "live" && flags[def.key]!.practice && !flags[def.key]!.live;
@@ -147,13 +160,45 @@ function ModuleRow({ def, depth, world, flags, available, onToggle }: {
           </p>
           <p className="text-xs text-ink-500">{def.description}</p>
           {practiceOnly && <p className="mt-0.5 text-xs font-semibold text-ink">On in Practice only. Switch it on here to make it live.</p>}
+          {isOff(flags, def.key) && <NoticeEditor def={def} notice={notices[def.key]} onChange={(n) => onNotice(def.key, n)} />}
         </div>
       </div>
       {childrenOf(def.key).length > 0 && (
         <ul className="space-y-1">
-          {childrenOf(def.key).map((c) => <ModuleRow key={c.key} def={c} depth={depth + 1} world={world} flags={flags} available={available} onToggle={onToggle} />)}
+          {childrenOf(def.key).map((c) => <ModuleRow key={c.key} def={c} depth={depth + 1} world={world} flags={flags} available={available} onToggle={onToggle} notices={notices} onNotice={onNotice} />)}
         </ul>
       )}
     </li>
+  );
+}
+
+/** Off in either world: the module needs something to tell people in its place. */
+function isOff(flags: ModuleFlags, key: string): boolean {
+  return !flags[key]!.live || !flags[key]!.practice;
+}
+
+/** What people see on the screens of a module that is off: why, an optional message, and an optional launch or return date. */
+function NoticeEditor({ def, notice, onChange }: { def: ModuleDef; notice: ModuleNotice | undefined; onChange: (notice: ModuleNotice | null) => void }) {
+  const current = notice ?? DEFAULT_MODULE_NOTICE;
+  const reason = MODULE_NOTICE_REASONS.find((r) => r.id === current.reason)!;
+  // An untouched "Not available" with no words is the default, so it is stored as nothing.
+  const update = (patch: Partial<ModuleNotice>) => {
+    const merged = { ...current, ...patch };
+    // Keep the message as typed (a trailing space is how the next word starts); the server trims what it stores.
+    const next: ModuleNotice = { reason: merged.reason, ...(merged.message?.trim() ? { message: merged.message } : {}), ...(merged.returnAt && cleanModuleNotice({ reason: merged.reason, returnAt: merged.returnAt })?.returnAt ? { returnAt: merged.returnAt } : {}) };
+    onChange(next.reason === "unavailable" && !next.message && !next.returnAt ? null : next);
+  };
+  return (
+    <div className="mt-2 space-y-2 rounded-xl border border-[var(--border-faint)] p-3">
+      <p className="text-xs font-bold text-ink">What people see for {def.label}</p>
+      <div className="grid gap-2 sm:grid-cols-2">
+        <Select aria-label={`Why ${def.label} is off`} value={current.reason} onValueChange={(v) => update({ reason: v as ModuleNotice["reason"] })}>
+          {MODULE_NOTICE_REASONS.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
+        </Select>
+        <input type="date" aria-label={`${reason.dateLabel} date for ${def.label}`} value={(current.returnAt ?? "").slice(0, 10)} onChange={(e) => update({ returnAt: e.target.value })} />
+      </div>
+      <input type="text" maxLength={MODULE_NOTICE_MESSAGE_MAX} placeholder="Optional message, for example: We are adding more taxis" aria-label={`Message for ${def.label}`} value={current.message ?? ""} onChange={(e) => update({ message: e.target.value })} className="w-full" />
+      <p className="text-xs text-ink-500">{reason.hint} Shown on every screen of this module and everything under it.</p>
+    </div>
   );
 }

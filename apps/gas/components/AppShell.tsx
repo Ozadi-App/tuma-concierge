@@ -1,5 +1,9 @@
 "use client";
 
+import { ModuleRouteGate } from "@peebee/shared/module-gate";
+import { MODULE_ROUTES } from "../lib/module-routes";
+import { useModules } from "../lib/modules";
+
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { BottomNav } from "./BottomNav";
@@ -11,6 +15,7 @@ import { PracticeModeFrame } from "@peebee/shared/practice-ui";
 
 export function AppShell({ children }: { children: any }) {
   const pathname = usePathname();
+  const moduleOn = useModules();
   const isAuthPage = pathname === "/login" || pathname === "/apply";
 
   return (
@@ -21,7 +26,7 @@ export function AppShell({ children }: { children: any }) {
           !isAuthPage ? "customer-nav-content-clearance" : ""
         }`}
       >
-        {children}
+        <ModuleRouteGate rules={MODULE_ROUTES} pathname={pathname} modules={moduleOn}>{children}</ModuleRouteGate>
       </main>
       {!isAuthPage && <BottomNav />}
       <PwaInstallPrompt />

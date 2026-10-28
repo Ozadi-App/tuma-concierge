@@ -9,6 +9,8 @@ const DEFAULTS = {
   modules_live: "{}",
   /** Practice-world switches for every module: {"ride.car": false}. Missing = on. */
   modules_practice: "{}",
+  /** Why a module is off and what people see instead: {"ride.car": {"reason": "coming_soon", "returnAt": "2026-12-01"}}. See ./modules.ts. */
+  modules_notices: "{}",
   ride_tracking: JSON.stringify(DEFAULT_RIDE_TRACKING_SETTINGS),
   shopping_units_config: JSON.stringify(DEFAULT_SHOPPING_UNIT_SETTINGS),
   /** The customer app's main menu names, the Hive shortcuts and the Hire banner. */

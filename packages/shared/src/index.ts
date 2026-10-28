@@ -18,6 +18,7 @@ export type { CarModel, CarBodyType } from "./car-model-catalog.js";
 export * from "./shopping-units.js";
 export * from "./home-menu.js";
 export * from "./modules.js";
+export * from "./module-routes.js";
 export * from "./ride-tracking.js";
 export * from "./relay.js";
 export * from "./receipt.js";

@@ -66,3 +66,30 @@ test("every module's parent exists and sits in the same cluster", () => {
     assert.equal(MODULES.find((x) => x.key === def.parent)!.cluster, def.cluster, `${def.key} sits in another cluster than its parent`);
   }
 });
+
+test("a notice is the module's own, else the nearest one above it, else a plain 'not available'", async () => {
+  const { noticeFor, cleanModuleNotice, moduleForPath, describeModuleNotice } = await import("@peebee/shared");
+  const notices = { ride: { reason: "maintenance" as const, message: "Upgrading" }, "ride.car": { reason: "coming_soon" as const, returnAt: "2026-12-01" } };
+  assert.equal(noticeFor("ride.car", notices).reason, "coming_soon");
+  assert.equal(noticeFor("ride.car.carpool", notices).reason, "coming_soon", "Carpool inherits Peebee Car's");
+  assert.equal(noticeFor("ride.boda", notices).reason, "maintenance", "Boda inherits Rides'");
+  assert.equal(noticeFor("buy.food", notices).reason, "unavailable");
+  assert.equal(noticeFor("nope", undefined).reason, "unavailable");
+
+  assert.equal(cleanModuleNotice({ reason: "launch" }), null);
+  assert.deepEqual(cleanModuleNotice({ reason: "maintenance", message: "  Back soon  ", returnAt: "not a date" }), { reason: "maintenance", message: "Back soon" });
+  assert.equal(cleanModuleNotice({ reason: "maintenance", message: "x".repeat(500) })!.message!.length, 200);
+
+  const rules = [{ prefix: "/ride", module: "ride", title: "Rides" }, { prefix: "/ride/car", module: "ride.car", title: "Car" }, { prefix: "/", module: "buy.food", title: "Orders", exact: true }];
+  assert.equal(moduleForPath("/ride/car/book", rules)?.module, "ride.car", "the longest rule wins");
+  assert.equal(moduleForPath("/ride/boda", rules)?.module, "ride");
+  assert.equal(moduleForPath("/ridexyz", rules), null, "a prefix is a whole path segment");
+  assert.equal(moduleForPath("/", rules)?.module, "buy.food");
+  assert.equal(moduleForPath("/account", rules), null, "the exact home rule does not swallow other pages");
+
+  const d = describeModuleNotice({ reason: "coming_soon", returnAt: "2026-12-01", message: "Hello" });
+  assert.equal(d.headline, "Coming soon");
+  assert.equal(d.dateLine, "Launching Tue, 1 December 2026");
+  assert.equal(d.message, "Hello");
+  assert.equal(describeModuleNotice({ reason: "unavailable" }).dateLine, null);
+});

@@ -84,6 +84,18 @@ test("Live and Practice switches are independent, and a module obeys the ones ab
     await saveChannelsConfig({ enabled: false, live: { enabled: false }, publishing: { postTypes: ["video", "image", "carousel", "text"] } });
   });
 
+  await t.test("a notice is kept for a module that is off, hidden once it is on, and cleared with null", async () => {
+    await setModuleFlags({ live: { "ride.taxipress": false }, notices: { "ride.taxipress": { reason: "coming_soon", message: " We are adding taxis ", returnAt: "2026-12-01" } } });
+    assert.deepEqual((await getModuleSettings()).notices?.["ride.taxipress"], { reason: "coming_soon", message: "We are adding taxis", returnAt: "2026-12-01" });
+    await setModuleFlags({ live: { "ride.taxipress": true } });
+    assert.equal((await getModuleSettings()).notices?.["ride.taxipress"], undefined, "a note on a module that is on is not served");
+    await setModuleFlags({ live: { "ride.taxipress": false } });
+    assert.equal((await getModuleSettings()).notices?.["ride.taxipress"]?.reason, "coming_soon", "…but it is remembered for next time");
+    await setModuleFlags({ notices: { "ride.taxipress": null } });
+    assert.equal((await getModuleSettings()).notices?.["ride.taxipress"], undefined);
+    await setModuleFlags({ live: { "ride.taxipress": true } });
+  });
+
   await t.test("a module can be on in Practice and off in Live", async () => {
     await setModuleFlags({ practice: { "ride.taxipress": true }, live: { "ride.taxipress": false } });
     const { flags, available } = await getModuleSettings();
