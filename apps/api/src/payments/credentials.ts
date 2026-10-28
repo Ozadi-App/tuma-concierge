@@ -26,6 +26,8 @@ export type CredentialFieldDef = {
   helpText?: string;
   /** Env var this field falls back to when nothing's stored in the DB. */
   envVar: string;
+  /** Exact length the provider requires, checked when an admin saves it. */
+  exactLength?: number;
 };
 
 /** What each aggregator's real API actually needs — see wire.ts in each
@@ -88,6 +90,7 @@ export const PROVIDER_CREDENTIAL_FIELDS: Record<PaymentProviderIdentity, Credent
       secret: true,
       required: false,
       envVar: "FLUTTERWAVE_ENCRYPTION_KEY",
+      exactLength: 24,
       helpText: "From Settings → API. Only needed for direct card payments (Peebee's own card form) — the payload is encrypted with it before it reaches Flutterwave.",
     },
   ],
@@ -245,6 +248,20 @@ export async function credentialFieldStatus(provider: PaymentProviderIdentity) {
       set: !!(await getCredential(provider, f.key)),
     })),
   );
+}
+
+/** The first submitted value that breaks its field's required length, as an
+ * admin-facing message — checked before anything is saved so a bad entry
+ * never lands (and never counts as "set"). Blank values are skipped, as
+ * saveCredentials skips them. */
+export function credentialLengthError(provider: PaymentProviderIdentity, fields: Record<string, string>): string | null {
+  for (const def of PROVIDER_CREDENTIAL_FIELDS[provider]) {
+    const value = fields[def.key]?.trim();
+    if (value && def.exactLength && value.length !== def.exactLength) {
+      return `${def.label} must be exactly ${def.exactLength} characters (you entered ${value.length}). Copy it again from the provider dashboard.`;
+    }
+  }
+  return null;
 }
 
 /**

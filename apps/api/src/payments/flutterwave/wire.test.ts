@@ -8,6 +8,7 @@ import { setD1Binding, type D1Database } from "../../db/client.js";
 import { splitSqlStatements } from "../../db/split-sql.js";
 import { setFlutterwaveDirect } from "../../lib/settings.js";
 import { cardSchema } from "../card.js";
+import { credentialLengthError } from "../credentials.js";
 import { tripleDesEcbEncrypt } from "./des.js";
 import { encryptCardPayload, flutterwaveAdapter } from "./wire.js";
 
@@ -112,6 +113,13 @@ test("flutterwave routes each payment to the flow the admin switched on", async 
     assert.equal(calls[0].url, "/payments");
   });
 
+  await t.test("a wrong-length encryption key is treated as missing and cards use the hosted page", async () => {
+    process.env.FLUTTERWAVE_ENCRYPTION_KEY = "too-short";
+    calls.length = 0;
+    await flutterwaveAdapter.depositFunds({ ...base, method: "card", card });
+    assert.equal(calls[0].url, "/payments");
+  });
+
   await t.test("direct card sends the card encrypted and surfaces the PIN step", async () => {
     process.env.FLUTTERWAVE_ENCRYPTION_KEY = KEY;
     calls.length = 0;
@@ -179,4 +187,11 @@ test("pure-JS Triple-DES matches OpenSSL byte for byte (the Workers runtime has 
     const expected = Buffer.concat([cipher.update(plain), cipher.final()]);
     assert.equal(Buffer.from(tripleDesEcbEncrypt(plain, key)).toString("hex"), expected.toString("hex"), `length ${length}`);
   }
+});
+
+test("the encryption key must be exactly 24 characters when an admin saves it", () => {
+  assert.match(credentialLengthError("flutterwave", { encryptionKey: "short" }) ?? "", /exactly 24 characters \(you entered 5\)/);
+  assert.equal(credentialLengthError("flutterwave", { encryptionKey: KEY }), null);
+  assert.equal(credentialLengthError("flutterwave", { encryptionKey: "  " }), null, "blank is left untouched, not rejected");
+  assert.equal(credentialLengthError("flutterwave", { secretKey: "any length is fine" }), null);
 });

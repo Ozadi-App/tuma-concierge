@@ -231,7 +231,9 @@ function cardResult(body: ChargeResponse, referenceId: string): GatewayResult {
  * the encryption key is saved. Either one missing means cards go to the
  * hosted page instead. */
 export async function isDirectCardReady(): Promise<boolean> {
-  return (await getFlutterwaveDirectCard()) && !!(await getCredential("flutterwave", "encryptionKey"));
+  if (!(await getFlutterwaveDirectCard())) return false;
+  // A key of the wrong length (e.g. set through the env var) would fail every charge, so it is as good as missing.
+  return (await getCredential("flutterwave", "encryptionKey"))?.length === 24;
 }
 
 /** Direct card charge. Card data is encrypted before it leaves this process
