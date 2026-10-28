@@ -3,6 +3,7 @@ import { publicReceiptRoutes } from "./public/receipts.js";
 import { publicShareRoutes } from "./public/share-routes.js";
 import { onboardingRoutes } from "./onboarding/routes.js";
 import { cors } from "hono/cors";
+import { verifyToken } from "./auth/jwt.js";
 import { mobileNumberRoutes } from "./account/mobile-numbers.js";
 import { adminRoutes } from "./admin/routes.js";
 import { callRoutes } from "./calls/routes.js";
@@ -343,5 +344,23 @@ app.route("/v1", merchantRoutes);
 // inherited the admin-only check.
 app.route("/v1", voiceRoutes);
 app.route("/v1", adminRoutes);
+
+/**
+ * Anything a route throws ends up here. It is logged (Cloudflare → Workers → peebee-api → Logs), and a signed-in admin
+ * is told what failed so a broken page can be diagnosed from a screenshot; everyone else gets the plain message.
+ */
+app.onError(async (error, c) => {
+  console.error(`[api error] ${c.req.method} ${new URL(c.req.url).pathname}`, error);
+  let message = "Something went wrong on our end. Please try again in a moment.";
+  try {
+    const token = (c.req.header("Authorization") ?? "").replace(/^Bearer\s+/i, "");
+    if (token && (await verifyToken(token)).role === "admin") {
+      message = `Server error (admin only): ${String((error as Error)?.message ?? error).slice(0, 300)} — ${c.req.method} ${new URL(c.req.url).pathname}`;
+    }
+  } catch {
+    /* not signed in as admin */
+  }
+  return c.json({ error: "internal_error", message }, 500);
+});
 
 export default app;
