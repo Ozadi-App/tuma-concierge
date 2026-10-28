@@ -14,6 +14,7 @@ import {
 } from "../payments/service.js";
 import { notifyUser } from "../lib/webpush.js";
 import { payBundleFromWallet } from "../wallet/service.js";
+import type { CardDetails, PaymentNextAction } from "../payments/gateway.js";
 
 type Row = Record<string, unknown>;
 
@@ -23,9 +24,10 @@ export const BUNDLE_CHILD_PROVIDER = "bundle_child";
 export type BundleGroup = { lead: Row; members: Row[] };
 
 export type BundleFundBody = {
-  paymentMethod?: "mobile_money" | "wallet" | "cash";
+  paymentMethod?: "mobile_money" | "card" | "wallet" | "cash";
   acceptedAmount?: number;
   msisdn?: string;
+  card?: CardDetails;
   useWallet?: boolean;
   walletOwnerId?: string;
   walletId?: string;
@@ -300,10 +302,13 @@ export async function fundBundle(input: {
   let network: Awaited<ReturnType<typeof initiateCollection>>["network"];
   let provider: string;
   let redirectUrl: string | undefined;
+  let nextAction: PaymentNextAction | undefined;
   try {
     const initiated = await initiateCollection({
       referenceId: leadPaymentId,
-      msisdn: body.msisdn,
+      msisdn: body.paymentMethod === "card" ? undefined : body.msisdn,
+      method: body.paymentMethod === "card" || body.paymentMethod === "mobile_money" ? body.paymentMethod : undefined,
+      card: body.card,
       amount: total,
       name: user.name,
       returnUrl: deps.paymentReturnUrl(leadId),
@@ -313,6 +318,7 @@ export async function fundBundle(input: {
     network = initiated.network;
     provider = initiated.provider;
     redirectUrl = initiated.redirectUrl;
+    nextAction = initiated.nextAction;
   } catch (err) {
     await failAll();
     if (err instanceof UnsupportedNetworkError) return c.json({ error: "unsupported_network", message: err.message }, 400);
@@ -358,7 +364,7 @@ export async function fundBundle(input: {
   for (const part of parts) {
     await deps.logEvent(String(part.order.id), "Fund", network ? `${mobileMoneyNetworkLabel(network)} collection requested for the combined delivery` : "Collection requested for the combined delivery", user.sub);
   }
-  return c.json({ order: await deps.getOrder(leadId), payment: { id: leadPaymentId, status: "pending", network }, redirectUrl });
+  return c.json({ order: await deps.getOrder(leadId), payment: { id: leadPaymentId, status: "pending", network }, redirectUrl, nextAction });
 }
 
 /**

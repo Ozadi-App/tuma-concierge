@@ -37,6 +37,8 @@ import {
   getNavMode,
   getSetting,
   getPaymentsDemoMode,
+  getFlutterwaveDirectMobileMoney,
+  getFlutterwaveDirectCard,
   getPlatformEnvironment,
   getProSettings,
   getRiderReserveSettings,
@@ -52,6 +54,7 @@ import {
   setMonetizationSettings,
   setNavMode,
   setPaymentsDemoMode,
+  setFlutterwaveDirect,
   setPlatformEnvironment,
   setProSettings,
   setRiderReserveSettings,
@@ -86,12 +89,14 @@ import { getRideTrackingSettings, rideTrackingSchema } from "./ride-tracking.js"
 export const settingsRoutes = new Hono();
 
 async function fullSettings() {
-  const [delivery, matching, activeProviders, demoMode, wallet, voiceNoteMaxSeconds, monetization, platformEnvironment, practiceModeEnabled, riderReserve, callsActiveProvider, mapsActiveProvider, navMode, merchantPayments, merchantSandbox, merchantCustody, merchantFrozen, vsla, lugandaAudio, pro, services] =
+  const [delivery, matching, activeProviders, demoMode, flwDirectMobileMoney, flwDirectCard, wallet, voiceNoteMaxSeconds, monetization, platformEnvironment, practiceModeEnabled, riderReserve, callsActiveProvider, mapsActiveProvider, navMode, merchantPayments, merchantSandbox, merchantCustody, merchantFrozen, vsla, lugandaAudio, pro, services] =
     await Promise.all([
       getDeliverySettings(),
       getMatchingSettings(),
       getActiveProviders(),
       getPaymentsDemoMode(),
+      getFlutterwaveDirectMobileMoney(),
+      getFlutterwaveDirectCard(),
       getWalletSettings(),
       getVoiceNoteMaxSeconds(),
       getMonetizationSettings(),
@@ -161,6 +166,8 @@ async function fullSettings() {
     ...matching,
     paymentsActiveProviders: activeProviders,
     paymentsDemoMode: demoMode,
+    paymentsFlutterwaveDirectMobileMoney: flwDirectMobileMoney,
+    paymentsFlutterwaveDirectCard: flwDirectCard,
     merchantPaymentsEnabled: (platformEnvironment === "sandbox" ? merchantSandbox : merchantPayments) === "1",
     merchantLiveCustodyApproved: merchantCustody === "1",
     merchantWithdrawalsFrozen: merchantFrozen === "1",
@@ -524,6 +531,8 @@ const updateSchema = z.object({
   maxAssignmentMinutes: z.number().int().positive().max(120).optional(),
   paymentsActiveProviders: z.array(z.enum(["yo", "flutterwave", "mtn", "airtel"])).min(1).max(4).optional(),
   paymentsDemoMode: z.boolean().optional(),
+  paymentsFlutterwaveDirectMobileMoney: z.boolean().optional(),
+  paymentsFlutterwaveDirectCard: z.boolean().optional(),
   practiceModeEnabled: z.boolean().optional(),
   merchantPaymentsEnabled: z.boolean().optional(),
   walletUnverifiedCap: z.number().int().positive().max(100_000_000).optional(),
@@ -589,6 +598,8 @@ const PAYMENTS_FIELDS = [
   "timeFees",
   "paymentsActiveProviders",
   "paymentsDemoMode",
+  "paymentsFlutterwaveDirectMobileMoney",
+  "paymentsFlutterwaveDirectCard",
   "merchantPaymentsEnabled",
   "walletUnverifiedCap",
   "walletVerifiedCap",
@@ -698,6 +709,12 @@ settingsRoutes.put(
     }
     if (parsed.data.paymentsDemoMode != null) {
       await setPaymentsDemoMode(parsed.data.paymentsDemoMode);
+    }
+    if (parsed.data.paymentsFlutterwaveDirectMobileMoney != null) {
+      await setFlutterwaveDirect("mobile_money", parsed.data.paymentsFlutterwaveDirectMobileMoney);
+    }
+    if (parsed.data.paymentsFlutterwaveDirectCard != null) {
+      await setFlutterwaveDirect("card", parsed.data.paymentsFlutterwaveDirectCard);
     }
     if (parsed.data.practiceModeEnabled != null) {
       await setSetting("user_practice_mode_enabled", parsed.data.practiceModeEnabled ? "1" : "0");

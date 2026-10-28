@@ -82,6 +82,14 @@ export const PROVIDER_CREDENTIAL_FIELDS: Record<PaymentProviderIdentity, Credent
       envVar: "FLUTTERWAVE_WEBHOOK_SECRET",
       helpText: "The secret hash you set under Settings → Webhooks — used to verify incoming webhooks.",
     },
+    {
+      key: "encryptionKey",
+      label: "Encryption key",
+      secret: true,
+      required: false,
+      envVar: "FLUTTERWAVE_ENCRYPTION_KEY",
+      helpText: "From Settings → API. Only needed for direct card payments (Peebee's own card form) — the payload is encrypted with it before it reaches Flutterwave.",
+    },
   ],
   // Direct MTN MoMo Open API — no aggregator in between. Two subscription
   // keys because MTN issues collection and disbursement access separately;

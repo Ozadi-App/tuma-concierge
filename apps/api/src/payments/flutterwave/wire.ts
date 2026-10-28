@@ -1,12 +1,17 @@
 /**
- * Flutterwave API client — Standard Checkout (a Flutterwave-hosted payment
- * page) rather than their raw per-method "Direct Charge" endpoints. Two
- * reasons: it's the one integration that covers both mobile money and
- * cards at once instead of two separate flows to build and maintain, and
- * it means a card number never touches Peebee's own server — the customer
- * enters it on Flutterwave's page, which is what keeps this integration
- * out of full PCI-DSS card-data-handling scope (SAQ-A eligible) instead of
- * the much heavier bar direct card charges would require.
+ * Flutterwave API client. Two ways to take each kind of payment, and the
+ * admin picks per kind (Admin → Settings → Payments):
+ *
+ * - **Standard Checkout** (hosted): a Flutterwave-hosted page. A card number
+ *   never touches Peebee's server, which keeps this out of PCI-DSS
+ *   card-data scope (SAQ-A). Always available; it is the fallback.
+ * - **Direct Charge**: Peebee's own UI, Flutterwave behind it.
+ *   - Mobile money (on by default): the approval prompt goes straight to the
+ *     customer's phone. No card data, no PCI burden.
+ *   - Cards (off by default): the customer types the card into Peebee's own
+ *     form and it is sent encrypted to Flutterwave. Card data passes through
+ *     this server, so turn it on only once PCI DSS accreditation is
+ *     verified. When off, cards use the hosted page.
  *
  * Only used when PAYMENTS provider selection (see ../service.ts) resolves
  * to "flutterwave" and a secret key resolves (admin-entered via
@@ -16,7 +21,10 @@
  * API reference: https://developer.flutterwave.com/docs (v3)
  */
 
+import { detectMobileMoneyNetwork, normalizeUgandaMsisdn } from "@peebee/shared";
+import { getFlutterwaveDirectCard, getFlutterwaveDirectMobileMoney } from "../../lib/settings.js";
 import { getCredential, isProviderConfigured } from "../credentials.js";
+import { tripleDesEcbEncrypt } from "./des.js";
 import {
   PaymentProviderError,
   type GatewayChargeInput,
@@ -107,12 +115,9 @@ async function call<T>(path: string, init: RequestInit): Promise<T> {
   return body;
 }
 
-/** Creates a hosted payment link covering both mobile money and cards —
- * the customer picks their method on Flutterwave's own page. There is no
- * separate deposit vs withdraw shape here (Flutterwave has no disbursement
- * support in this adapter — see supportsDisbursement below), so this is
- * the only "charge" entry point. */
-async function createPaymentLink(input: GatewayChargeInput): Promise<GatewayResult> {
+/** Creates a hosted payment link — the customer picks (or is limited to) a
+ * method on Flutterwave's own page. `options` narrows what that page offers. */
+async function createPaymentLink(input: GatewayChargeInput, options: string): Promise<GatewayResult> {
   const body = await call<CreatePaymentResponse>("/payments", {
     method: "POST",
     body: JSON.stringify({
@@ -128,7 +133,7 @@ async function createPaymentLink(input: GatewayChargeInput): Promise<GatewayResu
         name: input.name,
       },
       customizations: { title: "Peebee" },
-      payment_options: "card, mobilemoneyuganda",
+      payment_options: options,
       meta: { narrative: input.narrative },
     }),
   });
@@ -136,6 +141,153 @@ async function createPaymentLink(input: GatewayChargeInput): Promise<GatewayResu
     throw new Error(`Flutterwave did not return a payment link: ${body.message ?? "unknown error"}`);
   }
   return { status: "PENDING", transactionReference: input.referenceId, redirectUrl: body.data.link };
+}
+
+type ChargeResponse = {
+  status: string;
+  message?: string;
+  data?: { id?: number; flw_ref?: string; status?: string; processor_response?: string };
+  meta?: { authorization?: { mode?: string; redirect?: string; endpoint?: string; validate_instructions?: string } };
+};
+
+/** Direct mobile money: Flutterwave pushes the approval prompt to the
+ * customer's phone and the charge settles when they approve. Nothing for
+ * the customer to open — the result is just PENDING until the webhook or a
+ * status check says otherwise. */
+async function chargeMobileMoney(input: GatewayChargeInput, network: "MTN" | "AIRTEL", phone: string): Promise<GatewayResult> {
+  const body = await call<ChargeResponse>("/charges?type=mobile_money_uganda", {
+    method: "POST",
+    body: JSON.stringify({
+      tx_ref: input.referenceId,
+      amount: input.amount,
+      currency: input.currency,
+      network,
+      phone_number: phone,
+      email: customerEmail(input),
+      fullname: input.name,
+      meta: { narrative: input.narrative },
+    }),
+  });
+  if (body.status !== "success") {
+    throw new Error(`Flutterwave did not accept the mobile money charge: ${body.message ?? "unknown error"}`);
+  }
+  return {
+    status: "PENDING",
+    transactionReference: input.referenceId,
+    providerTransactionId: body.data?.id != null ? String(body.data.id) : undefined,
+  };
+}
+
+/** Flutterwave v3 wants the card payload as Triple-DES (ECB, PKCS#7) under
+ * the dashboard's encryption key, base64 encoded. */
+export function encryptCardPayload(payload: unknown, encryptionKey: string): string {
+  const key = new TextEncoder().encode(encryptionKey);
+  if (key.length !== 24) throw new Error("Flutterwave encryption key must be 24 characters");
+  const encrypted = tripleDesEcbEncrypt(new TextEncoder().encode(JSON.stringify(payload)), key);
+  let binary = "";
+  for (const byte of encrypted) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
+function cardNextAction(body: ChargeResponse): GatewayResult["nextAction"] {
+  const auth = body.meta?.authorization;
+  switch (auth?.mode) {
+    case "pin":
+      return { type: "pin" };
+    case "avs_noauth":
+      return { type: "avs" };
+    case "redirect":
+      return auth.redirect ? { type: "redirect", url: auth.redirect } : undefined;
+    case "otp":
+      return body.data?.flw_ref
+        ? { type: "otp", flowRef: body.data.flw_ref, message: auth.validate_instructions }
+        : undefined;
+    default:
+      return undefined;
+  }
+}
+
+function cardResult(body: ChargeResponse, referenceId: string): GatewayResult {
+  const nextAction = cardNextAction(body);
+  return {
+    // A charge that answered "successful" outright (no further step) is
+    // still re-read from the verify endpoint by reconciliation before any
+    // money is credited — see ../reconciliation.ts.
+    status: nextAction ? "PENDING" : mapStatus(body.data?.status),
+    transactionReference: referenceId,
+    providerTransactionId: body.data?.id != null ? String(body.data.id) : undefined,
+    nextAction,
+    redirectUrl: nextAction?.type === "redirect" ? nextAction.url : undefined,
+  };
+}
+
+/** True when Peebee's own card form may be used: the admin switch is on AND
+ * the encryption key is saved. Either one missing means cards go to the
+ * hosted page instead. */
+export async function isDirectCardReady(): Promise<boolean> {
+  return (await getFlutterwaveDirectCard()) && !!(await getCredential("flutterwave", "encryptionKey"));
+}
+
+/** Direct card charge. Card data is encrypted before it leaves this process
+ * and is never logged, stored, or echoed in an error. */
+async function chargeCard(input: GatewayChargeInput): Promise<GatewayResult> {
+  const card = input.card;
+  if (!card) throw new Error("Card details are required for a direct card charge");
+  const encryptionKey = await getCredential("flutterwave", "encryptionKey");
+  if (!encryptionKey) throw new Error("Flutterwave encryption key is not set");
+  const auth = input.cardAuthorization;
+  const payload: Record<string, unknown> = {
+    card_number: card.number.replace(/\s+/g, ""),
+    cvv: card.cvv,
+    expiry_month: card.expiryMonth.padStart(2, "0"),
+    expiry_year: card.expiryYear.slice(-2),
+    currency: input.currency,
+    amount: input.amount,
+    email: customerEmail(input),
+    fullname: input.name,
+    tx_ref: input.referenceId,
+    redirect_url: input.returnUrl,
+    ...(auth?.mode === "pin" ? { authorization: { mode: "pin", pin: auth.pin } } : {}),
+    ...(auth?.mode === "avs"
+      ? { authorization: { mode: "avs_noauth", address: auth.address, city: auth.city, state: auth.state, country: auth.country, zipcode: auth.zipcode } }
+      : {}),
+  };
+  const body = await call<ChargeResponse>("/charges?type=card", {
+    method: "POST",
+    body: JSON.stringify({ client: encryptCardPayload(payload, encryptionKey) }),
+  });
+  if (body.status !== "success") {
+    throw new Error(`Flutterwave did not accept the card charge: ${body.message ?? "unknown error"}`);
+  }
+  return cardResult(body, input.referenceId);
+}
+
+async function submitCardOtp(input: { flowRef: string; otp: string; referenceId: string }): Promise<GatewayResult> {
+  const body = await call<ChargeResponse>("/validate-charge", {
+    method: "POST",
+    body: JSON.stringify({ otp: input.otp, flw_ref: input.flowRef, type: "card" }),
+  });
+  if (body.status !== "success") {
+    throw new Error(`Flutterwave did not accept the one-time code: ${body.message ?? "unknown error"}`);
+  }
+  return cardResult(body, input.referenceId);
+}
+
+/** Routes a collection to the right Flutterwave flow for what the customer
+ * picked and what the admin has switched on. Anything direct falls back to
+ * the hosted page rather than failing, so a missing detail never strands a
+ * payment. */
+async function depositFunds(input: GatewayChargeInput): Promise<GatewayResult> {
+  if (input.method === "card") {
+    if (input.card && (await isDirectCardReady())) return chargeCard(input);
+    return createPaymentLink(input, "card");
+  }
+  const phone = input.msisdn ? normalizeUgandaMsisdn(input.msisdn) : null;
+  const detected = input.network ?? (input.msisdn ? detectMobileMoneyNetwork(input.msisdn) : null);
+  if (phone && detected && (await getFlutterwaveDirectMobileMoney())) {
+    return chargeMobileMoney(input, detected === "mtn_momo" ? "MTN" : "AIRTEL", phone);
+  }
+  return createPaymentLink(input, input.method === "mobile_money" ? "mobilemoneyuganda" : "card, mobilemoneyuganda");
 }
 
 type VerifyResponse = {
@@ -189,10 +341,15 @@ export const flutterwaveAdapter: PaymentGatewayAdapter = {
   // on Yo! regardless of which provider is active for collections. See
   // ../service.ts resolveProvider().
   supportsDisbursement: false,
-  // Standard Checkout lets the customer pick MTN/Airtel/card on
-  // Flutterwave's own page — Peebee never needs to resolve a network first.
+  // The hosted page lets the customer pick MTN/Airtel/card, and the direct
+  // mobile money path works the network out from the number itself (falling
+  // back to the hosted page when it can't) — so Peebee never has to resolve
+  // a network first.
   requiresNetwork: false,
-  depositFunds: createPaymentLink,
+  depositFunds,
+  async submitCardOtp({ flowRef, otp, referenceId }) {
+    return submitCardOtp({ flowRef, otp, referenceId });
+  },
   async withdrawFunds(): Promise<GatewayResult> {
     throw new Error("Flutterwave disbursement is not implemented — resolveProvider() should never route here");
   },

@@ -9,9 +9,24 @@
  */
 
 import { detectMobileMoneyNetwork, mobileMoneyNetworkLabel, type MobileMoneyNetwork } from "@peebee/shared";
-import { getActiveProviders, getPaymentsDemoMode, type PaymentProviderIdentity } from "../lib/settings.js";
+import {
+  getActiveProviders,
+  getFlutterwaveDirectCard,
+  getFlutterwaveDirectMobileMoney,
+  getPaymentsDemoMode,
+  getPlatformEnvironment,
+  type PaymentProviderIdentity,
+} from "../lib/settings.js";
+import { getCredential } from "./credentials.js";
 import { credentialFieldStatus } from "./credentials.js";
-import { PaymentProviderError, type GatewayResult, type PaymentGatewayAdapter } from "./gateway.js";
+import {
+  PaymentProviderError,
+  type CardAuthorization,
+  type CardDetails,
+  type GatewayResult,
+  type PaymentGatewayAdapter,
+  type PaymentNextAction,
+} from "./gateway.js";
 import { flutterwaveAdapter } from "./flutterwave/wire.js";
 import { mockFlutterwaveAdapter } from "./flutterwave/mock.js";
 import { yoAdapter } from "./yo/wire.js";
@@ -71,14 +86,19 @@ function mockOf(identity: PaymentProviderIdentity): PaymentsProvider {
  */
 export async function resolveProvider(
   capability: "collection" | "disbursement",
-  options?: { forceMock?: boolean; network?: MobileMoneyNetwork | null; directPushOnly?: boolean },
+  options?: { forceMock?: boolean; network?: MobileMoneyNetwork | null; directPushOnly?: boolean; cardCapable?: boolean },
 ): Promise<PaymentsProvider> {
   const active = await getActiveProviders();
   // directPushOnly: carriers and Yo! push a prompt to the customer's phone; Flutterwave is a hosted checkout that can take cards.
-  const candidates = active.filter((identity) => !(options?.directPushOnly && identity === "flutterwave")).filter((identity) =>
-    !options?.network ||
-    (identity !== "mtn" || options.network === "mtn_momo") &&
-    (identity !== "airtel" || options.network === "airtel_money"));
+  const candidates = active
+    .filter((identity) => !(options?.directPushOnly && identity === "flutterwave"))
+    // Only Flutterwave takes cards; a card payment never routes to a mobile-money-only provider.
+    .filter((identity) => !options?.cardCapable || identity === "flutterwave")
+    .filter((identity) =>
+      !options?.network ||
+      options.cardCapable ||
+      ((identity !== "mtn" || options.network === "mtn_momo") &&
+        (identity !== "airtel" || options.network === "airtel_money")));
   const demoMode = (await getPaymentsDemoMode()) || !!options?.forceMock;
   if (demoMode) {
     const simulatedIdentity =
@@ -189,6 +209,10 @@ type InitiateInput = {
   forceMock?: boolean;
   /** Only providers that push a mobile-money prompt to the phone; never a hosted checkout that could take a card. */
   directPushOnly?: boolean;
+  /** What the customer picked. "card" is only honoured by Flutterwave. */
+  method?: "mobile_money" | "card";
+  card?: CardDetails;
+  cardAuthorization?: CardAuthorization;
 };
 
 type InitiateResult = {
@@ -199,6 +223,8 @@ type InitiateResult = {
    * the caller must send the customer's browser here before this payment
    * can complete. Absent for a direct-push provider (Yo!). */
   redirectUrl?: string;
+  /** A direct card charge that needs a PIN, address or one-time code before it settles. */
+  nextAction?: PaymentNextAction;
 };
 
 async function initiate(
@@ -206,7 +232,7 @@ async function initiate(
   input: InitiateInput,
   defaultNarrative: string,
 ): Promise<InitiateResult> {
-  const provider = await resolveProvider(capability, { forceMock: input.forceMock, directPushOnly: input.directPushOnly, network: input.msisdn ? detectMobileMoneyNetwork(input.msisdn) : null });
+  const provider = await resolveProvider(capability, { forceMock: input.forceMock, directPushOnly: input.directPushOnly, cardCapable: input.method === "card", network: input.msisdn ? detectMobileMoneyNetwork(input.msisdn) : null });
   const adapter = ADAPTERS[provider];
 
   let network: MobileMoneyNetwork | null = null;
@@ -227,9 +253,12 @@ async function initiate(
     name: input.name,
     narrative: input.narrative ?? defaultNarrative,
     returnUrl: input.returnUrl,
+    method: input.method,
+    card: input.card,
+    cardAuthorization: input.cardAuthorization,
   });
 
-  return { provider, providerRef: result.transactionReference, network, redirectUrl: result.redirectUrl };
+  return { provider, providerRef: result.transactionReference, network, redirectUrl: result.redirectUrl, nextAction: result.nextAction };
 }
 
 /** Collections: pulls funds from the customer into escrow (or a wallet top-up). */
@@ -264,3 +293,33 @@ export async function checkPaymentStatus(payment: {
 }
 
 export { mobileMoneyNetworkLabel };
+
+export function getPaymentAdapter(provider: string): PaymentGatewayAdapter | undefined {
+  return ADAPTERS[provider as PaymentsProvider];
+}
+
+/**
+ * What a payment screen may offer, read live so an admin's toggle takes
+ * effect on the next screen load. `directCard` true means the app shows its
+ * own card form; false means card payments go to Flutterwave's hosted page.
+ */
+export async function paymentMethodOptions() {
+  const [active, demoMode, environment, directMobileMoneySetting, directCardSetting, hasKey] = await Promise.all([
+    getActiveProviders(),
+    getPaymentsDemoMode(),
+    getPlatformEnvironment(),
+    getFlutterwaveDirectMobileMoney(),
+    getFlutterwaveDirectCard(),
+    getCredential("flutterwave", "encryptionKey").then(Boolean),
+  ]);
+  const flutterwave = active.includes("flutterwave");
+  const simulated = demoMode || environment === "sandbox";
+  return {
+    // Cards are only taken through Flutterwave.
+    card: {
+      available: flutterwave,
+      direct: flutterwave && directCardSetting && (hasKey || simulated),
+    },
+    mobileMoney: { direct: flutterwave && directMobileMoneySetting },
+  };
+}

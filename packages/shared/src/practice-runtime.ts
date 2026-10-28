@@ -1280,6 +1280,8 @@ function handlePracticeRequest(role: PracticeRole, path: string, method: string,
     return jsonResponse({ order: orderFor(state) }, 201);
   }
   if (method === "GET" && path === `/v1/orders/${PRACTICE_ORDER_ID}`) return jsonResponse(orderDetail(state));
+  // Practice has no card rail: cards stay on the hosted-page path, which practice never opens.
+  if (method === "GET" && path === "/v1/payments/options") return jsonResponse({ card: { available: false, direct: false }, mobileMoney: { direct: true } });
   if (method === "GET" && path === `/v1/orders/${PRACTICE_ORDER_ID}/checkout`) return jsonResponse({ baseAmount: state.total, mobileMoney: state.total, wallet: state.total, cash: state.total });
   if (method === "GET" && path === `/v1/car/bookings/${PRACTICE_ORDER_ID}/info`) {
     // A Name-your-fare ride is a boda, not a car booking (the live API answers 404 too).

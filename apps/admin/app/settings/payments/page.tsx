@@ -22,6 +22,8 @@ export default function PaymentsSettingsPage() {
   const canManagePayments = hasPermission(user?.adminRole ?? null, "payments.manage");
   const [activeProviders, setActiveProviders] = useState<PaymentProviderIdentity[]>(["yo"]);
   const [paymentsDemoMode, setPaymentsDemoMode] = useState(false);
+  const [directMobileMoney, setDirectMobileMoney] = useState(true);
+  const [directCard, setDirectCard] = useState(false);
   const [platformEnvironment, setPlatformEnvironment] = useState<PlatformEnvironment>("live");
   const [providerInfo, setProviderInfo] = useState<PaymentProviderInfo[]>([]);
   const [busy, setBusy] = useState(false);
@@ -38,6 +40,8 @@ export default function PaymentsSettingsPage() {
       .then(([settingsRes, integrationsRes]) => {
         setActiveProviders(settingsRes.settings.paymentsActiveProviders);
         setPaymentsDemoMode(settingsRes.settings.paymentsDemoMode);
+        setDirectMobileMoney(settingsRes.settings.paymentsFlutterwaveDirectMobileMoney);
+        setDirectCard(settingsRes.settings.paymentsFlutterwaveDirectCard);
         setPlatformEnvironment(settingsRes.settings.platformEnvironment);
         setProviderInfo(integrationsRes.integrations.mobileMoney.providers);
       })
@@ -62,9 +66,13 @@ export default function PaymentsSettingsPage() {
       const res = await api.adminUpdateSettings({
         paymentsActiveProviders: activeProviders.length > 0 ? activeProviders : (["yo"] as PaymentProviderIdentity[]),
         paymentsDemoMode,
+        paymentsFlutterwaveDirectMobileMoney: directMobileMoney,
+        paymentsFlutterwaveDirectCard: directCard,
       });
       setActiveProviders(res.settings.paymentsActiveProviders);
       setPaymentsDemoMode(res.settings.paymentsDemoMode);
+      setDirectMobileMoney(res.settings.paymentsFlutterwaveDirectMobileMoney);
+      setDirectCard(res.settings.paymentsFlutterwaveDirectCard);
       await refreshIntegrations();
       setSaved(true);
     } catch (err) {
@@ -198,6 +206,47 @@ export default function PaymentsSettingsPage() {
               );
             })}
           </div>
+        </section>
+        <section className="home-card space-y-3">
+          <div>
+            <h2 className="text-sm font-semibold text-ink">Flutterwave checkout</h2>
+            <p className="mt-0.5 text-xs text-ink-500">
+              How customers pay through Flutterwave. Each switch picks between Peebee&apos;s own in-app screen and
+              Flutterwave&apos;s hosted payment page. Switching off is instant and safe: payments simply go to the
+              hosted page instead.
+            </p>
+          </div>
+          <label
+            className={`flex items-start gap-2.5 rounded-xl border p-3 ${directMobileMoney ? "border-gold/40 bg-gold/5" : "border-[var(--border-faint)]"}`}
+          >
+            <Switch checked={directMobileMoney} onChange={(e) => setDirectMobileMoney(e.target.checked)} />
+            <span>
+              <span className="text-sm font-semibold text-ink">Direct mobile money</span>
+              <span className="mt-0.5 block text-xs text-ink-500">
+                On: the MTN / Airtel approval prompt goes straight to the customer&apos;s phone and they never leave
+                the app. Off: customers pay on Flutterwave&apos;s mobile money page.
+              </span>
+            </span>
+          </label>
+          <label
+            className={`flex items-start gap-2.5 rounded-xl border p-3 ${directCard ? "border-gold/40 bg-gold/5" : "border-[var(--border-faint)]"}`}
+          >
+            <Switch checked={directCard} onChange={(e) => setDirectCard(e.target.checked)} />
+            <span>
+              <span className="text-sm font-semibold text-ink">Direct card payments</span>
+              <span className="mt-0.5 block text-xs text-ink-500">
+                On: customers type their card into Peebee&apos;s own form. Card details pass through Peebee&apos;s
+                server, so turn this on only once PCI DSS accreditation is verified, and after saving
+                Flutterwave&apos;s Encryption key above. Off (default): customers pay on Flutterwave&apos;s hosted
+                card page.
+              </span>
+              {directCard && !providerInfo.find((p) => p.key === "flutterwave")?.credentialFields.find((f) => f.key === "encryptionKey")?.set && (
+                <span className="mt-1 block text-xs font-semibold text-gold">
+                  No Flutterwave Encryption key saved yet — cards will keep using the hosted page until you add it.
+                </span>
+              )}
+            </span>
+          </label>
         </section>
         <SettingsSaveBar busy={busy} error={error} saved={saved} />
       </form>

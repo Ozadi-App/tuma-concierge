@@ -2,7 +2,7 @@
 
 import { Select } from "@peebee/shared/select";
 
-import type { CustomerWallet, CustomerWalletSummary, WalletLedgerEntry, WalletShares, WalletUsageReport } from "@peebee/shared";
+import type { CardInput, PaymentNextAction, PaymentOptions, CustomerWallet, CustomerWalletSummary, WalletLedgerEntry, WalletShares, WalletUsageReport } from "@peebee/shared";
 import {
   ArrowDownLeft,
   ArrowLeftRight,
@@ -19,6 +19,7 @@ import {
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { BottomDrawer } from "../../components/BottomDrawer";
+import { CardFields, CardHostedNote, CardPaymentSteps, cardFromForm, emptyCard, type CardForm } from "../../components/CardPayment";
 import { MobileNumberPicker } from "../../components/MobileNumberPicker";
 import { SwipeToConfirm } from "../../components/SwipeToConfirm";
 import { api, errorMessage } from "../../lib/api";
@@ -268,6 +269,18 @@ export default function WalletPage() {
     return () => clearInterval(interval);
   }, [pendingTopupId, load]);
 
+  // Card top-ups: `direct` true = Peebee's own form, false = Flutterwave's hosted page (admin switch).
+  const [payOptions, setPayOptions] = useState<PaymentOptions | null>(null);
+  const [topupMethod, setTopupMethod] = useState<"mobile_money" | "card">("mobile_money");
+  const [cardForm, setCardForm] = useState<CardForm>(emptyCard);
+  const [cardStep, setCardStep] = useState<{ topupId: string; card: CardInput; action: PaymentNextAction } | null>(null);
+  useEffect(() => {
+    api.getPaymentOptions().then(setPayOptions).catch(() => setPayOptions(null));
+  }, []);
+  const cardAvailable = !!payOptions?.card.available;
+  const cardDirect = cardAvailable && !!payOptions?.card.direct;
+  const cardInput = cardFromForm(cardForm);
+
   async function submitTopup(e: React.FormEvent) {
     e.preventDefault();
     const parsedAmount = Number(amount);
@@ -278,11 +291,21 @@ export default function WalletPage() {
     setBusy(true);
     setError(null);
     try {
-      const res = await api.topUpWallet({ amount: parsedAmount, msisdn: msisdn || undefined });
+      const useCard = topupMethod === "card" && cardAvailable;
+      const res = await api.topUpWallet(
+        useCard
+          ? { amount: parsedAmount, method: "card", ...(cardDirect && cardInput ? { card: cardInput } : {}) }
+          : { amount: parsedAmount, msisdn: msisdn || undefined },
+      );
       if (res.redirectUrl) {
         window.location.href = res.redirectUrl;
         return;
       }
+      if (useCard && cardDirect && cardInput && res.nextAction) {
+        setCardStep({ topupId: res.topupId, card: cardInput, action: res.nextAction });
+        return;
+      }
+      setCardForm(emptyCard);
       setPendingTopupId(res.topupId);
       setAmount("");
       setMsisdn("");
@@ -535,6 +558,14 @@ export default function WalletPage() {
             <span className="h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-gold border-t-transparent" />
             <p className="text-sm text-ink-500">{t("wallet_confirming_topup")}</p>
           </div>
+        ) : cardStep ? (
+          <CardPaymentSteps
+            paymentId={cardStep.topupId}
+            card={cardStep.card}
+            initial={cardStep.action}
+            onCancel={() => { setCardStep(null); setCardForm(emptyCard); }}
+            onPending={() => { setPendingTopupId(cardStep.topupId); setCardStep(null); setCardForm(emptyCard); setAmount(""); }}
+          />
         ) : (
           <form onSubmit={submitTopup} className="space-y-2">
             {!online && (
@@ -550,10 +581,30 @@ export default function WalletPage() {
               placeholder="Amount (UGX)"
               className="w-full rounded-xl border border-[var(--border-faint)] px-3 py-2.5 text-[15px] outline-none focus:border-gold"
             />
-            <MobileNumberPicker purpose="payment" value={msisdn} onChange={setMsisdn} />
+            {cardAvailable && (
+              <div role="tablist" aria-label="Payment method" className="grid grid-cols-2 gap-2">
+                {([["mobile_money", "Mobile Money"], ["card", "Card"]] as const).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    role="tab"
+                    aria-selected={topupMethod === value}
+                    onClick={() => setTopupMethod(value)}
+                    className={`min-h-11 rounded-xl border-2 text-sm font-bold ${topupMethod === value ? "border-gold bg-gold/10 text-ink" : "border-[var(--border-faint)] text-ink-500"}`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
+            {topupMethod === "card" && cardAvailable ? (
+              cardDirect ? <CardFields value={cardForm} onChange={setCardForm} disabled={busy} /> : <CardHostedNote />
+            ) : (
+              <MobileNumberPicker purpose="payment" value={msisdn} onChange={setMsisdn} />
+            )}
             <button
               type="submit"
-              disabled={busy || !online || !msisdn.trim()}
+              disabled={busy || !online || (topupMethod === "card" && cardAvailable ? cardDirect && !cardInput : !msisdn.trim())}
               className="min-h-12 w-full rounded-full bg-gold px-4 text-base font-bold text-ink-gold shadow-[0_4px_12px_rgba(201,162,39,0.35)] disabled:opacity-60"
             >
               {busy ? t("wallet_starting") : t("wallet_top_up_heading")}

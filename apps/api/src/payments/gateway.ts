@@ -9,6 +9,24 @@
 
 import type { MobileMoneyNetwork } from "@peebee/shared";
 
+/** Raw card details for a direct card charge. Held in memory for the length
+ * of one request only: never stored, logged, or put in an error message. */
+export type CardDetails = { number: string; cvv: string; expiryMonth: string; expiryYear: string };
+
+/** The extra proof a card charge can ask for after the first attempt. */
+export type CardAuthorization =
+  | { mode: "pin"; pin: string }
+  | { mode: "avs"; address: string; city: string; state: string; country: string; zipcode: string };
+
+/** What the customer must do next to finish a direct card charge. `redirect`
+ * (3-D Secure) is the one step the bank hosts; `pin`, `avs` and `otp` are all
+ * asked for inside Peebee. */
+export type PaymentNextAction =
+  | { type: "pin" }
+  | { type: "avs" }
+  | { type: "otp"; flowRef: string; message?: string }
+  | { type: "redirect"; url: string };
+
 export type GatewayStatus = "PENDING" | "SUCCEEDED" | "FAILED" | "INDETERMINATE";
 
 export type GatewayChargeInput = {
@@ -24,6 +42,12 @@ export type GatewayChargeInput = {
    * customer after they pay. Ignored by a direct-push provider (Yo!),
    * which never leaves the app. */
   returnUrl?: string;
+  /** Which kind of payment the customer picked. Absent = the old behaviour
+   * (a hosted page offering both). */
+  method?: "mobile_money" | "card";
+  /** Direct card charge only — see CardDetails. */
+  card?: CardDetails;
+  cardAuthorization?: CardAuthorization;
 };
 
 export type GatewayResult = {
@@ -35,6 +59,9 @@ export type GatewayResult = {
   redirectUrl?: string;
   providerTransactionId?: string;
   statusMessage?: string;
+  /** A direct card charge that needs more from the customer before it can
+   * settle. Absent for everything else. */
+  nextAction?: PaymentNextAction;
 };
 
 export type PaymentProviderErrorCode =
@@ -79,6 +106,8 @@ export interface PaymentGatewayAdapter {
    * own page. */
   requiresNetwork: boolean;
   depositFunds(input: GatewayChargeInput): Promise<GatewayResult>;
+  /** Completes a direct card charge that asked for a one-time code. */
+  submitCardOtp?(input: { flowRef: string; otp: string; referenceId: string; createdAt: string }): Promise<GatewayResult>;
   withdrawFunds(input: GatewayChargeInput): Promise<GatewayResult>;
   /** `createdAt` (SQLite `datetime('now')` format) is only meaningful to a
    * mock adapter, which derives a fake PENDING→SUCCEEDED/FAILED progression

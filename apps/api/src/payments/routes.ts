@@ -3,6 +3,11 @@ import { db } from "../db/client.js";
 import { requireAuth } from "../auth/middleware.js";
 import { verifyWebhookSignature } from "./flutterwave/wire.js";
 import { reconcileMerchantSettlement, reconcilePayment } from "./reconciliation.js";
+import { isDirectCardReady } from "./flutterwave/wire.js";
+import { getPaymentAdapter, paymentMethodOptions, paymentProviderErrorResponse, paymentProviderHttpStatus } from "./service.js";
+import { cardContinueSchema } from "./card.js";
+import { consume } from "../lib/ratelimit.js";
+import { appBaseUrl } from "../verify/service.js";
 
 export const paymentRoutes = new Hono();
 
@@ -165,5 +170,95 @@ paymentRoutes.post("/payments/flutterwave/callback", async (c) => {
   } catch (err) {
     console.error("Flutterwave callback status check failed:", err);
     return c.json({ received: true, matched: true, changed: false });
+  }
+});
+
+/** Which payment methods the screen should offer, and whether card entry is
+ * Peebee's own form (`direct`) or Flutterwave's hosted page. Read live. */
+paymentRoutes.get("/payments/options", requireAuth, async (c) => c.json(await paymentMethodOptions()));
+
+/**
+ * Next step of a direct card payment that asked for more after the first
+ * charge: the PIN or billing address (the card is sent again, since the
+ * charge is re-submitted whole), or the one-time code. `:id` is the payment
+ * (order funding) or wallet top-up the charge belongs to; only its owner may
+ * continue it. Card data is used for this one request and never stored.
+ */
+paymentRoutes.post("/payments/:id/card/continue", requireAuth, async (c) => {
+  const id = c.req.param("id") as string;
+  const user = c.get("user");
+  c.header("Cache-Control", "no-store");
+  const rawBody = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+  const parsed = cardContinueSchema.safeParse(rawBody);
+  if (!parsed.success) {
+    return c.json({ error: "invalid_card", message: parsed.error.issues[0]?.message ?? "Check the card details and try again." }, 400);
+  }
+
+  // Both tables are keyed by the same reference Flutterwave knows as tx_ref.
+  const paymentRow = (await db.execute({
+    sql: `SELECT p.id, p.order_id, p.provider, p.status, p.amount, p.currency, p.created_at, o.customer_id AS owner_id
+          FROM payments p JOIN orders o ON o.id = p.order_id WHERE p.id = ?`,
+    args: [id],
+  })).rows[0] as Row | undefined;
+  const topupRow = paymentRow ? undefined : (await db.execute({
+    sql: "SELECT id, provider, status, amount, 'UGX' AS currency, created_at, user_id AS owner_id FROM wallet_topups WHERE id = ?",
+    args: [id],
+  })).rows[0] as Row | undefined;
+  const record = paymentRow ?? topupRow;
+  if (!record || record.owner_id !== user.sub) return c.json({ error: "not_found" }, 404);
+  if (record.status !== "pending") return c.json({ status: record.status });
+
+  const adapter = getPaymentAdapter(String(record.provider));
+  // A simulated payment has no real card step to continue.
+  if (!adapter || String(record.provider).endsWith("_mock")) return c.json({ status: "pending" });
+
+  // The admin switched Peebee's card form off mid-payment: this one can't be finished here.
+  if (!(await isDirectCardReady())) {
+    return c.json({ error: "card_direct_unavailable", message: "Card payments in the app are unavailable right now. Please start the payment again." }, 409);
+  }
+
+  const limit = await consume(`card:${user.sub}`, 12, 600);
+  if (!limit.allowed) {
+    return c.json({ error: "too_many_attempts", message: "Too many card attempts. Please wait a few minutes and try again." }, 429);
+  }
+
+  try {
+    let result;
+    if ("otp" in parsed.data) {
+      if (!adapter.submitCardOtp) return c.json({ error: "unsupported", message: "This payment can't take a one-time code." }, 400);
+      result = await adapter.submitCardOtp({
+        flowRef: parsed.data.flowRef,
+        otp: parsed.data.otp,
+        referenceId: id,
+        createdAt: String(record.created_at),
+      });
+    } else {
+      const profile = (await db.execute({ sql: "SELECT name, email FROM users WHERE id = ?", args: [user.sub] })).rows[0] as Row | undefined;
+      // Where the bank's 3-D Secure page sends the customer back: this app only.
+      const base = appBaseUrl("customer");
+      const requested = typeof rawBody.returnUrl === "string" ? rawBody.returnUrl : "";
+      const returnUrl = requested.startsWith(`${base}/`)
+        ? requested
+        : paymentRow ? `${base}/orders/${String(paymentRow.order_id)}/pay?payment_return=1` : `${base}/wallet?topup_return=${id}`;
+      result = await adapter.depositFunds({
+        referenceId: id,
+        returnUrl,
+        amount: Number(record.amount),
+        currency: String(record.currency ?? "UGX"),
+        name: profile?.name ? String(profile.name) : user.name,
+        email: profile?.email ? String(profile.email) : undefined,
+        narrative: "Peebee card payment",
+        method: "card",
+        card: parsed.data.card,
+        cardAuthorization: parsed.data.authorization,
+      });
+    }
+    return c.json({ status: "pending", redirectUrl: result.redirectUrl ?? null, nextAction: result.nextAction ?? null });
+  } catch (err) {
+    console.error("Direct card continuation failed", { id, provider: record.provider, error: err instanceof Error ? err.message : String(err) });
+    return c.json(
+      paymentProviderErrorResponse(err, "Couldn't process that card just now. Please try again."),
+      paymentProviderHttpStatus(err),
+    );
   }
 });

@@ -367,6 +367,26 @@ export type PharmacyPrescription = {
   updatedAt: string;
 };
 
+/** Raw card details for Peebee's own card form. Sent over TLS for one request, never stored. */
+export type CardInput = { number: string; cvv: string; expiryMonth: string; expiryYear: string };
+
+/** What a direct card payment needs from the customer next. `redirect` is the bank's own 3-D Secure page. */
+export type PaymentNextAction =
+  | { type: "pin" }
+  | { type: "avs" }
+  | { type: "otp"; flowRef: string; message?: string }
+  | { type: "redirect"; url: string };
+
+/** Which methods a payment screen may offer. `card.direct` false = cards go to Flutterwave's hosted page. */
+export type PaymentOptions = {
+  card: { available: boolean; direct: boolean };
+  mobileMoney: { direct: boolean };
+};
+
+export type CardContinueInput =
+  | { otp: string; flowRef: string; returnUrl?: string }
+  | { card: CardInput; authorization: { mode: "pin"; pin: string } | { mode: "avs"; address: string; city: string; state: string; country: string; zipcode: string }; returnUrl?: string };
+
 export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized, rawSettings }: CreateApiClientOptions) {
   const root = baseUrl.replace(/\/$/, "");
   const f = fetchImpl ?? fetch;
@@ -969,12 +989,13 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized, 
     },
     async fundOrder(
       orderId: string,
-      input: { paymentMethod?: "mobile_money" | "wallet" | "cash"; acceptedAmount?: number; msisdn?: string; useWallet?: boolean; walletOwnerId?: string; walletId?: string } = {},
+      input: { paymentMethod?: "mobile_money" | "card" | "wallet" | "cash"; acceptedAmount?: number; msisdn?: string; card?: CardInput; useWallet?: boolean; walletOwnerId?: string; walletId?: string } = {},
     ) {
       return request<{
         order: OrderRow;
         payment?: { id: string; status: string; network: string | null };
         redirectUrl?: string;
+        nextAction?: PaymentNextAction;
         funded?: boolean;
         rail?: string;
       }>(`/v1/orders/${orderId}/fund`, { method: "POST", body: JSON.stringify(input) });
@@ -1892,9 +1913,20 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized, 
     async getWallet() {
       return request<CustomerWallet>("/v1/wallet");
     },
-    async topUpWallet(input: { amount: number; msisdn?: string }) {
-      return request<{ topupId: string; status: "pending"; network: string | null; redirectUrl?: string }>(
+    async topUpWallet(input: { amount: number; msisdn?: string; method?: "mobile_money" | "card"; card?: CardInput }) {
+      return request<{ topupId: string; status: "pending"; network: string | null; redirectUrl?: string; nextAction?: PaymentNextAction }>(
         "/v1/wallet/topup",
+        { method: "POST", body: JSON.stringify(input) },
+      );
+    },
+    /** Whether card entry is Peebee's own form or Flutterwave's hosted page, and whether mobile money is prompted in-app. */
+    async getPaymentOptions() {
+      return request<PaymentOptions>("/v1/payments/options");
+    },
+    /** Next step of a direct card payment: the PIN or billing address, or the one-time code. `id` is the payment or top-up id. */
+    async continueCardPayment(id: string, input: CardContinueInput) {
+      return request<{ status: string; redirectUrl?: string | null; nextAction?: PaymentNextAction | null }>(
+        `/v1/payments/${id}/card/continue`,
         { method: "POST", body: JSON.stringify(input) },
       );
     },
