@@ -189,7 +189,8 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  if (url.pathname === "/v1/settings") {
+  // Everything an admin reads is current: the Services switches especially must never show an older copy on a fresh open.
+  if (url.pathname === "/v1/settings" || url.pathname.startsWith("/v1/admin/")) {
     event.respondWith(networkFirst(request, RUNTIME_CACHE));
     return;
   }
