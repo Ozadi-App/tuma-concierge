@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { turnOffIncentives } from "../test-support/no-incentives.js";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
@@ -47,6 +48,7 @@ async function freshDb() {
   }
   bind(client);
   await setPlatformEnvironment("live");
+  await turnOffIncentives();
   for (const [id, role] of [["cust", "customer"], ["rider", "rider"], ["admin", "admin"]] as const) {
     await client.execute({ sql: "INSERT INTO users (id, phone, name, password_hash, role, wallet_balance, phone_verified_at) VALUES (?, ?, ?, 'h', ?, 100000, datetime('now'))", args: [id, id, id, role] });
   }

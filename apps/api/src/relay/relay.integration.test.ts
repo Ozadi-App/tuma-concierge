@@ -4,6 +4,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { createClient, type Client, type InArgs } from "@libsql/client/node";
 import { Hono } from "hono";
+import { turnOffIncentives } from "../test-support/no-incentives.js";
 import { signToken } from "../auth/jwt.js";
 import { setD1Binding, type D1Database } from "../db/client.js";
 import { splitSqlStatements } from "../db/split-sql.js";
@@ -51,6 +52,7 @@ test("relay delivery: boda -> matatu -> boda with coded handoffs and split payou
     for (const sql of splitSqlStatements(readFileSync(join(process.cwd(), "src/db/migrations", file), "utf8"))) await client.execute(sql);
   }
   bindDatabase(client);
+  await turnOffIncentives();
   try {
     for (const [id, role] of [["customer", "customer"], ["first", "rider"], ["last", "rider"], ["op", "customer"], ["staff", "admin"]]) {
       await client.execute({ sql: "INSERT INTO users (id, phone, name, password_hash, role) VALUES (?, ?, ?, 'hash', ?)", args: [id, id, id, role] });

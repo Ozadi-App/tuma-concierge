@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { turnOffIncentives } from "../test-support/no-incentives.js";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
@@ -111,6 +112,7 @@ test("peebee car: category -> approvals -> assignment -> booking -> bid -> settl
     for (const sql of splitSqlStatements(readFileSync(join(migrations, file), "utf8"))) await client.execute(sql);
   }
   bindDatabase(client);
+  await turnOffIncentives();
 
   for (const [id, role] of [["cust", "customer"], ["owner", "customer"], ["drv", "customer"], ["boda", "rider"], ["admin", "admin"]]) {
     await client.execute({ sql: "INSERT INTO users (id, phone, name, password_hash, role) VALUES (?, ?, ?, 'h', ?)", args: [id, id, id, role] });
