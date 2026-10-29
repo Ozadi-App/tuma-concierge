@@ -52,6 +52,11 @@ export default function PaymentPage() {
   const [cardStep, setCardStep] = useState<{ paymentId: string; card: CardInput; action: PaymentNextAction } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // A promo code the customer typed. Offers that apply by themselves need nothing here.
+  const [codeInput, setCodeInput] = useState("");
+  const [appliedCode, setAppliedCode] = useState<string | null>(null);
+  const [codeMessage, setCodeMessage] = useState<string | null>(null);
+  const appliedCodeRef = useRef<string | null>(null);
   const paying = useRef(false);
   const ticketId = useRef<string | null>(null);
   const polling = useRef(false);
@@ -89,7 +94,7 @@ export default function PaymentPage() {
       }
       const pending = current.payments.find((p) => p.type === "collection" && ["pending", "unknown"].includes(p.status));
       if (pending) await api.refreshPayment(pending.id).catch(() => {});
-      const nextQuote = await api.getOrderCheckout(id);
+      const nextQuote = await api.getOrderCheckout(id, appliedCodeRef.current);
       const nextUnpaidPickup = current.order.stage === "Fund"
         ? current.bundleStops?.find((stop) => stop.id !== id && stop.stage === "Match")
         : undefined;
@@ -151,6 +156,31 @@ export default function PaymentPage() {
     (method === "card" && cardDirect && !cardInput) ||
     (method === "wallet" && (!selectedWallet || selectedWallet.balance == null || insufficient));
 
+  async function applyCode() {
+    const code = codeInput.trim();
+    if (!code) return;
+    setCodeMessage(null);
+    try {
+      const res = await api.previewOrderOffer(id, code);
+      if (res.codeAccepted) {
+        appliedCodeRef.current = code;
+        setAppliedCode(code);
+        setCodeMessage(`${code.toUpperCase()} applied — you save ${formatUgx(res.discount + res.cashback)}`);
+        await load();
+      } else {
+        setCodeMessage(res.codeMessage ?? "That code isn't valid for this order.");
+      }
+    } catch (err) { setCodeMessage(errorMessage(err)); }
+  }
+
+  function removeCode() {
+    appliedCodeRef.current = null;
+    setAppliedCode(null);
+    setCodeInput("");
+    setCodeMessage(null);
+    void load();
+  }
+
   async function pay() {
     if (disabled || paying.current || amount == null) return;
     paying.current = true;
@@ -158,7 +188,7 @@ export default function PaymentPage() {
     setError(null);
     try {
       const result = await api.fundOrder(id, {
-        paymentMethod: method, acceptedAmount: amount,
+        paymentMethod: method, acceptedAmount: amount, ...(appliedCode ? { offerCode: appliedCode } : {}),
         ...(method === "mobile_money" ? { msisdn: phone } : {}),
         ...(method === "card" && cardDirect && cardInput ? { card: cardInput } : {}),
         ...(method === "wallet" ? { useWallet: true, walletId: selectedWallet?.walletId, walletOwnerId: selectedWallet?.ownerId } : {}),
@@ -213,6 +243,29 @@ export default function PaymentPage() {
         ))}
       </fieldset>
       {cashBlocked && <p id="cash-blocked" className="-mt-2 text-sm text-ink-500">{cashBlocked}</p>}
+      {quote?.offer && (quote.offer.discount > 0 || quote.offer.cashback > 0) && (
+        <p className="rounded-xl bg-gold/10 p-3 text-sm leading-6 text-ink">
+          {quote.offer.applied.map((a) => a.name).join(", ")} — {quote.offer.discount > 0 ? `you save ${formatUgx(quote.offer.discount)}` : ""}
+          {quote.offer.discount > 0 && quote.offer.cashback > 0 ? " and " : ""}
+          {quote.offer.cashback > 0 ? `${formatUgx(quote.offer.cashback)} comes back to your wallet after the ride` : ""}.
+        </p>
+      )}
+      {!pending && !quote?.bundle && (
+        <div className="space-y-2">
+          {appliedCode ? (
+            <div className="flex items-center justify-between gap-3 text-sm">
+              <span className="font-semibold text-ink">Code {appliedCode.toUpperCase()}</span>
+              <button type="button" onClick={removeCode} className="font-semibold text-ink-500">Remove</button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <input aria-label="Promo code" value={codeInput} onChange={(e) => setCodeInput(e.target.value.toUpperCase())} placeholder="Promo code" maxLength={30} autoCapitalize="characters" className="min-w-0 flex-1 rounded-xl border border-[var(--border-faint)] px-3 py-3 text-[15px]" />
+              <button type="button" onClick={() => void applyCode()} disabled={!codeInput.trim()} className="rounded-xl bg-gold px-4 py-3 text-sm font-bold text-ink disabled:opacity-50">Apply</button>
+            </div>
+          )}
+          {codeMessage && <p className="text-sm text-ink-500" role="status">{codeMessage}</p>}
+        </div>
+      )}
       <section className="home-card space-y-4">
 
         <fieldset disabled={busy || pending} hidden={method !== "mobile_money"} className="min-w-0">

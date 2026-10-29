@@ -117,6 +117,8 @@ test("peebee car: category -> approvals -> assignment -> booking -> bid -> settl
   }
   await client.execute("UPDATE users SET admin_role = 'super_admin' WHERE id = 'admin'");
   await client.execute("INSERT INTO riders (user_id, verified, is_online) VALUES ('boda', 1, 1)");
+  // Established accounts: a brand-new driver is inside the commission holiday (Admin → Offers → Rider incentives) and keeps Peebee's cut.
+  await client.execute("UPDATE users SET created_at = datetime('now', '-200 days')");
 
   const app = new Hono().route("/v1", orderRoutes).route("/v1", carRoutes).route("/v1", carpoolRoutes).route("/v1", selfDriveRoutes).route("/v1", dealRoutes).route("/v1", carAdminRoutes).route("/v1", riderRoutes);
   const tokens: Record<string, string> = {};

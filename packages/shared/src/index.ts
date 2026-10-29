@@ -350,3 +350,6 @@ export * from "./education/studio.js";
 export { handleStudioSandbox, resetStudioSandbox } from "./education/studio-sandbox.js";
 export * from "./education/demo-data.js";
 
+
+export * from "./offers.js";
+export * from "./pricing.js";

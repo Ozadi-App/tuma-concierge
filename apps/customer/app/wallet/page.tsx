@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { CreditSection } from "../../components/wallet/CreditSection";
 import { BottomDrawer } from "../../components/BottomDrawer";
 import { CardFields, CardHostedNote, CardPaymentSteps, cardFromForm, emptyCard, type CardForm } from "../../components/CardPayment";
 import { MobileNumberPicker } from "../../components/MobileNumberPicker";
@@ -438,6 +439,8 @@ export default function WalletPage() {
   return (
     <div className="space-y-5 px-4 pb-6 pt-4">
       <h1 className="text-xl font-bold text-ink">{t("wallet_title")}</h1>
+
+      <CreditSection />
 
       {/* Wallet switcher — up to 5 total (the original + up to 4 named ones) */}
       <div className="edge-carousel flex items-center gap-2 overflow-x-auto pb-1">

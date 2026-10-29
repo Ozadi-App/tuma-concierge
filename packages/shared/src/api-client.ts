@@ -974,16 +974,75 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized, 
     async customerDeleteOrder(orderId: string) {
       return request<{ ok: true }>(`/v1/orders/${orderId}/customer-delete`, { method: "POST" });
     },
-    async getOrderCheckout(orderId: string) {
+    /** `code` is a promo code the customer typed; offers that apply by themselves are already in the amounts. */
+    async getOrderCheckout(orderId: string, code?: string | null) {
       return request<{
         baseAmount: number; mobileMoney: number; wallet: number; cash: number;
+        /** The fare before any offer, and what the offers took off (null when none applies). */
+        fullAmount?: number;
+        offer?: { discount: number; cashback: number; applied: Array<{ offerId: string; name: string; discount: number; cashback: number }> } | null;
         /** Present on the first pickup of a combined delivery: the quote covers every pickup. */
         bundle?: { deliveryFee: number; orders: Array<{ id: string; restaurantName: string | null; itemsAndDelivery: number; deliveryFee: number }> };
         /** A relay that can be paid now, before any rider accepts it (admin setting). */
         payBeforeRider?: boolean;
         /** A TaxiPress booking's order: its ticket, and whether cash is allowed (and why not). */
         taxipress?: { bookingId: string; cashAllowed: boolean; cashReason: string | null } | null;
-      } & Partial<CheckoutBreakdown>>(`/v1/orders/${orderId}/checkout`);
+      } & Partial<CheckoutBreakdown>>(`/v1/orders/${orderId}/checkout${code ? `?code=${encodeURIComponent(code)}` : ""}`);
+    },
+    /** Tries a promo code on this order without paying: what it takes off, or why it doesn't apply. */
+    async previewOrderOffer(orderId: string, code: string | null) {
+      return request<{
+        enabled: boolean; fare: number; discount: number; cashback: number; payable: number;
+        applied: Array<{ offerId: string; name: string; discount: number; cashback: number }>;
+        codeAccepted: boolean | null; codeMessage: string | null;
+      }>(`/v1/orders/${orderId}/offer/preview`, { method: "POST", body: JSON.stringify({ code }) });
+    },
+    /** Offers a customer can get, their wallet credit and what an invitation is worth. */
+    async getMyOffers() {
+      return request<{
+        enabled: boolean; allowCodeEntry: boolean; credit: number;
+        offers: Array<{ id: string; name: string; description: string; kind: string; kindLabel: string; summary: string; services: string[]; endsAt: string | null; remaining: number | null }>;
+        referral: { creditForFriend: number } | null;
+      }>("/v1/offers/mine");
+    },
+    async getReferral() {
+      return request<{ enabled: boolean; code: string | null; invited?: number; creditForFriend?: number }>("/v1/offers/referral");
+    },
+    async applyReferral(code: string) {
+      return request<{ ok: true }>("/v1/offers/referral/apply", { method: "POST", body: JSON.stringify({ code }) });
+    },
+    async getCredit() {
+      return request<{
+        enabled: boolean; balance: number; spendableOn?: string[]; expiryDays?: number;
+        lots: Array<{ id: string; remaining: number; source: string; partner_id: string | null; expires_at: string | null }>;
+        ledger: Array<{ type: string; amount: number; balance_after: number; note: string | null; created_at: string }>;
+      }>("/v1/credit");
+    },
+    /** A rider's discount wallet: what customers' offers owe them, and how it is cleared. */
+    async getRiderDiscountWallet() {
+      return request<{
+        enabled: boolean; balance: number; offsetsCommission?: boolean; payoutMethod?: string; canRequest?: boolean; minPayout?: number; requestPending?: boolean;
+        ledger: Array<{ type: string; amount: number; balance_after: number; note: string | null; created_at: string }>;
+      }>("/v1/riders/me/discount-wallet");
+    },
+    async requestRiderDiscountPayout() {
+      return request<{ paid: number; queued: number }>("/v1/riders/me/discount-wallet/request", { method: "POST", body: "{}" });
+    },
+    async getRiderIncentives() {
+      return request<{
+        enabled: boolean; earnedThisMonth: number;
+        active: Array<{ kind: string; label: string; detail: string }>;
+        recent: Array<{ kind: string; amount: number; note: string | null; created_at: string }>;
+      }>("/v1/riders/me/incentives");
+    },
+    async getCustomerWithdrawals() {
+      return request<{
+        enabled: boolean; cash?: number; locked?: number; allowed: number; lockDays?: number; minAmount?: number;
+        withdrawals: Array<{ id: string; amount: number; status: string; msisdn: string; review_reason: string | null; created_at: string }>;
+      }>("/v1/wallet/withdrawals");
+    },
+    async withdrawCustomerWallet(input: { amount: number; msisdn: string }) {
+      return request<{ id: string; status: string; message?: string }>("/v1/wallet/withdraw", { method: "POST", body: JSON.stringify(input) });
     },
     /** What the order page shows: items, subtotal and delivery for the whole combined delivery (or the order), at any stage. */
     async getOrderBreakdown(orderId: string) {
@@ -991,7 +1050,7 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized, 
     },
     async fundOrder(
       orderId: string,
-      input: { paymentMethod?: "mobile_money" | "card" | "wallet" | "cash"; acceptedAmount?: number; msisdn?: string; card?: CardInput; useWallet?: boolean; walletOwnerId?: string; walletId?: string } = {},
+      input: { paymentMethod?: "mobile_money" | "card" | "wallet" | "cash"; acceptedAmount?: number; msisdn?: string; card?: CardInput; useWallet?: boolean; walletOwnerId?: string; walletId?: string; offerCode?: string | null } = {},
     ) {
       return request<{
         order: OrderRow;

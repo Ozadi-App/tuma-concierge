@@ -1,5 +1,5 @@
 import { visibleInWorld } from "../practice/people.js";
-import { roundFare } from "@peebee/shared";
+import { computeFare, DEFAULT_PRICING_CONFIG, roundFare, type FareService, type GeoPoint } from "@peebee/shared";
 import { db } from "../db/client.js";
 import { haversineKm } from "../lib/geo.js";
 import { hasColumn } from "../lib/schema.js";
@@ -32,8 +32,18 @@ export function acceptsTier(vehicle: TierVehicle, tier: CarServiceTier, xlMinSea
   return vehicle.service_class !== "comfort" || Number(vehicle.accepts_convenient) === 1;
 }
 
-export function tierFare(distanceKm: number, tier: CarServiceTier, pricing: Awaited<ReturnType<typeof getCarServicePricing>>, size?: CarVehicleSize): number {
-  const base = roundFare(distanceKm * pricing.ratePerKm, pricing.minimumFare);
+export type TierFareContext = { now?: Date; pickup?: GeoPoint | null; dropoff?: GeoPoint | null; demandRatio?: number | null; scheduled?: boolean };
+
+/**
+ * A car fare. The distance, minimum and any tapering, fuel adjustment, peak/night/zone markup and fees come from the fare
+ * engine (Admin → Pricing); the Comfort and large-car premiums are applied on top as before.
+ */
+export function tierFare(distanceKm: number, tier: CarServiceTier, pricing: Awaited<ReturnType<typeof getCarServicePricing>>, size?: CarVehicleSize, ctx: TierFareContext = {}): number {
+  const service: FareService = size === "large" || tier === "xl" ? "car_xl" : tier === "comfort" ? "car_comfort" : "car_convenient";
+  const base = computeFare(pricing.engine ?? DEFAULT_PRICING_CONFIG, {
+    service, rates: { ratePerKm: pricing.ratePerKm, minimumFare: pricing.minimumFare }, distanceKm, now: ctx.now ?? new Date(),
+    pickup: ctx.pickup, dropoff: ctx.dropoff, demandRatio: ctx.demandRatio, scheduled: ctx.scheduled,
+  }).total;
   const comfortPremium = tier === "comfort" ? pricing.comfortPremiumPercent : 0;
   const sizePremium = size === "large" || tier === "xl" ? pricing.xlPremiumPercent : 0;
   return roundFare(base * (1 + comfortPremium / 100) * (1 + sizePremium / 100), 0);

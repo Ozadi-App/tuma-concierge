@@ -2,7 +2,7 @@ import { hasPermission, type AdminRole } from "@peebee/shared";
 import type { LucideIcon } from "lucide-react";
 import {
   Activity, Banknote, Briefcase, Bus, Car, Clapperboard, ClipboardList, Compass, CreditCard, FlaskConical, GraduationCap, Home, KeyRound, Languages,
-  LayoutDashboard, MapPin, Mic, Package, Phone, PiggyBank, Power, Route, Ruler, ShieldCheck, Smartphone, Store, User, UserRound, Users, UsersRound, Video, Wallet, Waypoints,
+  Calculator, Gift, LayoutDashboard, MapPin, Mic, Package, Phone, PiggyBank, Power, Route, Ruler, ShieldCheck, Smartphone, Store, Trophy, User, UserRound, Users, UsersRound, Video, Wallet, Waypoints,
 } from "lucide-react";
 
 export type NavItem = {
@@ -81,11 +81,23 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "Money",
     items: [
       { href: "/settings/payments", label: "Payments", icon: CreditCard, hint: "MTN / Airtel aggregators", visible: can("payments.manage") },
+      { href: "/pricing", label: "Pricing", icon: Calculator, hint: "Fares, distance bands, fuel and rush-hour multipliers, fees", keywords: "price fare per km minimum fuel surge peak night traffic weather cancel waiting delay", visible: can("payments.manage") },
+      { href: "/money-flow", label: "Money flow", icon: Banknote, hint: "Commission, gateway fees, tax, who gets what", keywords: "commission transaction fee tax vat maintenance aggregator flutterwave yo pesapal split", visible: can("payments.manage") },
       { href: "/settings/monetization", label: "Monetization", icon: Banknote, hint: "Commissions, fees, Pro", visible: can("payments.manage"), keywords: "commission subscription pro" },
       { href: "/settings/merchant-payments", label: "Merchant payments", icon: Store, hint: "Custody gate", visible: can("merchant_finance.manage") },
       { href: "/settings/customer-wallet", label: "Customer wallet", icon: Wallet, hint: "Balance caps", visible: can("payments.manage") },
       { href: "/settings/rider-wallet", label: "Rider wallet", icon: Wallet, hint: "Minimum reserve", visible: can("payments.manage") },
       { href: "/settings/stage-savings", label: "Stage savings", icon: PiggyBank, hint: "Cycles and loans", visible: can("payments.manage") },
+    ],
+  },
+  {
+    id: "offers",
+    label: "Offers",
+    items: [
+      { href: "/offers", label: "Customer offers", icon: Gift, hint: "Promo codes, discounts, ride packs, cashback", keywords: "promo coupon discount voucher referral cashback pack", visible: can("payments.manage") },
+      { href: "/offers/incentives", label: "Rider incentives", icon: Trophy, hint: "Streaks, boosts, bonuses for riders", keywords: "bonus streak boost target commission holiday reward", visible: can("payments.manage") },
+      { href: "/offers/discount-wallet", label: "Rider discount wallet", icon: Wallet, hint: "How riders are compensated for offers", keywords: "compensation commission offset payout clearing", visible: can("payments.manage") },
+      { href: "/offers/credit", label: "Wallet credit & bonuses", icon: PiggyBank, hint: "Deposit bonus, covered fees, where credit works", keywords: "bonus top-up credit withdraw lock fee", visible: can("payments.manage") },
     ],
   },
   {

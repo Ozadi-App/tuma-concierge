@@ -2,7 +2,7 @@ import { db } from "../db/client.js";
 import { newId } from "../lib/ids.js";
 import { hasTable } from "../lib/schema.js";
 import { notifyUser } from "../lib/webpush.js";
-import { creditWallet } from "../wallet/service.js";
+import { creditWallet, refundToWallet } from "../wallet/service.js";
 import { bookingsReady } from "./bookings.js";
 import { openTicketColumnsReady, openTicketOf } from "./open-tickets.js";
 import { cancelTermsFor, collectedFor, feeOf, minutesSince, type CancelTerms } from "./cancel-terms.js";
@@ -66,7 +66,7 @@ async function endBooking(
       sql: `INSERT INTO payments (id, order_id, type, provider, provider_ref, amount, currency, status) VALUES (?, ?, 'refund', 'wallet', NULL, ?, 'UGX', 'successful')`,
       args: [newId("pay"), orderId, refunded],
     });
-    await creditWallet(String(row.passenger_id), refunded, { type: "refund", environment, orderId, note: opts.note, actorId: String(row.passenger_id) });
+    await refundToWallet(String(row.passenger_id), refunded, { orderId, environment, note: opts.note, actorId: String(row.passenger_id) });
   }
   if (fee > 0 && settings.feeTo === "driver" && driverId) {
     await creditWallet(driverId, fee, { type: "adjustment", environment, orderId, note: kind === "no_show" ? "Taxipress no-show fee" : "Taxipress late cancellation fee", actorId: driverId });
