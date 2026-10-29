@@ -205,3 +205,10 @@ export async function sweepStaleReservations(): Promise<number> {
   for (const r of stale.rows as Row[]) await releaseOffers(String(r.order_id));
   return stale.rows.length;
 }
+
+/** Discount Peebee funded on an order (rider-funded offers are not Peebee's cost). */
+export async function platformDiscountOf(orderId: string): Promise<number> {
+  if (!(await offersAvailable())) return 0;
+  const res = await db.execute({ sql: "SELECT COALESCE(SUM(discount), 0) AS d FROM offer_redemptions WHERE order_id = ? AND funder <> 'rider' AND status <> 'void'", args: [orderId] });
+  return Number((res.rows[0] as Row).d);
+}

@@ -374,8 +374,11 @@ const moduleMoney = (over: Partial<ModuleMoney> = {}, commission: Partial<Commis
   ...over,
 });
 
-/** Placeholder gateway rates — set them to what each provider's contract says. They only affect reports and fee-cover credit. */
-const PLACEHOLDER_FEE = { type: "percent" as const, percent: 2.5, flat: 0, min: 0, max: 0, effectiveFrom: "2026-01-01", enabled: true };
+/**
+ * Placeholder gateway rates, switched OFF. Set each to what the provider's contract says, then switch it on: from then on
+ * Peebee sees the fee on every payment and (if chosen) covers it on wallet top-ups. Until then no fee is assumed.
+ */
+const PLACEHOLDER_FEE = { type: "percent" as const, percent: 2.5, flat: 0, min: 0, max: 0, effectiveFrom: "2026-01-01", enabled: false };
 
 export const DEFAULT_MONEY_FLOW_CONFIG: MoneyFlowConfig = {
   modules: {
@@ -402,7 +405,7 @@ export const DEFAULT_MONEY_FLOW_CONFIG: MoneyFlowConfig = {
     { id: "flutterwave-disbursement", provider: "flutterwave", direction: "disbursement", network: "any", ...PLACEHOLDER_FEE },
     { id: "mtn-collection", provider: "mtn", direction: "collection", network: "any", ...PLACEHOLDER_FEE },
     { id: "airtel-collection", provider: "airtel", direction: "collection", network: "any", ...PLACEHOLDER_FEE },
-    { id: "pesapal-collection", provider: "pesapal", direction: "collection", network: "any", ...PLACEHOLDER_FEE, enabled: false },
+    { id: "pesapal-collection", provider: "pesapal", direction: "collection", network: "any", ...PLACEHOLDER_FEE },
   ],
   // Ships empty: tax rates and bases must come from your accountant.
   taxes: [],
@@ -454,6 +457,8 @@ export type WaterfallInput = {
   network?: string | null;
   fareOnly?: number;
   monthlyVolume?: number;
+  /** Use this commission instead of working it out from the module's rule (the commission that was actually taken). */
+  commissionOverride?: number;
   /** Commission the rider/merchant is excused (holiday, discount wallet): moves from Peebee to the provider. */
   commissionRelief?: number;
   /** Discount funded by Peebee: it lowers what the customer paid but not the provider's share. */
@@ -512,7 +517,9 @@ export function computeWaterfall(cfg: MoneyFlowConfig, input: WaterfallInput): W
   const lines: WaterfallLine[] = [];
   const external = input.rail === "mobile_money" || input.rail === "card";
 
-  const baseCommission = commissionAmount(mod.commission, { gross, fareOnly: input.fareOnly, monthlyVolume: input.monthlyVolume });
+  const baseCommission = input.commissionOverride != null
+    ? Math.min(gross, Math.max(0, Math.round(input.commissionOverride)))
+    : commissionAmount(mod.commission, { gross, fareOnly: input.fareOnly, monthlyVolume: input.monthlyVolume });
   const relief = Math.min(baseCommission, Math.max(0, input.commissionRelief ?? 0));
   const commission = baseCommission - relief;
 

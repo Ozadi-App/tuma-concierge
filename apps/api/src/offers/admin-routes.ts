@@ -11,7 +11,8 @@ import { hasTable } from "../lib/schema.js";
 import { getPlatformEnvironment } from "../lib/settings.js";
 import { resolveCustomerByIdentifier } from "../wallet/service.js";
 import { configKinds, getCreditConfig, getDiscountWalletConfig, getIncentiveConfig, getOffersConfig, saveConfig, type ConfigKind } from "./config.js";
-import { creditAvailable, grantCredit } from "./credit.js";
+import { creditAvailable, getCreditBalance, grantCredit } from "./credit.js";
+import { debitWalletAllowNegative } from "../wallet/service.js";
 import { discountWalletAvailable, markPaidExternally, payOutToActiveWallet } from "./discount-wallet.js";
 import { holderOf, incentivesAvailable, spentThisMonth } from "./incentives.js";
 import { customerProfile, getOffer, listOffers, offersAvailable, sweepStaleReservations } from "./service.js";
@@ -353,6 +354,46 @@ offersAdminRoutes.post("/admin/offers/credit/grant", async (c) => {
   if (!lot) return c.json({ error: "credit_off", message: "Wallet credit is switched off." }, 409);
   await log(c, "offers.credit.grant", `Gave ${user.name} UGX ${parsed.data.amount.toLocaleString("en-UG")} of wallet credit`, { entityType: "user", entityId: user.id, after: parsed.data });
   return c.json({ ok: true, customer: user });
+});
+
+/**
+ * A top-up that turns out to be bad (charged back, paid twice, fraud): the cash comes back out of the wallet — which may go
+ * below zero — and, if the admin has chosen so (Wallet credit → abuse protection), the bonus and fee cover it earned too.
+ */
+offersAdminRoutes.post("/admin/offers/credit/reverse-topup", async (c) => {
+  const parsed = z.object({ topupId: z.string().min(3).max(80), reason: z.string().trim().max(140).default("Top-up reversed") }).safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) return c.json({ error: "invalid_body", issues: parsed.error.issues }, 400);
+  const topup = (await db.execute({ sql: "SELECT * FROM wallet_topups WHERE id = ? AND status = 'successful'", args: [parsed.data.topupId] })).rows[0] as Row | undefined;
+  if (!topup) return c.json({ error: "not_found", message: "No successful top-up with that id." }, 404);
+  // The status flip is the lock: only one request can reverse a top-up.
+  const claimed = await db.execute({ sql: "UPDATE wallet_topups SET status = 'failed', updated_at = datetime('now') WHERE id = ? AND status = 'successful'", args: [String(topup.id)] });
+  if (!claimed.rowsAffected) return c.json({ error: "already_reversed" }, 409);
+  const env = topup.environment === "sandbox" ? "sandbox" : "live";
+  const userId = String(topup.user_id);
+  const cash = Number(topup.cash_credited ?? topup.amount);
+  await debitWalletAllowNegative(userId, cash, { type: "adjustment", environment: env, note: parsed.data.reason, actorId: c.get("user").sub });
+  let clawed = 0;
+  const cfg = await getCreditConfig();
+  if (cfg.withdrawal.clawbackOnReversal && (await creditAvailable())) {
+    const lots = await db.execute({
+      sql: `SELECT DISTINCT l.id, l.remaining FROM credit_lots l JOIN credit_ledger g ON g.lot_id = l.id WHERE g.topup_id = ? AND l.remaining > 0`,
+      args: [String(topup.id)],
+    });
+    for (const lot of lots.rows as Row[]) {
+      const left = Number(lot.remaining);
+      const res = await db.execute({ sql: "UPDATE credit_lots SET remaining = 0 WHERE id = ? AND remaining = ?", args: [String(lot.id), left] });
+      if (!res.rowsAffected) continue;
+      const col = env === "sandbox" ? "credit_balance_sandbox" : "credit_balance";
+      await db.execute({ sql: `UPDATE users SET ${col} = MAX(0, ${col} - ?) WHERE id = ?`, args: [left, userId] });
+      await db.execute({
+        sql: "INSERT INTO credit_ledger (id, user_id, type, amount, balance_after, lot_id, topup_id, note, environment) VALUES (?, ?, 'clawback', ?, ?, ?, ?, ?, ?)",
+        args: [newId("cl"), userId, -left, await getCreditBalance(userId, env), String(lot.id), String(topup.id), parsed.data.reason, env],
+      });
+      clawed += left;
+    }
+  }
+  await log(c, "offers.credit.reverse_topup", `Reversed a top-up of UGX ${Number(topup.amount).toLocaleString("en-UG")}${clawed ? ` and took back UGX ${clawed.toLocaleString("en-UG")} of bonus credit` : ""}`, { entityType: "wallet_topup", entityId: String(topup.id), after: { cash, clawed } });
+  return c.json({ ok: true, cashReversed: cash, creditClawedBack: clawed });
 });
 
 offersAdminRoutes.post("/admin/offers/sweep", async (c) => {

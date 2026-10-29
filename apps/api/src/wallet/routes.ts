@@ -1,4 +1,7 @@
 import { Hono } from "hono";
+import { hasColumn } from "../lib/schema.js";
+import { planTopupFor } from "../offers/topup.js";
+import { grantCredit } from "../offers/credit.js";
 import { applyDepositBonus } from "../offers/deposit-bonus.js";
 import { getCreditBalance } from "../offers/credit.js";
 import { z } from "zod";
@@ -159,12 +162,23 @@ walletRoutes.get("/wallet/topups/:id/refresh", requireAuth, requireRole("custome
     args: [id],
   });
   if ((updated.rowsAffected ?? 0) > 0) {
-    await creditWallet(user.sub, topup.amount as number, {
+    const env = topup.environment === "sandbox" ? "sandbox" : "live";
+    // What the gateway took, and how much of it Peebee covers as credit (Admin → Wallet credit). With no gateway rate set up,
+    // or before migration 0148, the wallet gets the whole amount exactly as it always has.
+    const plan = (await hasColumn("wallet_topups", "gateway_fee")) ? await planTopupFor({ ...topup, user_id: user.sub }, env).catch(() => null) : null;
+    await creditWallet(user.sub, plan ? plan.cash : (topup.amount as number), {
       type: "topup",
-      environment: topup.environment === "sandbox" ? "sandbox" : "live",
+      environment: env,
       topupId: id,
-      note: "Wallet top-up",
+      note: plan && plan.gatewayFee > 0 ? `Wallet top-up (gateway fee ${plan.gatewayFee + plan.taxOnFee} deducted)` : "Wallet top-up",
     });
+    if (plan) {
+      await db.execute({
+        sql: "UPDATE wallet_topups SET gateway_fee = ?, tax_on_fee = ?, fee_cover = ?, cash_credited = ? WHERE id = ?",
+        args: [plan.gatewayFee, plan.taxOnFee, plan.feeCover, plan.cash, id],
+      });
+      if (plan.feeCover > 0) await grantCredit({ userId: user.sub, amount: plan.feeCover, kind: "fee_cover", env, topupId: id, expiryDays: 0, campaign: "fee_cover", note: "Fee on your top-up covered by Peebee" });
+    }
     await applyDepositBonus({ userId: user.sub, topupId: id, amount: topup.amount as number, env: topup.environment === "sandbox" ? "sandbox" : "live" });
   }
 

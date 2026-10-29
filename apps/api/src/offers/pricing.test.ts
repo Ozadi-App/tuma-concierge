@@ -126,9 +126,16 @@ test("base fare, per-minute charge and rounding steps", () => {
 
 const cfgFlow = (patch?: (c: MoneyFlowConfig) => void): MoneyFlowConfig => {
   const c = clone(DEFAULT_MONEY_FLOW_CONFIG);
+  // The shipped gateway rates are switched off until an admin confirms them; these tests exercise them as if confirmed.
+  for (const r of c.providerFees) r.enabled = true;
   patch?.(c);
   return c;
 };
+
+test("gateway fees ship switched off, so no fee is assumed until an admin confirms the rates", () => {
+  assert.ok(DEFAULT_MONEY_FLOW_CONFIG.providerFees.every((r) => !r.enabled));
+  assert.equal(computeWaterfall(DEFAULT_MONEY_FLOW_CONFIG, { gross: 10_000, module: "ride_car", rail: "mobile_money", provider: "yo" }).gatewayFee, 0);
+});
 
 test("commission rules: percent, flat, min/max and tiered", () => {
   const base = { type: "percent" as const, percent: 10, flat: 0, min: 0, max: 0, tiers: [], base: "gross" as const };
@@ -245,4 +252,12 @@ test("waterfall holds for many amounts and settings (nothing created or lost)", 
       }
     }
   }
+});
+
+test("waterfall: the commission that was actually taken can be recorded instead of the module rule", () => {
+  const w = computeWaterfall(cfgFlow(), { gross: 10_000, module: "ride_car", rail: "wallet", commissionOverride: 1_250 });
+  assert.equal(w.commission, 1_250);
+  assert.equal(w.providerShare, 8_750);
+  assert.ok(waterfallBalances(w));
+  assert.equal(computeWaterfall(cfgFlow(), { gross: 1_000, module: "ride_car", rail: "wallet", commissionOverride: 5_000 }).commission, 1_000, "never more than the price");
 });

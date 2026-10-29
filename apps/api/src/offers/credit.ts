@@ -70,12 +70,12 @@ export async function grantCredit(input: {
  * Spends up to `amount` of credit, soonest-to-expire first, never touching a lot that is locked to a different partner.
  * Each lot is decremented with a guarded UPDATE so two requests cannot spend the same credit. Returns what was spent.
  */
-export async function spendCredit(input: { userId: string; amount: number; env: PlatformEnvironment; orderId: string; partnerId?: string | null; note?: string }): Promise<number> {
+export async function spendCredit(input: { userId: string; amount: number; env: PlatformEnvironment; orderId: string; partnerId?: string | null; note?: string; onlySources?: string[] }): Promise<number> {
   let need = Math.floor(input.amount);
   if (need <= 0 || !(await creditAvailable())) return 0;
   const cfg = await getCreditConfig();
   const lots = await db.execute({
-    sql: `SELECT id, remaining, partner_id FROM credit_lots
+    sql: `SELECT id, remaining, partner_id, source FROM credit_lots
           WHERE user_id = ? AND environment = ? AND remaining > 0 AND (expires_at IS NULL OR expires_at > datetime('now'))
           ORDER BY (expires_at IS NULL), expires_at ASC, created_at ASC`,
     args: [input.userId, input.env],
@@ -83,6 +83,7 @@ export async function spendCredit(input: { userId: string; amount: number; env: 
   let spent = 0;
   for (const row of lots.rows as Row[]) {
     if (need <= 0) break;
+    if (input.onlySources && !input.onlySources.includes(String(row.source))) continue;
     const lotPartner = row.partner_id ? String(row.partner_id) : null;
     // Credit tagged to a partner campaign only pays at that partner (admin can relax this).
     if (lotPartner && cfg.partnerCreditLocked && lotPartner !== (input.partnerId ?? null)) continue;
@@ -100,14 +101,15 @@ export async function spendCredit(input: { userId: string; amount: number; env: 
 }
 
 /** How much credit could pay for an order right now (before the order's own cap), for showing and splitting. */
-export async function spendableCredit(userId: string, env: PlatformEnvironment, partnerId?: string | null): Promise<number> {
+export async function spendableCredit(userId: string, env: PlatformEnvironment, partnerId?: string | null, onlySources?: string[]): Promise<number> {
   if (!(await creditAvailable())) return 0;
   const cfg = await getCreditConfig();
   const lots = await db.execute({
-    sql: `SELECT remaining, partner_id FROM credit_lots WHERE user_id = ? AND environment = ? AND remaining > 0 AND (expires_at IS NULL OR expires_at > datetime('now'))`,
+    sql: `SELECT remaining, partner_id, source FROM credit_lots WHERE user_id = ? AND environment = ? AND remaining > 0 AND (expires_at IS NULL OR expires_at > datetime('now'))`,
     args: [userId, env],
   });
   return (lots.rows as Row[]).reduce((sum, r) => {
+    if (onlySources && !onlySources.includes(String(r.source))) return sum;
     const lotPartner = r.partner_id ? String(r.partner_id) : null;
     return lotPartner && cfg.partnerCreditLocked && lotPartner !== (partnerId ?? null) ? sum : sum + Number(r.remaining);
   }, 0);
@@ -170,13 +172,19 @@ export async function payWithCreditAndCash(input: {
   payCash: (cashAmount: number) => Promise<boolean>;
 }): Promise<{ credit: number; cash: number } | null> {
   const cfg = await getCreditConfig();
-  const allowed = input.creditEligible ? creditAllowedAmount(cfg, { module: input.module, amount: input.amount, partnerId: input.partnerId }) : 0;
-  const available = allowed > 0 ? await spendableCredit(input.userId, input.env, input.partnerId) : 0;
+  let allowed = input.creditEligible ? creditAllowedAmount(cfg, { module: input.module, amount: input.amount, partnerId: input.partnerId }) : 0;
+  // Credit that only gives a customer back the fee on their own top-up (fee_cover) works for anything on the platform.
+  let onlySources: string[] | undefined;
+  if (allowed === 0 && input.creditEligible && cfg.enabled) {
+    allowed = Math.floor((input.amount * Math.min(100, Math.max(1, cfg.maxSharePercent))) / 100);
+    onlySources = ["fee_cover"];
+  }
+  const available = allowed > 0 ? await spendableCredit(input.userId, input.env, input.partnerId, onlySources) : 0;
   const split = splitWalletPayment({ amount: input.amount, cash: input.cashBalance, credit: available, creditAllowedAmount: allowed, order: cfg.spendOrder });
   if (split.shortfall > 0) return null;
   let credit = 0;
   if (split.credit > 0) {
-    credit = await spendCredit({ userId: input.userId, amount: split.credit, env: input.env, orderId: input.orderId, partnerId: input.partnerId });
+    credit = await spendCredit({ userId: input.userId, amount: split.credit, env: input.env, orderId: input.orderId, partnerId: input.partnerId, onlySources });
     // Credit was spent by someone else in between: the cash side must cover the difference.
     if (credit < split.credit) {
       const remainder = input.amount - credit;

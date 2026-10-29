@@ -69,11 +69,12 @@ import {
 import { getR2Bucket, uploadResponseHeaders } from "../storage/r2.js";
 import { appBaseUrl } from "../verify/service.js";
 import { payFromWallet, payFromWalletWithCredit } from "../wallet/service.js";
-import { releaseOffers, reserveOffers, resolveOrderOffer } from "../offers/service.js";
+import { platformDiscountOf, releaseOffers, reserveOffers, resolveOrderOffer } from "../offers/service.js";
 import { afterRideSettled, settleOffersForOrder } from "../offers/settle.js";
 import { creditActiveWallet } from "../offers/incentives.js";
 import { computeFare, type CreditModule, type FareBreakdown } from "@peebee/shared";
 import { currentDemandRatio, engineFare, saveFareBreakdown } from "../costing/fares.js";
+import { extraCommissionFor, recordOrderSplit, takeExtraCommission, type SplitFacts } from "../costing/splits.js";
 import { getPricingConfig } from "../costing/config.js";
 import { checkoutBreakdown, deliveryOrders } from "./checkout-breakdown.js";
 import { taxipressPayRules } from "../taxipress/pay-rules.js";
@@ -3011,6 +3012,8 @@ orderRoutes.post("/orders/:id/settle", async (c) => {
 
   let released = 0;
   let payout = 0;
+  // Where the money went, recorded once the order is settled (Admin → Money flow).
+  let splitFacts: SplitFacts | null = null;
   if (order.payment_rail === "escrow" && order.rider_id) {
     // Release only what escrow actually holds, never `final_total`. An
     // approved fee proposal or substitution raises `final_total` after the
@@ -3080,7 +3083,18 @@ orderRoutes.post("/orders/:id/settle", async (c) => {
       const commission = car
         ? Number(((await db.execute({ sql: "SELECT platform_amount FROM car_bookings WHERE order_id = ?", args: [id] })).rows[0] as Row | undefined)?.platform_amount ?? 0)
         : Number(feesRow?.delivery_commission ?? 0);
-      const offerOutcome = await settleOffersForOrder(order, commission);
+      // Commission the admin set under Money flow, on top of the above (none by default).
+      const extraCommission = await extraCommissionFor(order, total);
+      if (extraCommission > 0) {
+        await takeExtraCommission(order, extraCommission, car);
+        payout = Math.max(0, payout - extraCommission);
+      }
+      const offerOutcome = await settleOffersForOrder(order, commission + extraCommission);
+      splitFacts = {
+        collected: released, legacyCommission: commission, extraCommission, commissionRelief: offerOutcome.commissionRelief,
+        serviceFee: Number(feesRow?.service_fee ?? 0), processingFeeCustomer: Number(feesRow?.processing_fee_customer ?? 0),
+        discount: await platformDiscountOf(id),
+      };
       if (offerOutcome.commissionRelief > 0) {
         await creditActiveWallet(car ? "driver" : "rider", order.rider_id as string, offerOutcome.commissionRelief, order.environment === "sandbox" ? "sandbox" : "live", "Commission excused", id);
         payout += offerOutcome.commissionRelief;
@@ -3133,8 +3147,14 @@ orderRoutes.post("/orders/:id/settle", async (c) => {
       payingWithWallet: false,
     });
     cashOwed = fees.totalSurcharge + fees.deliveryCommission + fees.processingFeeRider;
+    const cashExtra = await extraCommissionFor(order, total - cashDiscount);
+    cashOwed += cashExtra;
     const cashOutcome = await settleOffersForOrder(order, cashOwed);
     cashOwed = Math.max(0, cashOwed - cashOutcome.commissionRelief);
+    splitFacts = {
+      collected: total - cashDiscount, legacyCommission: fees.deliveryCommission, extraCommission: cashExtra, commissionRelief: cashOutcome.commissionRelief,
+      serviceFee: fees.serviceFee, processingFeeCustomer: fees.processingFeeCustomer, discount: cashDiscount,
+    };
     if (cashOutcome.notes.length > 0) await logEvent(id, "Settle", `Offers: ${cashOutcome.notes.join("; ")}`, user.sub);
 
     if (cashOwed > 0) {
@@ -3155,6 +3175,7 @@ orderRoutes.post("/orders/:id/settle", async (c) => {
   await touchOrder(id, { stage: "Settle", final_total: total });
   // Rider incentives this ride earns, and the reward for whoever invited this customer (ride counts now include this ride).
   await afterRideSettled(order);
+  if (splitFacts) await recordOrderSplit(order, splitFacts);
   // Store loyalty cashback waiting on this delivery is credited now (admin option `loyalty_credit_trigger`).
   await settleLoyalty(id).catch((err) => console.error("loyalty settle failed", err));
   await db.execute({
