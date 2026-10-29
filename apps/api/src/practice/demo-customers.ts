@@ -69,7 +69,7 @@ async function waiting(): Promise<{ forRiders: number; forRestaurants: number }>
   const res = await db.execute(`SELECT
       SUM(CASE WHEN restaurant_id IS NULL THEN 1 ELSE 0 END) AS riders,
       SUM(CASE WHEN restaurant_id IS NOT NULL THEN 1 ELSE 0 END) AS restaurants
-    FROM orders WHERE rider_id IS NULL AND stage IN ('Create', 'Match') AND customer_id LIKE 'prac\\_%' ESCAPE '\\'`);
+    FROM orders WHERE +rider_id IS NULL AND stage IN ('Create', 'Match') AND customer_id >= 'prac_' AND customer_id < 'prac' || char(96)`);
   return { forRiders: Number(res.rows[0]?.riders ?? 0), forRestaurants: Number(res.rows[0]?.restaurants ?? 0) };
 }
 
@@ -102,7 +102,7 @@ export async function topUpDemoOrders(target = 4, foodTarget = 2): Promise<numbe
 async function topUpCarRides(target: number): Promise<number> {
   const counts = (await db.execute(`SELECT COUNT(*) AS n, SUM(CASE WHEN COALESCE(b.vehicle_size, 'normal') = 'normal' THEN 1 ELSE 0 END) AS normal
     FROM car_bookings b JOIN orders o ON o.id = b.order_id
-    WHERE b.status = 'requested' AND o.rider_id IS NULL AND o.stage IN ('Create', 'Match') AND b.customer_id LIKE 'prac\\_%' ESCAPE '\\'`)).rows[0];
+    WHERE b.status = 'requested' AND +o.rider_id IS NULL AND o.stage IN ('Create', 'Match') AND b.customer_id >= 'prac_' AND b.customer_id < 'prac' || char(96)`)).rows[0];
   const open = Number(counts?.n ?? 0);
   // There is always at least one ordinary car ride, which every sedan can take; the rest may be minivans.
   let normalOpen = Number(counts?.normal ?? 0);
@@ -131,7 +131,7 @@ export async function runDemoCustomerAutopilot(limit = 20): Promise<number> {
     sql: `SELECT o.id, o.stage, o.customer_id, o.pin_code,
             EXISTS (SELECT 1 FROM order_ratings r WHERE r.order_id = o.id) AS rated
           FROM orders o
-          WHERE o.customer_id LIKE 'prac\\_%' ESCAPE '\\' AND o.rider_id IS NOT NULL
+          WHERE o.customer_id >= 'prac_' AND o.customer_id < 'prac' || char(96) AND o.rider_id IS NOT NULL
             AND (o.stage IN ('Match', 'Deliver', 'Arrived', 'PickedUp')
                  OR (o.stage = 'Settle' AND NOT EXISTS (SELECT 1 FROM order_ratings r WHERE r.order_id = o.id)))
           ORDER BY o.updated_at LIMIT ?`,
@@ -141,7 +141,7 @@ export async function runDemoCustomerAutopilot(limit = 20): Promise<number> {
   // Rides where the customer picks the driver: the first driver who offered to take it is chosen.
   const offered = await db.execute({
     sql: `SELECT o.id, o.customer_id, (SELECT a.rider_id FROM order_applications a WHERE a.order_id = o.id AND a.status = 'pending' ORDER BY a.created_at, a.rowid LIMIT 1) AS applicant
-          FROM orders o WHERE o.customer_id LIKE 'prac\\_%' ESCAPE '\\' AND o.rider_id IS NULL AND o.stage IN ('Create', 'Match')
+          FROM orders o WHERE o.customer_id >= 'prac_' AND o.customer_id < 'prac' || char(96) AND +o.rider_id IS NULL AND o.stage IN ('Create', 'Match')
             AND EXISTS (SELECT 1 FROM order_applications a WHERE a.order_id = o.id AND a.status = 'pending') LIMIT ?`,
     args: [limit],
   });
