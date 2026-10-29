@@ -49,9 +49,11 @@ export function stopFeeTotal(stops: number, stopFee: number): number {
 export function rideQuote(
   route: { pickup: Point; destination: Point; stops: Point[] },
   pricing: { ratePerKm: number; minimumFare: number; stopFee: number },
+  /** The fare engine's price for a distance (Admin → Pricing). Without it the plain rate × distance is used. */
+  baseFor?: (distanceKm: number) => number,
 ): { distanceKm: number; base: number; stopFees: number; total: number } {
   const distanceKm = routeDistanceKm([route.pickup, ...route.stops, route.destination]);
-  const base = roundFare(distanceKm * pricing.ratePerKm, pricing.minimumFare);
+  const base = baseFor ? baseFor(distanceKm) : roundFare(distanceKm * pricing.ratePerKm, pricing.minimumFare);
   const stopFees = stopFeeTotal(route.stops.length, pricing.stopFee);
   return { distanceKm, base, stopFees, total: base + stopFees };
 }

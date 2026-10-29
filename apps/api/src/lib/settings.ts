@@ -1,5 +1,6 @@
 import type { MatchingMode } from "@peebee/shared";
 import { MODULES, channelModuleOn, getModule, type ModuleDef } from "@peebee/shared";
+import { DEFAULT_MONEY_FLOW_CONFIG, DEFAULT_PRICING_CONFIG, mergeDefaults, type PricingConfig } from "@peebee/shared";
 import { DEFAULT_CREDIT_CONFIG, DEFAULT_DISCOUNT_WALLET_CONFIG, DEFAULT_INCENTIVE_CONFIG, DEFAULT_OFFERS_CONFIG } from "@peebee/shared";
 import { DEFAULT_HOME_MENU, DEFAULT_RIDE_TRACKING_SETTINGS, DEFAULT_SHOPPING_UNIT_SETTINGS, DEFAULT_TIME_FEES, type JobExpirySettings, type TimeFeeSettings } from "@peebee/shared";
 import { db } from "../db/client.js";
@@ -30,6 +31,10 @@ const DEFAULTS = {
   discount_wallet_config: JSON.stringify(DEFAULT_DISCOUNT_WALLET_CONFIG),
   incentives_config: JSON.stringify(DEFAULT_INCENTIVE_CONFIG),
   credit_config: JSON.stringify(DEFAULT_CREDIT_CONFIG),
+  /** The fare engine: distance bands, multipliers and fees per service (Admin → Pricing). Rates and minimums stay in the older keys. */
+  pricing_config: JSON.stringify(DEFAULT_PRICING_CONFIG),
+  /** Commission, gateway fees, taxes and the maintenance reserve (Admin → Money flow). */
+  money_flow_config: JSON.stringify(DEFAULT_MONEY_FLOW_CONFIG),
   /** Which dataset the whole platform — every customer, rider, and the
    * admin dashboard's default view — currently reads and writes against.
    * "live" is real orders/money; "sandbox" is demo/test data, fully
@@ -334,8 +339,9 @@ const DEFAULTS = {
   car_sandbox_demo: "1",
   /** How long each demo driver step waits for a real person to act first. */
   car_sandbox_demo_step_seconds: "12",
-  car_convenient_rate_per_km: "2000",
-  car_convenient_minimum_fare: "8000",
+  /** Car fares: UGX 5,000 per km with a UGX 10,000 minimum. The fare engine (Admin → Pricing) tapers and adjusts these. */
+  car_convenient_rate_per_km: "5000",
+  car_convenient_minimum_fare: "10000",
   car_comfort_premium_percent: "30",
   car_xl_premium_percent: "50",
   car_xl_min_seats: "6",
@@ -788,7 +794,7 @@ export type CarSettings = {
   sandboxDemo?: boolean;
   /** Seconds each demo driver step waits for a real person to act first. */
   sandboxDemoStepSeconds?: number;
-  servicePricing?: { ratePerKm: number; minimumFare: number; comfortPremiumPercent: number; xlPremiumPercent: number; xlMinSeats: number };
+  servicePricing?: { ratePerKm: number; minimumFare: number; comfortPremiumPercent: number; xlPremiumPercent: number; xlMinSeats: number; engine?: PricingConfig };
   withdrawalsEnabled: boolean;
   withdrawalMinAmount: number;
   scheduled: CarScheduledSettings;
@@ -841,12 +847,16 @@ export type CarScheduledSettings = {
 };
 
 export async function getCarServicePricing(): Promise<NonNullable<CarSettings["servicePricing"]>> {
-  const [rate, minimum, comfort, xl, seats] = await Promise.all([
+  const [rate, minimum, comfort, xl, seats, engineRaw] = await Promise.all([
     getSetting("car_convenient_rate_per_km"), getSetting("car_convenient_minimum_fare"),
     getSetting("car_comfort_premium_percent"), getSetting("car_xl_premium_percent"), getSetting("car_xl_min_seats"),
+    getSetting("pricing_config"),
   ]);
+  let engine: PricingConfig = DEFAULT_PRICING_CONFIG;
+  try { engine = mergeDefaults(DEFAULT_PRICING_CONFIG, JSON.parse(engineRaw)); } catch { /* keep the defaults */ }
   return {
-    ratePerKm: Math.max(1, Number(rate) || 2000), minimumFare: Math.max(0, Number(minimum)),
+    engine,
+    ratePerKm: Math.max(1, Number(rate) || 5000), minimumFare: Math.max(0, Number(minimum)),
     comfortPremiumPercent: Math.max(0, Number(comfort) || 0), xlPremiumPercent: Math.max(0, Number(xl) || 0),
     xlMinSeats: Math.max(6, Number(seats) || 6),
   };

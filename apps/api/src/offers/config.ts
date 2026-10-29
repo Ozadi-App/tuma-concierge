@@ -3,25 +3,13 @@
  * defaults, so an option added later is on (or off) by its default instead of missing; saves are validated whole.
  */
 import {
-  CREDIT_MODULES, DEFAULT_CREDIT_CONFIG, DEFAULT_DISCOUNT_WALLET_CONFIG, DEFAULT_INCENTIVE_CONFIG, DEFAULT_OFFERS_CONFIG, OFFER_SERVICES,
+  mergeDefaults, CREDIT_MODULES, DEFAULT_CREDIT_CONFIG, DEFAULT_DISCOUNT_WALLET_CONFIG, DEFAULT_INCENTIVE_CONFIG, DEFAULT_OFFERS_CONFIG, OFFER_SERVICES,
   type CreditConfig, type DiscountWalletConfig, type IncentiveConfig, type OffersConfig,
 } from "@peebee/shared";
 import { z } from "zod";
 import { getSetting, setSetting } from "../lib/settings.js";
 
-function isObject(v: unknown): v is Record<string, unknown> {
-  return !!v && typeof v === "object" && !Array.isArray(v);
-}
-
-/** Stored values win; anything missing falls back to the default. Arrays are replaced whole, never merged. */
-export function mergeDefaults<T>(defaults: T, stored: unknown): T {
-  if (!isObject(defaults) || !isObject(stored)) return (stored === undefined || stored === null ? defaults : (stored as T));
-  const out: Record<string, unknown> = { ...defaults };
-  for (const [key, value] of Object.entries(stored)) {
-    out[key] = key in defaults ? mergeDefaults((defaults as Record<string, unknown>)[key], value) : value;
-  }
-  return out as T;
-}
+export { mergeDefaults };
 
 async function load<T>(key: "offers_config" | "discount_wallet_config" | "incentives_config" | "credit_config", defaults: T): Promise<T> {
   try {

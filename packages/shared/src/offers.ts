@@ -7,6 +7,20 @@
  * `recommended` are on out of the box, the rest are built and waiting for an admin to turn them on.
  */
 
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return !!v && typeof v === "object" && !Array.isArray(v);
+}
+
+/** Stored values win; anything missing falls back to the default. Arrays are replaced whole, never merged. */
+export function mergeDefaults<T>(defaults: T, stored: unknown): T {
+  if (!isPlainObject(defaults) || !isPlainObject(stored)) return stored === undefined || stored === null ? defaults : (stored as T);
+  const out: Record<string, unknown> = { ...defaults };
+  for (const [key, value] of Object.entries(stored)) {
+    out[key] = key in defaults ? mergeDefaults((defaults as Record<string, unknown>)[key], value) : value;
+  }
+  return out as T;
+}
+
 // ---------------------------------------------------------------------------
 // Services and shared helpers
 // ---------------------------------------------------------------------------
@@ -807,8 +821,8 @@ export const DEFAULT_CREDIT_CONFIG: CreditConfig = {
   topup: {
     feeMode: "make_whole",
     makeWholeIncludesTax: false,
-    makeWholeMinTopup: 5_000,
-    makeWholeMonthlyCapPerCustomer: 5_000,
+    makeWholeMinTopup: 0,
+    makeWholeMonthlyCapPerCustomer: 0,
     makeWholeMonthlyBudget: 0,
     bonus: {
       enabled: true, type: "percent", value: 2, minDeposit: 10_000, maxBonusPerDeposit: 2_000, maxBonusPerMonth: 10_000,

@@ -72,7 +72,9 @@ import { payFromWallet, payFromWalletWithCredit } from "../wallet/service.js";
 import { releaseOffers, reserveOffers, resolveOrderOffer } from "../offers/service.js";
 import { afterRideSettled, settleOffersForOrder } from "../offers/settle.js";
 import { creditActiveWallet } from "../offers/incentives.js";
-import type { CreditModule } from "@peebee/shared";
+import { computeFare, type CreditModule, type FareBreakdown } from "@peebee/shared";
+import { currentDemandRatio, engineFare, saveFareBreakdown } from "../costing/fares.js";
+import { getPricingConfig } from "../costing/config.js";
 import { checkoutBreakdown, deliveryOrders } from "./checkout-breakdown.js";
 import { taxipressPayRules } from "../taxipress/pay-rules.js";
 import { bundleCheckoutQuote, fundBundle, notifyRiderOfCombinedDelivery, prepaidBundleGroup, unfundedBundleGroup, unpaidBundleGroup } from "./bundle-funding.js";
@@ -401,6 +403,7 @@ export async function createOrderFromInput(
   // request: it prefers the priced list when there is one, and refuses a
   // figure above the platform ceiling either way.
   let distanceKm: number | null = null;
+  let fareBreakdown: FareBreakdown | null = null;
   let estimatedTotal = d.estimatedTotal ?? null;
   // The delivery-fee portion of estimatedTotal, stored separately since
   // substitutions/fee proposals only ever adjust the items portion — see
@@ -451,7 +454,17 @@ export async function createOrderFromInput(
     // The rider still has to go collect and deliver the item (or carry the
     // passenger) even when pickup and destination are barely apart —
     // distance × rate is never allowed to round down toward a near-free ride.
-    estimatedTotal = roundFare(distanceKm != null ? distanceKm * rate : (d.estimatedTotal ?? 0), minimum);
+    if (distanceKm != null) {
+      // The fare engine (Admin → Pricing): distance bands, fuel and time-of-day multipliers, fees, then the minimum.
+      fareBreakdown = await engineFare({
+        service: isRide ? "boda" : "parcel", rates: { ratePerKm: rate, minimumFare: minimum }, distanceKm,
+        pickup: d.pickupLat != null && d.pickupLng != null ? { lat: d.pickupLat, lng: d.pickupLng } : null,
+        dropoff: d.destinationLat != null && d.destinationLng != null ? { lat: d.destinationLat, lng: d.destinationLng } : null,
+      });
+      estimatedTotal = fareBreakdown.total;
+    } else {
+      estimatedTotal = roundFare(d.estimatedTotal ?? 0, minimum);
+    }
     if (!isRide && distanceKm != null) {
       relayPlan = await planRelay(
         { lat: d.pickupLat!, lng: d.pickupLng!, name: d.pickupArea ?? d.pickupAddress },
@@ -470,9 +483,11 @@ export async function createOrderFromInput(
     }
     if (isRide && extras && stops.length > 0) {
       // Multi-stop: the distance runs through every stop, plus a flat fee per stop.
+      const engineCfg = await getPricingConfig();
       const quote = rideQuote(
         { pickup: { lat: d.pickupLat!, lng: d.pickupLng! }, destination: { lat: d.destinationLat!, lng: d.destinationLng! }, stops },
         { ratePerKm: rate, minimumFare: minimum, stopFee: extras.stopFee },
+        (km) => computeFare(engineCfg, { service: "boda", rates: { ratePerKm: rate, minimumFare: minimum }, distanceKm: km, now: new Date(), pickup: { lat: d.pickupLat!, lng: d.pickupLng! }, dropoff: { lat: d.destinationLat!, lng: d.destinationLng! } }).total,
       );
       distanceKm = quote.distanceKm;
       estimatedTotal = quote.total;
@@ -584,6 +599,7 @@ export async function createOrderFromInput(
     args: [d.listId],
   });
   await logEvent(orderId, "Create", "Order created", user.sub);
+  await saveFareBreakdown(orderId, fareBreakdown);
   if (relayPlan) {
     await insertRelayLegs(orderId, relayPlan, relayLastMile, relayMeet);
     await logEvent(
@@ -2416,7 +2432,10 @@ orderRoutes.get("/rides/quote", async (c) => {
   const pickup = { lat: pickupLat, lng: pickupLng }, destination = { lat: destinationLat, lng: destinationLng };
   const stopError = validateStops(stops, maxStops, pickup, destination);
   if (stopError) return c.json({ error: "invalid_stops", message: stopError, maxStops }, 400);
-  const quote = rideQuote({ pickup, destination, stops }, { ratePerKm: delivery.rideRatePerKm, minimumFare: delivery.rideMinimumFare, stopFee: settings.stopFee });
+  const engineCfg = await getPricingConfig();
+  const rates = { ratePerKm: delivery.rideRatePerKm, minimumFare: delivery.rideMinimumFare };
+  const demandRatio = engineCfg.multipliers.demand.enabled ? await currentDemandRatio() : null;
+  const quote = rideQuote({ pickup, destination, stops }, { ...rates, stopFee: settings.stopFee }, (km) => computeFare(engineCfg, { service: "boda", rates, distanceKm: km, now: new Date(), pickup, dropoff: destination, demandRatio }).total);
   return c.json({
     quote: quote.total,
     base: quote.base,

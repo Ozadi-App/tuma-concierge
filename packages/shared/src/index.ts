@@ -352,3 +352,4 @@ export * from "./education/demo-data.js";
 
 
 export * from "./offers.js";
+export * from "./pricing.js";

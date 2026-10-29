@@ -1,4 +1,5 @@
 import { visibleInWorld } from "../practice/people.js";
+import { currentDemandRatio } from "../costing/fares.js";
 import { trackOnline } from "../offers/incentives.js";
 import { Hono } from "hono";
 import { z } from "zod";
@@ -83,7 +84,8 @@ carRoutes.get("/car/service-options", async (c) => {
   const distanceKm = haversineKm(t.pickupLat, t.pickupLng, t.destinationLat, t.destinationLng);
   await ensureSandboxCarDrivers(t.pickupLat, t.pickupLng);
   const counts = await nearbyTierCounts(t.pickupLat, t.pickupLng, settings.maxPickupKm, pricing.xlMinSeats);
-  const options = (["normal", "large"] as const).flatMap((size) => (["convenient", "comfort"] as const).map((tier) => ({ size, tier, fare: tierFare(distanceKm, tier, pricing, size), nearby: counts[size][tier] })));
+  const where = { pickup: { lat: t.pickupLat, lng: t.pickupLng }, dropoff: { lat: t.destinationLat, lng: t.destinationLng }, demandRatio: pricing.engine?.multipliers.demand.enabled ? await currentDemandRatio() : null };
+  const options = (["normal", "large"] as const).flatMap((size) => (["convenient", "comfort"] as const).map((tier) => ({ size, tier, fare: tierFare(distanceKm, tier, pricing, size, where), nearby: counts[size][tier] })));
   return c.json({ distanceKm: Math.round(distanceKm * 10) / 10, options });
 });
 
@@ -516,7 +518,13 @@ carRoutes.post("/car/quote", async (c) => {
     if (!(await hasColumn("car_bookings", "vehicle_size"))) return c.json({ error: "vehicle_sizes_unavailable" }, 503);
     const pricing = (await getCarSettings()).servicePricing!;
     const size = parsed.data.vehicleSize ?? (parsed.data.serviceTier === "xl" ? "large" : "normal");
-    return c.json({ fare: tierFare(distanceKm, parsed.data.serviceTier, pricing, size), distanceKm: Math.round(distanceKm * 10) / 10 });
+    const demandRatio = pricing.engine?.multipliers.demand.enabled ? await currentDemandRatio() : null;
+    return c.json({
+      fare: tierFare(distanceKm, parsed.data.serviceTier, pricing, size, {
+        pickup: { lat: parsed.data.pickupLat, lng: parsed.data.pickupLng }, dropoff: { lat: parsed.data.destinationLat, lng: parsed.data.destinationLng }, demandRatio,
+      }),
+      distanceKm: Math.round(distanceKm * 10) / 10,
+    });
   }
   const category = await activeCategory(parsed.data.categoryId!);
   if (!category) return c.json({ error: "invalid_category" }, 400);
@@ -563,7 +571,10 @@ carRoutes.post("/car/bookings", async (c) => {
 
   const t = parsed.data;
   const distanceKm = haversineKm(t.pickupLat, t.pickupLng, t.destinationLat, t.destinationLng);
-  const fare = isTier ? tierFare(distanceKm, parsed.data.serviceTier!, settings.servicePricing!, vehicleSize) : categoryFare(category, distanceKm, parsed.data.hireHours);
+  const demandRatio = isTier && settings.servicePricing!.engine?.multipliers.demand.enabled ? await currentDemandRatio() : null;
+  const fare = isTier
+    ? tierFare(distanceKm, parsed.data.serviceTier!, settings.servicePricing!, vehicleSize, { pickup: { lat: t.pickupLat, lng: t.pickupLng }, dropoff: { lat: t.destinationLat, lng: t.destinationLng }, demandRatio, scheduled: !!scheduledAt })
+    : categoryFare(category, distanceKm, parsed.data.hireHours);
   if (fare <= 0) return c.json({ error: "no_price", message: "This car type has no price set yet." }, 409);
   await ensureSandboxCarDrivers(t.pickupLat, t.pickupLng);
   // Luxury and ambulance cars are few: say so up front instead of leaving the customer waiting for nobody.
