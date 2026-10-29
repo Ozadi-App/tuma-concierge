@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Download, UserPlus, LayoutGrid, Send, Wallet, MapPin, Star, ArrowRight } from "lucide-react";
 import { APP_URL } from "../../lib/content";
-import { StoreBadges } from "../../components/StoreBadges";
 
 export const metadata: Metadata = { title: "How it works | Peebee", description: "From download to done: how Peebee works." };
 
@@ -29,7 +28,6 @@ export default function HowItWorksPage() {
         <a href={APP_URL} className="btn btn-gold">Download the app <Download size={16} aria-hidden /></a>
         <Link href="/contact" className="btn btn-quiet">Contact us <ArrowRight size={16} aria-hidden /></Link>
       </div>
-      <StoreBadges className="hw-badges" />
     </div>
   );
 }
