@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { PartnerLink } from "../../components/PartnerLink";
-import { ArrowRight, Bike, ShoppingBag, UtensilsCrossed, GraduationCap, Wrench, KeyRound, ShieldCheck, Wallet } from "lucide-react";
+import { APP_URL } from "../../lib/content";
+import { ArrowRight, ArrowUpRight, Bike, ShoppingBag, UtensilsCrossed, GraduationCap, Wrench, KeyRound, ShieldCheck, Wallet } from "lucide-react";
 
 export const metadata: Metadata = { title: "About us | Peebee", description: "What Peebee is, and why it is built for Uganda." };
 
@@ -42,7 +42,7 @@ export default function AboutPage() {
         <h2 id="ab-why" className="ab-h2">Our mission for Uganda</h2>
         <p className="ab-p">We want everyday services in Uganda to be easy to find, fair to pay for and safe to trust, for the people who use them and for the riders, shops, kitchens, teachers and workers who provide them. That means verified partners, clear prices before you pay, and money that only moves when the job is done.</p>
         <div className="ab-ctas">
-          <PartnerLink href="/partners" className="btn btn-gold">Partner with Peebee <ArrowRight size={16} aria-hidden /></PartnerLink>
+          <a href={APP_URL} className="btn btn-gold">Download the app <ArrowUpRight size={16} aria-hidden /></a>
           <Link href="/contact" className="btn btn-quiet">Contact us</Link>
         </div>
       </section>

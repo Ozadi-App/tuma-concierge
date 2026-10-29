@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ArrowLeft, ArrowRight, ArrowUpRight, Check } from "lucide-react";
 import { DOOR_SLUG } from "../lib/door-ids";
-import { ORDER_PATH } from "../lib/content";
+import { APP_URL, ORDER_PATH } from "../lib/content";
 import { PHOTO_FILES, SUB_BY_ID, type Sub } from "../lib/subs";
 import { DoorName } from "./DoorName";
 
@@ -73,16 +73,17 @@ export function SubPage({ sub }: { sub: Sub }) {
       </section>
 
       <section className="sp-partner" aria-labelledby="sp-partner">
-        <h2 id="sp-partner">{sub.cta.note ? "Not open yet" : "Work with Peebee on this"}</h2>
+        <h2 id="sp-partner">{sub.cta.note ? "Not open yet" : "Get it in the app"}</h2>
         <p>
           {sub.cta.note
             ? "Hire stays off until it is switched on, and Talent, the partner side, has not opened. You can read where it stands."
-            : "Partners join in the same way: a verified account, the same order path, and the same PIN at the end."}
+            : "You order and pay in the Peebee app. Partners join the same way: a verified account, the same order path, and the same PIN at the end."}
         </p>
         <div className="sp-actions">
-          <Link href={sub.cta.href} className="btn btn-gold">{sub.cta.label} <ArrowUpRight size={16} aria-hidden /></Link>
-          {sub.cta2 && <Link href={sub.cta2.href} className="btn btn-quiet">{sub.cta2.label}</Link>}
-          <Link href={`/${DOOR_SLUG[sub.door]}`} className="btn btn-quiet">Open in the drawer</Link>
+          {sub.cta.note
+            ? <Link href={sub.cta.href} className="btn btn-gold">{sub.cta.label} <ArrowUpRight size={16} aria-hidden /></Link>
+            : <a href={APP_URL} className="btn btn-gold">Download the app <ArrowUpRight size={16} aria-hidden /></a>}
+          {!sub.cta.note && <Link href={sub.cta.href} className="btn btn-quiet">{sub.cta.label}</Link>}
         </div>
       </section>
 

@@ -1735,6 +1735,3 @@ h1, h2, h3, p { margin: 0; }
 .mh-feat p { margin-top: 8px; color: var(--muted); font-size: 14.5px; line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; min-height: 7.5em; flex: 1; }
 .mh-feat .mh-more { margin-top: 14px; align-self: flex-start; }
 
-/* t47u: download band buttons */
-.mh-get-ctas { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-top: 16px; }
-.mh-get-ctas .btn { flex: 1 1 150px; justify-content: center; }
