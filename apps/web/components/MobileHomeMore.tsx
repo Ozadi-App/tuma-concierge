@@ -1,11 +1,11 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { ArrowRight, ArrowUpRight, BadgeCheck, KeyRound, LifeBuoy, ShieldCheck } from "lucide-react";
+import { ArrowRight, ArrowUpRight, BadgeCheck, Download, KeyRound, LifeBuoy, ShieldCheck } from "lucide-react";
 import { APP_FEATURES } from "../lib/features";
 import { useShell } from "./ShellContext";
 import { PartnerLink } from "./PartnerLink";
-import { StoreBadges } from "./StoreBadges";
+import { APP_URL } from "../lib/content";
 import { HomeAbout } from "./HomeAbout";
 
 const SHOT: Record<string, string> = { ride: "/app-shots/ride.webp", buy: "/app-shots/buy.webp", eat: "/app-shots/eat.webp", learn: "/app-shots/learn.webp", hive: "/app-shots/work.webp" };
@@ -97,7 +97,10 @@ export function MobileHomeMore() {
       <section className="mh-get" aria-labelledby="mh-get-h" data-reveal>
         <h2 id="mh-get-h">Get Peebee on your phone.</h2>
         <p>One app for your whole day in town.</p>
-        <StoreBadges className="mh-badges" />
+        <div className="mh-get-ctas">
+          <a href={APP_URL} className="btn btn-gold">Download the app <Download size={16} aria-hidden /></a>
+          <PartnerLink href="/partners" className="btn btn-quiet">Become a partner <ArrowUpRight size={16} aria-hidden /></PartnerLink>
+        </div>
       </section>
     </div>
   );
