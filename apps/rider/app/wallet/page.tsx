@@ -8,6 +8,7 @@ import { api, errorMessage } from "../../lib/api";
 import { formatUgx } from "../../lib/order-display";
 import { useTranslate, type TranslationKey } from "../../lib/i18n";
 import { StageSavingsCard } from "../../components/StageSavingsCard";
+import { RiderEarningsExtras } from "../../components/RiderEarningsExtras";
 
 const WITHDRAWAL_STATUS_KEYS: Record<Wallet["withdrawals"][number]["status"], TranslationKey> = {
   pending: "wallet_withdrawal_processing",
@@ -137,6 +138,7 @@ export default function WalletPage() {
   return (
     <div className="space-y-5 px-4 pb-6 pt-4">
       <h1 className="text-xl font-bold text-ink">{t("wallet_title")}</h1>
+      <RiderEarningsExtras />
 
       {wallet && wallet.depositRequired && wallet.depositShortfall > 0 && (
         <section className="home-card space-y-3 !border-l-4 !border-l-red-500">

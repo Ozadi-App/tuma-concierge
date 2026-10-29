@@ -1,6 +1,8 @@
 # Costing, money-flow and wallet-credit spec (proposal, not yet built)
 
-Status: **for review**. Nothing here is implemented. Every number below is an admin setting
+Status: **implemented** on branch `claude/car-fare-rider-discounts-l2uhhr` (migrations 0147 and 0148). Sections 1–5 and 7 are built;
+section 2.1 applies to payouts for rides and deliveries only (other services are in the calculator and report but keep their
+own commission settings for now). Where this document and the Admin pages differ, the pages are right. Every number below is an admin setting
 (stored in `settings`, validated in `settings/routes.ts`, shown on an admin page, recorded in the
 activity log, safe default), per `CLAUDE.md`. The "default" column is the launch value; it is
 not a constant in code.

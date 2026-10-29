@@ -16,6 +16,32 @@ export default function CreditPage() {
   const { bundle, draft, setDraft, error, busy, saved, save, loading } = useOffersConfig("credit");
   const [summary, setSummary] = useState<Summary | null>(null);
   const [grant, setGrant] = useState({ customer: "", amount: 5000, note: "Credit from Peebee", partnerId: "" });
+  const [reviews, setReviews] = useState<{ id: string; name: string | null; amount: number; msisdn: string; review_reason: string | null; created_at: string }[]>([]);
+  const [reversal, setReversal] = useState({ topupId: "", reason: "Top-up reversed" });
+  const [version, setVersion] = useState(0);
+  useEffect(() => {
+    adminRequest<{ withdrawals: typeof reviews }>("/admin/wallet-withdrawals?status=review").then((r) => setReviews(r.withdrawals)).catch(() => undefined);
+  }, [version]);
+
+  async function decide(id: string, action: "approve" | "reject") {
+    try {
+      await adminRequest(`/admin/wallet-withdrawals/${id}/${action}`, { method: "POST", body: {} });
+      toast(action === "approve" ? "Withdrawal approved and on its way" : "Withdrawal declined — the money is back in the wallet");
+      setVersion((v) => v + 1);
+    } catch (err) {
+      toast(requestErrorMessage(err), "error");
+    }
+  }
+
+  async function reverseTopup() {
+    try {
+      const res = await adminRequest<{ cashReversed: number; creditClawedBack: number }>("/admin/offers/credit/reverse-topup", { method: "POST", body: reversal });
+      toast(`Took back ${ugx(res.cashReversed)}${res.creditClawedBack ? ` and ${ugx(res.creditClawedBack)} of bonus credit` : ""}`);
+      setReversal({ ...reversal, topupId: "" });
+    } catch (err) {
+      toast(requestErrorMessage(err), "error");
+    }
+  }
   useEffect(() => { adminRequest<Summary>("/admin/offers/credit/summary").then(setSummary).catch(() => undefined); }, [saved]);
 
   async function giveCredit() {
@@ -137,6 +163,31 @@ export default function CreditPage() {
           <TextField label="Only usable at this partner (optional)" value={grant.partnerId} onChange={(v) => setGrant({ ...grant, partnerId: v })} />
         </Grid>
         <button type="button" onClick={giveCredit} disabled={!grant.customer.trim()} className="admin-btn-gold min-h-11 px-6 text-sm font-bold">Give credit</button>
+      </Card>
+
+      {reviews.length > 0 && (
+        <Card title="Withdrawals waiting for you" hint="These came soon after a bonus. The money has already left the customer's wallet; approve to send it, or decline to give it back.">
+          <ul className="space-y-3">
+            {reviews.map((r) => (
+              <li key={r.id} className="space-y-1.5 text-sm">
+                <p className="text-ink"><strong>{r.name ?? "Customer"}</strong> · {ugx(r.amount)} to {r.msisdn}</p>
+                {r.review_reason && <p className="text-xs text-ink-500">{r.review_reason}</p>}
+                <div className="flex gap-2">
+                  <button type="button" className="rounded-full bg-gold px-4 py-2 text-xs font-bold text-ink" onClick={() => decide(r.id, "approve")}>Approve</button>
+                  <button type="button" className="rounded-full bg-surface-muted px-4 py-2 text-xs font-bold text-ink" onClick={() => decide(r.id, "reject")}>Decline</button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+
+      <Card title="Reverse a top-up" hint="For a payment that was charged back, paid twice or turned out to be fraud. The cash comes back out of the wallet (which can go below zero), and — if you chose so above — so does the bonus it earned.">
+        <Grid>
+          <TextField label="Top-up id" value={reversal.topupId} onChange={(v) => setReversal({ ...reversal, topupId: v })} />
+          <TextField label="Reason" value={reversal.reason} onChange={(v) => setReversal({ ...reversal, reason: v })} maxLength={140} />
+        </Grid>
+        <button type="button" disabled={reversal.topupId.trim().length < 3} onClick={() => { if (window.confirm("Reverse this top-up? This can't be undone.")) void reverseTopup(); }} className="rounded-full bg-surface-muted px-5 py-2.5 text-sm font-bold text-ink disabled:opacity-50">Reverse top-up</button>
       </Card>
 
       {summary?.available && summary.recent.length > 0 && (
