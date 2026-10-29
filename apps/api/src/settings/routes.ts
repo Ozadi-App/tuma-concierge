@@ -827,11 +827,12 @@ const modulesUpdateSchema = z.object({
   }).nullable()).optional(),
   sync: z.boolean().optional(),
   practiceModeEnabled: z.boolean().optional(),
+  practiceSharedWorld: z.boolean().optional(),
 });
 
 async function modulesPayload() {
-  const [modules, practiceModeEnabled] = await Promise.all([getModuleSettings(), getSetting("user_practice_mode_enabled")]);
-  return { modules, practiceModeEnabled: practiceModeEnabled === "1" };
+  const [modules, practiceModeEnabled, practiceSharedWorld] = await Promise.all([getModuleSettings(), getSetting("user_practice_mode_enabled"), getSetting("practice_shared_world")]);
+  return { modules, practiceModeEnabled: practiceModeEnabled === "1", practiceSharedWorld: practiceSharedWorld === "1" };
 }
 
 /** Every module's Live and Practice switch, and the master Practice switches. */
@@ -850,6 +851,7 @@ settingsRoutes.put("/admin/modules", requireAuth, requireRole("admin"), requireP
   const before = await modulesPayload();
   await setModuleFlags(parsed.data);
   if (parsed.data.practiceModeEnabled != null) await setSetting("user_practice_mode_enabled", parsed.data.practiceModeEnabled ? "1" : "0");
+  if (parsed.data.practiceSharedWorld != null) await setSetting("practice_shared_world", parsed.data.practiceSharedWorld ? "1" : "0");
   const after = await modulesPayload();
   const changed: string[] = [];
   for (const world of ["live", "practice"] as const) {
@@ -862,12 +864,13 @@ settingsRoutes.put("/admin/modules", requireAuth, requireRole("admin"), requireP
   }
   if (before.modules.sync !== after.modules.sync) changed.push(`keep Live and Practice the same ${after.modules.sync ? "on" : "off"}`);
   if (before.practiceModeEnabled !== after.practiceModeEnabled) changed.push(`practice mode ${after.practiceModeEnabled ? "on" : "off"}`);
+  if (before.practiceSharedWorld !== after.practiceSharedWorld) changed.push(`practice runs on ${after.practiceSharedWorld ? "the shared world" : "each person's device"}`);
   if (changed.length) {
     await logActivity({
       actor: user, action: "modules.update", entityType: "modules",
       summary: `Switched: ${changed.join(", ")}`,
-      before: { flags: before.modules.flags, notices: before.modules.notices, practiceModeEnabled: before.practiceModeEnabled },
-      after: { flags: after.modules.flags, notices: after.modules.notices, practiceModeEnabled: after.practiceModeEnabled },
+      before: { flags: before.modules.flags, notices: before.modules.notices, practiceModeEnabled: before.practiceModeEnabled, practiceSharedWorld: before.practiceSharedWorld },
+      after: { flags: after.modules.flags, notices: after.modules.notices, practiceModeEnabled: after.practiceModeEnabled, practiceSharedWorld: after.practiceSharedWorld },
       revertible: false, ip: clientIp(c),
     });
   }

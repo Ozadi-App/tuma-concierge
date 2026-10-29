@@ -36,6 +36,9 @@ const DEFAULTS = {
   /** Allows users to launch isolated guided practice journeys. Unlike
    * platform_environment this never redirects operational API traffic. */
   user_practice_mode_enabled: "1",
+  /** Where Practice runs: "0" = on each person's own device (the apps' built-in simulator, no database use), "1" = the shared
+   * practice world on the server (demo people, shared orders and a background job that keeps it busy, which uses database reads). */
+  practice_shared_world: "0",
   delivery_rate_per_km: "1000",
   /** Floor on a parcel ride's distance-priced delivery fee (UGX) — a rider
    * still has to go collect and deliver the item even when pickup and
@@ -1400,6 +1403,11 @@ export async function getPaymentsDemoMode(): Promise<boolean> {
 
 export async function setPaymentsDemoMode(enabled: boolean): Promise<void> {
   await setSetting("payments_demo_mode", enabled ? "1" : "0");
+}
+
+/** Whether the shared practice world is on offer, and the background job that keeps it busy runs. Always on while the whole platform is in sandbox. */
+export async function practiceWorldRunning(): Promise<boolean> {
+  return (await getSetting("practice_shared_world")) === "1" || (await getPlatformEnvironment()) === "sandbox";
 }
 
 export async function getFlutterwaveDirectMobileMoney(): Promise<boolean> {
