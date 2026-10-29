@@ -10,6 +10,7 @@ import { requireAuth, requireRole } from "../auth/middleware.js";
 import { haversineKm } from "../lib/geo.js";
 import { newId } from "../lib/ids.js";
 import { ensureRiderCode } from "../lib/profile-codes.js";
+import { trackOnline } from "../offers/incentives.js";
 import { hasColumn, hasTable } from "../lib/schema.js";
 import { baseMimeType, extensionForMime } from "../lib/mime.js";
 import { clientIp } from "../lib/ratelimit.js";
@@ -257,6 +258,7 @@ riderRoutes.post("/riders/status", requireAuth, requireRole("rider"), async (c) 
   });
   const res = await db.execute({ sql: "SELECT * FROM riders WHERE user_id = ?", args: [user.sub] });
   if (res.rows.length === 0) return c.json({ error: "not_a_rider" }, 404);
+  await trackOnline(user.sub, parsed.data.online);
   return c.json({ rider: res.rows[0] });
 });
 

@@ -68,7 +68,11 @@ import {
 } from "../payments/service.js";
 import { getR2Bucket, uploadResponseHeaders } from "../storage/r2.js";
 import { appBaseUrl } from "../verify/service.js";
-import { payFromWallet } from "../wallet/service.js";
+import { payFromWallet, payFromWalletWithCredit } from "../wallet/service.js";
+import { releaseOffers, reserveOffers, resolveOrderOffer } from "../offers/service.js";
+import { afterRideSettled, settleOffersForOrder } from "../offers/settle.js";
+import { creditActiveWallet } from "../offers/incentives.js";
+import type { CreditModule } from "@peebee/shared";
 import { checkoutBreakdown, deliveryOrders } from "./checkout-breakdown.js";
 import { taxipressPayRules } from "../taxipress/pay-rules.js";
 import { bundleCheckoutQuote, fundBundle, notifyRiderOfCombinedDelivery, prepaidBundleGroup, unfundedBundleGroup, unpaidBundleGroup } from "./bundle-funding.js";
@@ -1756,6 +1760,8 @@ const fundSchema = z
     // Which of the (possibly shared) owner's wallets to pay from —
     // omitted or "primary" means their original wallet.
     walletId: z.string().optional(),
+    // A promo code the customer typed; offers that apply by themselves need nothing here.
+    offerCode: z.string().trim().max(30).nullable().optional(),
   })
   .refine((data) => data.paymentMethod === "cash" || data.paymentMethod === "card" || !!data.msisdn || !!data.useWallet, { message: "Provide a mobile money number or pay from wallet" })
   .refine((data) => !data.paymentMethod || data.paymentMethod === "cash" ||
@@ -1778,11 +1784,18 @@ orderRoutes.get("/orders/:id/checkout", async (c) => {
   if (bundleGroup && String(bundleGroup.lead.id) === String(order.id)) {
     return c.json({ ...(await bundleCheckoutQuote(bundleGroup)), ...(await checkoutBreakdown(bundleGroup.members)), payBeforeRider });
   }
-  const baseAmount = Number(order.final_total ?? order.estimated_total ?? 0);
+  const fullAmount = Number(order.final_total ?? order.estimated_total ?? 0);
+  // Offers that apply by themselves (and a code passed as ?code=) lower what is charged; the screens already charge these amounts.
+  const offer = await resolveOrderOffer(order, c.req.query("code") ?? null);
+  const baseAmount = fullAmount - offer.discount;
   const settings = await getMonetizationSettings();
   const input = { baseAmount, deliveryFee: Number(order.delivery_fee ?? 0), orderType: order.type as "parcel" | "shopping" };
   return c.json({
     baseAmount,
+    fullAmount,
+    offer: offer.enabled && (offer.discount > 0 || offer.cashback > 0)
+      ? { discount: offer.discount, cashback: offer.cashback, applied: offer.applied.map((a) => ({ offerId: a.offerId, name: a.name, discount: a.discount, cashback: a.cashback })) }
+      : null,
     mobileMoney: baseAmount + computeCheckoutFees(settings, { ...input, payingWithWallet: false }).totalSurcharge,
     wallet: baseAmount + computeCheckoutFees(settings, { ...input, payingWithWallet: true }).totalSurcharge,
     cash: baseAmount,
@@ -1868,7 +1881,8 @@ orderRoutes.post("/orders/:id/fund", async (c) => {
     // here — see POST /orders/:id/settle, which computes it and notifies
     // the rider once the order actually completes (the fee only makes
     // sense once the final total is locked in).
-    if (parsed.data.acceptedAmount != null && parsed.data.acceptedAmount !== baseAmount) {
+    const cashOffer = await resolveOrderOffer(order, parsed.data.offerCode ?? null);
+    if (parsed.data.acceptedAmount != null && parsed.data.acceptedAmount !== baseAmount - cashOffer.discount) {
       return c.json({ error: "amount_changed", message: "The total has changed. Review the updated amount before continuing." }, 409);
     }
     const confirmed = await db.execute({
@@ -1876,6 +1890,7 @@ orderRoutes.post("/orders/:id/fund", async (c) => {
       args: [id, String(order.rider_id), baseAmount, id],
     });
     if (!confirmed.rowsAffected) return c.json({ error: "invalid_stage", message: "This order has changed. Refresh before continuing." }, 409);
+    await reserveOffers(order, cashOffer);
     await logEvent(id, "Fund", "Cash rail — rider collects full payment from the customer on delivery", user.sub);
     return c.json({ order: await getOrder(id), funded: true, rail: "float" });
   }
@@ -1885,13 +1900,16 @@ orderRoutes.post("/orders/:id/fund", async (c) => {
   // rates happen to be by the time the order settles. See
   // ../lib/monetization.ts.
   const monetizationSettings = await getMonetizationSettings();
+  // Offers: what the customer pays is the fare less the discount; the rider is made whole later, at settlement.
+  const offer = await resolveOrderOffer(order, parsed.data.offerCode ?? null);
+  const payableBase = baseAmount - offer.discount;
   const fees = computeCheckoutFees(monetizationSettings, {
-    baseAmount,
+    baseAmount: payableBase,
     deliveryFee: (order.delivery_fee as number | null) ?? 0,
     orderType: order.type as "parcel" | "shopping",
     payingWithWallet: !!parsed.data.useWallet,
   });
-  const amount = baseAmount + fees.totalSurcharge;
+  const amount = payableBase + fees.totalSurcharge;
   if (parsed.data.acceptedAmount != null && parsed.data.acceptedAmount !== amount) {
     return c.json({ error: "amount_changed", message: "The total has changed. Review the updated amount before paying." }, 409);
   }
@@ -1935,7 +1953,10 @@ orderRoutes.post("/orders/:id/fund", async (c) => {
     const funding = await db.execute({ sql: `UPDATE orders SET payment_rail = 'escrow', stage = 'Fund', updated_at = datetime('now') WHERE id = ? AND ${holdWhere} AND COALESCE(final_total, estimated_total, 0) = ? AND NOT EXISTS (SELECT 1 FROM payments WHERE order_id = ? AND status IN ('pending', 'unknown', 'successful'))`, args: [id, ...holdArgs, baseAmount, id] });
     if (!funding.rowsAffected) return c.json({ error: "invalid_stage", message: "This order has changed. Refresh before paying." }, 409);
 
-    const paymentId = await payFromWallet({
+    await reserveOffers(order, offer);
+    // Wallet credit (bonuses, cashback) pays too where the admin allows it for this kind of order.
+    const creditModule: CreditModule = taxipress ? "taxipress" : offer.vehicle === "car" ? "ride_car" : offer.vehicle === "boda" ? "ride_boda" : "delivery";
+    const paymentId = await payFromWalletWithCredit({
       userId: walletOwnerId,
       amount,
       orderId: id,
@@ -1943,9 +1964,11 @@ orderRoutes.post("/orders/:id/fund", async (c) => {
       actorId: sharedSpend ? user.sub : undefined,
       environment: order.environment as "live" | "sandbox",
       walletId,
+      creditModule,
     });
     if (!paymentId) {
       await db.execute({ sql: "UPDATE orders SET stage = ? WHERE id = ? AND stage = 'Fund'", args: [startStage, id] });
+      await releaseOffers(id);
       return c.json({ error: "insufficient_wallet_balance" }, 409);
     }
 
@@ -1972,6 +1995,7 @@ orderRoutes.post("/orders/:id/fund", async (c) => {
     },
   ]);
   if (!funding[0]) return c.json({ error: "invalid_stage", message: "This order has changed. Refresh before paying." }, 409);
+  await reserveOffers(order, offer);
   let providerRef: string;
   let network: MobileMoneyNetwork | null;
   let provider: string;
@@ -1998,6 +2022,7 @@ orderRoutes.post("/orders/:id/fund", async (c) => {
       { sql: "UPDATE payments SET status = 'failed', updated_at = datetime('now') WHERE id = ?", args: [paymentId] },
       { sql: "UPDATE orders SET stage = ?, updated_at = datetime('now') WHERE id = ? AND stage = 'Fund'", args: [startStage, id] },
     ]);
+    await releaseOffers(id);
     if (err instanceof UnsupportedNetworkError) {
       return c.json({ error: "unsupported_network", message: err.message }, 400);
     }
@@ -2760,6 +2785,13 @@ orderRoutes.post("/orders/:id/location", async (c) => {
     sql: "UPDATE orders SET rider_lat = ?, rider_lng = ?, rider_location_updated_at = datetime('now') WHERE id = ? AND rider_id = ? AND stage NOT IN ('Settle', 'Create', 'Cancelled', 'Handover')",
     args: [parsed.data.lat, parsed.data.lng, id, user.sub],
   });
+  // The first ping after a rider takes the job shows how far they had to come to reach the pickup (long-pickup compensation).
+  if (order.pickup_lat != null && order.pickup_lng != null && order.pickup_distance_km == null && (await hasColumn("orders", "pickup_distance_km"))) {
+    await db.execute({
+      sql: "UPDATE orders SET pickup_distance_km = ? WHERE id = ? AND pickup_distance_km IS NULL",
+      args: [Math.round(haversineKm(parsed.data.lat, parsed.data.lng, Number(order.pickup_lat), Number(order.pickup_lng)) * 10) / 10, id],
+    });
+  }
 
   return c.json({ ok: true });
 });
@@ -3022,6 +3054,20 @@ orderRoutes.post("/orders/:id/settle", async (c) => {
         });
       }
     }
+    // Customer offers on this ride: the rider is compensated into their discount wallet, the new-rider commission holiday and
+    // the discount wallet excuse part of Peebee's commission, and cashback goes back to the customer. Never blocks settlement.
+    {
+      const car = await isCarOrder(id);
+      const commission = car
+        ? Number(((await db.execute({ sql: "SELECT platform_amount FROM car_bookings WHERE order_id = ?", args: [id] })).rows[0] as Row | undefined)?.platform_amount ?? 0)
+        : Number(feesRow?.delivery_commission ?? 0);
+      const offerOutcome = await settleOffersForOrder(order, commission);
+      if (offerOutcome.commissionRelief > 0) {
+        await creditActiveWallet(car ? "driver" : "rider", order.rider_id as string, offerOutcome.commissionRelief, order.environment === "sandbox" ? "sandbox" : "live", "Commission excused", id);
+        payout += offerOutcome.commissionRelief;
+      }
+      if (offerOutcome.notes.length > 0) await logEvent(id, "Settle", `Offers: ${offerOutcome.notes.join("; ")}`, user.sub);
+    }
     if (released < total) {
       await logEvent(
         id,
@@ -3056,13 +3102,21 @@ orderRoutes.post("/orders/:id/settle", async (c) => {
   let cashOwed = 0;
   if (order.payment_rail === "float" && order.rider_id) {
     const monetizationSettings = await getMonetizationSettings();
+    // The customer paid cash less any offer, so the fees are worked out on what was actually handed over.
+    const cashDiscount = await db
+      .execute({ sql: "SELECT COALESCE(SUM(discount), 0) AS d FROM offer_redemptions WHERE order_id = ? AND status IN ('pending', 'applied')", args: [id] })
+      .then((r) => Number((r.rows[0] as Row).d))
+      .catch(() => 0);
     const fees = computeCheckoutFees(monetizationSettings, {
-      baseAmount: total,
+      baseAmount: total - cashDiscount,
       deliveryFee: (order.delivery_fee as number | null) ?? 0,
       orderType: order.type as "parcel" | "shopping",
       payingWithWallet: false,
     });
     cashOwed = fees.totalSurcharge + fees.deliveryCommission + fees.processingFeeRider;
+    const cashOutcome = await settleOffersForOrder(order, cashOwed);
+    cashOwed = Math.max(0, cashOwed - cashOutcome.commissionRelief);
+    if (cashOutcome.notes.length > 0) await logEvent(id, "Settle", `Offers: ${cashOutcome.notes.join("; ")}`, user.sub);
 
     if (cashOwed > 0) {
       const balanceColumn = order.environment === "sandbox" ? "wallet_balance_sandbox" : "wallet_balance";
@@ -3080,6 +3134,8 @@ orderRoutes.post("/orders/:id/settle", async (c) => {
   }
 
   await touchOrder(id, { stage: "Settle", final_total: total });
+  // Rider incentives this ride earns, and the reward for whoever invited this customer (ride counts now include this ride).
+  await afterRideSettled(order);
   // Store loyalty cashback waiting on this delivery is credited now (admin option `loyalty_credit_trigger`).
   await settleLoyalty(id).catch((err) => console.error("loyalty settle failed", err));
   await db.execute({

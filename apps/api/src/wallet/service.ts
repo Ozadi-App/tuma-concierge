@@ -8,6 +8,8 @@
 
 import { db } from "../db/client.js";
 import { newId } from "../lib/ids.js";
+import type { CreditModule } from "@peebee/shared";
+import { creditPaidForOrder, grantCredit, payWithCreditAndCash } from "../offers/credit.js";
 import { getWalletSettings, type PlatformEnvironment } from "../lib/settings.js";
 
 type Row = Record<string, unknown>;
@@ -224,6 +226,47 @@ export async function payFromWallet(input: {
 }
 
 /**
+ * Like payFromWallet, but the customer's wallet credit (bonuses, cashback) pays first or second under the admin rules,
+ * where credit is allowed for this kind of order. Credit never leaves the platform, so it is only used from the customer's
+ * own wallet, never from a shared or secondary one. The payment row records the whole amount, so everything downstream
+ * (settlement, refunds) sees what the order was paid. Returns the payment id, or null if the wallet could not cover it.
+ */
+export async function payFromWalletWithCredit(input: {
+  userId: string;
+  amount: number;
+  orderId: string;
+  environment: PlatformEnvironment;
+  note?: string;
+  actorId?: string;
+  walletId?: string;
+  creditModule: CreditModule;
+  partnerId?: string | null;
+}): Promise<string | null> {
+  const column = balanceColumn(input.environment);
+  const cashRes = await db.execute({ sql: `SELECT ${column} AS balance FROM users WHERE id = ?`, args: [input.userId] });
+  const paid = await payWithCreditAndCash({
+    userId: input.userId,
+    amount: input.amount,
+    env: input.environment,
+    orderId: input.orderId,
+    module: input.creditModule,
+    partnerId: input.partnerId,
+    cashBalance: Number((cashRes.rows[0] as Row | undefined)?.balance ?? 0),
+    creditEligible: !input.walletId && !input.actorId,
+    payCash: async (cash) =>
+      (await debitWallet(input.userId, cash, { type: "order_payment", environment: input.environment, orderId: input.orderId, note: input.note, actorId: input.actorId, walletId: input.walletId })) !== null,
+  });
+  if (!paid) return null;
+  const paymentId = newId("pay");
+  await db.execute({
+    sql: `INSERT INTO payments (id, order_id, type, provider, provider_ref, amount, currency, status)
+          VALUES (?, ?, 'collection', 'wallet', NULL, ?, 'UGX', 'successful')`,
+    args: [paymentId, input.orderId, input.amount],
+  });
+  return paymentId;
+}
+
+/**
  * One wallet payment that covers several orders (a combined delivery with two
  * pickups). The wallet is debited once for the total, then each order gets its
  * own ledger line and its own successful collection row, so every later
@@ -269,6 +312,23 @@ export async function payBundleFromWallet(input: {
 }
 
 /**
+ * Returns money for an order to a customer's wallet. The part that was paid with wallet credit goes back as credit (never
+ * as withdrawable cash); the rest goes back as cash. Returns the cash balance afterward.
+ */
+export async function refundToWallet(
+  userId: string,
+  amount: number,
+  info: { orderId: string; environment: PlatformEnvironment; note?: string; actorId?: string },
+): Promise<number> {
+  const creditBack = Math.min(amount, await creditPaidForOrder(info.orderId).catch(() => 0));
+  const cashBack = amount - creditBack;
+  if (creditBack > 0) await grantCredit({ userId, amount: creditBack, kind: "refund", env: info.environment, orderId: info.orderId, note: info.note ?? "Order refund (credit)" });
+  if (cashBack > 0) return creditWallet(userId, cashBack, { type: "refund", environment: info.environment, orderId: info.orderId, note: info.note ?? "Order refund", actorId: info.actorId });
+  const res = await db.execute({ sql: `SELECT ${balanceColumn(info.environment)} AS balance FROM users WHERE id = ?`, args: [userId] });
+  return Number((res.rows[0] as Row | undefined)?.balance ?? 0);
+}
+
+/**
  * Admin-issued refund of an order's collected payment(s) back to the
  * customer's wallet — the confirmed shape for "refunds from cancelled
  * orders return to the wallet" without a full self-service cancellation
@@ -307,13 +367,7 @@ export async function refundOrderToWallet(input: {
           VALUES (?, ?, 'refund', 'wallet', NULL, ?, 'UGX', 'successful')`,
     args: [newId("pay"), input.orderId, refundable],
   });
-  await creditWallet(input.customerId, refundable, {
-    type: "refund",
-    environment: input.environment,
-    orderId: input.orderId,
-    note: input.note ?? "Order refund",
-    actorId: input.actorId,
-  });
+  await refundToWallet(input.customerId, refundable, { orderId: input.orderId, environment: input.environment, note: input.note, actorId: input.actorId });
   return { refunded: refundable };
 }
 

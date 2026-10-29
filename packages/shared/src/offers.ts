@@ -366,6 +366,12 @@ export type OffersConfig = {
   loyaltyTiers: LoyaltyTier[];
   /** Ride packs can be bought from the wallet. */
   packsPurchasable: boolean;
+  referral: {
+    /** Invitations can be used at all. */
+    enabled: boolean;
+    /** Wallet credit the inviting customer receives when the invited customer completes their first ride. 0 = none. */
+    referrerCreditUgx: number;
+  };
 };
 
 export const DEFAULT_OFFERS_CONFIG: OffersConfig = {
@@ -382,6 +388,7 @@ export const DEFAULT_OFFERS_CONFIG: OffersConfig = {
     { id: "platinum", label: "Platinum", minRides: 100 },
   ],
   packsPurchasable: true,
+  referral: { enabled: true, referrerCreditUgx: 2_000 },
 };
 
 // ---------------------------------------------------------------------------

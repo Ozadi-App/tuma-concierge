@@ -1,4 +1,5 @@
 import { visibleInWorld } from "../practice/people.js";
+import { trackOnline } from "../offers/incentives.js";
 import { Hono } from "hono";
 import { z } from "zod";
 import { CAR_MODEL_CATALOG } from "@peebee/shared";
@@ -296,6 +297,7 @@ carRoutes.post("/car/driver/online", async (c) => {
             lat = COALESCE(excluded.lat, lat), lng = COALESCE(excluded.lng, lng), updated_at = datetime('now')`,
     args: [user.sub, vehicleId, parsed.data.online ? 1 : 0, parsed.data.lat ?? null, parsed.data.lng ?? null],
   });
+  await trackOnline(user.sub, parsed.data.online);
   return c.json({ ok: true, online: parsed.data.online, vehicleId });
 });
 

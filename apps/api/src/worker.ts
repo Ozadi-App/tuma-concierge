@@ -14,6 +14,10 @@ import { sweepWork } from "./work/scheduled.js";
 import { sweepTalent } from "./talent/scheduled.js";
 import { sweepChannels } from "./channels/scheduled.js";
 import { expireStaleVouchers } from "./gas/vouchers.js";
+import { sweepStaleReservations } from "./offers/service.js";
+import { expireCredit } from "./offers/credit.js";
+import { sweepDiscountWallets } from "./offers/discount-wallet.js";
+import { sweepIncentives } from "./offers/incentives.js";
 import { sweepStageEscalations, sweepStageFines, sweepElectionSessions } from "./stages/escalation.js";
 import { sweepActivationMessages } from "./onboarding/service.js";
 import { sweepServicePayments } from "./services-platform/payments.js";
@@ -140,6 +144,12 @@ export default {
       sweepElectionSessions()
         .then((result) => console.log("Stage election sweep:", JSON.stringify(result)))
         .catch((err) => console.error("Stage election sweep failed:", err)),
+    );
+    // Offers: release reservations that never got paid, expire old credit, clear rider discount wallets, pay period incentives.
+    ctx.waitUntil(
+      Promise.all([sweepStaleReservations(), expireCredit(), sweepDiscountWallets(), sweepIncentives()])
+        .then((r) => console.log("Offers sweep:", JSON.stringify(r)))
+        .catch((err) => console.error("Offers sweep failed:", err)),
     );
     if (event.cron === "0 3 * * *") {
       ctx.waitUntil(

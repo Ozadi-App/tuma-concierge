@@ -111,7 +111,7 @@ test("cashback gives credit later, a free ride is capped by its maximum", () => 
 });
 
 test("best_one picks the best offer; stack adds stackable ones within the overall cap", () => {
-  const tiered = { kind: "loyalty_tier", conditions: { loyaltyTiers: ["silver"] } } as const;
+  const tiered: Partial<Offer> = { kind: "loyalty_tier", conditions: { loyaltyTiers: ["silver"] } };
   const a = offer({ id: "a", value: 10, stackable: true, ...tiered });
   const b = offer({ id: "b", value: 30, stackable: true, ...tiered });
   const c = offer({ id: "c", value: 5, stackable: false, ...tiered });

@@ -1,5 +1,6 @@
 import type { MatchingMode } from "@peebee/shared";
 import { MODULES, channelModuleOn, getModule, type ModuleDef } from "@peebee/shared";
+import { DEFAULT_CREDIT_CONFIG, DEFAULT_DISCOUNT_WALLET_CONFIG, DEFAULT_INCENTIVE_CONFIG, DEFAULT_OFFERS_CONFIG } from "@peebee/shared";
 import { DEFAULT_HOME_MENU, DEFAULT_RIDE_TRACKING_SETTINGS, DEFAULT_SHOPPING_UNIT_SETTINGS, DEFAULT_TIME_FEES, type JobExpirySettings, type TimeFeeSettings } from "@peebee/shared";
 import { db } from "../db/client.js";
 import { inPractice } from "../db/practice-context.js";
@@ -23,6 +24,12 @@ const DEFAULTS = {
   /** The customer app's main menu names, the Hive shortcuts and the Hire banner. */
   home_menu_config: JSON.stringify(DEFAULT_HOME_MENU),
   time_fees: JSON.stringify(DEFAULT_TIME_FEES),
+  /** Offers, rider incentives, the rider discount wallet and customer wallet credit: JSON, edited in Admin → Offers.
+   * See packages/shared/src/offers.ts for the shape and the recommended defaults. */
+  offers_config: JSON.stringify(DEFAULT_OFFERS_CONFIG),
+  discount_wallet_config: JSON.stringify(DEFAULT_DISCOUNT_WALLET_CONFIG),
+  incentives_config: JSON.stringify(DEFAULT_INCENTIVE_CONFIG),
+  credit_config: JSON.stringify(DEFAULT_CREDIT_CONFIG),
   /** Which dataset the whole platform — every customer, rider, and the
    * admin dashboard's default view — currently reads and writes against.
    * "live" is real orders/money; "sandbox" is demo/test data, fully

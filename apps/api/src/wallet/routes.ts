@@ -1,4 +1,6 @@
 import { Hono } from "hono";
+import { applyDepositBonus } from "../offers/deposit-bonus.js";
+import { getCreditBalance } from "../offers/credit.js";
 import { z } from "zod";
 import { requireAuth, requireRole } from "../auth/middleware.js";
 import { db } from "../db/client.js";
@@ -44,7 +46,9 @@ walletRoutes.get("/wallet", requireAuth, requireRole("customer"), async (c) => {
     }),
   ]);
   const balance = Number((balanceRes.rows[0] as Row)?.wallet_balance ?? 0);
-  return c.json({ balance, cap, verified, ledger: ledgerRes.rows });
+  // Bonus money (deposit bonuses, cashback, fee top-ups) is shown beside the cash balance; it can only be spent, never withdrawn.
+  const credit = await getCreditBalance(user.sub, environment).catch(() => 0);
+  return c.json({ balance, credit, total: balance + credit, cap, verified, ledger: ledgerRes.rows });
 });
 
 const topupSchema = z.object({
@@ -161,6 +165,7 @@ walletRoutes.get("/wallet/topups/:id/refresh", requireAuth, requireRole("custome
       topupId: id,
       note: "Wallet top-up",
     });
+    await applyDepositBonus({ userId: user.sub, topupId: id, amount: topup.amount as number, env: topup.environment === "sandbox" ? "sandbox" : "live" });
   }
 
   return c.json({ topup: { ...topup, status: "successful" } });
