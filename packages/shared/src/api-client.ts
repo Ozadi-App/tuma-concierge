@@ -2029,8 +2029,8 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized, 
       return request<{ placed: number }>("/v1/admin/practice/orders", { method: "POST" });
     },
     /** Admin: change Live and/or Practice switches for any modules. */
-    async adminUpdateModules(input: ModuleSettingsUpdate & { practiceModeEnabled?: boolean}) {
-      return request<{ modules: ModuleSettings; practiceModeEnabled: boolean }>("/v1/admin/modules", { method: "PUT", body: JSON.stringify(input) });
+    async adminUpdateModules(input: ModuleSettingsUpdate & { practiceModeEnabled?: boolean; practiceSharedWorld?: boolean }) {
+      return request<{ modules: ModuleSettings; practiceModeEnabled: boolean; practiceSharedWorld: boolean }>("/v1/admin/modules", { method: "PUT", body: JSON.stringify(input) });
     },
     /** Admin: over-the-air updates for the mobile apps (which version phones get, on/off). */
     async adminGetAppUpdates() {
@@ -2040,7 +2040,7 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized, 
       return request<AppUpdatesSettings>("/v1/admin/app-updates", { method: "PUT", body: JSON.stringify(input) });
     },
     async adminGetModules() {
-      return request<{ modules: ModuleSettings; practiceModeEnabled: boolean }>("/v1/admin/modules");
+      return request<{ modules: ModuleSettings; practiceModeEnabled: boolean; practiceSharedWorld: boolean }>("/v1/admin/modules");
     },
     async getPracticeStatus(experience: PracticeRole) {
       return request<{ practice: { experience: PracticeRole; available: boolean; completed: boolean; optedOut: boolean; lastPromptedAt: string | null; shouldPrompt: boolean; reminderDays: number } }>(`/v1/practice/${experience}/status`);

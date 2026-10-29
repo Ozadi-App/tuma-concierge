@@ -8,7 +8,7 @@ import { signGasToken } from "../gas/auth.js";
 import { db } from "../db/client.js";
 import { inPractice, runInPractice } from "../db/practice-context.js";
 import { clientIp, consume } from "../lib/ratelimit.js";
-import { getPlatformEnvironment, getSetting } from "../lib/settings.js";
+import { getPlatformEnvironment, getSetting, practiceWorldRunning } from "../lib/settings.js";
 import { placeStarterOrders, topUpDemoOrders } from "./demo-customers.js";
 import { moduleCoverage } from "./coverage.js";
 import { PRACTICE_PERSONA_FOR_ROLE } from "./personas.js";
@@ -22,7 +22,7 @@ async function modeOn(): Promise<boolean> {
 
 /** Is the shared practice world on offer to this person right now? The apps fall back to their built-in sample when it is not. */
 practiceRoutes.get("/practice/world", requireAuth, async (c) => {
-  const available = await modeOn();
+  const available = (await modeOn()) && (await practiceWorldRunning());
   return c.json({ available, seeded: available ? await isPracticeSeeded() : false });
 });
 
@@ -35,6 +35,8 @@ const sessionSchema = z.object({ role: z.enum(["customer", "rider", "merchant", 
 practiceRoutes.post("/practice/session", async (c) => {
   if (inPractice()) return c.json({ error: "already_practising", message: "You are already in practice." }, 409);
   if (!(await modeOn())) return c.json({ error: "practice_off", message: "Practice is switched off right now." }, 403);
+  // Practice on each person's own device: the apps use their built-in simulator, which never touches the database.
+  if (!(await practiceWorldRunning())) return c.json({ error: "practice_on_device", message: "Practice runs on your device." }, 403);
   // Anyone may practise, signed in or not (a pharmacy or agent waiting for approval has no account to sign in with). The only
   // thing handed out is a demo persona's session, which can reach nothing but the practice world.
   const quota = await consume(`practice-session:${clientIp(c)}`, 240, 60 * 60);

@@ -51,6 +51,7 @@ test("practice and sandbox share one database; real people and demo people never
   await db.execute({ sql: "UPDATE users SET admin_role = 'super_admin' WHERE id = 'real_admin'", args: [] });
   await db.execute({ sql: "INSERT INTO riders (user_id, verified, is_online, stage_lat, stage_lng) VALUES ('real_rider', 1, 1, 0.0612, 32.4637)", args: [] });
   await db.execute({ sql: "INSERT INTO settings (key, value) VALUES ('user_practice_mode_enabled', '1') ON CONFLICT(key) DO UPDATE SET value='1'", args: [] });
+  await db.execute({ sql: "INSERT INTO settings (key, value) VALUES ('practice_shared_world', '1') ON CONFLICT(key) DO UPDATE SET value='1'", args: [] });
   invalidateSettingsCache();
   const rider = await signToken({ sub: "real_rider", role: "rider" });
   const customer = await signToken({ sub: "real_cust", role: "customer" });

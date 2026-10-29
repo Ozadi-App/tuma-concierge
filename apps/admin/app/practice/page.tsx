@@ -16,6 +16,7 @@ const COVERAGE_CLASS: Record<"full" | "partial" | "none", string> = {
 export default function PracticePage() {
   const [flags, setFlags] = useState<ModuleFlags | null>(null);
   const [practiceMode, setPracticeMode] = useState(false);
+  const [sharedWorld, setSharedWorld] = useState(false);
   const [world, setWorld] = useState<PracticeWorldStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
@@ -23,7 +24,7 @@ export default function PracticePage() {
 
   useEffect(() => {
     api.adminGetModules()
-      .then((r) => { setFlags(r.modules.flags); setPracticeMode(r.practiceModeEnabled); })
+      .then((r) => { setFlags(r.modules.flags); setPracticeMode(r.practiceModeEnabled); setSharedWorld(r.practiceSharedWorld); })
       .catch((err) => setError(errorMessage(err)))
       .finally(() => setLoading(false));
     api.adminPracticeWorld().then(setWorld).catch(() => undefined);
@@ -38,7 +39,7 @@ export default function PracticePage() {
     setBusy(label); setError(null);
     try {
       const r = await api.adminUpdateModules(update);
-      setFlags(r.modules.flags); setPracticeMode(r.practiceModeEnabled);
+      setFlags(r.modules.flags); setPracticeMode(r.practiceModeEnabled); setSharedWorld(r.practiceSharedWorld);
     } catch (err) { setError(errorMessage(err)); }
     finally { setBusy(null); }
   }
@@ -60,6 +61,13 @@ export default function PracticePage() {
               <span className="min-w-0">
                 <span className="block text-sm font-bold text-ink">Practice mode {practiceMode ? "is available" : "is off"}</span>
                 <span className="block text-xs text-ink-500">Lets customers, riders, restaurants, merchants, fuel attendants and learners open the simulated world from their account. Nothing in it creates a real order, moves a balance, notifies a person or reaches a payment provider.</span>
+              </span>
+            </label>
+            <label className="flex items-start gap-3">
+              <Switch aria-label="Shared practice world" checked={sharedWorld} disabled={busy === "shared"} onChange={(e) => save("shared", { practiceSharedWorld: e.target.checked })} className="mt-0.5 shrink-0" />
+              <span className="min-w-0">
+                <span className="block text-sm font-bold text-ink">{sharedWorld ? "Practice runs on the shared world" : "Practice runs on each person\u2019s own device"}</span>
+                <span className="block text-xs text-ink-500">On each device (recommended) is free: the app plays the whole journey itself with sample people and screens, and nothing is stored on the platform. The shared world keeps demo people and orders on the server so practising riders, merchants and restaurants see what practising customers do, but a background job reads the database every 2 minutes to keep it busy. It is always on while the whole platform is in sandbox.</span>
               </span>
             </label>
             <p className="text-xs text-ink-500">Which modules exist in the practice world is set on <Link href="/settings/services" className="font-bold text-ink underline">Services</Link> (Practice tab). A module can be on there while it is still off in Live.</p>
