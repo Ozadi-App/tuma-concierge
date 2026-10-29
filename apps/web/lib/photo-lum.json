@@ -1,0 +1,22 @@
+{
+ "ride": {
+  "left": 170,
+  "right": 63
+ },
+ "buy": {
+  "left": 117,
+  "right": 88
+ },
+ "eat": {
+  "left": 134,
+  "right": 65
+ },
+ "learn": {
+  "left": 169,
+  "right": 61
+ },
+ "hive": {
+  "left": 150,
+  "right": 49
+ }
+}

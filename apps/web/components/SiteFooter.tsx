@@ -20,10 +20,6 @@ export function SiteFooter() {
               <Mail className="h-4 w-4" aria-hidden />
               support@peebee.online
             </a>
-            <a href="tel:+256783335335" className="footer-link">
-              <Phone className="h-4 w-4" aria-hidden />
-              0783 335 335
-            </a>
             <p className="footer-link">
               <MapPin className="h-4 w-4" aria-hidden />
               Plot 15, Mugula Road, Entebbe

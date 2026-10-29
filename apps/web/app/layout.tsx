@@ -1,50 +1,42 @@
 import type { Metadata, Viewport } from "next";
-import Script from "next/script";
+import { Inter, Instrument_Serif } from "next/font/google";
+import { Shell } from "../components/Shell";
 import "./globals.css";
-import { ServiceWorkerRegister } from "../components/ServiceWorkerRegister";
-import { DataRefresh } from "../components/DataRefresh";
+import "./desktop.css";
 
-const THEME_INIT_SCRIPT = `
-(function () {
-  try {
-    var stored = localStorage.getItem("peebee-theme");
-    var theme;
-    if (stored === "light" || stored === "dark") {
-      theme = stored;
-    } else {
-      var hour = new Date().getHours();
-      theme = hour >= 6 && hour < 19 ? "light" : "dark";
-    }
-    document.documentElement.setAttribute("data-theme", theme);
-  } catch (e) {}
-})();
-`;
+const sans = Inter({ subsets: ["latin"], variable: "--font-sans", display: "swap" });
+const display = Instrument_Serif({ subsets: ["latin"], weight: "400", style: ["normal", "italic"], variable: "--font-display", display: "swap" });
 
 export const metadata: Metadata = {
-  title: "Peebee — Uganda's delivery & errands platform",
-  description: "Rides, food, shopping, and parcels — one app, verified riders. Fast, reliable, trusted.",
-  icons: {
-    icon: [
-      { url: "/favicon.svg?v=logo-6", sizes: "any", type: "image/svg+xml" },
-      { url: "/icons/icon-192.png?v=logo-6", sizes: "192x192", type: "image/png" },
-    ],
-    apple: "/icons/apple-touch-icon.png?v=logo-6",
-  },
+  metadataBase: new URL("https://peebee.online"),
+  title: { default: "Peebee: ride, buy, eat, learn, work", template: "%s · Peebee" },
+  description: "One account for rides, shopping, food, learning and home services in Uganda. Pay when the work is done.",
+  icons: { icon: [{ url: "/favicon.svg", type: "image/svg+xml" }, { url: "/icons/favicon-32.png", sizes: "32x32", type: "image/png" }], apple: "/icons/apple-touch-icon.png" },
+  manifest: "/manifest.webmanifest",
+  openGraph: { title: "Peebee", description: "Ride, Buy, Eat, Learn, Work. One account, paid when the work is done.", images: ["/photos/hero-ride.webp"], siteName: "Peebee" },
 };
 
 export const viewport: Viewport = {
-  themeColor: "#000000",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#faf7f2" },
+    { media: "(prefers-color-scheme: dark)", color: "#1a1917" },
+  ],
   viewportFit: "cover",
+  width: "device-width",
+  initialScale: 1,
 };
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+// Runs before paint so the theme never flashes. Same rule as the old site: saved choice, else light 06:00–19:00.
+const themeInit = `try{var m=localStorage.getItem("peebee-theme");var h=new Date().getHours();var t=m==="light"||m==="dark"?m:(h>=6&&h<19?"light":"dark");document.documentElement.setAttribute("data-theme",t)}catch(e){document.documentElement.setAttribute("data-theme","light")}`;
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" suppressHydrationWarning>
-      <body className="min-h-dvh bg-cream text-ink"><ServiceWorkerRegister />
-        <Script id="theme-init" strategy="beforeInteractive">
-          {THEME_INIT_SCRIPT}
-        </Script>
-        <DataRefresh>{children}</DataRefresh>
+    <html lang="en" data-theme="light" className={`${sans.variable} ${display.variable}`} suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInit }} />
+      </head>
+      <body>
+        <Shell>{children}</Shell>
       </body>
     </html>
   );

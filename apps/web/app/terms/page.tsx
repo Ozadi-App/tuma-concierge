@@ -1,8 +1,4 @@
-import { BrandLogo } from "../../components/BrandLogo";
 import type { Metadata } from "next";
-import Link from "next/link";
-import { SiteFooter } from "../../components/SiteFooter";
-import { ThemeModeToggle } from "../../components/ThemeModeToggle";
 
 export const metadata: Metadata = {
   title: "Terms of Use | Peebee",
@@ -11,25 +7,13 @@ export const metadata: Metadata = {
 
 export default function TermsPage() {
   return (
-    <main className="min-h-screen bg-cream">
-      <header className="mx-auto flex max-w-7xl items-center justify-between px-5 py-5 sm:px-8">
-        <Link href="/" aria-label="Peebee home">
-          <BrandLogo />
-        </Link>
-        <div className="flex items-center gap-2">
-          <ThemeModeToggle />
-          <Link href="/" className="button button-light">
-            Home
-          </Link>
-        </div>
-      </header>
+    <div className="plain wrap legal">
+<section>
+        <p className="kicker">Legal</p>
+        <h1 className="display">Terms of Use</h1>
+        <p className="quiet">Last updated: September 25, 2026</p>
 
-      <section className="mx-auto max-w-4xl px-5 py-12 sm:px-8">
-        <p className="eyebrow">Legal</p>
-        <h1 className="mt-3 text-4xl font-black leading-tight text-ink sm:text-5xl">Terms of Use</h1>
-        <p className="mt-4 text-sm text-ink-500">Last updated: September 25, 2026</p>
-
-        <div className="legal-card mt-8 space-y-8">
+        <div className="legal-card">
           <section>
             <h2>1. Using Peebee</h2>
             <p>
@@ -87,8 +71,6 @@ export default function TermsPage() {
           </section>
         </div>
       </section>
-
-      <SiteFooter />
-    </main>
+    </div>
   );
 }
