@@ -477,7 +477,7 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized, 
 
     // Onboarding verification (either phone or email confirms the account)
     async requestVerification(channel: "sms" | "email") {
-      return request<{ sent: true; channel: "sms" | "email"; target: string; devCode?: string }>(
+      return request<{ sent: true; channel: "sms" | "email"; via?: "sms" | "email" | "whatsapp"; target: string; devCode?: string }>(
         "/v1/auth/verify/request",
         { method: "POST", body: JSON.stringify({ channel }) },
       );

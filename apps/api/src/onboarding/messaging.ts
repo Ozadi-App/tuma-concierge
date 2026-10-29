@@ -15,6 +15,8 @@ export const settingsSchema = policySchema.extend({
   whatsappPhoneId:z.string().regex(/^\d*$/).max(30), whatsappTemplate:z.string().regex(/^[a-z0-9_]*$/).max(120),
   whatsappLanguage:z.string().regex(/^[a-z]{2}(_[A-Z]{2})?$/), whatsappVersion:z.string().regex(/^v\d+\.\d+$/),
   whatsappToken:z.string().max(4096).optional(), clearWhatsappToken:z.boolean().optional(),
+  verifyWhatsappEnabled:z.boolean().optional(), verifyWhatsappTemplate:z.string().regex(/^[a-z0-9_]*$/).max(120).optional(),
+  verifyWhatsappLanguage:z.string().regex(/^[a-z]{2}(_[A-Z]{2})?$/).optional(),
   smsUsername:z.string().max(120), smsKey:z.string().max(4096).optional(), clearSmsKey:z.boolean().optional(),
 });
 async function read(key:string, fallback=''):Promise<string> {
@@ -27,20 +29,22 @@ export async function secret(key:string, env:string):Promise<string> {
   return process.env[env] ?? '';
 }
 export async function onboardingSettings():Promise<OnboardingSettings> {
-  const [enabled,hours,cooldown,channels,phone,template,language,version,username,waSet,smsSet,email,maxAttempts] = await Promise.all([
+  const [enabled,hours,cooldown,channels,phone,template,language,version,username,waSet,smsSet,email,maxAttempts,verifyEnabled,verifyTemplate,verifyLanguage] = await Promise.all([
     read('enabled','1'),read('activation_hours','72'),read('resend_seconds','60'),read('channels','["email","sms","whatsapp"]'),
     read('whatsapp_phone_id'),read('whatsapp_template'),read('whatsapp_language','en'),read('whatsapp_version','v25.0'),
     read('sms_username',process.env.AFRICASTALKING_USERNAME ?? ''),read('whatsapp_token'),read('sms_key'),emailProviderConfigured(),read('max_attempts','5'),
+    read('verify_whatsapp_enabled','0'),read('verify_whatsapp_template'),read('verify_whatsapp_language','en'),
   ]);
   const whatsappTokenSet=!!waSet || !!process.env.WHATSAPP_ACCESS_TOKEN;
   const smsKeySet=!!smsSet || !!process.env.AFRICASTALKING_API_KEY;
   return {enabled:enabled==='1',activationHours:Number(hours),resendSeconds:Number(cooldown),maxAttempts:Number(maxAttempts),channels:JSON.parse(channels),
     whatsappPhoneId:phone,whatsappTemplate:template,whatsappLanguage:language,whatsappVersion:version,
-    whatsappTokenSet,smsUsername:username,smsKeySet,providers:{email,sms:!!username&&smsKeySet,whatsapp:!!phone&&!!template&&whatsappTokenSet}};
+    whatsappTokenSet,verifyWhatsappEnabled:verifyEnabled==='1',verifyWhatsappTemplate:verifyTemplate,verifyWhatsappLanguage:verifyLanguage,smsUsername:username,smsKeySet,providers:{email,sms:!!username&&smsKeySet,whatsapp:!!phone&&!!template&&whatsappTokenSet}};
 }
 export async function saveOnboardingSettings(data:z.infer<typeof settingsSchema>):Promise<void> {
   const values:Record<string,string>={enabled:data.enabled?'1':'0',activation_hours:String(data.activationHours),resend_seconds:String(data.resendSeconds),max_attempts:String(data.maxAttempts),channels:JSON.stringify(data.channels),
-    whatsapp_phone_id:data.whatsappPhoneId,whatsapp_template:data.whatsappTemplate,whatsapp_language:data.whatsappLanguage,whatsapp_version:data.whatsappVersion,sms_username:data.smsUsername};
+    whatsapp_phone_id:data.whatsappPhoneId,whatsapp_template:data.whatsappTemplate,whatsapp_language:data.whatsappLanguage,whatsapp_version:data.whatsappVersion,sms_username:data.smsUsername,
+    verify_whatsapp_enabled:data.verifyWhatsappEnabled?'1':'0',verify_whatsapp_template:data.verifyWhatsappTemplate??'',verify_whatsapp_language:data.verifyWhatsappLanguage??'en'};
   for(const [field,clear,value] of [['whatsapp_token',data.clearWhatsappToken,data.whatsappToken],['sms_key',data.clearSmsKey,data.smsKey]] as const) {
     if(clear) values[field]='';
     else if(value?.trim()) {

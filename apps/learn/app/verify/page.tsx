@@ -14,6 +14,7 @@ export default function VerifyPage() {
   const [channel, setChannel] = useState<Channel>("email");
   const [code, setCode] = useState("");
   const [sentTarget, setSentTarget] = useState<string | null>(null);
+  const [sentVia, setSentVia] = useState<string | null>(null);
   const [devCode, setDevCode] = useState<string | null>(null);
   const [cooldown, setCooldown] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -47,6 +48,7 @@ export default function VerifyPage() {
     try {
       const res = await api.requestVerification(c);
       setSentTarget(res.target);
+      setSentVia(res.via ?? null);
       if (res.devCode) setDevCode(res.devCode);
       setCooldown(30);
     } catch (err) {
@@ -93,7 +95,7 @@ export default function VerifyPage() {
           <h1 className="text-xl font-bold text-ink">Verify your account</h1>
           <p className="text-sm text-ink-500">
             {channel === "sms"
-              ? `Enter the 6-digit code we texted to ${sentTarget ?? user?.phone ?? "your phone"}.`
+              ? `Enter the 6-digit code we ${sentVia === "whatsapp" ? "sent on WhatsApp to" : "texted to"} ${sentTarget ?? user?.phone ?? "your phone"}.`
               : `Enter the 6-digit code we emailed to ${sentTarget ?? user?.email ?? "your email"}.`}
           </p>
         </div>

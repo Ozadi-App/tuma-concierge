@@ -16,6 +16,8 @@ export type OnboardingSettings = {
   channels: Array<'email'|'sms'|'whatsapp'>;
   whatsappPhoneId: string; whatsappTemplate: string; whatsappLanguage: string; whatsappVersion: string;
   whatsappTokenSet: boolean; smsUsername: string; smsKeySet: boolean;
+  /** Send phone verification codes over WhatsApp first (SMS is the fallback). */
+  verifyWhatsappEnabled: boolean; verifyWhatsappTemplate: string; verifyWhatsappLanguage: string;
   providers: { email: boolean; sms: boolean; whatsapp: boolean };
 };
 export type SalesAgent = { user_id: string; name: string; email: string | null; phone: string | null; enabled: number; activated_at: string | null };

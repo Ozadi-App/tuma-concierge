@@ -3,6 +3,7 @@ import { newId } from "../lib/ids.js";
 import { generateCode, generateLinkToken, hashCode } from "./otp.js";
 import { isResendConfigured, sendVerificationEmail } from "./email.js";
 import { isAfricasTalkingConfigured, sendVerificationSms } from "./sms.js";
+import { isWhatsappVerificationReady, sendVerificationWhatsapp } from "./whatsapp.js";
 
 const CODE_TTL_MINUTES = 10;
 
@@ -26,7 +27,10 @@ export function maskTarget(channel: "sms" | "email", target: string): string {
 }
 
 /** Creates a fresh OTP and dispatches it via the configured provider for
- * the channel. Falls back to logging the code when no provider is
+ * the channel. Phone ("sms") codes go over WhatsApp first when Admin has
+ * enabled it, falling back to SMS if WhatsApp isn't ready or the send fails;
+ * the stored channel stays "sms" because it is still phone verification, and
+ * `via` reports how the code actually went out. Falls back to logging the code when no provider is
  * configured (local dev, or staging before API keys are set) so the flow
  * stays fully testable end-to-end — the caller can surface `devCode` in
  * that case. Email "verify" codes also get a one-click confirmation link;
@@ -36,7 +40,7 @@ export async function createAndSendOtp(
   channel: "sms" | "email",
   target: string,
   purpose: "verify" | "reset" = "verify",
-): Promise<{ devCode?: string }> {
+): Promise<{ devCode?: string; via?: "email" | "sms" | "whatsapp" }> {
   const code = generateCode();
   const codeHash = await hashCode(code);
   const expiresAt = new Date(Date.now() + CODE_TTL_MINUTES * 60 * 1000).toISOString();
@@ -59,11 +63,21 @@ export async function createAndSendOtp(
       ? `${process.env.PUBLIC_API_URL ?? "https://peebee-api.peebeeapp.workers.dev"}/v1/auth/verify/confirm-link?token=${linkToken}`
       : undefined;
     await sendVerificationEmail(target, code, verifyLink, purpose);
-    return {};
+    return { via: "email" };
   }
-  if (channel === "sms" && isAfricasTalkingConfigured()) {
-    await sendVerificationSms(target, code);
-    return {};
+  if (channel === "sms") {
+    if (await isWhatsappVerificationReady()) {
+      try {
+        await sendVerificationWhatsapp(target, code);
+        return { via: "whatsapp" };
+      } catch (err) {
+        console.error("[verify] WhatsApp send failed, falling back to SMS:", err);
+      }
+    }
+    if (isAfricasTalkingConfigured()) {
+      await sendVerificationSms(target, code);
+      return { via: "sms" };
+    }
   }
 
   console.log(`[verify] ${channel} code for ${target}: ${code}`);
