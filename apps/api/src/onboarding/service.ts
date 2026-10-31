@@ -42,7 +42,7 @@ const profileSchema=z.object({
 export const enrollmentSchema=z.object({
   requestId:z.string().uuid(),accountType:z.enum(['customer','rider','partner','restaurant','merchant','gas']),name:z.string().trim().min(2).max(80),
   email:z.preprocess(v=>typeof v==='string'&&v.trim()?v.trim().toLowerCase():undefined,z.string().email().max(160).optional()),phone,
-  preferredChannel:z.enum(['auto','email','sms','whatsapp']).default('auto'),consent:z.literal(true),profile:profileSchema.default({}),
+  preferredChannel:z.enum(['auto','email','sms','whatsapp']).default('auto'),consent:z.literal(true),profile:profileSchema.prefault({}),
 }).superRefine((d,ctx)=>{
   if(!d.email&&!d.phone)ctx.addIssue({code:'custom',path:['email'],message:'Add an email or phone number.'});
   if(d.preferredChannel==='email'&&!d.email)ctx.addIssue({code:'custom',path:['email'],message:'Email is required for email activation.'});

@@ -69,7 +69,7 @@ const profileSchema = z.object({
 export const pricingConfigSchema = z.object({
   profiles: z.object(Object.fromEntries(FARE_SERVICES.map((s) => [s, profileSchema])) as Record<(typeof FARE_SERVICES)[number], typeof profileSchema>),
   multipliers: z.object({
-    fuel: z.object({ enabled: z.boolean(), percent: z.number().min(-50).max(300), perService: z.record(z.enum(FARE_SERVICES), z.number().min(-50).max(300)) }),
+    fuel: z.object({ enabled: z.boolean(), percent: z.number().min(-50).max(300), perService: z.partialRecord(z.enum(FARE_SERVICES), z.number().min(-50).max(300)) }),
     peak: z.object({ enabled: z.boolean(), percent: z.number().min(-50).max(300), windows: z.array(windowSchema).max(14) }),
     night: z.object({ enabled: z.boolean(), percent: z.number().min(-50).max(300), windows: z.array(windowSchema).max(14) }),
     demand: z.object({ enabled: z.boolean(), levels: z.array(z.object({ ratio: z.number().min(1).max(100), percent: z.number().min(-50).max(300) })).max(10) }),

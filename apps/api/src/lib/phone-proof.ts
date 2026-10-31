@@ -32,6 +32,25 @@ async function hmac(text: string): Promise<string> {
 const b64 = (s: string) => btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 const unb64 = (s: string) => atob(s.replace(/-/g, "+").replace(/_/g, "/"));
 
+type Challenge = { p: string; u: ProofPurpose; e: number; s: string; m: string };
+function readChallenge(value: string): Challenge | null {
+  try {
+    const d = JSON.parse(unb64(value));
+    if (typeof d?.p !== "string" || normalizePhone(d.p) !== d.p ||
+        !["service_booking", "b2b_inquiry", "digital_access", "merchant_portal"].includes(d.u) ||
+        !Number.isSafeInteger(d.e) || typeof d.s !== "string" || !/^[a-f0-9]{16}$/.test(d.s) ||
+        typeof d.m !== "string" || !/^[a-f0-9]{64}$/.test(d.m)) return null;
+    return { p: d.p, u: d.u, e: d.e, s: d.s, m: d.m };
+  } catch { return null; }
+}
+
+/** Equivalent encodings must spend the same attempt budget. Every field in
+ * this identity is MAC-bound; changing it also invalidates the challenge. */
+export function phoneChallengeIdentity(value: string): string | null {
+  const d = readChallenge(value);
+  return d ? JSON.stringify(d) : null;
+}
+
 function equal(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
   let diff = 0;
@@ -54,13 +73,8 @@ export async function makeChallenge(phone: string, purpose: ProofPurpose, code: 
 
 /** Check a code against a challenge; on success returns a proof. */
 export async function redeemChallenge(challenge: string, code: string): Promise<{ ok: true; proof: string; phone: string; expiresInSeconds: number } | { ok: false; reason: "invalid" | "expired" }> {
-  let data: { p: string; u: ProofPurpose; e: number; s: string; m: string };
-  try {
-    data = JSON.parse(unb64(challenge));
-  } catch {
-    return { ok: false, reason: "invalid" };
-  }
-  if (!data?.p || !data.u || !data.e || !data.s || !data.m) return { ok: false, reason: "invalid" };
+  const data = readChallenge(challenge);
+  if (!data) return { ok: false, reason: "invalid" };
   if (data.e < Math.floor(Date.now() / 1000)) return { ok: false, reason: "expired" };
   const expected = await hmac(`c|${data.p}|${data.u}|${data.e}|${data.s}|${code}`);
   if (!equal(expected, data.m)) return { ok: false, reason: "invalid" };

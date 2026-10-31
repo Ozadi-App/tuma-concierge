@@ -1,3 +1,4 @@
+import { patchSchema } from "../lib/patch-schema.js";
 import { Hono } from "hono";
 import { z } from "zod";
 import { logActivity } from "../admin/activity.js";
@@ -95,7 +96,7 @@ const categoryFields = z.object({
 
 adminRoutes.post("/admin/categories", requirePermission("talent.manage"), async (c) => {
   const user = c.get("user");
-  const parsed = categoryFields.partial().required({ name: true }).safeParse(await c.req.json().catch(() => ({})));
+  const parsed = patchSchema(categoryFields).required({ name: true }).safeParse(await c.req.json().catch(() => ({})));
   if (!parsed.success) return c.json({ error: "invalid_body", issues: parsed.error.issues }, 400);
   const d = parsed.data;
   const id = newId("tcat");
@@ -109,7 +110,7 @@ adminRoutes.post("/admin/categories", requirePermission("talent.manage"), async 
 
 adminRoutes.patch("/admin/categories/:id", requirePermission("talent.manage"), async (c) => {
   const user = c.get("user");
-  const parsed = categoryFields.partial().safeParse(await c.req.json().catch(() => ({})));
+  const parsed = patchSchema(categoryFields).safeParse(await c.req.json().catch(() => ({})));
   if (!parsed.success) return c.json({ error: "invalid_body", issues: parsed.error.issues }, 400);
   const d = parsed.data;
   const res = await db.execute({
@@ -218,7 +219,7 @@ adminRoutes.post("/admin/plans", requirePermission("talent.manage"), async (c) =
 
 adminRoutes.patch("/admin/plans/:id", requirePermission("talent.manage"), async (c) => {
   const user = c.get("user");
-  const parsed = planSchema.omit({ code: true, audience: true }).partial().safeParse(await c.req.json().catch(() => ({})));
+  const parsed = patchSchema(planSchema.omit({ code: true, audience: true })).safeParse(await c.req.json().catch(() => ({})));
   if (!parsed.success) return c.json({ error: "invalid_body", issues: parsed.error.issues }, 400);
   const d = parsed.data;
   const before = (await db.execute({ sql: "SELECT * FROM talent_plans WHERE id = ?", args: [(c.req.param("id") as string)] })).rows[0] as Row | undefined;

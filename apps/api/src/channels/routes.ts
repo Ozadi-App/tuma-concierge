@@ -1,3 +1,4 @@
+import { patchSchema } from "../lib/patch-schema.js";
 import { Hono } from "hono";
 import { z } from "zod";
 import type { ChannelsConfig } from "@peebee/shared";
@@ -142,7 +143,7 @@ channelsRoutes.post("/channels", requireAuth, async (c) => {
 
 channelsRoutes.patch("/channels/me", requireAuth, async (c) => {
   try {
-    const body = channelSchema.partial().safeParse(await c.req.json().catch(() => ({})));
+    const body = patchSchema(channelSchema).safeParse(await c.req.json().catch(() => ({})));
     if (!body.success) throw new ChannelsError("invalid_body", "Check the details and try again.", 400);
     const ch = await updateChannel(c.get("user").sub, body.data);
     return c.json({ channel: await serializeChannel(ch, originOf(c), c.get("user").sub) });
@@ -278,7 +279,7 @@ channelsRoutes.post("/posts", requireAuth, async (c) => {
 channelsRoutes.patch("/posts/:id", requireAuth, async (c) => {
   try {
     const user = c.get("user");
-    const body = postSchema.partial().safeParse(await c.req.json().catch(() => ({})));
+    const body = patchSchema(postSchema).safeParse(await c.req.json().catch(() => ({})));
     if (!body.success) throw new ChannelsError("invalid_body", "Check the post and try again.", 400);
     const post = await updatePost({ sub: user.sub, role: user.role }, c.req.param("id") as string, body.data as Partial<PostInput>);
     return c.json({ post: (await serializePosts([post], originOf(c), user.sub, await requireChannels()))[0] });
@@ -509,7 +510,7 @@ channelsRoutes.post("/creator/tiers", requireAuth, async (c) => {
 
 channelsRoutes.patch("/creator/tiers/:id", requireAuth, async (c) => {
   try {
-    const body = tierSchema.partial().safeParse(await c.req.json().catch(() => ({})));
+    const body = patchSchema(tierSchema).safeParse(await c.req.json().catch(() => ({})));
     if (!body.success) throw new ChannelsError("invalid_body", "Check the tier and try again.", 400);
     await updateTier(c.get("user").sub, c.req.param("id") as string, body.data);
     return c.json({ ok: true });

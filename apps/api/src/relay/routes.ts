@@ -1,3 +1,4 @@
+import { patchSchema } from "../lib/patch-schema.js";
 import { Hono, type Context } from "hono";
 import { roundFare } from "@peebee/shared";
 import { getDeliverySettings } from "../lib/settings.js";
@@ -392,7 +393,7 @@ relayRoutes.get("/admin/relay/settings", requirePermission("settings.manage"), a
   return c.json({ settings: await getRelaySettings(), ready: await relayReady(), stationsReady: await relayStationsReady(), stagesReady: await relayMeetReady() });
 });
 
-const settingsSchema = z.object({
+const settingsSchema = patchSchema(z.object({
   enabled: z.boolean(),
   minDistanceKm: z.number().min(1).max(500),
   maxAccessKm: z.number().min(0.5).max(100),
@@ -408,7 +409,7 @@ const settingsSchema = z.object({
   sandboxDemoStepSeconds: z.number().int().min(5).max(600),
   payBeforeRider: z.boolean(),
   directMaxHours: z.number().int().min(1).max(24),
-}).partial();
+}));
 
 relayRoutes.put("/admin/relay/settings", requirePermission("settings.manage"), async (c) => {
   const parsed = settingsSchema.safeParse(await c.req.json().catch(() => ({})));
@@ -483,7 +484,7 @@ relayRoutes.patch("/admin/relay/routes/:id", requirePermission("settings.manage"
   const id = c.req.param("id") as string;
   const before = (await db.execute({ sql: "SELECT * FROM relay_routes WHERE id = ?", args: [id] })).rows[0] as Row | undefined;
   if (!before) return c.json({ error: "not_found" }, 404);
-  const parsed = z.object(routeFields).partial().safeParse(await c.req.json().catch(() => ({})));
+  const parsed = patchSchema(z.object(routeFields)).safeParse(await c.req.json().catch(() => ({})));
   if (!parsed.success) return c.json({ error: "invalid_body", issues: parsed.error.issues }, 400);
   const d = parsed.data;
   const columns: [string, unknown][] = [
@@ -656,7 +657,7 @@ relayRoutes.patch("/admin/relay/stages/:id", requirePermission("settings.manage"
   const id = c.req.param("id") as string;
   const before = (await db.execute({ sql: "SELECT * FROM relay_route_stages WHERE id = ?", args: [id] })).rows[0] as Row | undefined;
   if (!before) return c.json({ error: "not_found" }, 404);
-  const parsed = z.object(stageFields).partial().safeParse(await c.req.json().catch(() => ({})));
+  const parsed = patchSchema(z.object(stageFields)).safeParse(await c.req.json().catch(() => ({})));
   if (!parsed.success) return c.json({ error: "invalid_body", issues: parsed.error.issues }, 400);
   const d = parsed.data;
   const outlet = d.outletId ? await outletLocation(d.outletId) : null;

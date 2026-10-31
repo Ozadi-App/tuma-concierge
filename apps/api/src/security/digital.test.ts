@@ -27,6 +27,7 @@ async function setup() {
 
 test("buying a download: wallet -> merchant balance and ledger, a hashed token, a counted download", async () => {
   const { client, admin, seller, make } = await setup();
+  await admin.setOptions({ digital_proxy_trusted_hosts: ["files.example"] });
   const { product } = await make({ title: "Hydroponics Guide", price_ugx: 20000, file_url: "https://files.example/guide.pdf", max_downloads: 2, expiry_days: 10 });
   const buyer = await shopper(client, "u_buy1", 50000);
 

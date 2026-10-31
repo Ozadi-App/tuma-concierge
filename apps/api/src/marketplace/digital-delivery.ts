@@ -14,6 +14,7 @@ import {
 } from "./digital-sales.js";
 import { findPublicStore } from "./public.js";
 import { getMerchantStore } from "./digital-lms.js";
+import { fetchTrustedFile, trustedFileUrl } from "./file-proxy.js";
 
 type Row = Record<string, unknown>;
 
@@ -165,6 +166,14 @@ digitalDeliveryRoutes.post("/marketplace/digital-fulfillments/:token/download", 
   if (!state.usable) return c.json({ error: state.reason, message: MESSAGES[state.reason!] }, 403);
   if (!row.product_file_key && !row.product_file_url) return c.json({ error: "no_file", message: "This purchase has no file to download." }, 409);
 
+  const options = await getOptions(["digital_storage_backend", "digital_proxy_trusted_hosts"]);
+  const backend = String(options.digital_storage_backend);
+  // Refuse before charging a download attempt. Private R2 files are unaffected.
+  if (!row.product_file_key && backend !== "external_url_via_redirect" &&
+      !trustedFileUrl(String(row.product_file_url), options.digital_proxy_trusted_hosts as string[])) {
+    return c.json({ error: "file_host_untrusted", message: "This file's host is not approved. Ask the store to upload the file to Peebee." }, 409);
+  }
+
   const max = Number(row.max_downloads ?? 0);
   const claim = await db.execute({
     sql: `UPDATE store_digital_fulfillments SET download_count = download_count + 1
@@ -174,7 +183,6 @@ digitalDeliveryRoutes.post("/marketplace/digital-fulfillments/:token/download", 
   if (!claim.rowsAffected) return c.json({ error: "limit_reached", message: MESSAGES.limit_reached }, 403);
   await db.execute({ sql: "UPDATE store_digital_products SET downloads_count = downloads_count + 1 WHERE id = ?", args: [String(row.digital_product_id)] });
 
-  const backend = String((await getOptions(["digital_storage_backend"])).digital_storage_backend);
   if (!row.product_file_key && backend === "external_url_via_redirect") {
     return c.json({ ok: true, downloadUrl: String(row.product_file_url), via: "merchant_address", fileName: row.product_file_name });
   }
@@ -209,7 +217,8 @@ digitalDeliveryRoutes.get("/marketplace/digital-files/:link", async (c) => {
   }
   const url = String(row.file_url ?? "");
   if (!isHttpsUrl(url)) return c.json({ error: "file_missing", message: "The file is missing. Please tell the store." }, 404);
-  const upstream = await fetch(url, { redirect: "follow", signal: AbortSignal.timeout(30000) }).catch(() => null);
+  const hosts = (await getOptions(["digital_proxy_trusted_hosts"])).digital_proxy_trusted_hosts as string[];
+  const upstream = await fetchTrustedFile(url, hosts).catch(() => null);
   if (!upstream?.ok || !upstream.body) return c.json({ error: "file_unavailable", message: "The store's file could not be fetched right now." }, 502);
   headers["Content-Type"] = upstream.headers.get("content-type") ?? "application/octet-stream";
   const length = upstream.headers.get("content-length");
