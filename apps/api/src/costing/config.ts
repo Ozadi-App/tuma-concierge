@@ -3,7 +3,8 @@
  * over the defaults, so an option added later takes its default instead of going missing.
  */
 import {
-  DEFAULT_MONEY_FLOW_CONFIG, DEFAULT_PRICING_CONFIG, FARE_SERVICES, MONEY_MODULES, type MoneyFlowConfig, type PricingConfig,
+  DEFAULT_MONEY_FLOW_CONFIG, DEFAULT_PRICING_CONFIG, DEFAULT_ROUNDING_RULE, FARE_SERVICES, MONEY_MODULES, normaliseRoundingRule, setRoundingRule,
+  type MoneyFlowConfig, type PricingConfig, type RoundingRule,
 } from "@peebee/shared";
 import { z } from "zod";
 import { getSetting, setSetting } from "../lib/settings.js";
@@ -19,6 +20,26 @@ export async function getPricingConfig(): Promise<PricingConfig> {
     return DEFAULT_PRICING_CONFIG;
   }
 }
+
+/** The admin's rounding rule (Admin → Pricing → Rounding). */
+export async function getRoundingConfig(): Promise<RoundingRule> {
+  try {
+    return normaliseRoundingRule(JSON.parse(await getSetting("rounding_config")));
+  } catch {
+    return DEFAULT_ROUNDING_RULE;
+  }
+}
+
+/** Makes the admin's rounding rule the one every price, fee and discount in this request uses. Cheap: settings are cached. */
+export async function applyRounding(): Promise<void> {
+  setRoundingRule(await getRoundingConfig());
+}
+
+export const roundingSchema = z.object({
+  enabled: z.boolean(),
+  step: z.union([z.literal(500), z.literal(1000)]),
+  roundUpAfter: z.number().int().min(0).max(999),
+});
 
 export async function getMoneyFlowConfig(): Promise<MoneyFlowConfig> {
   try {
@@ -43,7 +64,6 @@ const profileSchema = z.object({
   expectedSpeedKmh: z.number().min(5).max(200),
   distanceFactor: z.number().min(0.5).max(3),
   maximumFare: money,
-  rounding: z.union([z.literal(100), z.literal(500), z.literal(1000)]),
 });
 
 export const pricingConfigSchema = z.object({

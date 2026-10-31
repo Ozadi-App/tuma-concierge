@@ -15,7 +15,7 @@
  */
 
 import type { MonetizationSettings } from "./settings.js";
-import type { OrderType } from "@peebee/shared";
+import { floor500, roundNearest, type OrderType } from "@peebee/shared";
 
 export type CheckoutFees = {
   /** 100% platform revenue, added on top of what the customer pays. */
@@ -34,8 +34,9 @@ export type CheckoutFees = {
   totalSurcharge: number;
 };
 
+/** Every charge the customer or rider sees is a whole step (500 by default), rounded to the nearest. */
 function round(n: number): number {
-  return Math.round(n);
+  return roundNearest(n);
 }
 
 /** A service fee can never be as large as the fare it is charged on: it is
@@ -58,7 +59,7 @@ export function computeCheckoutFees(
     ? round(settings.serviceFeeType === "flat" ? settings.serviceFeeValue : (input.baseAmount * settings.serviceFeeValue) / 100)
     : 0;
   const maxShare = Math.min(99, Math.max(1, settings.serviceFeeMaxSharePercent ?? DEFAULT_SERVICE_FEE_MAX_SHARE_PERCENT));
-  const serviceFee = Math.min(rawServiceFee, Math.floor((Math.max(0, input.baseAmount) * maxShare) / 100));
+  const serviceFee = Math.min(rawServiceFee, floor500((Math.max(0, input.baseAmount) * maxShare) / 100));
 
   let processingFeeCustomer = 0;
   let processingFeeRider = 0;

@@ -1,4 +1,4 @@
-import { computeFare, computeWaterfall, FARE_SERVICES, MONEY_MODULES, DEFAULT_MONEY_FLOW_CONFIG, DEFAULT_PRICING_CONFIG, type FareService, type MoneyFlowConfig, type PricingConfig } from "@peebee/shared";
+import { round500, normaliseRoundingRule, setRoundingRule, computeFare, computeWaterfall, FARE_SERVICES, MONEY_MODULES, DEFAULT_MONEY_FLOW_CONFIG, DEFAULT_PRICING_CONFIG, type FareService, type MoneyFlowConfig, type PricingConfig } from "@peebee/shared";
 import { Hono } from "hono";
 import { z } from "zod";
 import { logActivity } from "../admin/activity.js";
@@ -8,7 +8,7 @@ import { db } from "../db/client.js";
 import { clientIp } from "../lib/ratelimit.js";
 import { hasTable } from "../lib/schema.js";
 import { getPlatformEnvironment, getSetting, setSetting } from "../lib/settings.js";
-import { costingKinds, getMoneyFlowConfig, getPricingConfig, moneyFlowConfigSchema, pricingConfigSchema, saveCostingConfig, type CostingKind } from "./config.js";
+import { applyRounding, costingKinds, getMoneyFlowConfig, getPricingConfig, getRoundingConfig, moneyFlowConfigSchema, roundingSchema, pricingConfigSchema, saveCostingConfig, type CostingKind } from "./config.js";
 
 type Row = Record<string, unknown>;
 
@@ -46,14 +46,17 @@ const ratesSchema = z.object({
 });
 
 costingAdminRoutes.get("/admin/pricing", async (c) =>
-  c.json({ pricing: await getPricingConfig(), rates: await readRates(), defaults: DEFAULT_PRICING_CONFIG, migrationApplied: await hasTable("payment_splits") }));
+  c.json({ pricing: await getPricingConfig(), rates: await readRates(), rounding: await getRoundingConfig(), defaults: DEFAULT_PRICING_CONFIG, migrationApplied: await hasTable("payment_splits") }));
 
 costingAdminRoutes.put("/admin/pricing", async (c) => {
-  const body = (await c.req.json().catch(() => null)) as { pricing?: unknown; rates?: unknown } | null;
+  const body = (await c.req.json().catch(() => null)) as { pricing?: unknown; rates?: unknown; rounding?: unknown } | null;
   const pricing = pricingConfigSchema.safeParse(body?.pricing);
   const rates = ratesSchema.safeParse(body?.rates);
-  if (!pricing.success || !rates.success) return c.json({ error: "invalid_body", issues: [...(pricing.success ? [] : pricing.error.issues), ...(rates.success ? [] : rates.error.issues)] }, 400);
-  const before = { pricing: await getPricingConfig(), rates: await readRates() };
+  const rounding = body?.rounding === undefined ? null : roundingSchema.safeParse(body.rounding);
+  if (!pricing.success || !rates.success || (rounding && !rounding.success)) {
+    return c.json({ error: "invalid_body", issues: [...(pricing.success ? [] : pricing.error.issues), ...(rates.success ? [] : rates.error.issues), ...(rounding && !rounding.success ? rounding.error.issues : [])] }, 400);
+  }
+  const before = { pricing: await getPricingConfig(), rates: await readRates(), rounding: await getRoundingConfig() };
   const saved = await saveCostingConfig("pricing", pricing.data);
   if (!saved.ok) return c.json({ error: "invalid_body", issues: saved.issues }, 400);
   const r = rates.data;
@@ -65,8 +68,12 @@ costingAdminRoutes.put("/admin/pricing", async (c) => {
     setSetting("car_comfort_premium_percent", String(r.car.comfortPremiumPercent)), setSetting("car_xl_premium_percent", String(r.car.xlPremiumPercent)),
     setSetting("ride_stop_fee", String(r.stopFee)),
   ]);
-  await logActivity({ actor: c.get("user"), action: "pricing.update", summary: "Changed ride and delivery pricing", entityType: "pricing", entityId: "pricing", before, after: { pricing: pricing.data, rates: r }, ip: clientIp(c) });
-  return c.json({ pricing: await getPricingConfig(), rates: await readRates() });
+  if (rounding?.success) {
+    await setSetting("rounding_config", JSON.stringify(normaliseRoundingRule(rounding.data)));
+    await applyRounding();
+  }
+  await logActivity({ actor: c.get("user"), action: "pricing.update", summary: "Changed ride and delivery pricing", entityType: "pricing", entityId: "pricing", before, after: { pricing: pricing.data, rates: r, rounding: rounding?.success ? rounding.data : before.rounding }, ip: clientIp(c) });
+  return c.json({ pricing: await getPricingConfig(), rates: await readRates(), rounding: await getRoundingConfig() });
 });
 
 /** The admin's fare calculator. Takes the settings being edited (unsaved is fine), so changes can be tried before they are saved. */
@@ -77,6 +84,7 @@ costingAdminRoutes.post("/admin/pricing/preview", async (c) => {
     at: z.string().datetime({ offset: true }).optional(),
     pricing: pricingConfigSchema.optional(),
     rates: ratesSchema.optional(),
+    rounding: roundingSchema.optional(),
     stops: z.number().int().min(0).max(5).default(0),
     scheduled: z.boolean().default(false),
     returnTrip: z.boolean().default(false),
@@ -90,13 +98,16 @@ costingAdminRoutes.post("/admin/pricing/preview", async (c) => {
   const rates = d.rates ?? (await readRates());
   const service: FareService = d.service;
   const base = service === "boda" ? rates.boda : service === "parcel" ? rates.parcel : service === "shopping" ? { ratePerKm: 0, minimumFare: rates.shopping.deliveryFee } : { ratePerKm: rates.car.ratePerKm, minimumFare: rates.car.minimumFare };
+  // Try the rounding being edited, unsaved, for this one calculation (nothing awaits between setting it and using it).
+  if (d.rounding) setRoundingRule(d.rounding);
   const fare = computeFare(cfg, { service, rates: base, distanceKm: d.distanceKm, now: d.at ? new Date(d.at) : new Date(), stops: d.stops, scheduled: d.scheduled, returnTrip: d.returnTrip, demandRatio: d.demandRatio, pickup: d.pickup, dropoff: d.dropoff });
   // Comfort and large cars add their premium on top of the engine's price, exactly as customers are charged.
   let total = fare.total;
   const premiums: { label: string; percent: number }[] = [];
   if (service === "car_comfort") premiums.push({ label: "Comfort premium", percent: rates.car.comfortPremiumPercent });
   if (service === "car_xl") premiums.push({ label: "Large car premium", percent: rates.car.xlPremiumPercent });
-  for (const p of premiums) total = Math.round(total * (1 + p.percent / 100));
+  for (const p of premiums) total = round500(total * (1 + p.percent / 100));
+  await applyRounding();
   return c.json({ ...fare, premiums, total });
 });
 

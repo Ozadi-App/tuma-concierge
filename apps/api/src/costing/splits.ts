@@ -4,7 +4,7 @@
  * The numbers come from the same waterfall the admin's calculator shows (packages/shared/src/pricing.ts), fed with the
  * commission that was actually taken, so the books and the preview always agree.
  */
-import { commissionAmount, computeWaterfall, tieredCommissionPercent, type MoneyModule, type Waterfall } from "@peebee/shared";
+import { roundNearest, commissionAmount, computeWaterfall, tieredCommissionPercent, type MoneyModule, type Waterfall } from "@peebee/shared";
 import { db } from "../db/client.js";
 import { newId } from "../lib/ids.js";
 import { hasTable } from "../lib/schema.js";
@@ -38,7 +38,7 @@ export async function extraCommissionFor(order: Row, gross: number): Promise<num
     const env: PlatformEnvironment = order.environment === "sandbox" ? "sandbox" : "live";
     const facts = await riderFacts(String(order.rider_id), env, new Date(), incentives.tzOffsetMinutes);
     const tier = tieredCommissionPercent(incentives, facts.ridesThisMonth);
-    if (tier != null) return Math.round((gross * tier) / 100);
+    if (tier != null) return roundNearest((gross * tier) / 100);
     return commissionAmount(rule, { gross, monthlyVolume: facts.ridesThisMonth });
   } catch (err) {
     console.error("Extra commission lookup failed; none is taken", err);

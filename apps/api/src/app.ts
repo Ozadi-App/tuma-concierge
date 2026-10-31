@@ -13,6 +13,7 @@ import { dealRoutes } from "./car/deals.js";
 import { selfDriveRoutes } from "./car/selfdrive.js";
 import { carAdminRoutes } from "./car/admin-routes.js";
 import { customerWithdrawalAdminRoutes, customerWithdrawalRoutes } from "./wallet/customer-withdrawals.js";
+import { applyRounding } from "./costing/config.js";
 import { costingAdminRoutes } from "./costing/admin-routes.js";
 import { offersAdminRoutes } from "./offers/admin-routes.js";
 import { offersRoutes } from "./offers/routes.js";
@@ -271,6 +272,11 @@ app.get("/v1", (c) =>
 
 // Requests made with a practice session token are answered from the practice database; see practice/scope.ts.
 app.use("/v1/*", practiceScope);
+// Every price, fee and discount in a request is rounded by the admin's rule (Admin → Pricing → Rounding).
+app.use("/v1/*", async (_c, next) => {
+  await applyRounding().catch(() => undefined);
+  await next();
+});
 app.route("/v1/auth", authRoutes);
 app.route("/v1", onboardingRoutes);
 app.route("/v1/auth", verifyRoutes);

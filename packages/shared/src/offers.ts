@@ -7,6 +7,8 @@
  * `recommended` are on out of the box, the rest are built and waiting for an admin to turn them on.
  */
 
+import { floor500, roundNearest } from "./fare.js";
+
 function isPlainObject(v: unknown): v is Record<string, unknown> {
   return !!v && typeof v === "object" && !Array.isArray(v);
 }
@@ -85,7 +87,8 @@ export function inWindows(now: Date, windows: TimeWindow[] | undefined, tzOffset
   });
 }
 
-const roundDown100 = (n: number) => Math.floor(Math.max(0, n) / 100) * 100;
+// Every amount a customer or rider is given is a whole step, rounded to the nearest (see roundNearest in fare.ts).
+const roundTo500 = (n: number) => roundNearest(n);
 
 // ---------------------------------------------------------------------------
 // Customer offers
@@ -219,8 +222,9 @@ function amountFor(offer: Offer, fare: number): number {
     return Math.min(fare, cap);
   }
   const raw = offer.discountType === "percent" ? (fare * offer.value) / 100 : offer.value;
-  const capped = offer.maxDiscount > 0 ? Math.min(raw, offer.maxDiscount) : raw;
-  return Math.min(fare, roundDown100(capped));
+  // Nearest 500, but never above the cap or the fare themselves.
+  const ceiling = Math.min(fare, offer.maxDiscount > 0 ? offer.maxDiscount : fare);
+  return Math.min(roundTo500(raw), floor500(ceiling));
 }
 
 export function normaliseCode(code: string | null | undefined): string {
@@ -598,7 +602,7 @@ export const DEFAULT_INCENTIVE_CONFIG: IncentiveConfig = {
 function ruleAmount(rule: AmountRule, fare: number): number {
   const raw = rule.type === "percent" ? (fare * rule.value) / 100 : rule.value;
   const capped = rule.maxPerRide > 0 ? Math.min(raw, rule.maxPerRide) : raw;
-  return roundDown100(capped);
+  return roundTo500(capped);
 }
 
 export type RideIncentiveContext = {
@@ -633,7 +637,7 @@ export function perRideAwards(cfg: IncentiveConfig, ctx: RideIncentiveContext): 
   }
   if (k.long_pickup.enabled && ctx.pickupDistanceKm != null && ctx.pickupDistanceKm > k.long_pickup.thresholdKm) {
     const raw = (ctx.pickupDistanceKm - k.long_pickup.thresholdKm) * k.long_pickup.perKm;
-    const amount = roundDown100(k.long_pickup.maxAmount > 0 ? Math.min(raw, k.long_pickup.maxAmount) : raw);
+    const amount = Math.min(roundTo500(raw), k.long_pickup.maxAmount > 0 ? floor500(k.long_pickup.maxAmount) : Infinity);
     if (amount > 0) out.push({ kind: "long_pickup", amount, note: `Long pickup (${ctx.pickupDistanceKm.toFixed(1)} km)` });
   }
   return out;
