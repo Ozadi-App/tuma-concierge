@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, Instrument_Serif } from "next/font/google";
 import { Shell } from "../components/Shell";
+import { WebModulesProvider } from "../lib/web-modules";
 import "./globals.css";
 import "./desktop.css";
 
@@ -36,7 +37,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <script dangerouslySetInnerHTML={{ __html: themeInit }} />
       </head>
       <body>
-        <Shell>{children}</Shell>
+        <WebModulesProvider><Shell>{children}</Shell></WebModulesProvider>
       </body>
     </html>
   );

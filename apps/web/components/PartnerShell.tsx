@@ -6,6 +6,8 @@ import { Menu, X } from "lucide-react";
 import { Logo } from "./Logo";
 import { ThemeToggle } from "./ThemeToggle";
 import { PARTNER_DOORS, PARTNER_TYPES } from "../lib/partners";
+import { ModuleShow } from "./ModuleNotice";
+import { moduleOfPartner } from "../lib/module-map";
 
 const NAV = [
   { href: "/partners", label: "Home" },
@@ -47,7 +49,7 @@ export function PartnerShell({ children }: { children: ReactNode }) {
           {PARTNER_DOORS.map((d) => (
             <div key={d.id}>
               <p className="pp-foot-h">{d.title}</p>
-              {PARTNER_TYPES.filter((t) => t.door === d.id).map((t) => <Link key={t.slug} href={`/partners/${t.slug}`}>{t.short}</Link>)}
+              {PARTNER_TYPES.filter((t) => t.door === d.id).map((t) => <ModuleShow key={t.slug} module={moduleOfPartner(t.slug, t.door)}><Link href={`/partners/${t.slug}`}>{t.short}</Link></ModuleShow>)}
             </div>
           ))}
         </div>

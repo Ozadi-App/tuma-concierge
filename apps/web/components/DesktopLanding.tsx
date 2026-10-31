@@ -9,6 +9,8 @@ import {
   ArrowRight, ArrowUpRight, BadgeCheck, KeyRound, Lock, ShieldCheck, Replace, Pill, Wallet, Smartphone, Handshake, Sparkles,
 } from "lucide-react";
 import { useDoors, type DoorId } from "../lib/doors";
+import { moduleOfHref, moduleOfPartner } from "../lib/module-map";
+import { ModuleShow } from "./ModuleNotice";
 import { subPath } from "../lib/pages";
 import { ALSO_IN_ACCOUNT, APP_URL, DOOR_CONTENT, ORDER_PATH, WALLET_NOTE } from "../lib/content";
 import { FEATURED_PARTNERS, PARTNER_TYPE_BY_SLUG } from "../lib/partners";
@@ -286,7 +288,7 @@ export function DesktopLanding() {
           <Lines text="Medicine, parcels and money, under the same login." className="dl-h2" />
           <ul className="dl-cards3">
             {ALSO_IN_ACCOUNT.map((a, i) => (
-              <li key={a.title} data-reveal style={{ transitionDelay: `${i * 90}ms` }}>
+              <ModuleShow key={a.title} module={moduleOfHref(a.href)}><li data-reveal style={{ transitionDelay: `${i * 90}ms` }}>
                 {a.feature ? (
                   <button type="button" onClick={() => openFeature(a.feature!)} aria-haspopup="dialog">
                     <span className="dl-ic"><a.icon size={20} aria-hidden /></span>
@@ -302,7 +304,7 @@ export function DesktopLanding() {
                     <span className="dl-more">Read more <ArrowUpRight size={15} aria-hidden /></span>
                   </Link>
                 )}
-              </li>
+              </li></ModuleShow>
             ))}
           </ul>
         </div>
@@ -320,7 +322,7 @@ export function DesktopLanding() {
           </div>
           <ul className="dl-pgrid">
             {PARTNERS.map((p, i) => (
-              <li key={p.slug} data-reveal style={{ transitionDelay: `${(i % 4) * 80}ms` }} data-closed={p.closed || undefined}>
+              <ModuleShow key={p.slug} module={moduleOfPartner(p.slug, p.door)}><li data-reveal style={{ transitionDelay: `${(i % 4) * 80}ms` }} data-closed={p.closed || undefined}>
                 <PartnerLink href={`/partners/${p.slug}`}>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={p.photo} alt="" loading="lazy" />
@@ -331,7 +333,7 @@ export function DesktopLanding() {
                   </span>
                   <ArrowUpRight size={18} className="dl-parrow" aria-hidden />
                 </PartnerLink>
-              </li>
+              </li></ModuleShow>
             ))}
             <li className="dl-pcta" data-reveal>
               <PartnerLink href="/partners">

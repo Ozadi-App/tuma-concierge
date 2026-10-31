@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { DoorsProvider, HireProvider, doorFromSlug, doorPath, useRemoteDoors, type DoorId } from "../lib/doors";
 import { ShellContext } from "./ShellContext";
@@ -16,6 +16,9 @@ import { DataRefresh } from "./DataRefresh";
 import { StorefrontHostGateway } from "./StorefrontHostGateway";
 import { PartnerShell } from "./PartnerShell";
 import { SupportChat } from "./SupportChat";
+import { ModuleNoticePage } from "./ModuleNotice";
+import { DOOR_MODULE } from "../lib/module-map";
+import { useWebModules } from "../lib/web-modules";
 
 /** Carried over untouched from the previous site: merchant sign-up, shared purchase links, service pages and storefronts. */
 const LEGACY = /^\/(portal|d|services|site)(\/|$)/;
@@ -35,8 +38,19 @@ function contextDoorFromPath(path: string | null): DoorId | null {
 export function Shell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { doors, hire } = useRemoteDoors();
-  const activeDoor = doorFromPath(pathname);
+  const { doors: configuredDoors, hire: hireConfigured } = useRemoteDoors();
+  const modules = useWebModules();
+  // Admin → Services also controls the site: a door whose module is off disappears from every menu and tab, and Hire
+  // takes turns with Work only while Peebee Hire is on. If every door were off, keep the list so nothing breaks.
+  const doors = useMemo(() => {
+    const on = configuredDoors.filter((d) => modules.on(DOOR_MODULE[d.id]));
+    return on.length ? on : configuredDoors;
+  }, [configuredDoors, modules]);
+  const hire = hireConfigured && modules.on("hive.hire");
+  const requestedDoor = doorFromPath(pathname);
+  // A link straight to a door that is switched off shows Admin's notice instead of the door.
+  const blockedDoor = requestedDoor && !modules.on(DOOR_MODULE[requestedDoor]) ? requestedDoor : null;
+  const activeDoor = blockedDoor ? null : requestedDoor;
   const contextDoor = activeDoor ?? contextDoorFromPath(pathname);
   const home = pathname === "/" || activeDoor !== null;
   const [menuOpen, setMenuOpen] = useState(false);
@@ -179,7 +193,7 @@ export function Shell({ children }: { children: ReactNode }) {
             <TopBar />
             <div className="body">
               <main id="main" ref={scroller} className="scroller" tabIndex={-1}>
-                {home ? <HomeScreen /> : children}
+                {blockedDoor ? <ModuleNoticePage name={configuredDoors.find((d) => d.id === blockedDoor)?.label ?? blockedDoor} notice={modules.notice(DOOR_MODULE[blockedDoor])} /> : home ? <HomeScreen /> : children}
                 <SiteFoot />
               </main>
             </div>

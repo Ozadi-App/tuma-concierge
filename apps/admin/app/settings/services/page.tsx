@@ -1,6 +1,6 @@
 "use client";
 
-import { DEFAULT_MODULE_NOTICE, MODULES, syncedFlag, getModule, MODULE_CLUSTERS, MODULE_NOTICE_MESSAGE_MAX, MODULE_NOTICE_REASONS, childrenOf, cleanModuleNotice, resolveModuleAvailability, type ModuleDef, type ModuleFlags, type ModuleNotice, type ModuleNotices, type ModuleWorld } from "@peebee/shared";
+import { DEFAULT_MODULE_NOTICE, MODULES, syncedFlag, getModule, MODULE_CLUSTERS, MODULE_NOTICE_MESSAGE_MAX, MODULE_NOTICE_REASONS, childrenOf, cleanModuleNotice, resolveModuleAvailability, WEBSITE_SECTIONS, type ModuleDef, type ModuleFlags, type ModuleNotice, type ModuleNotices, type ModuleWorld } from "@peebee/shared";
 import { ChevronDown } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
@@ -82,7 +82,7 @@ export default function ServicesPage() {
   const current = WORLDS.find((w) => w.id === shown)!;
 
   return (
-    <SettingsPageShell title="Services" description="Switch a whole service on or off, or just one thing inside it. Off disappears from every app; the code stays ready for when it is back on." loading={loading}>
+    <SettingsPageShell title="Services" description="Switch a whole service on or off, or just one thing inside it. Off disappears from every app and from the website (peebee.online); the code stays ready for when it is back on." loading={loading}>
       {flags && available && (
         <form onSubmit={onSubmit} className="space-y-5">
           <div className="home-card flex items-start gap-3">
@@ -182,6 +182,7 @@ function ModuleRow({ def, depth, world, flags, available, onToggle, notices, onN
             <span className="font-normal text-ink-500">— {own ? "on" : "off"}</span>
           </p>
           <p className="text-xs text-ink-500">{def.description}</p>
+          {world === "live" && <WebsiteReach moduleKey={def.key} />}
           {practiceOnly && <p className="mt-0.5 text-xs font-semibold text-ink">On in Practice only. Switch it on here to make it live.</p>}
           {!own && childrenOf(def.key).length > 0 && <p className="mt-0.5 text-xs text-ink-500">{countInside(def.key)} inside are hidden while this is off.</p>}
           {!own && <NoticeEditor def={def} notice={notices[def.key]} onChange={(n) => onNotice(def.key, n)} />}
@@ -225,4 +226,16 @@ function NoticeEditor({ def, notice, onChange }: { def: ModuleDef; notice: Modul
 /** How many modules sit anywhere under this one. */
 function countInside(key: string): number {
   return childrenOf(key).reduce((n, c) => n + 1 + countInside(c.key), 0);
+}
+
+/** What the Live switch also reaches on the website, so staff know a switch is not only about the apps. */
+function WebsiteReach({ moduleKey }: { moduleKey: string }) {
+  const sections = WEBSITE_SECTIONS[moduleKey];
+  if (!sections?.length) return null;
+  const shown = sections.slice(0, 5).join(", ");
+  return (
+    <p className="mt-0.5 text-xs text-ink-500" title={sections.join(", ")}>
+      Also on the website: {shown}{sections.length > 5 ? ` and ${sections.length - 5} more` : ""}.
+    </p>
+  );
 }

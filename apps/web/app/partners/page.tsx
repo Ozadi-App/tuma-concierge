@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRight, BadgeCheck, Inbox, KeyRound, Wallet, Mail, MapPin } from "lucide-react";
 import { PARTNER_DOORS, PARTNER_TYPES } from "../../lib/partners";
+import { ModuleShow } from "../../components/ModuleNotice";
+import { moduleOfPartner } from "../../lib/module-map";
 
 export const metadata: Metadata = {
   title: "Peebee Partners | Earn with Peebee",
@@ -48,13 +50,13 @@ export default function Partners() {
             <div className="pl-door-head"><h3>{d.title}</h3><p>{d.line}</p></div>
             <ul className="pl-types">
               {PARTNER_TYPES.filter((p) => p.door === d.id).map((p) => (
-                <li key={p.slug}>
+                <ModuleShow key={p.slug} module={moduleOfPartner(p.slug, p.door)}><li>
                   <Link href={`/partners/${p.slug}`} className="pl-type" data-closed={p.closed || undefined}>
                     <span className="pl-type-ic"><p.icon size={19} aria-hidden /></span>
                     <span className="pl-type-t"><b>{p.name}</b><small>{p.closed ? "Not open yet" : p.who}</small></span>
                     <ArrowRight size={16} className="pl-type-arrow" aria-hidden />
                   </Link>
-                </li>
+                </li></ModuleShow>
               ))}
             </ul>
           </div>

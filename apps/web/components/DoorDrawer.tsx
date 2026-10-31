@@ -10,6 +10,9 @@ import { PHOTOS } from "../lib/photos";
 import { useShell } from "./ShellContext";
 import { FeatureTiles } from "./FeatureSheet";
 import { useFocusTrap } from "../lib/focus";
+import { useDoorContent } from "./useDoorContent";
+import { ModuleShow } from "./ModuleNotice";
+import { moduleOfHref } from "../lib/module-map";
 
 const calm = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -60,7 +63,7 @@ export function DoorDrawer() {
 function DoorBody({ id, label, scroller }: { id: DoorId; label: string; scroller: React.RefObject<HTMLDivElement | null> }) {
   const { activeDoor, openDoor, focus, openFeature } = useShell();
   const doors = useDoors();
-  const c = DOOR_CONTENT[id];
+  const c = useDoorContent(id);
   const uid = useId();
   const [openKey, setOpenKey] = useState<string | null>(null);
   const timer = useRef<number | undefined>(undefined);
@@ -142,6 +145,7 @@ function DoorBody({ id, label, scroller }: { id: DoorId; label: string; scroller
       <FeatureTiles items={c.features.map((f) => ({ id: `${f.door}/${f.key}`, icon: f.icon, title: f.chip && f.title.length > 22 ? f.chip : f.title }))} onOpen={openFeature} />
 
       {c.note && (
+        <ModuleShow module={c.note.href ? moduleOfHref(c.note.href) : null}>
         <Link href={c.note.href ?? "/"} className="note note-link rv" style={{ "--i": 3 } as React.CSSProperties}>
           <c.note.icon size={20} aria-hidden />
           <span>
@@ -150,6 +154,7 @@ function DoorBody({ id, label, scroller }: { id: DoorId; label: string; scroller
           </span>
           <ArrowRight size={18} aria-hidden className="note-go" />
         </Link>
+        </ModuleShow>
       )}
       <div className="drawer-cta rv" style={{ "--i": 4 } as React.CSSProperties}>
         <a href={APP_URL} className="btn btn-gold">
