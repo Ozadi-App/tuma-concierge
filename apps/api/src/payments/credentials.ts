@@ -115,6 +115,22 @@ export const PROVIDER_CREDENTIAL_FIELDS: Record<PaymentProviderIdentity, Credent
       envVar: "MOMO_API_KEY",
     },
     {
+      key: "disbursementApiUser",
+      label: "Disbursements API user (UUID)",
+      secret: false,
+      required: false,
+      envVar: "MOMO_DISBURSEMENT_API_USER",
+      helpText: "Only if MTN issued your Disbursements API user separately. Leave blank to reuse the API user above.",
+    },
+    {
+      key: "disbursementApiKey",
+      label: "Disbursements API key",
+      secret: true,
+      required: false,
+      envVar: "MOMO_DISBURSEMENT_API_KEY",
+      helpText: "The key for the Disbursements API user above. Leave blank to reuse the API key above.",
+    },
+    {
       key: "collectionSubscriptionKey",
       label: "Collections subscription key",
       secret: true,
