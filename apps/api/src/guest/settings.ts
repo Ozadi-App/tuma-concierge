@@ -1,3 +1,4 @@
+import { patchSchema } from "../lib/patch-schema.js";
 import { z } from "zod";
 import { getSetting, setSetting } from "../lib/settings.js";
 
@@ -20,7 +21,7 @@ export type GuestSettings = {
   whatsappTemplate: string;
 };
 
-export const guestSettingsPatch = z.object({
+export const guestSettingsPatch = patchSchema(z.object({
   enabled: z.boolean(),
   cardEnabled: z.boolean(),
   maxQuantity: z.number().int().min(1).max(50),
@@ -32,7 +33,7 @@ export const guestSettingsPatch = z.object({
   notifyEmail: z.boolean(),
   notifyWhatsapp: z.boolean(),
   whatsappTemplate: z.string().regex(/^[a-z0-9_]*$/).max(120),
-}).partial();
+}));
 
 const flag = (v: string) => v === "1";
 

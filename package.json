@@ -60,7 +60,8 @@
   },
   "pnpm": {
     "overrides": {
-      "sharp": "link:./tools/stubs/sharp"
+      "sharp": "link:./tools/stubs/sharp",
+      "source-map-js": "^1.2.2"
     }
   }
 }

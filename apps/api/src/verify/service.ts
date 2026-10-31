@@ -27,7 +27,7 @@ export function maskTarget(channel: "sms" | "email", target: string): string {
 
 /** Creates a fresh OTP and dispatches it via the configured provider for
  * the channel. Falls back to logging the code when no provider is
- * configured (local dev, or staging before API keys are set) so the flow
+ * configured in explicitly selected local development so the flow
  * stays fully testable end-to-end — the caller can surface `devCode` in
  * that case. Email "verify" codes also get a one-click confirmation link;
  * "reset" codes (any channel) and SMS codes stay code-only. */
@@ -37,6 +37,12 @@ export async function createAndSendOtp(
   target: string,
   purpose: "verify" | "reset" = "verify",
 ): Promise<{ devCode?: string }> {
+  const configured = channel === "email" ? await isResendConfigured() : isAfricasTalkingConfigured();
+  // Missing configuration must never turn production account recovery into
+  // a public OTP oracle. Check before creating a usable code in the database.
+  if (!configured && process.env.ENVIRONMENT !== "development") {
+    throw new Error("Verification delivery is not configured");
+  }
   const code = generateCode();
   const codeHash = await hashCode(code);
   const expiresAt = new Date(Date.now() + CODE_TTL_MINUTES * 60 * 1000).toISOString();
@@ -54,14 +60,14 @@ export async function createAndSendOtp(
     args: [newId("otp"), userId, channel, target, codeHash, expiresAt, purpose, linkTokenHash],
   });
 
-  if (channel === "email" && await isResendConfigured()) {
+  if (channel === "email" && configured) {
     const verifyLink = linkToken
       ? `${process.env.PUBLIC_API_URL ?? "https://peebee-api.peebeeapp.workers.dev"}/v1/auth/verify/confirm-link?token=${linkToken}`
       : undefined;
     await sendVerificationEmail(target, code, verifyLink, purpose);
     return {};
   }
-  if (channel === "sms" && isAfricasTalkingConfigured()) {
+  if (channel === "sms" && configured) {
     await sendVerificationSms(target, code);
     return {};
   }

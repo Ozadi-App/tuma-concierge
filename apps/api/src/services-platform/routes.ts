@@ -1,3 +1,4 @@
+import { patchSchema } from "../lib/patch-schema.js";
 import { Hono } from "hono";
 import { z } from "zod";
 import { requireAuth, requireRole } from "../auth/middleware.js";
@@ -372,7 +373,7 @@ servicesPlatformRoutes.put("/my-business", requireAuth, async (c) => {
   if (!biz) return c.json({ error: "no_business", message: "Service business not found" }, 404);
 
   const body = await c.req.json().catch(() => null);
-  const parsed = createBusinessSchema.partial().safeParse(body);
+  const parsed = patchSchema(createBusinessSchema).safeParse(body);
   if (!parsed.success) {
     return c.json({ error: "invalid_body", details: parsed.error.issues }, 400);
   }

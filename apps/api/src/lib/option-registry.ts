@@ -231,6 +231,13 @@ export const OPTION_SETTINGS: SettingDef[] = [
       opt("email_link", "Email", false),
     ],
   },
+  {
+    key: "digital_proxy_trusted_hosts", module: "digital", kind: "list", label: "Trusted download hosts",
+    description: "Exact hostnames Peebee may fetch files from. Only add providers you trust, including their DNS. Empty blocks external proxy downloads; private uploads still work. Redirect destinations must also be listed. No wildcards or IP addresses.",
+    default: [], maxItems: 50,
+    itemPattern: "^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}$",
+    itemHint: "an exact trusted hostname, such as files.example.com",
+  },
   { key: "digital_default_max_downloads", module: "digital", kind: "int", label: "Default download limit", description: "Downloads per purchase when the merchant does not set one. 0 means unlimited.", default: 5, min: 0, max: 1000 },
   { key: "digital_default_expiry_days", module: "digital", kind: "int", label: "Default link lifetime", description: "Days a purchase link works. 0 means it never expires.", default: 30, min: 0, max: 3650, unit: "days" },
   {

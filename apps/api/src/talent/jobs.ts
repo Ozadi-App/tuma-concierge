@@ -95,7 +95,7 @@ const postSchema = z.object({
   employmentType: z.enum(["full_time", "part_time", "contract", "casual", "internship"]).optional(),
   idempotencyKey: z.string().min(8).max(64).optional(),
   /** The employer confirms the work is lawful. Required. */
-  acceptRules: z.literal(true, { errorMap: () => ({ message: "Confirm that this work is lawful." }) }),
+  acceptRules: z.literal(true, { error: "Confirm that this work is lawful." }),
 });
 
 const isoOrNull = (v?: string) => {

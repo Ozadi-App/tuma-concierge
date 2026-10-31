@@ -1,3 +1,4 @@
+import { patchSchema } from "../lib/patch-schema.js";
 import { Hono } from "hono";
 import { z } from "zod";
 import { logActivity } from "../admin/activity.js";
@@ -72,7 +73,7 @@ adminRoutes.patch("/admin/services/:id", requirePermission("work.manage"), async
   const id = c.req.param("id") as string;
   const before = (await db.execute({ sql: "SELECT * FROM work_services WHERE id = ?", args: [id] })).rows[0] as Row | undefined;
   if (!before) return c.json({ error: "not_found", message: "Service not found." }, 404);
-  const parsed = z.object(serviceFields).partial().safeParse(await c.req.json().catch(() => ({})));
+  const parsed = patchSchema(z.object(serviceFields)).safeParse(await c.req.json().catch(() => ({})));
   if (!parsed.success) return c.json({ error: "invalid_body", issues: parsed.error.issues }, 400);
   const d = parsed.data;
   const problem = consistent({

@@ -1,3 +1,4 @@
+import { patchSchema } from "../lib/patch-schema.js";
 import { z } from "zod";
 import { getSetting, setSetting } from "../lib/settings.js";
 
@@ -147,7 +148,7 @@ export async function getTalentSettings(): Promise<TalentSettings> {
 }
 
 /** The admin settings form. Ranges match getTalentSettings. */
-export const talentSettingsSchema = z
+export const talentSettingsSchema = patchSchema(z
   .object({
     enabled: z.boolean(),
     jobTypes: z.array(z.enum(TALENT_JOB_TYPES)).max(3),
@@ -186,8 +187,7 @@ export const talentSettingsSchema = z
     lateCancelFeeUgx: z.number().int().min(0).max(10_000_000),
     lateCancelFeePercent: z.number().int().min(0).max(50),
     lateCancelPartySharePercent: z.number().int().min(0).max(100),
-  })
-  .partial()
+  }))
   .superRefine((d, ctx) => {
     if (d.paymentModes && d.defaultPaymentMode && !d.paymentModes.includes(d.defaultPaymentMode)) {
       ctx.addIssue({ code: "custom", path: ["defaultPaymentMode"], message: "The default way to pay must be one that is switched on." });
