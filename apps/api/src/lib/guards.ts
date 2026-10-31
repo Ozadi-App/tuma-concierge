@@ -58,7 +58,19 @@ const RULES: Array<{ methods: string[]; pattern: RegExp; permission: MerchantPer
 
 export function requiredPermission(method: string, path: string): MerchantPermission | null {
   const clean = path.replace(/^\/v1/, "").replace(/\/+$/, "");
-  return RULES.find((r) => r.methods.includes(method) && r.pattern.test(clean))?.permission ?? null;
+  if (!clean.startsWith("/merchants/me/")) return null;
+  // Sensitive reads and all descendants share their resource's policy, so
+  // adding an upload/licence/course subroute cannot silently skip the gate.
+  if (/^\/merchants\/me\/digital-products\/[^/]+\/license-pool$/.test(clean)) return "manage_digital";
+  if (["GET", "HEAD", "OPTIONS"].includes(method)) return null;
+  if (/^\/merchants\/me\/digital-fulfillments\/[^/]+\/(refund|revoke)$/.test(clean)) return "refund_revoke";
+  if (/^\/merchants\/me\/(digital-products|digital-fulfillments|lms)(\/|$)/.test(clean)) return "manage_digital";
+  const matched = RULES.find((r) => r.methods.includes(method) && r.pattern.test(clean));
+  if (matched) return matched.permission;
+  // Operational sales remain available to cashiers. Other new writes fail
+  // closed to the store-management policy until assigned a narrower one.
+  if (method === "POST" && /^\/merchants\/me\/(pos-sales|draft-orders)$/.test(clean)) return null;
+  return "manage_store_settings";
 }
 
 /** The team roles the caller holds, best first (owner > manager > finance > cashier). */

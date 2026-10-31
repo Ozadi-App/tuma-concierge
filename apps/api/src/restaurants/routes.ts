@@ -1,3 +1,4 @@
+import { patchSchema } from "../lib/patch-schema.js";
 /**
  * Restaurant accounts — Phase 1 of food ordering (see project discussion:
  * restaurants self-manage their own menu/orders/payouts, in later phases).
@@ -150,7 +151,7 @@ restaurantRoutes.get("/restaurants/me", requireAuth, requireRole("customer"), as
   return c.json({ restaurant: await reconcileFoodHours(restaurant) });
 });
 
-const updateSchema = profileSchema.partial().extend({
+const updateSchema = patchSchema(profileSchema).extend({
   themeScene: z.string().refine(isColourScene).optional(),
   themeMode: z.enum(["auto","light","dark"]).optional(),
   isOpen: z.boolean().optional(),

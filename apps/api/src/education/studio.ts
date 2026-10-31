@@ -1,3 +1,4 @@
+import { patchSchema } from "../lib/patch-schema.js";
 import { Hono, type Context } from "hono";
 import { z } from "zod";
 import {
@@ -133,15 +134,14 @@ const quizSchema = z
     title: text(L.name, 1),
     passingScorePercent: z.number().int().min(0).max(100),
     questions: z.array(z.record(z.string(), z.unknown())).min(1).max(100),
-    settings: z
+    settings: patchSchema(z
       .object({
         timeLimitMinutes: z.number().int().min(0).max(600),
         maxAttempts: z.number().int().min(0).max(50),
         shuffleQuestions: z.boolean(),
         shuffleOptions: z.boolean(),
         questionsPerAttempt: z.number().int().min(0).max(200),
-      })
-      .partial()
+      }))
       .optional(),
   })
   .superRefine((q, ctx) => {
@@ -570,7 +570,7 @@ studioRoutes.patch("/schools/:id", async (c) => {
   const school = await ownedSchool(g.userId, c.req.param("id"));
   if (!school) return notFound(c, "school");
   if (school.status === "suspended") return suspended(c);
-  const parsed = await body(c, schoolBody.partial());
+  const parsed = await body(c, patchSchema(schoolBody));
   if (!parsed.ok) return parsed.res;
   const d = parsed.data as Partial<z.infer<typeof schoolBody>>;
 
@@ -704,7 +704,7 @@ studioRoutes.patch("/classes/:id", async (c) => {
   const school = await ownedSchool(g.userId, String(cls.school_id));
   if (school?.status === "suspended") return suspended(c);
   // The stream, and therefore the course catalogue it belongs to, is fixed once the class exists.
-  const parsed = await body(c, classBody.omit({ stream: true }).partial());
+  const parsed = await body(c, patchSchema(classBody.omit({ stream: true })));
   if (!parsed.ok) return parsed.res;
   const d = parsed.data as Partial<Omit<z.infer<typeof classBody>, "stream">>;
 
@@ -826,7 +826,7 @@ studioRoutes.get("/courses/:id", async (c) => {
   return c.json({ ok: true, course: detail });
 });
 
-const coursePatch = courseBody.partial().extend({ status: z.enum(["draft", "published"]).optional() });
+const coursePatch = patchSchema(courseBody).extend({ status: z.enum(["draft", "published"]).optional() });
 
 studioRoutes.patch("/courses/:id", async (c) => {
   const g = await gate(c);
@@ -916,7 +916,7 @@ studioRoutes.post("/courses/:id/modules", async (c) => {
 studioRoutes.patch("/modules/:id", async (c) => {
   const mod = await ownedModule(c.get("user").sub, c.req.param("id"));
   if (!mod) return notFound(c, "module");
-  const parsed = await body(c, moduleBody.partial());
+  const parsed = await body(c, patchSchema(moduleBody));
   if (!parsed.ok) return parsed.res;
   const d = parsed.data as Partial<z.infer<typeof moduleBody>>;
   if (d.title !== undefined) await db.execute({ sql: "UPDATE edu_modules SET title = ? WHERE id = ?", args: [d.title, mod.id as string] });

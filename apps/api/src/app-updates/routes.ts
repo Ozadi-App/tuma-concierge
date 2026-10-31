@@ -222,7 +222,7 @@ async function adminPayload(): Promise<AppUpdatesSettings> {
 const updateSchema = z.object({
   enabled: z.boolean().optional(),
   autoLive: z.boolean().optional(),
-  live: z.record(z.enum(APP_UPDATE_APPS), z.string().nullable()).optional(),
+  live: z.partialRecord(z.enum(APP_UPDATE_APPS), z.string().nullable()).optional(),
   remove: z.array(z.object({ app: z.enum(APP_UPDATE_APPS), id: z.string() })).max(20).optional(),
 });
 
