@@ -23,7 +23,7 @@ test("multi-stop quote = rounded distance fare + flat fee per stop", () => {
   assert.equal(multi.total, multi.base + 1000);
   assert.equal(multi.total % 500, 0);
   assert.equal(stopFeeTotal(2, 0), 0, "no fee when the setting is 0");
-  assert.equal(stopFeeTotal(3, 800), 3 * 500, "fee rounds to the nearest UGX 500 like every fare");
+  assert.equal(stopFeeTotal(3, 800), 3 * 1000, "a stop fee is kept to whole UGX 500s like every fare (800 rounds up)");
 });
 
 test("fare band defaults to 70%–150% of the quote, rounded", () => {
@@ -34,7 +34,7 @@ test("fare band defaults to 70%–150% of the quote, rounded", () => {
 
 test("offers are rounded and must stay in the band", () => {
   const band = { min: 7000, max: 15000 };
-  assert.deepEqual(validateOffer(7200, band), { amount: 7000 });
+  assert.deepEqual(validateOffer(7200, band), { amount: 7500 }, "an offer is kept to whole UGX 500s like every fare");
   assert.ok("error" in validateOffer(6000, band));
   assert.ok("error" in validateOffer(16000, band));
   assert.ok("error" in validateOffer(0, band));
@@ -56,6 +56,6 @@ test("offer summary reports expiry and raises left", () => {
   const s = offerSummary(order, { offerMinPercent: 70, offerMaxPercent: 150, maxRaises: 5 }, now)!;
   assert.equal(s.expired, true);
   assert.equal(s.raisesLeft, 3);
-  assert.equal(s.min, 6000);
+  assert.equal(s.min, 6500, "70% of 9,000 is 6,300, kept to a whole 500");
   assert.equal(offerSummary({ fare_offer: null }, { offerMinPercent: 70, offerMaxPercent: 150, maxRaises: 5 }), null);
 });

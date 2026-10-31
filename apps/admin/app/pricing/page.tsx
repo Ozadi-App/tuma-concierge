@@ -15,7 +15,15 @@ type Rates = {
   car: { ratePerKm: number; minimumFare: number; comfortPremiumPercent: number; xlPremiumPercent: number };
   stopFee: number;
 };
-type Loaded = { pricing: PricingConfig; rates: Rates; defaults: PricingConfig };
+type Rounding = { enabled: boolean; step: 500 | 1000; roundUpAfter: number };
+type Loaded = { pricing: PricingConfig; rates: Rates; rounding: Rounding; defaults: PricingConfig };
+
+/** What the rule does to an amount, mirrored from the server so the examples update as you type. */
+function roundWith(r: Rounding, amount: number): number {
+  if (!r.enabled) return Math.round(amount);
+  const lower = Math.floor(amount / r.step) * r.step;
+  return amount - lower > r.roundUpAfter ? lower + r.step : lower;
+}
 type TimeFees = { cancellationEnabled: boolean; cancellationType: "flat" | "percent"; cancellationValue: number; waitingEnabled: boolean; waitingType: "flat" | "percent"; waitingValue: number; freeWaitingMinutes: number; waitingWarningMinutes: number };
 type Preview = FareBreakdown & { premiums: { label: string; percent: number }[] };
 
@@ -25,6 +33,7 @@ export default function PricingPage() {
   const [data, setData] = useState<Loaded | null>(null);
   const [pricing, setPricing] = useState<PricingConfig | null>(null);
   const [rates, setRates] = useState<Rates | null>(null);
+  const [rounding, setRounding] = useState<Rounding | null>(null);
   const [timeFees, setTimeFees] = useState<TimeFees | null>(null);
   const [service, setService] = useState<FareService>("car_convenient");
   const [error, setError] = useState<string | null>(null);
@@ -39,6 +48,7 @@ export default function PricingPage() {
         setData(p);
         setPricing(p.pricing);
         setRates(p.rates);
+        setRounding(p.rounding);
         setTimeFees(s.settings.timeFees as TimeFees);
       })
       .catch((err) => { if (alive) setError(requestErrorMessage(err)); });
@@ -47,15 +57,16 @@ export default function PricingPage() {
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
-    if (!pricing || !rates || !timeFees) return;
+    if (!pricing || !rates || !timeFees || !rounding) return;
     setBusy(true);
     setError(null);
     setSaved(false);
     try {
-      const res = await adminRequest<{ pricing: PricingConfig; rates: Rates }>("/admin/pricing", { method: "PUT", body: { pricing, rates } });
+      const res = await adminRequest<{ pricing: PricingConfig; rates: Rates; rounding: Rounding }>("/admin/pricing", { method: "PUT", body: { pricing, rates, rounding } });
       await api.adminUpdateSettings({ timeFees } as never);
       setPricing(res.pricing);
       setRates(res.rates);
+      setRounding(res.rounding);
       setSaved(true);
     } catch (err) {
       setError(err instanceof Error && "status" in err ? requestErrorMessage(err) : errorMessage(err));
@@ -65,7 +76,7 @@ export default function PricingPage() {
   }
 
   if (data && !can) return <SettingsPageShell title="Pricing" loading={false}><p className="text-sm text-ink-500">You don&apos;t have permission to manage this.</p></SettingsPageShell>;
-  if (!pricing || !rates || !timeFees) return <SettingsPageShell title="Pricing" loading>{error ? <Notice tone="warn">{error}</Notice> : null}</SettingsPageShell>;
+  if (!pricing || !rates || !timeFees || !rounding) return <SettingsPageShell title="Pricing" loading>{error ? <Notice tone="warn">{error}</Notice> : null}</SettingsPageShell>;
 
   const setProfile = (patch: Partial<PricingConfig["profiles"][FareService]>) => setPricing({ ...pricing, profiles: { ...pricing.profiles, [service]: { ...pricing.profiles[service], ...patch } } });
   const profile = pricing.profiles[service];
@@ -121,7 +132,6 @@ export default function PricingPage() {
                 <NumberField label="Charge per minute of travel" suffix="UGX" value={profile.perMinute} onChange={(v) => setProfile({ perMinute: v })} hint="0 = distance only" />
                 <NumberField label="Expected speed" suffix="km/h" value={profile.expectedSpeedKmh} onChange={(v) => setProfile({ expectedSpeedKmh: v })} min={5} max={200} hint="Used to estimate travel time." />
                 <NumberField label="Road factor" value={profile.distanceFactor} onChange={(v) => setProfile({ distanceFactor: v })} min={0.5} max={3} step={0.05} hint="Straight-line distance × this = the distance charged. 1 = as measured." />
-                <SelectField label="Round the fare to" value={String(profile.rounding)} onChange={(v) => setProfile({ rounding: Number(v) as 100 | 500 | 1000 })} options={[{ value: "100", label: "UGX 100" }, { value: "500", label: "UGX 500 (usual)" }, { value: "1000", label: "UGX 1,000" }]} />
               </Grid>
             </Card>
           </>
@@ -274,21 +284,37 @@ export default function PricingPage() {
           )}
         </Card>
 
-        <Calculator pricing={pricing} rates={rates} initial={service} />
+        <Card title="Rounding" hint="Every price, fee, discount and rider earning is rounded so nobody sees odd amounts like 23,600. Change the rule here; it applies to new quotes and bookings straight away.">
+          <Toggle label="Round amounts" hint="Off means exact shillings." checked={rounding.enabled} onChange={(v) => setRounding({ ...rounding, enabled: v })} />
+          {rounding.enabled && (
+            <>
+              <Grid>
+                <SelectField label="Amounts are whole" value={String(rounding.step)} onChange={(v) => setRounding({ ...rounding, step: Number(v) as 500 | 1000, roundUpAfter: Math.min(rounding.roundUpAfter, Number(v) - 1) })} options={[{ value: "500", label: "UGX 500s" }, { value: "1000", label: "UGX 1,000s" }]} />
+                <NumberField label="Round up when more than" suffix="UGX" value={rounding.roundUpAfter} onChange={(v) => setRounding({ ...rounding, roundUpAfter: Math.min(v, rounding.step - 1) })} max={rounding.step - 1} hint={`into each ${rounding.step.toLocaleString("en-UG")}. Lower rounds up sooner. ${rounding.step / 2} would be plain nearest.`} />
+              </Grid>
+              <ul className="space-y-1 text-sm text-ink-500">
+                {[23_600, 64_300, 29_700, 31_100, 18_200].map((n) => <li key={n} className="flex justify-between"><span>{ugx(n)}</span><span className="font-semibold text-ink">becomes {ugx(roundWith(rounding, n))}</span></li>)}
+              </ul>
+              <p className="text-xs text-ink-500">Fares and fees follow this rule. Commissions, discounts, cashback and bonuses are rounded to the nearest whole step so a 12% cut doesn&apos;t quietly become 15%.</p>
+            </>
+          )}
+        </Card>
+
+        <Calculator pricing={pricing} rates={rates} rounding={rounding} initial={service} />
         <SettingsSaveBar busy={busy} error={error} saved={saved} />
       </form>
     </SettingsPageShell>
   );
 }
 
-function Calculator({ pricing, rates, initial }: { pricing: PricingConfig; rates: Rates; initial: FareService }) {
+function Calculator({ pricing, rates, rounding, initial }: { pricing: PricingConfig; rates: Rates; rounding: Rounding; initial: FareService }) {
   const [service, setService] = useState<FareService>(initial);
   const [km, setKm] = useState(8);
   const [when, setWhen] = useState("");
   const [stops, setStops] = useState(0);
   const [result, setResult] = useState<Preview | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const body = useMemo(() => ({ service, distanceKm: km, pricing, rates, stops, at: when ? new Date(when).toISOString() : undefined }), [service, km, pricing, rates, stops, when]);
+  const body = useMemo(() => ({ service, distanceKm: km, pricing, rates, rounding, stops, at: when ? new Date(when).toISOString() : undefined }), [service, km, pricing, rates, rounding, stops, when]);
 
   useEffect(() => {
     let alive = true;

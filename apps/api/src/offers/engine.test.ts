@@ -19,11 +19,11 @@ const ctx = (over: Partial<OfferContext> = {}): OfferContext => ({
   service: "ride.car", fare: 10_000, now: new Date("2026-10-29T09:30:00Z"), code: null, customer: profile(), ...over,
 });
 
-test("a promo code needs the right code and rounds the discount down to 100", () => {
+test("a promo code needs the right code and rounds the discount to a whole 500", () => {
   const o = offer({ code: "WELCOME", value: 15 });
   assert.equal(evaluateOffer(o, ctx()).eligible, false);
   assert.equal(evaluateOffer(o, ctx({ code: " welcome " })).discount, 1_500);
-  assert.equal(evaluateOffer(offer({ code: "X", value: 12.34 }), ctx({ code: "x", fare: 10_050 })).discount, 1_200);
+  assert.equal(evaluateOffer(offer({ code: "X", value: 12.34 }), ctx({ code: "x", fare: 10_050 })).discount, 1_000);
 });
 
 test("maxDiscount caps a percent offer and a discount never exceeds the fare", () => {

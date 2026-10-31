@@ -51,7 +51,7 @@ test("fuel adjustment raises every fare; it can differ for one vehicle", () => {
   cfg.multipliers.fuel.perService = { boda: 10 };
   assert.equal(computeFare(cfg, { service: "boda", rates: { ratePerKm: 1_500, minimumFare: 2_500 }, distanceKm: 4, now: NOW }).total, 6_500, "6,000 + 10% = 6,600, rounds to 6,500");
   cfg.multipliers.fuel.perService = { boda: 5 };
-  assert.equal(computeFare(cfg, { service: "boda", rates: { ratePerKm: 1_500, minimumFare: 2_500 }, distanceKm: 4, now: NOW }).total, 6_000, "6,300 is only 300 into the step, so it rounds down (the app's usual rule)");
+  assert.equal(computeFare(cfg, { service: "boda", rates: { ratePerKm: 1_500, minimumFare: 2_500 }, distanceKm: 4, now: NOW }).total, 6_500, "6,300 is 300 into the step, more than 100, so it rounds up");
 });
 
 test("peak, night, traffic, weather, demand and holiday multipliers add up, in Kampala time, with an overall cap", () => {
@@ -100,7 +100,7 @@ test("fees: booking, scheduled, stops, pass-through and the return-trip discount
   assert.equal(f.total, 6_000 + 500 + 1_000 + 2_000 + 2_000);
   cfg.fees.returnTripDiscountPercent = 10;
   const r = computeFare(cfg, { service: "boda", rates: { ratePerKm: 1_500, minimumFare: 2_500 }, distanceKm: 4, now: NOW, returnTrip: true });
-  assert.equal(r.total, 5_500, "6,500 less 10% = 5,850, which is only 350 into the step, so it rounds down");
+  assert.equal(r.total, 6_000, "6,500 less 10% = 5,850, which rounds up to 6,000");
 });
 
 test("the maximum fare caps long trips, and the minimum always wins over a tiny fare", () => {
@@ -116,10 +116,8 @@ test("base fare, per-minute charge and rounding steps", () => {
   const f = computeFare(cfg, { service: "boda", rates: { ratePerKm: 1_000, minimumFare: 0 }, distanceKm: 6, now: NOW });
   // 1,000 base + 6,000 distance + 6 km at 30 km/h = 12 min x 100 = 1,200
   assert.equal(f.subtotal, 8_200);
-  cfg.profiles.boda.rounding = 1000;
-  assert.equal(computeFare(cfg, { service: "boda", rates: { ratePerKm: 1_000, minimumFare: 0 }, distanceKm: 6, now: NOW }).total, 8_000);
-  cfg.profiles.boda.rounding = 100;
-  assert.equal(computeFare(cfg, { service: "boda", rates: { ratePerKm: 1_000, minimumFare: 0 }, distanceKm: 6, now: NOW }).total, 8_200);
+  // 8,200 is 200 into the 500 step, more than the default 100, so it rounds up.
+  assert.equal(computeFare(cfg, { service: "boda", rates: { ratePerKm: 1_000, minimumFare: 0 }, distanceKm: 6, now: NOW }).total, 8_500);
 });
 
 // --- money flow -----------------------------------------------------------------------
@@ -147,7 +145,7 @@ test("commission rules: percent, flat, min/max and tiered", () => {
   const tiered = { ...base, type: "tiered" as const, tiers: [{ fromAmount: 0, percent: 15 }, { fromAmount: 1_000_000, percent: 10 }] };
   assert.equal(commissionAmount(tiered, { gross: 10_000, monthlyVolume: 0 }), 1_500);
   assert.equal(commissionAmount(tiered, { gross: 10_000, monthlyVolume: 2_000_000 }), 1_000);
-  assert.equal(commissionAmount({ ...base, base: "fare_only" }, { gross: 10_000, fareOnly: 8_000 }), 800);
+  assert.equal(commissionAmount({ ...base, base: "fare_only" }, { gross: 10_000, fareOnly: 8_000 }), 1_000, "800 is kept to a whole 500 (nearest)");
   assert.equal(commissionAmount(base, { gross: 0 }), 0);
 });
 

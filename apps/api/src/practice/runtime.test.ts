@@ -156,7 +156,7 @@ test("practice parcel fare and stored total use the same rounded amount", async 
   installStorage();
   const practiceFetch = createPracticeFetch("customer", (async () => { throw new Error("live fetch must not be called"); }) as typeof fetch);
   startPracticeMode("customer");
-  for (const [estimatedTotal, expected] of [[3_102, 3_000], [3_350, 3_000], [3_351, 3_500]]) {
+  for (const [estimatedTotal, expected] of [[3_102, 3_500], [3_100, 3_000], [3_350, 3_500]]) {
     const response = await practiceFetch("https://api.test/v1/orders", {
       method: "POST",
       body: JSON.stringify({ type: "parcel", estimatedTotal }),

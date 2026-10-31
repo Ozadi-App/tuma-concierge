@@ -5,6 +5,7 @@
  *
  * Every number is an admin setting. The defaults below reproduce today's behaviour unless a value is called out as new.
  */
+import { ceil500, floor500, round500, roundNearest } from "./fare.js";
 import { inWindows, inZone, localClock, DEFAULT_TZ_OFFSET_MINUTES, type GeoPoint, type TimeWindow, type Zone } from "./offers.js";
 
 // ---------------------------------------------------------------------------
@@ -17,17 +18,6 @@ export const FARE_SERVICE_LABEL: Record<FareService, string> = {
   boda: "Boda ride", car_convenient: "Car — Convenient", car_comfort: "Car — Comfort", car_xl: "Car — XL / large", parcel: "Parcel delivery", shopping: "Shopping delivery",
 };
 
-/** Round up-ish to a step the admin chooses. 500 matches the existing fare rounding (see fare.ts). */
-export type RoundingStep = 100 | 500 | 1000;
-
-export function roundTo(amount: number, step: RoundingStep): number {
-  if (step === 500) {
-    // The same rule the whole app has always used: move up only when more than 350 into the interval.
-    const lower = Math.floor(amount / 500) * 500;
-    return amount - lower > 350 ? lower + 500 : lower;
-  }
-  return Math.round(amount / step) * step;
-}
 
 export type DistanceBand = {
   /** The band starts here (km). The first band always starts at 0. */
@@ -55,7 +45,6 @@ export type FareProfile = {
   distanceFactor: number;
   /** Highest fare, whatever the distance. 0 = no cap. */
   maximumFare: number;
-  rounding: RoundingStep;
 };
 
 export type MultiplierKind = "fuel" | "peak" | "night" | "demand" | "traffic" | "weather" | "zone" | "holiday";
@@ -105,7 +94,7 @@ export type PricingConfig = {
   tzOffsetMinutes: number;
 };
 
-const FLAT: FareProfile = { baseFare: 0, bands: [], perMinute: 0, expectedSpeedKmh: 25, distanceFactor: 1, maximumFare: 0, rounding: 500 };
+const FLAT: FareProfile = { baseFare: 0, bands: [], perMinute: 0, expectedSpeedKmh: 25, distanceFactor: 1, maximumFare: 0 };
 
 export const DEFAULT_PRICING_CONFIG: PricingConfig = {
   profiles: {
@@ -277,10 +266,12 @@ export function computeFare(cfg: PricingConfig, input: FareInput): FareBreakdown
   const subtotal = total;
   let minimumApplied = false;
   let maximumApplied = false;
-  const min = Math.max(0, input.rates.minimumFare);
-  total = roundTo(total, profile.rounding);
+  // A minimum or highest fare the admin typed is itself kept to whole 500s.
+  const min = ceil500(Math.max(0, input.rates.minimumFare));
+  total = round500(total);
   if (total < min) { total = min; minimumApplied = true; }
-  if (profile.maximumFare > 0 && total > profile.maximumFare) { total = profile.maximumFare; maximumApplied = true; }
+  const max = profile.maximumFare > 0 ? Math.max(floor500(profile.maximumFare), ceil500(1)) : 0;
+  if (max > 0 && total > max) { total = max; maximumApplied = true; }
   total = Math.max(total, min && !maximumApplied ? min : 0);
   return { service: input.service, distanceKm: distance, lines, multiplier, multiplierParts: parts, subtotal, minimumApplied, maximumApplied, total };
 }
@@ -419,16 +410,16 @@ export function commissionAmount(rule: CommissionRule, input: { gross: number; f
     case "flat":
       return Math.min(rule.flat, base);
     case "percent":
-      return Math.round((base * rule.percent) / 100);
+      return Math.min(base, roundNearest((base * rule.percent) / 100));
     case "percent_min_max": {
-      let c = Math.round((base * rule.percent) / 100);
+      let c = roundNearest((base * rule.percent) / 100);
       if (rule.min > 0) c = Math.max(c, rule.min);
       if (rule.max > 0) c = Math.min(c, rule.max);
       return Math.min(c, base);
     }
     case "tiered": {
       const tier = [...rule.tiers].sort((a, b) => b.fromAmount - a.fromAmount).find((t) => (input.monthlyVolume ?? 0) >= t.fromAmount);
-      return Math.round((base * (tier?.percent ?? rule.percent)) / 100);
+      return Math.min(base, roundNearest((base * (tier?.percent ?? rule.percent)) / 100));
     }
   }
 }

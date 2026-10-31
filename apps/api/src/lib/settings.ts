@@ -1,6 +1,6 @@
 import type { MatchingMode } from "@peebee/shared";
 import { MODULES, channelModuleOn, getModule, type ModuleDef } from "@peebee/shared";
-import { DEFAULT_MONEY_FLOW_CONFIG, DEFAULT_PRICING_CONFIG, mergeDefaults, type PricingConfig } from "@peebee/shared";
+import { DEFAULT_MONEY_FLOW_CONFIG, DEFAULT_PRICING_CONFIG, DEFAULT_ROUNDING_RULE, mergeDefaults, type PricingConfig } from "@peebee/shared";
 import { DEFAULT_CREDIT_CONFIG, DEFAULT_DISCOUNT_WALLET_CONFIG, DEFAULT_INCENTIVE_CONFIG, DEFAULT_OFFERS_CONFIG } from "@peebee/shared";
 import { DEFAULT_HOME_MENU, DEFAULT_RIDE_TRACKING_SETTINGS, DEFAULT_SHOPPING_UNIT_SETTINGS, DEFAULT_TIME_FEES, type JobExpirySettings, type TimeFeeSettings } from "@peebee/shared";
 import { db } from "../db/client.js";
@@ -33,6 +33,8 @@ const DEFAULTS = {
   credit_config: JSON.stringify(DEFAULT_CREDIT_CONFIG),
   /** The fare engine: distance bands, multipliers and fees per service (Admin → Pricing). Rates and minimums stay in the older keys. */
   pricing_config: JSON.stringify(DEFAULT_PRICING_CONFIG),
+  /** How every price, fee, discount and earning is rounded (Admin → Pricing → Rounding): on/off, the step, and when to round up. */
+  rounding_config: JSON.stringify(DEFAULT_ROUNDING_RULE),
   /** Commission, gateway fees, taxes and the maintenance reserve (Admin → Money flow). */
   money_flow_config: JSON.stringify(DEFAULT_MONEY_FLOW_CONFIG),
   /** Which dataset the whole platform — every customer, rider, and the

@@ -139,10 +139,10 @@ test("money flow: save rates and a commission, calculator splits a 10,000 paymen
   cfg.taxes = [{ id: "vat", name: "VAT on commission", enabled: true, percent: 18, appliesTo: "commission", mode: "inclusive", bearer: "platform", modules: [], effectiveFrom: "2026-01-01" }];
   assert.equal((await call("admin", "PUT", "/admin/money-flow", cfg)).status, 200);
   const w = await call("admin", "POST", "/admin/money-flow/preview", { module: "ride_car", gross: 10000, rail: "mobile_money", provider: "yo" });
-  assert.equal(w.body.commission, 1200);
+  assert.equal(w.body.commission, 1000, "12% of 10,000 is 1,200, kept to a whole 500 (nearest)");
   assert.equal(w.body.gatewayFee, 250);
-  assert.equal(w.body.providerShare, 8800);
-  assert.equal(w.body.taxTotal, 183, "18% VAT inside a 1,200 commission");
+  assert.equal(w.body.providerShare, 9000);
+  assert.equal(w.body.taxTotal, 153, "18% VAT inside a 1,000 commission");
   assert.equal(w.body.customerPays, 10000);
   assert.ok(waterfallBalances(w.body as never));
   assert.equal((await call("admin", "PUT", "/admin/money-flow", { ...cfg, maintenance: { enabled: true, percent: 500, of: "gross" } })).status, 400);
@@ -166,13 +166,13 @@ test("settling a ride records where the money went, and takes any extra commissi
   const res = await call("rider", "POST", "/orders/o1/settle");
   assert.equal(res.status, 200);
 
-  // 6,000 collected, 10% commission = 600 taken from the rider.
-  assert.equal((await client.execute("SELECT wallet_balance AS b FROM riders WHERE user_id = 'rider'")).rows[0].b, 5400);
+  // 6,000 collected, 10% commission = 600, kept to a whole 500 = 500 taken from the rider.
+  assert.equal((await client.execute("SELECT wallet_balance AS b FROM riders WHERE user_id = 'rider'")).rows[0].b, 5500);
   const split = (await client.execute("SELECT * FROM payment_splits WHERE order_id = 'o1'")).rows[0];
   assert.equal(split.module, "ride_boda");
   assert.equal(split.rail, "mobile_money");
-  assert.deepEqual([split.gross, split.commission, split.gateway_fee, split.provider_share, split.platform_net], [6000, 600, 150, 5400, 450]);
-  assert.equal(split.extra_commission, 600);
+  assert.deepEqual([split.gross, split.commission, split.gateway_fee, split.provider_share, split.platform_net], [6000, 500, 150, 5500, 350]);
+  assert.equal(split.extra_commission, 500);
   assert.equal(split.customer_pays, 6000);
 
   // A second settle never records or charges twice.
@@ -182,7 +182,7 @@ test("settling a ride records where the money went, and takes any extra commissi
 
   // The report adds it up.
   const report = await caller(new Hono().route("/v1", costingAdminRoutes), toks)("admin", "GET", "/admin/money-flow/report?days=30");
-  assert.equal(report.body.totals.commission, 600);
+  assert.equal(report.body.totals.commission, 500);
   assert.equal(report.body.byModule[0].module, "ride_boda");
 });
 
@@ -305,4 +305,39 @@ test("reversing a top-up takes the cash back and, when chosen, the bonus it earn
   assert.equal((await client.execute("SELECT wallet_balance AS b FROM users WHERE id = 'cust'")).rows[0].b, 50000);
   assert.equal(await getCreditBalance("cust", "live"), 0);
   assert.equal((await call("admin", "POST", "/admin/offers/credit/reverse-topup", { topupId: "topup1" })).status, 404, "a reversed top-up is not successful any more");
+});
+
+test("the rounding switch: saved by the admin, applied to quotes, previewed before saving", async () => {
+  const client = await freshDb();
+  const toks = await tokens();
+  const { applyRounding, getRoundingConfig } = await import("./config.js");
+  const { getRoundingRule, setRoundingRule, DEFAULT_ROUNDING_RULE } = await import("@peebee/shared");
+  try {
+    const call = caller(new Hono().route("/v1", costingAdminRoutes), toks);
+    const current = await call("admin", "GET", "/admin/pricing");
+    assert.deepEqual(current.body.rounding, { enabled: true, step: 500, roundUpAfter: 100 }, "ships as: whole 500s, round up after 100");
+
+    // A 4.46 km boda ride at 1,500/km is 6,690: not a round figure, so the rounding rule shows.
+    const preview = (rounding?: unknown) => call("admin", "POST", "/admin/pricing/preview", { service: "boda", distanceKm: 4.46, rates: { ...current.body.rates, boda: { ratePerKm: 1_500, minimumFare: 2_500 } }, ...(rounding ? { rounding } : {}) });
+    const raw = 4.46 * 1_500; // 6,690
+    assert.equal((await preview()).body.total, 7_000, `${raw} is 190 into the step, so it rounds up`);
+    // Try a different rule without saving it.
+    assert.equal((await preview({ enabled: true, step: 500, roundUpAfter: 249 })).body.total, 6_500, "plain nearest 500");
+    assert.equal((await preview({ enabled: true, step: 1000, roundUpAfter: 500 })).body.total, 7_000);
+    assert.equal((await preview({ enabled: false, step: 500, roundUpAfter: 100 })).body.total, 6_690, "rounding off: exact");
+    assert.deepEqual(await getRoundingConfig(), { enabled: true, step: 500, roundUpAfter: 100 }, "previewing saved nothing");
+
+    // Save it, and the next request uses it.
+    const saved = await call("admin", "PUT", "/admin/pricing", { pricing: current.body.pricing, rates: current.body.rates, rounding: { enabled: true, step: 1000, roundUpAfter: 500 } });
+    assert.equal(saved.status, 200);
+    assert.deepEqual(saved.body.rounding, { enabled: true, step: 1000, roundUpAfter: 500 });
+    setRoundingRule(DEFAULT_ROUNDING_RULE);
+    await applyRounding();
+    assert.deepEqual(getRoundingRule(), { enabled: true, step: 1000, roundUpAfter: 500 });
+    // A step smaller than 500 is refused.
+    assert.equal((await call("admin", "PUT", "/admin/pricing", { pricing: current.body.pricing, rates: current.body.rates, rounding: { enabled: true, step: 100, roundUpAfter: 50 } })).status, 400);
+    assert.ok(Number((await client.execute("SELECT COUNT(*) AS n FROM admin_activity_log WHERE action = 'pricing.update'")).rows[0].n) >= 1);
+  } finally {
+    setRoundingRule(DEFAULT_ROUNDING_RULE);
+  }
 });

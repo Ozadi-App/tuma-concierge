@@ -1,4 +1,4 @@
-import { roundFare } from "./fare.js";
+import { snap500 } from "./fare.js";
 
 export type TimeFeeSettings = {
   cancellationEnabled: boolean;
@@ -28,7 +28,7 @@ export type OrderTimeFees = TimeFeePolicy & {
 
 export function timeFeePolicy(settings: TimeFeeSettings, fare: number): TimeFeePolicy {
   const fee = (enabled: boolean, type: "flat" | "percent", value: number) =>
-    enabled ? roundFare(type === "flat" ? value : Math.max(0, fare) * value / 100) : 0;
+    enabled ? Math.max(500, snap500(type === "flat" ? value : Math.max(0, fare) * value / 100)) : 0;
   return {
     cancellationFee: fee(settings.cancellationEnabled, settings.cancellationType, settings.cancellationValue),
     waitingFee: fee(settings.waitingEnabled, settings.waitingType, settings.waitingValue),

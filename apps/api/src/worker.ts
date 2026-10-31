@@ -14,6 +14,7 @@ import { sweepWork } from "./work/scheduled.js";
 import { sweepTalent } from "./talent/scheduled.js";
 import { sweepChannels } from "./channels/scheduled.js";
 import { expireStaleVouchers } from "./gas/vouchers.js";
+import { applyRounding } from "./costing/config.js";
 import { sweepStaleReservations } from "./offers/service.js";
 import { expireCredit } from "./offers/credit.js";
 import { sweepDiscountWallets } from "./offers/discount-wallet.js";
@@ -58,6 +59,7 @@ export default {
    * additionally renews recurring rider subscriptions. */
   async scheduled(event: { cron?: string }, env: WorkerEnv, ctx: CfExecutionContext): Promise<void> {
     bindEnv(env);
+    await applyRounding().catch(() => undefined);
     // Practice on each person's device (the default) and a live platform need none of the demo-world work below, which is
     // most of what this job reads from the database. It runs only while Admin switched on the shared practice world, or the
     // whole platform is in sandbox.
