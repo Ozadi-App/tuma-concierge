@@ -1,4 +1,4 @@
-import { ridersForThisWorld } from "../practice/people.js";
+import { primeDemoAccounts, ridersForThisWorld } from "../practice/people.js";
 import { settleLoyalty } from "../marketplace/loyalty.js";
 import { Hono, type Context } from "hono";
 import { roadKm } from "../lib/road-distance.js";
@@ -1129,6 +1129,7 @@ async function findAutoMatchCandidate(
   const subscriptionGate = (await getMonetizationSettings()).subscriptionEnabled
     ? "AND r.subscription_status = 'active' AND r.subscription_paid_through >= datetime('now')"
     : "";
+  await primeDemoAccounts();
   const eligible = await db.execute({
     sql: `SELECT u.id, u.name, r.stage_lat, r.stage_lng, r.area${ownRangeColumn} FROM riders r JOIN users u ON u.id = r.user_id
           WHERE r.verified = 1 AND r.is_online = 1 AND ${ridersForThisWorld("r.user_id")}

@@ -44,6 +44,7 @@ import { riderRoutes } from "./riders/routes.js";
 import { settingsRoutes } from "./settings/routes.js";
 import { appUpdatesAdminRoutes, appUpdatesRoutes } from "./app-updates/routes.js";
 import { practiceRoutes } from "./practice/routes.js";
+import { primeDemoAccounts } from "./practice/people.js";
 import { practiceScope } from "./practice/scope.js";
 import { speechRoutes } from "./speech/routes.js";
 import { stageAdminRoutes, stageRoutes } from "./stages/routes.js";
@@ -272,6 +273,11 @@ app.get("/v1", (c) =>
 
 // Requests made with a practice session token are answered from the practice database; see practice/scope.ts.
 app.use("/v1/*", practiceScope);
+// Accounts marked as demo (users.is_demo) stay out of the live platform's matching and lists; see practice/people.ts.
+app.use("/v1/*", async (_c, next) => {
+  await primeDemoAccounts();
+  await next();
+});
 // Every price, fee and discount in a request is rounded by the admin's rule (Admin → Pricing → Rounding).
 app.use("/v1/*", async (_c, next) => {
   await applyRounding().catch(() => undefined);
