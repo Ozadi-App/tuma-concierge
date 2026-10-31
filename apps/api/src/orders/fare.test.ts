@@ -63,3 +63,13 @@ test("a stored rounding rule is kept inside what makes sense", () => {
   assert.deepEqual(normaliseRoundingRule({ step: 1000, roundUpAfter: -5 }), { enabled: true, step: 1000, roundUpAfter: 0 });
   assert.deepEqual(normaliseRoundingRule(null), DEFAULT_ROUNDING_RULE);
 });
+
+import { roundedFromNote as _roundedFromNote } from "@peebee/shared";
+import { test as _t } from "node:test";
+import _assert from "node:assert/strict";
+_t("roundedFromNote describes the direction and exact amount", () => {
+  _assert.equal(_roundedFromNote(24600, 24500), "rounded down from 24,600");
+  _assert.equal(_roundedFromNote(29700, 30000), "rounded up from 29,700");
+  _assert.equal(_roundedFromNote(24500, 24500), null);
+  _assert.equal(_roundedFromNote(null, 24500), null);
+});

@@ -2436,9 +2436,16 @@ orderRoutes.get("/rides/quote", async (c) => {
   const engineCfg = await getPricingConfig();
   const rates = { ratePerKm: delivery.rideRatePerKm, minimumFare: delivery.rideMinimumFare };
   const demandRatio = engineCfg.multipliers.demand.enabled ? await currentDemandRatio() : null;
-  const quote = rideQuote({ pickup, destination, stops }, { ...rates, stopFee: settings.stopFee }, (km) => computeFare(engineCfg, { service: "boda", rates, distanceKm: km, now: new Date(), pickup, dropoff: destination, demandRatio }).total);
+  const held: { fare: FareBreakdown | null } = { fare: null };
+  const quote = rideQuote({ pickup, destination, stops }, { ...rates, stopFee: settings.stopFee }, (km) => {
+    held.fare = computeFare(engineCfg, { service: "boda", rates, distanceKm: km, now: new Date(), pickup, dropoff: destination, demandRatio });
+    return held.fare.total;
+  });
+  // What the fare was before rounding, for the "rounded up from…" note.
+  const roundedFrom = held.fare?.roundedFrom != null ? held.fare.roundedFrom + quote.stopFees : null;
   return c.json({
     quote: quote.total,
+    roundedFrom,
     base: quote.base,
     stopFees: quote.stopFees,
     stopFee: settings.stopFee,
