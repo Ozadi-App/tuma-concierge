@@ -1,6 +1,7 @@
 "use client";
 
 import { travelMinutes } from "@peebee/shared";
+import { RoundedNote } from "../RoundedNote";
 import type { CarCategory, CarConfig, FareCounter, FareOffer, OrderRow, RidePassenger, RideQuote, RideStop, SavedPassenger } from "@peebee/shared";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -14,7 +15,7 @@ import { api, errorMessage } from "../../lib/api";
 import { useRegisterNavBack, useRegisterNavPrimaryAction } from "../../lib/nav-primary-action";
 import { currentLocationPlace, loadPlaces, placeFields, placeFromSaved, type Place, type PlacesBootstrap } from "../../lib/places";
 import {
-  arrivalLabel, bodaFare, categoryFare, formatUgx, haversineKm, predictUsual, toLocalInput, whenChoices, whenLabel, withinSchedule,
+  arrivalLabel, bodaExact, bodaFare, categoryFare, formatUgx, haversineKm, predictUsual, toLocalInput, whenChoices, whenLabel, withinSchedule,
 } from "../../lib/ride-home";
 import { saveSelfDriveRoute } from "../../lib/selfdrive-route";
 import { useSpecialCarServices } from "../../lib/special-car";
@@ -57,6 +58,8 @@ type BoardOption = {
   sub: string;
   icon: LucideIcon;
   fare: number | null;
+  /** The fare before rounding, when rounding changed it. */
+  roundedFrom?: number | null;
   pending: boolean;
   blocked?: string;
   /** true → gold "Book" (books straight away); false → "Next: …" (needs details first). */
@@ -198,7 +201,7 @@ export function RideHome() {
   const rideMin = road ? travelMinutes(road.route.durationSeconds) : km != null ? Math.max(3, Math.round((km / 22) * 60)) : null;
   const roadKm = road ? road.route.distanceMeters / 1000 : km;
 
-  const [carOptions, setCarOptions] = useState<Array<{ size: "normal" | "large"; tier: "convenient" | "comfort"; fare: number; nearby: number }> | null>(null);
+  const [carOptions, setCarOptions] = useState<Array<{ size: "normal" | "large"; tier: "convenient" | "comfort"; fare: number; roundedFrom?: number | null; nearby: number }> | null>(null);
   const [quotes, setQuotes] = useState<Record<string, number | null>>({});
   const routeKey = p?.lat != null && d?.lat != null ? `${p.lat},${p.lng}:${d.lat},${d.lng}` : null;
   useEffect(() => {
@@ -250,6 +253,7 @@ export function RideHome() {
       sub: later ? "Boda rides are booked for now" : multi ? `${stops.length} stop${stops.length === 1 ? "" : "s"} · +${formatUgx(rideQuote?.stopFees ?? 0)} stop fees` : "Quickest through traffic",
       // The server quote when there is one; otherwise the same rate the server uses (single destination only).
       fare: rideQuote?.quote ?? (multi ? null : bodaFare(km, rates?.ratePerKm, rates?.minimum)),
+      roundedFrom: rideQuote ? rideQuote.roundedFrom ?? null : multi || rates == null ? null : bodaExact(km, rates.ratePerKm, rates.minimum),
       pending: multi ? rideQuoteState === "loading" : rates == null && rideQuote == null,
       blocked: later ? "Now only" : multi && rideQuoteState === "failed" ? "Stops unavailable" : undefined,
       handoff: { mode: "boda", autoBook: true },
@@ -261,7 +265,7 @@ export function RideHome() {
       out.push({
         id: "car", prefer: "car", title: "Car", icon: carSize === "large" ? CarFront : Car, direct: true,
         sub: o ? (o.nearby > 0 ? `${base} · ${o.nearby} nearby` : later ? base : `${base} · none nearby`) : base,
-        fare: o?.fare ?? null, pending: carOptions == null,
+        fare: o?.fare ?? null, roundedFrom: o?.roundedFrom ?? null, pending: carOptions == null,
         blocked: multi ? "No stops" : o && !later && o.nearby === 0 ? "None nearby" : carOptions != null && !o ? "Unavailable" : undefined,
         handoff: { mode: "car", tier: carTier, size: carSize, autoBook: true },
         navSub: base,
@@ -568,6 +572,7 @@ export function RideHome() {
                             <span className="block text-[15px] font-bold tabular-nums text-ink">
                               {o.pending ? <span className="ride-skeleton inline-block h-4 w-16 rounded" aria-label="Checking fare" /> : o.fare != null ? formatUgx(o.fare) : "On next step"}
                             </span>
+                            {!o.pending && <RoundedNote amount={o.fare} from={o.roundedFrom} />}
                             <span className="block text-[11px] font-semibold text-ink-500">{o.blocked ?? (arrive ? `arrive ≈ ${arrive}` : "")}</span>
                           </span>
                         </label>

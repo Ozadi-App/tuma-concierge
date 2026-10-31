@@ -24,7 +24,7 @@ import { categoryFare, endAssignment, MAX_HIRE_HOURS, nearbyCategoryDrivers, quo
 import { baseMimeType, extensionForMime } from "../lib/mime.js";
 import { getR2Bucket, uploadResponseHeaders } from "../storage/r2.js";
 import { openForDriversSql, scheduledAvailable, toDbTime, validateScheduledFor } from "./scheduled.js";
-import { acceptsTier, effectiveKindSql, nearbyTierCounts, standardCategoryOnly, tierFare, type CarServiceTier } from "./tiers.js";
+import { acceptsTier, effectiveKindSql, nearbyTierCounts, standardCategoryOnly, tierFare, tierFareDetail, type CarServiceTier } from "./tiers.js";
 
 type Row = Record<string, unknown>;
 
@@ -85,7 +85,7 @@ carRoutes.get("/car/service-options", async (c) => {
   await ensureSandboxCarDrivers(t.pickupLat, t.pickupLng);
   const counts = await nearbyTierCounts(t.pickupLat, t.pickupLng, settings.maxPickupKm, pricing.xlMinSeats);
   const where = { pickup: { lat: t.pickupLat, lng: t.pickupLng }, dropoff: { lat: t.destinationLat, lng: t.destinationLng }, demandRatio: pricing.engine?.multipliers.demand.enabled ? await currentDemandRatio() : null };
-  const options = (["normal", "large"] as const).flatMap((size) => (["convenient", "comfort"] as const).map((tier) => ({ size, tier, fare: tierFare(distanceKm, tier, pricing, size, where), nearby: counts[size][tier] })));
+  const options = (["normal", "large"] as const).flatMap((size) => (["convenient", "comfort"] as const).map((tier) => ({ size, tier, ...tierFareDetail(distanceKm, tier, pricing, size, where), nearby: counts[size][tier] })));
   return c.json({ distanceKm: Math.round(distanceKm * 10) / 10, options });
 });
 
@@ -519,12 +519,10 @@ carRoutes.post("/car/quote", async (c) => {
     const pricing = (await getCarSettings()).servicePricing!;
     const size = parsed.data.vehicleSize ?? (parsed.data.serviceTier === "xl" ? "large" : "normal");
     const demandRatio = pricing.engine?.multipliers.demand.enabled ? await currentDemandRatio() : null;
-    return c.json({
-      fare: tierFare(distanceKm, parsed.data.serviceTier, pricing, size, {
-        pickup: { lat: parsed.data.pickupLat, lng: parsed.data.pickupLng }, dropoff: { lat: parsed.data.destinationLat, lng: parsed.data.destinationLng }, demandRatio,
-      }),
-      distanceKm: Math.round(distanceKm * 10) / 10,
+    const detail = tierFareDetail(distanceKm, parsed.data.serviceTier, pricing, size, {
+      pickup: { lat: parsed.data.pickupLat, lng: parsed.data.pickupLng }, dropoff: { lat: parsed.data.destinationLat, lng: parsed.data.destinationLng }, demandRatio,
     });
+    return c.json({ fare: detail.fare, roundedFrom: detail.roundedFrom, distanceKm: Math.round(distanceKm * 10) / 10 });
   }
   const category = await activeCategory(parsed.data.categoryId!);
   if (!category) return c.json({ error: "invalid_category" }, 400);

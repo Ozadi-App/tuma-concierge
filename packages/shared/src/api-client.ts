@@ -2783,11 +2783,11 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized, 
     },
     async getCarServiceOptions(route: { pickupLat: number; pickupLng: number; destinationLat: number; destinationLng: number }) {
       const params = new URLSearchParams(Object.entries(route).map(([key, value]) => [key, String(value)]));
-      return request<{ distanceKm: number; options: Array<{ size: "normal" | "large"; tier: "convenient" | "comfort"; fare: number; nearby: number }> }>(`/v1/car/service-options?${params}`);
+      return request<{ distanceKm: number; options: Array<{ size: "normal" | "large"; tier: "convenient" | "comfort"; fare: number; roundedFrom?: number | null; nearby: number }> }>(`/v1/car/service-options?${params}`);
     },
     /** Fare for a category (Luxury: pass `hireHours` for hire by the hour). */
     async quoteCarCategory(input: { categoryId: string; hireHours?: number; pickupLat: number; pickupLng: number; destinationLat: number; destinationLng: number }) {
-      return request<{ fare: number; distanceKm: number }>("/v1/car/quote", { method: "POST", body: JSON.stringify(input) });
+      return request<{ fare: number; roundedFrom?: number | null; distanceKm: number }>("/v1/car/quote", { method: "POST", body: JSON.stringify(input) });
     },
     /** How many cars of one category are online and free near a point. */
     async getCarCategoryNearby(categoryId: string, lat: number, lng: number) {

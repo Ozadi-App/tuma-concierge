@@ -39,14 +39,24 @@ export type TierFareContext = { now?: Date; pickup?: GeoPoint | null; dropoff?: 
  * engine (Admin → Pricing); the Comfort and large-car premiums are applied on top as before.
  */
 export function tierFare(distanceKm: number, tier: CarServiceTier, pricing: Awaited<ReturnType<typeof getCarServicePricing>>, size?: CarVehicleSize, ctx: TierFareContext = {}): number {
+  return tierFareDetail(distanceKm, tier, pricing, size, ctx).fare;
+}
+
+/** A car fare, and what it was before rounding when rounding changed it (for the "rounded up from…" note). */
+export function tierFareDetail(distanceKm: number, tier: CarServiceTier, pricing: Awaited<ReturnType<typeof getCarServicePricing>>, size?: CarVehicleSize, ctx: TierFareContext = {}): { fare: number; roundedFrom: number | null } {
   const service: FareService = size === "large" || tier === "xl" ? "car_xl" : tier === "comfort" ? "car_comfort" : "car_convenient";
-  const base = computeFare(pricing.engine ?? DEFAULT_PRICING_CONFIG, {
+  const breakdown = computeFare(pricing.engine ?? DEFAULT_PRICING_CONFIG, {
     service, rates: { ratePerKm: pricing.ratePerKm, minimumFare: pricing.minimumFare }, distanceKm, now: ctx.now ?? new Date(),
     pickup: ctx.pickup, dropoff: ctx.dropoff, demandRatio: ctx.demandRatio, scheduled: ctx.scheduled,
-  }).total;
+  });
+  const base = breakdown.total;
   const comfortPremium = tier === "comfort" ? pricing.comfortPremiumPercent : 0;
   const sizePremium = size === "large" || tier === "xl" ? pricing.xlPremiumPercent : 0;
-  return roundFare(base * (1 + comfortPremium / 100) * (1 + sizePremium / 100), 0);
+  const factor = (1 + comfortPremium / 100) * (1 + sizePremium / 100);
+  const fare = roundFare(base * factor, 0);
+  // Before rounding: the engine's own figure, unless a minimum or highest fare decided the price.
+  const exact = breakdown.minimumApplied || breakdown.maximumApplied ? base * factor : breakdown.subtotal * factor;
+  return { fare, roundedFrom: Math.round(exact) !== fare ? Math.round(exact) : null };
 }
 
 /** Online, free drivers with a pickup location in the customer's radius. */
