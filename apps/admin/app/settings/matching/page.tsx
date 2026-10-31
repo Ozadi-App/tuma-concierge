@@ -17,6 +17,7 @@ export default function RiderMatchingPage() {
   const [enabledModes, setEnabledModes] = useState<MatchingMode[]>(["first_to_claim"]);
   const [nearestWindowSeconds, setNearestWindowSeconds] = useState("");
   const [maxAssignmentMinutes, setMaxAssignmentMinutes] = useState("");
+  const [autoAssign, setAutoAssign] = useState(false);
   const [biddingEnabled, setBiddingEnabled] = useState(false);
   const [biddingMin, setBiddingMin] = useState("50");
   const [biddingMax, setBiddingMax] = useState("150");
@@ -37,6 +38,7 @@ export default function RiderMatchingPage() {
         setEnabledModes(settings.enabledModes);
         setNearestWindowSeconds(String(settings.nearestWindowSeconds));
         setMaxAssignmentMinutes(String(settings.maxAssignmentMinutes));
+        setAutoAssign(settings.autoAssignWithoutAcceptance ?? false);
         setBiddingEnabled(settings.bidding.enabled);
         setBiddingMin(String(settings.bidding.minPercent));
         setBiddingMax(String(settings.bidding.maxPercent));
@@ -64,6 +66,7 @@ export default function RiderMatchingPage() {
         enabledModes: enabledModes.length > 0 ? enabledModes : ["first_to_claim"],
         nearestWindowSeconds: Number(nearestWindowSeconds),
         maxAssignmentMinutes: Number(maxAssignmentMinutes),
+        autoAssignWithoutAcceptance: autoAssign,
         bidding: {
           enabled: biddingEnabled,
           minPercent: Math.min(100, Math.max(1, Number(biddingMin) || 50)),
@@ -76,6 +79,7 @@ export default function RiderMatchingPage() {
       setEnabledModes(res.settings.enabledModes);
       setNearestWindowSeconds(String(res.settings.nearestWindowSeconds));
       setMaxAssignmentMinutes(String(res.settings.maxAssignmentMinutes));
+      setAutoAssign(res.settings.autoAssignWithoutAcceptance ?? false);
       setBiddingEnabled(res.settings.bidding.enabled);
       setBiddingMin(String(res.settings.bidding.minPercent));
       setBiddingMax(String(res.settings.bidding.maxPercent));
@@ -180,9 +184,22 @@ export default function RiderMatchingPage() {
               />
             </div>
             <p className="col-span-2 text-xs text-ink-500">
-              &ldquo;Nearest available&rdquo; collects applicants for this long before auto-assigning the closest
-              one. &ldquo;Max assignment&rdquo; is the overall safety net — past this, an order gets auto-assigned
-              no matter the mode, so nobody waits forever.
+              &ldquo;Nearest available&rdquo; collects applicants for this long before choosing the closest one who
+              applied. &ldquo;Max assignment&rdquo; is the overall safety net — past this, if the switch below is on,
+              an order is assigned to the nearest online rider even if nobody applied.
+            </p>
+          </div>
+
+          <div className="space-y-2 border-t border-[var(--border-faint)] pt-3">
+            <label className="flex items-center gap-2 text-sm font-bold text-ink">
+              <Switch checked={autoAssign} onChange={(e) => setAutoAssign(e.target.checked)} />
+              Assign a rider who hasn&apos;t accepted
+            </label>
+            <p className="text-xs text-ink-500">
+              Off (recommended): a live order stays unassigned until a rider accepts it, or applies and the customer
+              chooses them. The customer only ever sees the name of a rider who said yes, and nobody is given a job
+              they didn&apos;t take. On: if nobody has accepted, the nearest online rider is assigned automatically.
+              Demo orders in the sandbox always assign automatically.
             </p>
           </div>
         </section>
