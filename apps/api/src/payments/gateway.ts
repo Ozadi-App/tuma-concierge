@@ -113,5 +113,11 @@ export interface PaymentGatewayAdapter {
    * mock adapter, which derives a fake PENDING→SUCCEEDED/FAILED progression
    * from elapsed time instead of asking a real API that tracks its own. A
    * real adapter ignores it. */
-  checkStatus(transactionReference: string, createdAt: string): Promise<GatewayResult>;
+  checkStatus(
+    transactionReference: string,
+    createdAt: string,
+    /** Which leg this reference belongs to, when the caller knows. MTN keeps collections and
+     * disbursements in separate reference spaces, so it uses this to ask the right one first. */
+    operationType?: "collection" | "disbursement" | "refund",
+  ): Promise<GatewayResult>;
 }

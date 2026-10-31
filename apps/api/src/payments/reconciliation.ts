@@ -130,6 +130,7 @@ export async function reconcilePayment(paymentId: string, actorId: string): Prom
     provider: String(payment.provider),
     provider_ref: payment.provider_ref as string | null,
     created_at: String(payment.created_at),
+    type: payment.type as "collection" | "disbursement" | "refund" | undefined,
   });
   if (status === "pending" || status === "unknown") {
     if (op) await markOperationProgress(op, status);
@@ -196,6 +197,7 @@ export async function reconcileMerchantSettlement(settlementId: string): Promise
     provider: String(settlement.provider),
     provider_ref: settlement.provider_ref as string | null,
     created_at: String(settlement.created_at),
+    type: "disbursement",
   });
   const operationResult = await db.execute({
     sql: "SELECT * FROM provider_operations WHERE business_type = 'merchant_settlement' AND business_id = ? ORDER BY created_at DESC LIMIT 1",

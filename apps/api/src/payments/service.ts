@@ -284,11 +284,12 @@ export async function checkPaymentStatus(payment: {
   provider: string;
   provider_ref: string | null;
   created_at: string;
+  type?: "collection" | "disbursement" | "refund";
 }): Promise<DbPaymentStatus> {
   if (!payment.provider_ref) return "pending";
   const adapter = ADAPTERS[payment.provider as PaymentsProvider];
   if (!adapter) return "pending";
-  const result = await adapter.checkStatus(payment.provider_ref, payment.created_at);
+  const result = await adapter.checkStatus(payment.provider_ref, payment.created_at, payment.type);
   return toDbStatus(result.status);
 }
 
