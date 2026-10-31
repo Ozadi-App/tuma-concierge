@@ -13,6 +13,7 @@ export function SupportChat({ hidden = false }: { hidden?: boolean }) {
   const [mode, setMode] = useState<Mode>("ai");
   const [agentName, setAgentName] = useState<string | null>(null);
   const [typing, setTyping] = useState(false);
+  const [humanEnabled, setHumanEnabled] = useState(true);
   const [text, setText] = useState("");
   const [msgs, setMsgs] = useState<ChatMessage[]>(() => [msg("ai", "Hi, I am the Peebee assistant. Ask me about orders, trips, the wallet or becoming a partner. You can talk to a person at any time.")]);
   const panel = useRef<HTMLDivElement>(null);
@@ -34,6 +35,12 @@ export function SupportChat({ hidden = false }: { hidden?: boolean }) {
     return () => document.removeEventListener("keydown", onKey, true);
   }, [open]);
   useEffect(() => () => cancel.current?.(), []);
+  useEffect(() => {
+    if (!open) return;
+    let live = true;
+    supportChat.capabilities().then((c) => { if (live) setHumanEnabled(c.humanEnabled); }).catch(() => undefined);
+    return () => { live = false; };
+  }, [open]);
 
   const add = (m: ChatMessage) => setMsgs((l) => [...l, m]);
 
@@ -43,8 +50,7 @@ export function SupportChat({ hidden = false }: { hidden?: boolean }) {
     setText("");
     const mine = msg("user", body);
     add(mine);
-    if (mode === "agent") { await supportChat.sendToAgent(body); return; }
-    if (mode === "queue") return;
+    if (mode !== "ai") { await supportChat.sendToAgent(body); return; }
     setTyping(true);
     try { add(await supportChat.askAI(body, [...msgs, mine])); } finally { setTyping(false); }
   }
@@ -85,9 +91,9 @@ export function SupportChat({ hidden = false }: { hidden?: boolean }) {
         <div className="sc-bar">
           {human ? (
             <button type="button" className="sc-swap" onClick={backToAI}><ArrowLeft size={15} aria-hidden /> Back to the AI assistant</button>
-          ) : (
+          ) : humanEnabled ? (
             <button type="button" className="sc-swap sc-person" onClick={toPerson}><Headset size={15} aria-hidden /> Talk to a person</button>
-          )}
+          ) : null}
         </div>
         <ol ref={list} className="sc-list" aria-live="polite" aria-label="Messages">
           {msgs.map((m) => m.from === "system" ? (

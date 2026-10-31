@@ -2,7 +2,7 @@ import { hasPermission, type AdminRole } from "@peebee/shared";
 import type { LucideIcon } from "lucide-react";
 import {
   Activity, Banknote, Briefcase, Bus, Car, Clapperboard, ClipboardList, Compass, CreditCard, FlaskConical, GraduationCap, Home, KeyRound, Languages,
-  Calculator, Gift, LayoutDashboard, MapPin, Mic, Package, Phone, PiggyBank, Power, Route, Ruler, ShieldCheck, Smartphone, Store, Trophy, User, UserRound, Users, UsersRound, Video, Wallet, Waypoints,
+  Calculator, Gift, LayoutDashboard, MapPin, MessageCircle, Mic, Package, Phone, PiggyBank, Power, Route, Ruler, ShieldCheck, Smartphone, Store, Trophy, User, UserRound, Users, UsersRound, Video, Wallet, Waypoints,
 } from "lucide-react";
 
 export type NavItem = {
@@ -39,6 +39,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "Operations",
     items: [
       { href: "/orders", label: "Orders", icon: Package, hint: "Parcels, shopping, rides, food" },
+      { href: "/support-chat", label: "Support chat", icon: MessageCircle, hint: "Website chat: AI assistant and your team", keywords: "live chat helpdesk customers inbox ai agent handoff", visible: can("chat.view_support") },
       { href: "/settings/services", label: "Services", icon: Power, hint: "Every module, on or off in Live and in Practice", keywords: "pause enable modules clusters features live practice" },
       { href: "/settings/app-updates", label: "App updates", icon: Smartphone, hint: "Send fixes to the Android app without a new APK", keywords: "android apk ota over the air update version rollback mobile capacitor", visible: can("settings.manage") },
       { href: "/practice", label: "Practice", icon: FlaskConical, hint: "The simulated world for every app", keywords: "demo sandbox sample data training simulate", visible: can("settings.manage") },

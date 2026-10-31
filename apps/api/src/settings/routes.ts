@@ -1417,7 +1417,7 @@ settingsRoutes.get(
   requirePermission("settings.view"),
   async (c) => {
     const module = c.req.query("module");
-    const known = ["storefront", "portal", "plans", "digital", "lms", "services", "platform"] as const;
+    const known = ["storefront", "portal", "plans", "digital", "lms", "services", "platform", "support"] as const;
     if (module && !(known as readonly string[]).includes(module)) return c.json({ error: "unknown_module" }, 400);
     return c.json({ settings: await describeOptions(module as (typeof known)[number] | undefined) });
   },

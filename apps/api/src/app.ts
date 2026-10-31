@@ -41,6 +41,7 @@ import { foodFeedbackRoutes } from "./restaurants/feedback.js";
 import { restaurantRoutes } from "./restaurants/routes.js";
 import { sellerOrderRoutes } from "./restaurants/seller-orders.js";
 import { riderRoutes } from "./riders/routes.js";
+import { supportChatRoutes } from "./support-chat/routes.js";
 import { settingsRoutes } from "./settings/routes.js";
 import { appUpdatesAdminRoutes, appUpdatesRoutes } from "./app-updates/routes.js";
 import { practiceRoutes } from "./practice/routes.js";
@@ -147,7 +148,7 @@ app.use("*", (c, next) => {
       return undefined;
     },
     allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowHeaders: ["Content-Type", "Authorization"],
+    allowHeaders: ["Content-Type", "Authorization", "X-Chat-Secret"],
   })(c, next);
 });
 
@@ -335,6 +336,7 @@ app.route("/v1", appUpdatesAdminRoutes);
 app.route("/v1", emailKeyRoutes);
 app.route("/v1", mobileNumberRoutes);
 app.route("/v1", callRoutes);
+app.route("/v1", supportChatRoutes);
 app.route("/v1", settingsRoutes);
 app.route("/v1", practiceRoutes);
 app.route("/v1", speechRoutes);
