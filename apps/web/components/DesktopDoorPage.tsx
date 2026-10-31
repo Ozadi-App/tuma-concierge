@@ -9,6 +9,7 @@ import { subPath } from "../lib/pages";
 import { PHOTOS } from "../lib/photos";
 import { useShell } from "./ShellContext";
 import { FeatureTiles } from "./FeatureSheet";
+import { useDoorContent } from "./useDoorContent";
 
 const reduced = () => typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -19,7 +20,7 @@ export function DesktopDoorPage({ id }: { id: DoorId }) {
   const root = useRef<HTMLDivElement>(null);
   const uid = useId();
   const [openKey, setOpenKey] = useState<string | null>(null);
-  const c = DOOR_CONTENT[id];
+  const c = useDoorContent(id);
   const door = doors.find((d) => d.id === id);
   const label = door?.label ?? id;
   const idx = doors.findIndex((d) => d.id === id);

@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { ArrowRight, ArrowUpRight, BadgeCheck, KeyRound, LifeBuoy, ShieldCheck } from "lucide-react";
-import { APP_FEATURES } from "../lib/features";
+import { useAppFeatures } from "./useDoorContent";
 import { useShell } from "./ShellContext";
 import { PartnerLink } from "./PartnerLink";
 import { HomeAbout } from "./HomeAbout";
@@ -26,6 +26,7 @@ function useReveal() {
 
 /** Extra mobile/tablet home sections, below the hero tiles. */
 export function MobileHomeMore() {
+  const appFeatures = useAppFeatures();
   const { openFeature } = useShell();
   const ref = useReveal();
   const track = useRef<HTMLUListElement>(null);
@@ -48,7 +49,7 @@ export function MobileHomeMore() {
           <p className="mh-sub">The tools that work behind every order you place.</p>
         </div>
         <ul className="mh-track" ref={track} onScroll={onScroll}>
-          {APP_FEATURES.map((f, i) => (
+          {appFeatures.map((f, i) => (
             <li key={f.id} className="mh-card mh-feat" data-n={i % 3}>
               <span className="mh-ficon"><f.icon size={30} strokeWidth={1.8} aria-hidden /></span>
               <h3>{f.title}</h3>
@@ -58,7 +59,7 @@ export function MobileHomeMore() {
           ))}
         </ul>
         <div className="mh-dots" role="tablist" aria-label="Features">
-          {APP_FEATURES.map((f, i) => <button key={f.id} type="button" role="tab" aria-selected={i === at} aria-label={f.title} onClick={() => go(i)} />)}
+          {appFeatures.map((f, i) => <button key={f.id} type="button" role="tab" aria-selected={i === at} aria-label={f.title} onClick={() => go(i)} />)}
         </div>
       </section>
 

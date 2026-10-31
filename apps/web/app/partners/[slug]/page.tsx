@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import { LEGACY_PARTNERS, PARTNER_TYPES, PARTNER_TYPE_BY_SLUG } from "../../../lib/partners";
 import { PartnerTypePage } from "../../../components/PartnerTypePage";
 import { LegacyPartnerRedirect } from "../../../components/LegacyPartnerRedirect";
+import { ModuleGate } from "../../../components/ModuleNotice";
+import { moduleOfPartner } from "../../../lib/module-map";
 
 export const dynamicParams = false;
 export function generateStaticParams() {
@@ -20,5 +22,5 @@ export default async function PartnerPage({ params }: { params: Promise<{ slug: 
   if (LEGACY_PARTNERS[slug]) return <LegacyPartnerRedirect slug={slug} />;
   const p = PARTNER_TYPE_BY_SLUG[slug];
   if (!p) notFound();
-  return <PartnerTypePage p={p} />;
+  return <ModuleGate module={moduleOfPartner(p.slug, p.door)} name={p.name}><PartnerTypePage p={p} /></ModuleGate>;
 }

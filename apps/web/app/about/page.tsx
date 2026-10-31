@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { APP_URL } from "../../lib/content";
+import { ModuleShow } from "../../components/ModuleNotice";
+import { moduleOfHref } from "../../lib/module-map";
 import { ArrowRight, ArrowUpRight, Bike, ShoppingBag, UtensilsCrossed, GraduationCap, Wrench, KeyRound, ShieldCheck, Wallet } from "lucide-react";
 
 export const metadata: Metadata = { title: "About us | Peebee", description: "What Peebee is, and why it is built for Uganda." };
@@ -24,7 +26,7 @@ export default function AboutPage() {
         <h2 id="ab-mod" className="ab-h2">Five modules</h2>
         <ul className="ab-mods">
           {MODULES.map((m) => (
-            <li key={m.t}><Link href={m.href}><span className="feat-ic"><m.icon size={20} aria-hidden /></span><span><b>{m.t}</b><small>{m.d}</small></span><ArrowRight size={16} aria-hidden /></Link></li>
+            <ModuleShow key={m.t} module={moduleOfHref(m.href)}><li><Link href={m.href}><span className="feat-ic"><m.icon size={20} aria-hidden /></span><span><b>{m.t}</b><small>{m.d}</small></span><ArrowRight size={16} aria-hidden /></Link></li></ModuleShow>
           ))}
         </ul>
       </section>

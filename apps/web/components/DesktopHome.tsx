@@ -10,11 +10,15 @@ import { useShell } from "./ShellContext";
 import { HeroCycle } from "./HeroCycle";
 import { OrderPath } from "./OrderPath";
 import { PhoneScreens } from "./PhonePreview";
+import { useWebModules } from "../lib/web-modules";
+import { moduleOfHref, moduleOfSub } from "../lib/module-map";
+import { ModuleShow } from "./ModuleNotice";
 
 export function DesktopHome() {
   const doors = useDoors();
+  const modules = useWebModules();
   const { scroller, openDoor, openFeature } = useShell();
-  const [active, setActive] = useState<DoorId>("ride");
+  const [active, setActive] = useState<DoorId>(doors[0]?.id ?? "ride");
   const refs = useRef<Record<string, HTMLElement | null>>({});
 
   useEffect(() => {
@@ -56,7 +60,7 @@ export function DesktopHome() {
                 <h2 id={`ch-${d.id}`} className="display">{c.headline}</h2>
                 <p className="lead">{c.lead}</p>
                 <ul className="chap-list">
-                  {c.items.map((it) => (
+                  {c.items.filter((it) => modules.on(moduleOfSub(it.door, it.key))).map((it) => (
                     <li key={it.key}>
                       {it.direct ? (
                         <Link href={subPath(d.id, it.key)}>
@@ -81,7 +85,7 @@ export function DesktopHome() {
                   ))}
                 </ul>
                 {c.note && (
-                  <p className="chap-note"><c.note.icon size={18} aria-hidden /><span><b>{c.note.title}</b> {c.note.text}</span></p>
+                  <ModuleShow module={c.note.href ? moduleOfHref(c.note.href) : null}><p className="chap-note"><c.note.icon size={18} aria-hidden /><span><b>{c.note.title}</b> {c.note.text}</span></p></ModuleShow>
                 )}
                 <button type="button" className="btn btn-ink" onClick={() => openDoor(d.id)}>
                   Open {d.label} <ArrowRight size={16} aria-hidden />
@@ -108,7 +112,7 @@ export function DesktopHome() {
           <h2 className="display">Money, medicine, and parcels, under the same login.</h2>
           <ul className="also">
             {ALSO_IN_ACCOUNT.map((a) => (
-              <li key={a.title}>
+              <ModuleShow key={a.title} module={moduleOfHref(a.href)}><li>
                 {a.feature ? (
                   <button type="button" onClick={() => openFeature(a.feature!)} aria-haspopup="dialog">
                     <span className="feat-ic"><a.icon size={20} aria-hidden /></span>
@@ -122,7 +126,7 @@ export function DesktopHome() {
                     <small>{a.text}</small>
                   </Link>
                 )}
-              </li>
+              </li></ModuleShow>
             ))}
           </ul>
           <p className="wallet-line">{WALLET_NOTE}</p>

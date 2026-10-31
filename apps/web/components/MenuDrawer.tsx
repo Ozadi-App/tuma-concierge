@@ -5,7 +5,7 @@ import { PartnerLink } from "./PartnerLink";
 import { ArrowUpRight, Handshake } from "lucide-react";
 import { useDoors } from "../lib/doors";
 import { APP_URL, DOOR_CONTENT } from "../lib/content";
-import { APP_FEATURES } from "../lib/features";
+import { useAppFeatures } from "./useDoorContent";
 import { FeatureTiles } from "./FeatureSheet";
 import { useShell } from "./ShellContext";
 import { useRef } from "react";
@@ -15,6 +15,7 @@ import { Logo } from "./Logo";
 export function MenuDrawer() {
   const { menuOpen, setMenuOpen, openDoor, openFeature } = useShell();
   const doors = useDoors();
+  const appFeatures = useAppFeatures();
   const ref = useRef<HTMLElement>(null);
   useFocusTrap(ref, menuOpen);
   return (
@@ -41,7 +42,7 @@ export function MenuDrawer() {
             );
           })}
         </ul>
-        <FeatureTiles items={APP_FEATURES} onOpen={(fid) => { setMenuOpen(false); openFeature(fid); }} />
+        <FeatureTiles items={appFeatures} onOpen={(fid) => { setMenuOpen(false); openFeature(fid); }} />
         <nav className="menu-co" aria-label="Company">
           <Link href="/about" onClick={() => setMenuOpen(false)}>About us</Link>
           <Link href="/contact" onClick={() => setMenuOpen(false)}>Contact us</Link>

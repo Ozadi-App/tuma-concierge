@@ -11,5 +11,7 @@
     "declaration": true,
     "types": ["node"]
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts"],
+  // Reads the website's own files to check they agree with the shared lists, which tsc's rootDir rules out.
+  "exclude": ["src/website-sections.test.ts"]
 }

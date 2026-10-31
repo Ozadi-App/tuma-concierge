@@ -4,9 +4,15 @@ import { DOOR_SLUG } from "../lib/door-ids";
 import { APP_URL, ORDER_PATH } from "../lib/content";
 import { PHOTO_FILES, SUB_BY_ID, type Sub } from "../lib/subs";
 import { DoorName } from "./DoorName";
+import { ModuleGate, ModuleShow } from "./ModuleNotice";
+import { moduleOfSub } from "../lib/module-map";
 
 /** A sub-feature on a page of its own: photo, what it is, how it moves through the order path, cost, partner link, related. */
 export function SubPage({ sub }: { sub: Sub }) {
+  return <ModuleGate module={moduleOfSub(sub.door, sub.key)} name={sub.title}><SubPageBody sub={sub} /></ModuleGate>;
+}
+
+function SubPageBody({ sub }: { sub: Sub }) {
   const photo = PHOTO_FILES[sub.photo];
     const related = sub.related.map((r) => SUB_BY_ID[r]).filter((r) => r && !r.feature);
   const direct = !!sub.direct;
@@ -92,13 +98,15 @@ export function SubPage({ sub }: { sub: Sub }) {
           <h2 id="sp-rel">Related</h2>
           <ul className="sp-rel">
             {related.map((r) => (
-              <li key={`${r.door}/${r.key}`}>
-                <Link href={`/${DOOR_SLUG[r.door]}/${r.key}`}>
-                  <span className="feat-ic"><r.icon size={20} aria-hidden /></span>
-                  <span><b>{r.title}</b><small><DoorName id={r.door} /></small></span>
-                  <ArrowRight size={16} aria-hidden />
-                </Link>
-              </li>
+              <ModuleShow key={`${r.door}/${r.key}`} module={moduleOfSub(r.door, r.key)}>
+                <li>
+                  <Link href={`/${DOOR_SLUG[r.door]}/${r.key}`}>
+                    <span className="feat-ic"><r.icon size={20} aria-hidden /></span>
+                    <span><b>{r.title}</b><small><DoorName id={r.door} /></small></span>
+                    <ArrowRight size={16} aria-hidden />
+                  </Link>
+                </li>
+              </ModuleShow>
             ))}
           </ul>
         </section>
