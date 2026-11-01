@@ -11,8 +11,9 @@
  * Docs: https://momodeveloper.mtn.com/
  */
 
+import { normalizeUgandaMsisdn } from "@peebee/shared";
 import { getCredential, isProviderConfigured } from "../credentials.js";
-import type { GatewayChargeInput, GatewayResult, PaymentGatewayAdapter } from "../gateway.js";
+import { PaymentProviderError, type GatewayChargeInput, type GatewayResult, type PaymentGatewayAdapter } from "../gateway.js";
 
 type Product = "collection" | "disbursement";
 
@@ -73,6 +74,33 @@ class MomoHttpError extends Error {
   }
 }
 
+/** MTN wants the payer in international form without a plus (256772345678), not as typed (0772345678). */
+export function momoPartyId(msisdn: string): string {
+  return normalizeUgandaMsisdn(msisdn) ?? msisdn.replace(/[^\d]/g, "");
+}
+
+/** MTN's sandbox only accepts EUR (it moves no real money); production is charged in the order's own currency. */
+async function chargeCurrency(requested: string): Promise<string> {
+  return (await targetEnv()) === "sandbox" ? "EUR" : requested;
+}
+
+/**
+ * A failed request-to-pay or transfer, as an error the customer can be told about. Only the reviewed message crosses
+ * the API boundary; MTN's own reply (phone numbers masked) goes to the Worker logs, where the route's own log line
+ * shows a stack but not the message.
+ */
+function providerRejection(operation: string, status: number, body: string): PaymentProviderError {
+  const upstream = `${operation} ${status} ${safeProviderBody(body)}`;
+  console.error(`MTN MoMo ${upstream}`);
+  if (status === 401 || status === 403) {
+    return new PaymentProviderError("mtn", "payment_provider_auth_failed", "MTN MoMo isn't connected correctly right now. Please try again later or pay another way.", status, upstream);
+  }
+  if (status === 429 || status >= 500) {
+    return new PaymentProviderError("mtn", "payment_provider_unavailable", "MTN MoMo isn't responding right now. Please try again in a moment.", status, upstream);
+  }
+  return new PaymentProviderError("mtn", "payment_provider_rejected", "MTN MoMo couldn't accept this payment request. Check that the number is an MTN MoMo number and try again.", status, upstream);
+}
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** MTN requires X-Reference-Id to be a UUID, but Peebee's own ids are not. A UUID is derived
@@ -110,9 +138,7 @@ async function getAccessToken(product: Product): Promise<string> {
       "Ocp-Apim-Subscription-Key": subscription,
     },
   });
-  if (!res.ok) {
-    throw new MomoHttpError(`MoMo ${product} token request failed: ${res.status} ${safeProviderBody(await res.text())}`, res.status);
-  }
+  if (!res.ok) throw providerRejection(`${product} token`, res.status, await res.text());
   const data = (await res.json()) as { access_token: string; expires_in?: number };
   const lifetimeMs = Math.max(0, (data.expires_in ?? 0) * 1000 - TOKEN_MARGIN_MS);
   if (lifetimeMs > 0) tokenCache.set(cacheKey, { token: data.access_token, expiresAt: Date.now() + lifetimeMs });
@@ -139,16 +165,16 @@ async function requestToPay(input: GatewayChargeInput): Promise<void> {
     },
     body: JSON.stringify({
       amount: String(input.amount),
-      currency: input.currency,
+      currency: await chargeCurrency(input.currency),
       externalId: input.referenceId,
-      payer: { partyIdType: "MSISDN", partyId: input.msisdn },
+      payer: { partyIdType: "MSISDN", partyId: momoPartyId(input.msisdn) },
       payerMessage: input.narrative,
       payeeNote: input.narrative,
     }),
   });
   if (res.status !== 202) {
     if (res.status === 401) forgetTokens();
-    throw new MomoHttpError(`MoMo requestToPay failed: ${res.status} ${safeProviderBody(await res.text())}`, res.status);
+    throw providerRejection("requestToPay", res.status, await res.text());
   }
 }
 
@@ -183,16 +209,16 @@ async function transfer(input: GatewayChargeInput): Promise<void> {
     },
     body: JSON.stringify({
       amount: String(input.amount),
-      currency: input.currency,
+      currency: await chargeCurrency(input.currency),
       externalId: input.referenceId,
-      payee: { partyIdType: "MSISDN", partyId: input.msisdn },
+      payee: { partyIdType: "MSISDN", partyId: momoPartyId(input.msisdn) },
       payerMessage: input.narrative,
       payeeNote: input.narrative,
     }),
   });
   if (res.status !== 202) {
     if (res.status === 401) forgetTokens();
-    throw new MomoHttpError(`MoMo transfer failed: ${res.status} ${safeProviderBody(await res.text())}`, res.status);
+    throw providerRejection("transfer", res.status, await res.text());
   }
 }
 
