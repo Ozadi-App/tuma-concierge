@@ -8,7 +8,7 @@ import { signToken } from "../auth/jwt.js";
 import { setD1Binding, type D1Database } from "../db/client.js";
 import { splitSqlStatements } from "../db/split-sql.js";
 import { resetSchemaCache } from "../lib/schema.js";
-import { buildSystemPrompt, toContents } from "./ai.js";
+import { buildSystemPrompt, endCleanly, generationConfig, toContents } from "./ai.js";
 import { supportChatRoutes } from "./routes.js";
 
 function bindDatabase(client: Client) {
@@ -35,6 +35,28 @@ test("the assistant only sees conversation turns and the team's notes", () => {
   assert.match(buildSystemPrompt("Office hours: 8 to 5"), /Office hours: 8 to 5/);
 });
 
+test("the reply allowance includes the thinking budget, so thinking can never eat the answer", () => {
+  assert.deepEqual(generationConfig({ model: "gemini-2.5-flash", replyTokens: 800, thinkingBudget: 256 }), { temperature: 0.4, maxOutputTokens: 1056, thinkingConfig: { thinkingBudget: 256 } });
+  assert.equal(generationConfig({ model: "gemini-2.5-flash-lite", replyTokens: 800, thinkingBudget: 0 }).thinkingConfig.thinkingBudget, 0);
+  const pro = generationConfig({ model: "gemini-2.5-pro", replyTokens: 800, thinkingBudget: 0 });
+  assert.deepEqual([pro.thinkingConfig.thinkingBudget, pro.maxOutputTokens], [128, 928], "Pro cannot switch thinking off");
+});
+
+test("a reply that ran out of room ends at a full sentence, never mid-sentence", () => {
+  const long = "Repair work like carpentry fits Peebee Work. You apply there and Peebee approves you. Customers then book you and you are paid into your wallet after the job. For becoming a";
+  assert.equal(endCleanly(long, "MAX_TOKENS"), "Repair work like carpentry fits Peebee Work. You apply there and Peebee approves you. Customers then book you and you are paid into your wallet after the job.");
+  assert.equal(endCleanly(long, "STOP"), long, "a finished reply is left alone");
+  assert.equal(endCleanly("Short.", "MAX_TOKENS"), "Short.");
+});
+
+test("the assistant is given real Peebee knowledge and the rules for using it", () => {
+  const prompt = buildSystemPrompt("", "Work app");
+  for (const fact of ["Peebee Work", "work.peebee.online", "Peebee Hire", "escrow", "4-digit PIN", "Talk to a person", "Work app"]) assert.ok(prompt.includes(fact), `prompt should mention ${fact}`);
+  assert.match(prompt, /Never invent facts/);
+  assert.match(prompt, /Do not state specific amounts or percentages/);
+  assert.match(buildSystemPrompt("Support is open 8 to 8", ""), /override anything above[\s\S]*Support is open 8 to 8/);
+});
+
 test("support chat: assistant, hand-over to a person, and back", async (t) => {
   process.env.JWT_SECRET = "local-support-chat-test-secret";
   process.env.GEMINI_API_KEY = "test-gemini-key-padding-padding";
@@ -56,10 +78,12 @@ test("support chat: assistant, hand-over to a person, and back", async (t) => {
 
   let aiBody: any = null;
   let aiFails = false;
+  let nextText = "Top up from MTN MoMo or Airtel Money.";
+  let nextFinish = "STOP";
   const realFetch = globalThis.fetch;
   globalThis.fetch = (async (_url: string, init: RequestInit) => {
     aiBody = JSON.parse(String(init.body));
-    return aiFails ? new Response("boom", { status: 500 }) : Response.json({ candidates: [{ content: { parts: [{ text: "Top up from MTN MoMo or Airtel Money." }] } }] });
+    return aiFails ? new Response("boom", { status: 500 }) : Response.json({ candidates: [{ finishReason: nextFinish, content: { parts: [{ text: nextText }] } }] });
   }) as typeof fetch;
 
   try {
@@ -95,6 +119,25 @@ test("support chat: assistant, hand-over to a person, and back", async (t) => {
       const sent = await json(await visitor("POST", `/${id}/messages`, { text: "hello?" }));
       aiFails = false;
       assert.match(sent.messages[1].text, /Talk to a person/);
+    });
+
+    await t.test("the assistant's own error notices are not fed back to it as things it said", async () => {
+      aiBody = null;
+      await visitor("POST", `/${id}/messages`, { text: "Is there any problem?" });
+      const sent = JSON.stringify(aiBody.contents);
+      assert.equal(sent.includes("trouble answering"), false);
+      assert.ok(sent.includes("hello?") && sent.includes("Is there any problem?"), "the visitor's own messages are kept");
+      assert.equal(aiBody.generationConfig.maxOutputTokens, 1056);
+      assert.equal(aiBody.generationConfig.thinkingConfig.thinkingBudget, 256);
+      assert.ok(aiBody.systemInstruction.parts[0].text.includes("PEEBEE KNOWLEDGE"));
+    });
+
+    await t.test("a reply cut off by the length limit is shown up to its last full sentence", async () => {
+      nextText = "Repair work fits Peebee Work, where you apply and Peebee approves you. Customers then book you and you are paid after the job. For becoming a";
+      nextFinish = "MAX_TOKENS";
+      const sent = await json(await visitor("POST", `/${id}/messages`, { text: "carpenter?" }));
+      nextText = "Top up from MTN MoMo or Airtel Money."; nextFinish = "STOP";
+      assert.equal(sent.messages[1].text.endsWith("after the job."), true);
     });
 
     await t.test("empty and over-long messages are refused", async () => {
@@ -191,6 +234,22 @@ test("support chat: assistant, hand-over to a person, and back", async (t) => {
       assert.equal(res.status, 503);
       await client.execute("DELETE FROM settings WHERE key = 'support_chat_apps'");
       invalidateSettingsCache();
+    });
+
+    await t.test("admins can try the assistant with notes they have not saved yet", async () => {
+      assert.equal((await staff("a1", "POST", "/admin/support-chat/ai-test", { question: "hi" })).status, 403, "needs settings.manage");
+      await client.execute("UPDATE users SET admin_role = 'super_admin' WHERE id = 'a2'");
+      const res = await json(await staff("a2", "POST", "/admin/support-chat/ai-test", { question: "When are you open?", notes: "Draft note: open 9 to 5", app: "rider" }));
+      assert.equal(typeof res.reply, "string");
+      assert.match(aiBody.systemInstruction.parts[0].text, /Draft note: open 9 to 5/);
+      assert.match(aiBody.systemInstruction.parts[0].text, /Rider app/);
+      assert.equal(JSON.stringify(aiBody.contents).includes("Draft note"), false, "notes go to the system prompt, not the conversation");
+      const notes = await json(await staff("a2", "GET", "/admin/support-chat/ai-notes"));
+      assert.equal(notes.notes.includes("Draft note"), false, "trying it does not save anything");
+      assert.ok(notes.builtIn.includes("Peebee Work"));
+      aiFails = true;
+      assert.equal((await staff("a2", "POST", "/admin/support-chat/ai-test", { question: "hi" })).status, 502);
+      aiFails = false;
     });
 
     await t.test("AI notes are saved for the assistant and logged", async () => {
