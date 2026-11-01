@@ -1,5 +1,6 @@
 "use client";
 
+import { ExistingDigitalPurchases } from "../../components/store/ExistingDigitalPurchases";
 import { SectionContentEditor } from "../../components/SectionContentEditor";
 import { PlanLadder, type PlanInfo } from "../../components/store/PlanLadder";
 import { Select } from "@peebee/shared/select";
@@ -464,7 +465,7 @@ export default function MerchantProStorePage() {
           api.getMerchantStorefrontSections().catch(() => { failed("StorefrontSections"); return { sections: previous ? storefrontSections : [] }; }),
           api.getMerchantSmsLogs().catch(() => { failed("SmsLogs"); return { logs: previous ? smsLogs : [] }; }),
           (s.plan?.isElite && s.permissions?.manage_digital !== false ? api.getMerchantDigitalProducts() : Promise.resolve({products: []})).catch(() => { failed("DigitalProducts"); return { products: previous ? digitalProducts : [] }; }),
-          (s.plan?.isElite && s.permissions?.manage_digital !== false ? api.getMerchantDigitalFulfillments() : Promise.resolve({fulfillments: []})).catch(() => { failed("DigitalFulfillments"); return { fulfillments: previous ? digitalFulfillments : [] }; }),
+          (s.permissions?.manage_digital !== false ? api.getMerchantDigitalFulfillments() : Promise.resolve({fulfillments: []})).catch(() => { failed("DigitalFulfillments"); return { fulfillments: previous ? digitalFulfillments : [] }; }),
           (s.plan?.isElite && s.permissions?.manage_digital !== false ? api.getMerchantLmsCourses() : Promise.resolve({courses: []})).catch(() => { failed("Courses"); return { courses: previous ? lmsCourses : [] }; }),
           (s.plan?.isElite && s.permissions?.manage_digital !== false ? api.getMerchantLmsEnrollments() : Promise.resolve({enrollments: []})).catch(() => { failed("Learners"); return { enrollments: previous ? lmsEnrollments : [] }; }),
         ]);
@@ -1451,6 +1452,8 @@ export default function MerchantProStorePage() {
           <span>Settings</span>
         </button>
       </div>
+
+      {!isElite && <ExistingDigitalPurchases purchases={digitalFulfillments} canRefund={store.permissions?.refund_revoke !== false} onRefund={handleRefundFulfillment} onRevoke={handleRevokeFulfillment} />}
 
       {/* TAB: ELITE OS (Shopify & Merchant Elite Advanced Layer) */}
       {activeTab === "elite" && (

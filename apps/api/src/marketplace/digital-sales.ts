@@ -2,7 +2,8 @@ import { db, executeBatch, requireChangedRow, type DbStatement } from "../db/cli
 import { newId } from "../lib/ids.js";
 import { getOptions } from "../lib/option-settings.js";
 import { hasColumn, hasTable } from "../lib/schema.js";
-import { getPlatformEnvironment } from "../lib/settings.js";
+import { getMarketplaceSettings, getPlatformEnvironment } from "../lib/settings.js";
+import { storePlan } from "./plans.js";
 import { sendSms } from "../lib/sms-gateway.js";
 import { postLedgerTransaction } from "../ledger/service.js";
 import { enrollStudent } from "./lms-enroll.js";
@@ -143,6 +144,9 @@ export async function purchaseDigitalProduct(input: {
   const found = await db.execute({ sql: "SELECT * FROM store_digital_products WHERE id = ? AND store_id = ? AND status = 'published'", args: [input.productId, String(input.store.id)] });
   const product = found.rows[0] as Row | undefined;
   if (!product) return fail(404, "product_not_found", "That product isn't for sale.");
+  const marketplace = await getMarketplaceSettings();
+  if (!marketplace.eliteDigitalProductsEnabled) return fail(403, "digital_disabled", "Digital sales are paused by the platform.");
+  if (!(await storePlan(input.store, marketplace)).isElite) return fail(403, "plan_required", "The store needs an active Merchant Elite plan to accept new digital purchases.");
 
   const price = Number(product.price_ugx) || 0;
   const kind = String(product.kind);

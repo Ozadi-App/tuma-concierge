@@ -26,11 +26,9 @@ import type {
 } from "@peebee/shared";
 
 export const digitalLmsRoutes = new Hono();
-// Every digital/LMS tool shares the same effective Elite entitlement.
+// Creation/management tools require Elite; servicing existing purchases must remain possible after expiry.
 digitalLmsRoutes.use("/merchants/me/digital-products", requireAuth, eliteOnly);
 digitalLmsRoutes.use("/merchants/me/digital-products/*", requireAuth, eliteOnly);
-digitalLmsRoutes.use("/merchants/me/digital-fulfillments", requireAuth, eliteOnly);
-digitalLmsRoutes.use("/merchants/me/digital-fulfillments/*", requireAuth, eliteOnly);
 digitalLmsRoutes.use("/merchants/me/lms/*", requireAuth, eliteOnly);
 // Purchase, delivery, refunds and file upload live in digital-delivery.ts.
 digitalLmsRoutes.route("/", digitalDeliveryRoutes);

@@ -1029,7 +1029,7 @@ marketplaceRoutes.get("/merchants/me/store", requireAuth, async (c) => {
   const isProFree = settings.proPricingMode === "free";
   const planInfo = await storePlan(store, settings);
   const warnDays = Number((await getOptions(["merchant_plan_warn_days"])).merchant_plan_warn_days);
-  const roleOptions = await getOptions(["member_roles_manage_digital", "member_roles_manage_catalog", "member_roles_manage_billing", "member_roles_manage_store_settings"]);
+  const roleOptions = await getOptions(["member_roles_manage_digital", "member_roles_manage_catalog", "member_roles_manage_billing", "member_roles_manage_store_settings", "member_roles_refund_revoke"]);
   const permissions = Object.fromEntries(Object.entries(roleOptions).map(([key, roles]) => [key.replace("member_roles_", ""), (roles as string[]).includes(String(member.role))]));
 
   return c.json({
