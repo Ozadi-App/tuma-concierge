@@ -276,15 +276,15 @@ export type AvailableJob = Pick<
 export type MatchingMode = "first_to_claim" | "nearest_window" | "customer_selects";
 
 export const MATCHING_MODE_LABELS: Record<MatchingMode, string> = {
-  first_to_claim: "First rider to accept",
+  first_to_claim: "Auto accept",
   nearest_window: "Nearest available",
-  customer_selects: "Let me choose",
+  customer_selects: "Approve",
 };
 
 export const MATCHING_MODE_DESCRIPTIONS: Record<MatchingMode, string> = {
-  first_to_claim: "Whichever rider taps \"Claim\" first gets your order — usually the fastest option.",
+  first_to_claim: "Riders see your request and tap \"Claim\". The first rider to claim it gets it, first come, first served — usually the fastest option.",
   nearest_window: "The app collects nearby riders for a short window, then auto-assigns whoever's closest.",
-  customer_selects: "See who's offered to take your order — their ratings, reviews, and recommendations — and pick one yourself.",
+  customer_selects: "Riders apply to your request. You see each applicant's ratings, reviews and recommendations, and approve the one you want.",
 };
 
 /** Which dataset the whole platform currently reads/writes — see

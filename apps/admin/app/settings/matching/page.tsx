@@ -245,7 +245,7 @@ export default function RiderMatchingPage() {
           </p>
           {biddingEnabled && !enabledModes.includes("customer_selects") && (
             <p className="rounded-lg bg-gold/10 px-3 py-2 text-xs text-ink">
-              Bidding only works when the &ldquo;Let me choose&rdquo; matching mode is also enabled above (several
+              Bidding only works when the &ldquo;Approve&rdquo; matching mode is also enabled above (several
               applications per job) — right now it isn&apos;t, so no bids will be accepted.
             </p>
           )}
