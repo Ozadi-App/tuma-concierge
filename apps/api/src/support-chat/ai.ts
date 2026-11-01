@@ -1,4 +1,5 @@
-import { GeminiApiError, withGeminiKey } from "../speech/ai-keys.js";
+import { withFeatureKey } from "../ai/features.js";
+import { GeminiApiError } from "../speech/ai-keys.js";
 
 /**
  * The website chat's AI assistant (Google Gemini, through the keys managed in Admin → Google AI keys).
@@ -45,7 +46,7 @@ export async function askAssistant(history: ChatTurn[], notes: string, appLabel 
   const contents = toContents(history);
   if (!contents.length) throw new Error("Nothing to answer");
   const model = process.env.GEMINI_TEXT_MODEL || DEFAULT_MODEL;
-  const data = await withGeminiKey(model, async (apiKey) => {
+  const data = await withFeatureKey("support_chat", model, async (apiKey) => {
     const res = await fetch(`${BASE_URL}/models/${model}:generateContent`, {
       method: "POST",
       headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },

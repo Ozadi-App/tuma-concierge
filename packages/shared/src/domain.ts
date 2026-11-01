@@ -955,6 +955,8 @@ export type AiKey = {
   useCount: number;
   failCount: number;
   createdAt: string;
+  /** Which AI feature this key is reserved for; null = the shared pool. */
+  feature?: string | null;
 };
 export type AiKeyMode = "test" | "paid";
 export type AiKeysOverview = {
@@ -967,6 +969,10 @@ export type AiKeysOverview = {
   encryptionConfigured: boolean;
   /** The GEMINI_API_KEY secret, used while no keys are saved here. */
   envKeyPresent: boolean;
+  /** Keys are separated per AI feature (Admin → AI features). */
+  separate?: boolean;
+  /** The pool these keys belong to: "shared" or an AI feature id. */
+  pool?: string;
 };
 export type AiKeyAddResult = { label: string; hint: string; status: "added" | "duplicate" | "rejected"; detail?: string };
 

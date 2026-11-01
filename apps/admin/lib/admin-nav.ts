@@ -2,7 +2,7 @@ import { hasPermission, type AdminRole } from "@peebee/shared";
 import type { LucideIcon } from "lucide-react";
 import {
   Activity, Banknote, Briefcase, Bus, Car, Clapperboard, ClipboardList, Compass, CreditCard, FlaskConical, GraduationCap, Home, KeyRound, Languages,
-  Calculator, Gift, LayoutDashboard, MapPin, MessageCircle, Mic, Package, Phone, PiggyBank, Power, Route, Ruler, ShieldCheck, Smartphone, Store, Trophy, User, UserRound, Users, UsersRound, Video, Wallet, Waypoints,
+  Calculator, Gift, LayoutDashboard, MapPin, MessageCircle, Mic, Package, Phone, PiggyBank, Power, Route, Ruler, ShieldCheck, Smartphone, Sparkles, Store, Trophy, User, UserRound, Users, UsersRound, Video, Wallet, Waypoints,
 } from "lucide-react";
 
 export type NavItem = {
@@ -126,6 +126,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/settings/navigation", label: "Navigation & tracking", icon: Compass, hint: "Live routes", visible: (r) => hasPermission(r, "payments.manage") || hasPermission(r, "settings.manage") },
       { href: "/settings/calls", label: "Voice calls", icon: Phone, hint: "Call provider", visible: can("payments.manage") },
       { href: "/settings/voice", label: "Voice notes", icon: Mic, hint: "Max duration" },
+      { href: "/settings/ai-features", label: "AI features", icon: Sparkles, hint: "Gemini: translation and support chat, shared or separate keys", keywords: "gemini ai luganda translation support chat keys separate toggle", visible: can("settings.manage") },
       { href: "/settings/ai-keys", label: "Google AI keys", icon: KeyRound, hint: "Auto-rotation", visible: can("settings.manage") },
       { href: "/settings/email-keys", label: "Email keys", icon: KeyRound, hint: "Resend", visible: can("settings.manage") },
       { href: "/account", label: "My account", icon: User, hint: "Password and profile" },

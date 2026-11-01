@@ -1787,11 +1787,11 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized, 
     },
 
     // Google AI Studio keys (admin) — see apps/api/src/speech/ai-keys.ts.
-    async adminAiKeys() {
-      return request<AiKeysOverview>("/v1/admin/ai-keys");
+    async adminAiKeys(pool?: string) {
+      return request<AiKeysOverview>(`/v1/admin/ai-keys${pool && pool !== "shared" ? `?pool=${encodeURIComponent(pool)}` : ""}`);
     },
-    async adminAddAiKeys(keys: Array<{ label?: string; key: string; projectTag?: string }>) {
-      return request<AiKeysOverview & { results: AiKeyAddResult[] }>("/v1/admin/ai-keys", { method: "POST", body: JSON.stringify({ keys }) });
+    async adminAddAiKeys(keys: Array<{ label?: string; key: string; projectTag?: string }>, pool?: string) {
+      return request<AiKeysOverview & { results: AiKeyAddResult[] }>("/v1/admin/ai-keys", { method: "POST", body: JSON.stringify({ keys, ...(pool && pool !== "shared" ? { pool } : {}) }) });
     },
     async adminUpdateAiKey(id: string, input: { enabled?: boolean; label?: string; projectTag?: string | null }) {
       return request<AiKeysOverview>(`/v1/admin/ai-keys/${id}`, { method: "PATCH", body: JSON.stringify(input) });
@@ -1802,17 +1802,18 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized, 
     async adminTestAiKey(id: string) {
       return request<AiKeysOverview & { result: { ok: boolean; detail: string } }>(`/v1/admin/ai-keys/${id}/test`, { method: "POST" });
     },
-    async adminSetMasterAiKey(id: string | null) {
-      return request<AiKeysOverview>(`/v1/admin/ai-keys/${id ?? "none"}/master`, { method: id ? "PUT" : "DELETE" });
+    /** Pick a master key; with null, clears the master of `pool` ("shared" or an AI feature id). */
+    async adminSetMasterAiKey(id: string | null, pool?: string) {
+      return request<AiKeysOverview>(`/v1/admin/ai-keys/${id ?? (pool && pool !== "shared" ? pool : "none")}/master`, { method: id ? "PUT" : "DELETE" });
     },
     async adminDeleteAiKey(id: string) {
       return request<AiKeysOverview>(`/v1/admin/ai-keys/${id}`, { method: "DELETE" });
     },
-    async adminSetAiKeyMode(mode: AiKeyMode) {
-      return request<AiKeysOverview>("/v1/admin/ai-keys-mode", { method: "PUT", body: JSON.stringify({ mode }) });
+    async adminSetAiKeyMode(mode: AiKeyMode, pool?: string) {
+      return request<AiKeysOverview>(`/v1/admin/ai-keys-mode${pool && pool !== "shared" ? `?pool=${encodeURIComponent(pool)}` : ""}`, { method: "PUT", body: JSON.stringify({ mode }) });
     },
-    async adminSetAiKeyRotation(rotationSeconds: number) {
-      return request<AiKeysOverview>("/v1/admin/ai-keys-rotation", { method: "PUT", body: JSON.stringify({ rotationSeconds }) });
+    async adminSetAiKeyRotation(rotationSeconds: number, pool?: string) {
+      return request<AiKeysOverview>(`/v1/admin/ai-keys-rotation${pool && pool !== "shared" ? `?pool=${encodeURIComponent(pool)}` : ""}`, { method: "PUT", body: JSON.stringify({ rotationSeconds }) });
     },
     async adminEmailKeys() {
       return request<EmailKeysOverview>("/v1/admin/email-keys");

@@ -4,7 +4,7 @@ import { decryptSecret, encryptSecret } from "../lib/crypto.js";
 import { newId } from "../lib/ids.js";
 import { timedOrder } from "../lib/key-rotation.js";
 import { hasColumn, hasTable } from "../lib/schema.js";
-import { getSetting, setSetting } from "../lib/settings.js";
+import { getRawSetting, getSetting, setRawSetting, setSetting } from "../lib/settings.js";
 
 /**
  * Google AI Studio (Gemini) API keys managed from the admin app.
@@ -43,6 +43,34 @@ export async function setKeyMode(mode: KeyMode): Promise<void> {
 
 type Row = Record<string, unknown>;
 
+/** A pool of keys: the shared one (null) or the one reserved for a single AI feature. */
+export type Pool = string | null;
+
+const SEPARATE_KEY = "ai_keys_separate";
+
+/**
+ * Whether each AI feature uses keys of its own (Admin → AI features). Off means one shared pool serves every
+ * feature, as it always has. Can only be on once migration 0152 has added the `feature` column.
+ */
+export async function keysSeparate(): Promise<boolean> {
+  return (await getRawSetting(SEPARATE_KEY)) === "1" && (await hasColumn("ai_api_keys", "feature"));
+}
+
+export async function setKeysSeparate(on: boolean): Promise<void> {
+  await setRawSetting(SEPARATE_KEY, on ? "1" : "0");
+}
+
+/** The pool an AI feature draws from right now. */
+export async function poolFor(feature: string | null | undefined): Promise<Pool> {
+  return feature && (await keysSeparate()) ? feature : null;
+}
+
+/** SQL fragment (and args) limiting a query on ai_api_keys to one pool; empty before migration 0152. */
+async function poolFilter(pool: Pool | "all"): Promise<{ sql: string; args: string[] }> {
+  if (pool === "all" || !(await hasColumn("ai_api_keys", "feature"))) return { sql: "", args: [] };
+  return pool === null ? { sql: " AND feature IS NULL", args: [] } : { sql: " AND feature = ?", args: [pool] };
+}
+
 export type AiKey = {
   id: string;
   label: string;
@@ -62,6 +90,8 @@ export type AiKey = {
   useCount: number;
   failCount: number;
   createdAt: string;
+  /** The AI feature this key is reserved for; null is the shared pool. */
+  feature: string | null;
 };
 
 function toKey(r: Row, limits: AiKey["limits"] = [], now = Date.now()): AiKey {
@@ -89,6 +119,7 @@ function toKey(r: Row, limits: AiKey["limits"] = [], now = Date.now()): AiKey {
     useCount: Number(r.use_count) || 0,
     failCount: Number(r.fail_count) || 0,
     createdAt: String(r.created_at),
+    feature: (r.feature as string | null | undefined) ?? null,
   };
 }
 
@@ -105,9 +136,10 @@ async function activeLimits(): Promise<Map<string, AiKey["limits"]>> {
   return map;
 }
 
-export async function listKeys(): Promise<AiKey[]> {
+export async function listKeys(pool: Pool | "all" = "all"): Promise<AiKey[]> {
   if (!(await hasTable("ai_api_keys"))) return [];
-  const [res, limits] = await Promise.all([db.execute("SELECT * FROM ai_api_keys WHERE provider = 'gemini' ORDER BY is_master DESC, rowid ASC"), activeLimits()]);
+  const f = await poolFilter(pool);
+  const [res, limits] = await Promise.all([db.execute({ sql: `SELECT * FROM ai_api_keys WHERE provider = 'gemini'${f.sql} ORDER BY is_master DESC, rowid ASC`, args: f.args }), activeLimits()]);
   return (res.rows as Row[]).map((r) => toKey(r, limits.get(String(r.id))));
 }
 
@@ -251,16 +283,23 @@ async function decrypted(id: string, encrypted: string): Promise<{ id: string; s
  * should throw a GeminiApiError for any non-OK reply from Google so the
  * failure can be read.
  */
-export async function withGeminiKey<T>(model: string, use: (apiKey: string) => Promise<T>): Promise<T> {
+export async function withGeminiKey<T>(model: string, use: (apiKey: string) => Promise<T>, feature?: string): Promise<T> {
   const envKey = process.env.GEMINI_API_KEY;
   if (!(await hasTable("ai_api_keys"))) {
     if (!envKey) throw new NoUsableKeyError("GEMINI_API_KEY is not set");
     return use(envKey);
   }
-  const rows = ((await db.execute("SELECT * FROM ai_api_keys WHERE provider = 'gemini' AND enabled = 1 ORDER BY rowid")).rows as Row[]);
+  // With the keys separated, a feature only ever uses the keys reserved for it; otherwise the shared pool serves everyone.
+  const keyPool = await poolFor(feature);
+  const f = await poolFilter(keyPool);
+  const rows = ((await db.execute({ sql: `SELECT * FROM ai_api_keys WHERE provider = 'gemini' AND enabled = 1${f.sql} ORDER BY rowid`, args: f.args })).rows as Row[]);
+  if (keyPool !== null) {
+    // No fallback to the shared keys or the secret: the point of separating is that this feature has its own.
+    if (rows.length === 0) throw new NoUsableKeyError(`No Google AI key is set for ${feature}. Add one in Settings → AI features.`);
+  }
   // Nothing saved in the admin app yet: behave exactly as before.
-  const anySaved = rows.length > 0 || ((await db.execute("SELECT 1 FROM ai_api_keys WHERE provider = 'gemini' LIMIT 1")).rows.length > 0);
-  if (!anySaved) {
+  const anySaved = rows.length > 0 || ((await db.execute({ sql: `SELECT 1 FROM ai_api_keys WHERE provider = 'gemini'${f.sql} LIMIT 1`, args: f.args })).rows.length > 0);
+  if (keyPool === null && !anySaved) {
     if (!envKey) throw new NoUsableKeyError("No Google AI key is set. Add one in Settings → Google AI keys.");
     return use(envKey);
   }
@@ -273,7 +312,7 @@ export async function withGeminiKey<T>(model: string, use: (apiKey: string) => P
 
   if (mode === "paid") {
     const master = rows.find((r) => Number(r.is_master) === 1);
-    if (!master) throw new NoUsableKeyError("Paid mode is on but there is no enabled master key. Pick one in Settings → Google AI keys.");
+    if (!master) throw new NoUsableKeyError(`Paid mode is on but there is no enabled master key${keyPool ? ` for ${keyPool}` : ""}. Pick one in Settings → Google AI keys.`);
     const { id, secret } = await decrypted(String(master.id), String(master.key_encrypted));
     try {
       const out = await use(secret);
@@ -293,7 +332,7 @@ export async function withGeminiKey<T>(model: string, use: (apiKey: string) => P
     : testRows.sort((a, b) => String(a.last_used_at ?? "").localeCompare(String(b.last_used_at ?? ""))))
     .filter(ready);
   if (pool.length === 0) {
-    const next = (await listKeys())
+    const next = (await listKeys(keyPool))
       .filter((k) => !k.isMaster && k.enabled)
       .flatMap((k) => (k.limits.filter((l) => l.model === model).map((l) => l.until).concat(k.limits.length === 0 && k.cooldownUntil ? [k.cooldownUntil] : [])))
       .sort()[0];
@@ -346,8 +385,9 @@ export async function pingKey(apiKey: string): Promise<{ ok: boolean; limited: b
 
 export type AddResult = { label: string; hint: string; status: "added" | "duplicate" | "rejected"; detail?: string };
 
-export async function addKeys(entries: Array<{ label?: string; key: string; projectTag?: string }>, createdBy: string): Promise<AddResult[]> {
+export async function addKeys(entries: Array<{ label?: string; key: string; projectTag?: string }>, createdBy: string, pool: Pool = null): Promise<AddResult[]> {
   const existingCount = (await listKeys()).length;
+  const poolColumn = pool !== null && (await hasColumn("ai_api_keys", "feature"));
   const results: AddResult[] = [];
   let n = existingCount;
   for (const entry of entries) {
@@ -361,7 +401,7 @@ export async function addKeys(entries: Array<{ label?: string; key: string; proj
     const hash = hashKey(key);
     const dup = await db.execute({ sql: "SELECT 1 FROM ai_api_keys WHERE provider = 'gemini' AND key_hash = ?", args: [hash] });
     if (dup.rows.length > 0) {
-      results.push({ label, hint, status: "duplicate", detail: "Already added" });
+      results.push({ label, hint, status: "duplicate", detail: "Already added (a key can only be used in one place)" });
       continue;
     }
     const check = await pingKey(key);
@@ -373,6 +413,13 @@ export async function addKeys(entries: Array<{ label?: string; key: string; proj
       sql: `INSERT INTO ai_api_keys (id, label, key_encrypted, key_hash, key_hint, created_by) VALUES (?, ?, ?, ?, ?, ?)`,
       args: [newId("aik"), label, await encryptSecret(key), hash, hint, createdBy],
     });
+    if (poolColumn) {
+      await db.execute({ sql: "UPDATE ai_api_keys SET feature = ? WHERE provider = 'gemini' AND key_hash = ?", args: [pool, hash] });
+      // In paid mode a pool without a master would not work, so its first key becomes the master.
+      if ((await getKeyMode()) === "paid" && !(await listKeys(pool)).some((k) => k.isMaster)) {
+        await db.execute({ sql: "UPDATE ai_api_keys SET is_master = 1 WHERE provider = 'gemini' AND key_hash = ?", args: [hash] });
+      }
+    }
     const tag = entry.projectTag?.trim();
     if (tag && (await hasColumn("ai_api_keys", "project_tag"))) {
       await db.execute({ sql: "UPDATE ai_api_keys SET project_tag = ? WHERE provider = 'gemini' AND key_hash = ?", args: [tag, hash] });
@@ -395,8 +442,12 @@ export async function testKey(id: string): Promise<{ ok: boolean; detail: string
   return { ok: check.ok, detail: check.detail };
 }
 
-export async function setMaster(id: string | null): Promise<void> {
-  await db.execute("UPDATE ai_api_keys SET is_master = 0 WHERE provider = 'gemini'");
+/** Picks the master key of a pool (the pool of `id`), or with null clears the master of `pool`. One master per pool. */
+export async function setMaster(id: string | null, pool: Pool = null): Promise<void> {
+  const row = id ? await getKeyRow(id) : undefined;
+  const target: Pool = row ? ((row.feature as string | null | undefined) ?? null) : pool;
+  const f = await poolFilter(target);
+  await db.execute({ sql: `UPDATE ai_api_keys SET is_master = 0 WHERE provider = 'gemini'${f.sql}`, args: f.args });
   if (id) await db.execute({ sql: "UPDATE ai_api_keys SET is_master = 1, enabled = 1 WHERE id = ?", args: [id] });
 }
 

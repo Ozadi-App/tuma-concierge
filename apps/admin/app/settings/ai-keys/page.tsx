@@ -1,7 +1,8 @@
 "use client";
 
-import type { AiKey, AiKeyAddResult, AiKeysOverview } from "@peebee/shared";
+import { AI_FEATURES, aiFeatureLabel, type AiKey, type AiKeyAddResult, type AiKeysOverview } from "@peebee/shared";
 import { Crown, KeyRound, RefreshCw, Trash2 } from "lucide-react";
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { SettingsPageShell } from "../../../components/SettingsPageShell";
 import { api, errorMessage } from "../../../lib/api";
@@ -16,8 +17,9 @@ function Badge({ children, tone }: { children: React.ReactNode; tone: "gold" | "
   return <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${cls}`}>{children}</span>;
 }
 
-function KeyRow({ k, busy, run, setNote }: {
+function KeyRow({ k, busy, run, setNote, pool }: {
   k: AiKey;
+  pool: string;
   busy: boolean;
   run: <T extends AiKeysOverview>(action: () => Promise<T>, after?: (result: T) => void) => Promise<void>;
   setNote: (note: string | null) => void;
@@ -61,7 +63,7 @@ function KeyRow({ k, busy, run, setNote }: {
             </button>
           )}
           {k.isMaster && (
-            <button type="button" disabled={busy} onClick={() => void run(() => api.adminSetMasterAiKey(null))} className="min-h-8 rounded-full border border-[var(--border-faint)] px-3 text-xs font-bold text-ink">
+            <button type="button" disabled={busy} onClick={() => void run(() => api.adminSetMasterAiKey(null, pool))} className="min-h-8 rounded-full border border-[var(--border-faint)] px-3 text-xs font-bold text-ink">
               Not master
             </button>
           )}
@@ -113,13 +115,22 @@ export default function AiKeysPage() {
   const [loading, setLoading] = useState(true);
   const [rotationSeconds, setRotationSeconds] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  // "shared" or an AI feature id (Admin → AI features separates the keys per feature). Chosen by ?pool= or the tabs.
+  const [pool, setPool] = useState("shared");
 
-  useEffect(() => {
-    api
-      .adminAiKeys()
-      .then((res) => { setData(res); setRotationSeconds(res.rotationSeconds); })
+  function load(next: string) {
+    setPool(next);
+    window.history.replaceState(null, "", next === "shared" ? "/settings/ai-keys" : `/settings/ai-keys?pool=${next}`);
+    return api
+      .adminAiKeys(next)
+      .then((res) => { setData(res); setRotationSeconds(res.rotationSeconds); setResults([]); })
       .catch((err) => setError(errorMessage(err)))
       .finally(() => setLoading(false));
+  }
+
+  useEffect(() => {
+    const first = setTimeout(() => void load(new URLSearchParams(window.location.search).get("pool") ?? "shared"), 0);
+    return () => clearTimeout(first);
   }, []);
 
   async function run<T extends AiKeysOverview>(action: () => Promise<T>, after?: (res: T) => void) {
@@ -150,7 +161,7 @@ export default function AiKeysPage() {
       });
     if (entries.length === 0) return;
     void run(
-      () => api.adminAddAiKeys(entries),
+      () => api.adminAddAiKeys(entries, pool),
       (res) => {
         setResults(res.results);
         if (res.results.every((r) => r.status !== "rejected")) setText("");
@@ -167,6 +178,20 @@ export default function AiKeysPage() {
     <SettingsPageShell title="Google AI keys" loading={loading}>
       {data && (
         <div className="space-y-5">
+          {data.separate ? (
+            <div role="tablist" aria-label="Which keys" className="flex flex-wrap gap-2">
+              {[{ id: "shared", label: "Shared keys" }, ...AI_FEATURES.map((f) => ({ id: f.id as string, label: f.label }))].map((t) => (
+                <button key={t.id} type="button" role="tab" aria-selected={pool === t.id} disabled={busy} onClick={() => void load(t.id)} className={`min-h-9 rounded-full border px-3 text-xs font-bold ${pool === t.id ? "border-gold bg-gold/15 text-ink" : "border-ink/10 text-ink-600"}`}>
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          ) : null}
+          {pool !== "shared" && (
+            <p className="rounded-lg bg-[rgb(var(--surface-muted))] px-3 py-2 text-xs text-ink">
+              These keys are used only by <span className="font-bold">{aiFeatureLabel(pool)}</span>. Manage which features have their own keys in <Link href="/settings/ai-features" className="font-bold underline">AI features</Link>.
+            </p>
+          )}
           {!data.tableReady && (
             <p className="rounded-lg bg-gold/15 px-3 py-2 text-sm text-ink">
               Apply migrations <code>0074_ai_api_keys.sql</code> and <code>0075_ai_key_limits.sql</code> first. Until then the app keeps using the <code>GEMINI_API_KEY</code> secret.
@@ -193,7 +218,7 @@ export default function AiKeysPage() {
                   role="tab"
                   aria-selected={data.mode === m}
                   disabled={busy || data.mode === m}
-                  onClick={() => void run(() => api.adminSetAiKeyMode(m))}
+                  onClick={() => void run(() => api.adminSetAiKeyMode(m, pool))}
                   className={`min-h-11 rounded-full text-sm font-bold ${data.mode === m ? "bg-gold text-ink-gold" : "bg-gold/15 text-ink"}`}
                 >
                   {m === "test" ? "Testing" : "Live (master key)"}
@@ -213,7 +238,7 @@ export default function AiKeysPage() {
             </label>
             <p className="text-xs text-ink-500">0 rotates on each request. A timed interval keeps using the scheduled key until the next slot, with immediate fallback on quota errors.</p>
             {data.nextRotationAt && <p className="text-xs text-ink-500">Next scheduled switch: {when(data.nextRotationAt)}</p>}
-            <button type="button" disabled={busy || !data.tableReady || !Number.isInteger(rotationSeconds) || rotationSeconds < 0 || rotationSeconds > 86400} onClick={() => void run(() => api.adminSetAiKeyRotation(rotationSeconds), (res) => { setRotationSeconds(res.rotationSeconds); setNote("Rotation timer saved."); })} className="min-h-11 w-full rounded-full bg-gold text-sm font-bold text-ink-gold disabled:opacity-50">Save rotation timer</button>
+            <button type="button" disabled={busy || !data.tableReady || !Number.isInteger(rotationSeconds) || rotationSeconds < 0 || rotationSeconds > 86400} onClick={() => void run(() => api.adminSetAiKeyRotation(rotationSeconds, pool), (res) => { setRotationSeconds(res.rotationSeconds); setNote("Rotation timer saved."); })} className="min-h-11 w-full rounded-full bg-gold text-sm font-bold text-ink-gold disabled:opacity-50">Save rotation timer</button>
           </section>
 
           <p className="rounded-lg bg-gold/15 px-3 py-2 text-xs text-ink">
@@ -260,7 +285,7 @@ export default function AiKeysPage() {
 
           <section className="space-y-2">
             <h2 className="text-sm font-bold text-ink">Master key</h2>
-            {master ? <KeyRow k={master} busy={busy} run={run} setNote={setNote} /> : <p className="text-xs text-ink-500">None yet. Pick one from the list below with &ldquo;Make master&rdquo;.</p>}
+            {master ? <KeyRow k={master} pool={pool} busy={busy} run={run} setNote={setNote} /> : <p className="text-xs text-ink-500">None yet. Pick one from the list below with &ldquo;Make master&rdquo;.</p>}
           </section>
 
           <section className="space-y-2">
@@ -270,7 +295,7 @@ export default function AiKeysPage() {
                 No keys yet.{data.envKeyPresent ? " The GEMINI_API_KEY secret is being used for now." : " Add one above."}
               </p>
             ) : (
-              testKeys.map((k) => <KeyRow key={k.id} k={k} busy={busy} run={run} setNote={setNote} />)
+              testKeys.map((k) => <KeyRow key={k.id} k={k} pool={pool} busy={busy} run={run} setNote={setNote} />)
             )}
           </section>
         </div>

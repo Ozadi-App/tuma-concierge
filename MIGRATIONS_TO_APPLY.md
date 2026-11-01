@@ -24,6 +24,7 @@ SELECT id, name, role FROM users WHERE name LIKE 'LIVETEST %';
 UPDATE users SET is_demo = 1 WHERE name LIKE 'LIVETEST %';
 ```
 | `apps/api/src/db/migrations/0151_support_chat_identity.sql` | Support chat: records which app a chat came from and who was signed in (4 nullable columns on `support_chats`). Needs 0150 first. Until applied, chats work as before and the inbox shows "Not signed in" |
+| `apps/api/src/db/migrations/0152_ai_key_features.sql` | AI features: lets a Google AI key be reserved for one AI feature (`ai_api_keys.feature`) and allows one master key per pool. Needs 0074 first. Until applied, every feature shares one pool and Admin → AI features shows "separate" as unavailable |
 
 Each file is safe to read before running: they only add tables, columns and indexes. Run them one at a time and check
 the Admin → Commerce options page — an option whose migration is missing is shown as unavailable and cannot be chosen.
