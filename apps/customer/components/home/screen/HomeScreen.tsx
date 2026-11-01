@@ -8,6 +8,7 @@ import { LocationOnboarding } from "../LocationOnboarding";
 import { ParcelModal } from "../ParcelModal";
 import { RideModal } from "../RideModal";
 import { ShoppingListModal } from "../ShoppingListModal";
+import { HomeMotion } from "./HomeArt";
 import { ArrangeHomeButton } from "./ArrangeHomeButton";
 import { HomeRecent } from "./HomeRecent";
 import { HomeWallet } from "./HomeWallet";
@@ -44,6 +45,7 @@ export function HomeScreen() {
 
   return (
     <div data-home-variant={variant} className="space-y-8 px-4 pb-6 pt-2">
+      <HomeMotion />
       <NeedsYou />
       {layout}
       <HomeWallet />

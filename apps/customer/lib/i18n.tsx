@@ -215,9 +215,12 @@ const STRINGS: Record<string, { en: string; lg: string }> = {
   home_ready_parcel: { en: "Something to send?", lg: "Olina ky'osindika?" },
   home_ready_generic: { en: "Ready for {name}?", lg: "Oteekeddwa {name}?" },
   home_design_preview: { en: "Design preview", lg: "Endabika y'okukebera" },
-  home_variant_brand: { en: "Brand", lg: "Ekirango" },
-  home_variant_launcher: { en: "Launcher", lg: "Entandika" },
-  home_variant_today: { en: "Today", lg: "Leero" },
+  home_variant_brand: { en: "Golden hour", lg: "Essaawa ey'ezzaabu" },
+  home_variant_launcher: { en: "Editorial", lg: "Olupapula" },
+  home_variant_today: { en: "Pattern", lg: "Enkola" },
+  home_golden_line: { en: "Kampala is warm. The day can start.", lg: "Kampala mufuge. Olunaku lusobola okutandika." },
+  home_editorial_line: { en: "Today's edition.", lg: "Olupapula lw'olunaku luno." },
+  home_pattern_line: { en: "Woven for the way you move.", lg: "Kikolwa ku ngeri gy'otambula." },
 
   // Home — wallet card
   wallet_escrow_title: { en: "Personal MoMo Escrow", lg: "Ensimbi zo ez'oku Layini" },
