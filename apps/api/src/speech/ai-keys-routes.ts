@@ -9,8 +9,8 @@ import { clientIp } from "../lib/ratelimit.js";
 import { hasTable } from "../lib/schema.js";
 import { nextRotationAt } from "../lib/key-rotation.js";
 import { getSetting, setSetting } from "../lib/settings.js";
-import { isAiFeature } from "@peebee/shared";
-import { poolsInUse } from "../ai/features.js";
+import { aiFeatureLabel, isAiFeature } from "@peebee/shared";
+import { assignKey, decorateKeys, poolsInUse, poolSummaries } from "../ai/features.js";
 import { addKeys, getKeyMode, getKeyRow, keysSeparate, listKeys, removeKey, resetKey, setKeyMode, setMaster, setProjectTag, testKey, type Pool } from "./ai-keys.js";
 
 /** Admin management of the Google AI Studio keys — see ./ai-keys.ts. Gated like
@@ -30,7 +30,8 @@ async function overview(pool: Pool = null) {
     mode,
     rotationSeconds,
     nextRotationAt: mode === "test" ? nextRotationAt(rotationSeconds) : null,
-    keys: await listKeys(pool),
+    keys: await decorateKeys(await listKeys(pool)),
+    pools: await poolSummaries(),
     separate: await keysSeparate(),
     pool: pool ?? "shared",
     tableReady: await hasTable("ai_api_keys"),
@@ -72,7 +73,7 @@ aiKeyRoutes.post("/admin/ai-keys", ...gate, async (c) => {
   return c.json({ results, ...(await overview(pool)) }, 201);
 });
 
-const patchSchema = z.object({ enabled: z.boolean().optional(), label: z.string().trim().min(1).max(60).optional(), projectTag: z.string().trim().max(60).nullable().optional() });
+const patchSchema = z.object({ assignTo: z.string().trim().max(40).optional(), enabled: z.boolean().optional(), label: z.string().trim().min(1).max(60).optional(), projectTag: z.string().trim().max(60).nullable().optional() });
 
 aiKeyRoutes.patch("/admin/ai-keys/:id", ...gate, async (c) => {
   const user = c.get("user");
@@ -84,11 +85,23 @@ aiKeyRoutes.patch("/admin/ai-keys/:id", ...gate, async (c) => {
   if (parsed.data.enabled === false && Number(row.is_master) === 1 && (await getKeyMode()) === "paid") {
     return c.json({ error: "master_in_use", message: "Paid mode is on — switch to test mode or pick another master key first." }, 409);
   }
+  // The reply shows the group the admin is looking at (?pool=); with none given, the group the key was in.
+  const viewPool = c.req.query("pool") !== undefined ? poolOf(c.req.query("pool")) : rowPool(row);
+  const changes: string[] = [];
+  if (parsed.data.assignTo !== undefined) {
+    const moved = await assignKey(id, parsed.data.assignTo, await listKeys("all"));
+    if (!moved.ok) return c.json({ error: "cannot_assign", message: moved.message }, moved.status);
+    if (parsed.data.assignTo !== (rowPool(row) ?? "shared")) changes.push(`moved to ${parsed.data.assignTo === "shared" ? "the shared keys" : aiFeatureLabel(parsed.data.assignTo)}`);
+  }
   if (parsed.data.enabled != null) await db.execute({ sql: "UPDATE ai_api_keys SET enabled = ? WHERE id = ?", args: [parsed.data.enabled ? 1 : 0, id] });
-  if (parsed.data.label) await db.execute({ sql: "UPDATE ai_api_keys SET label = ? WHERE id = ?", args: [parsed.data.label, id] });
+  if (parsed.data.enabled != null) changes.push(parsed.data.enabled ? "enabled" : "disabled");
+  if (parsed.data.label && parsed.data.label !== String(row.label)) {
+    await db.execute({ sql: "UPDATE ai_api_keys SET label = ? WHERE id = ?", args: [parsed.data.label, id] });
+    changes.push(`renamed to "${parsed.data.label}"`);
+  }
   if (parsed.data.projectTag !== undefined) await setProjectTag(id, parsed.data.projectTag);
-  await logActivity({ actor: user, action: "ai_keys.update", entityType: "ai_api_keys", entityId: id, summary: `Updated Google AI key ${String(row.label)} (${String(row.key_hint)})${parsed.data.enabled != null ? (parsed.data.enabled ? " — enabled" : " — disabled") : ""}`, ip: clientIp(c) });
-  return c.json(await overview(rowPool(row)));
+  await logActivity({ actor: user, action: "ai_keys.update", entityType: "ai_api_keys", entityId: id, summary: `Google AI key "${String(row.label)}" (${String(row.key_hint)})${changes.length ? ` ${changes.join(", ")}` : " updated"}`, ip: clientIp(c) });
+  return c.json(await overview(viewPool));
 });
 
 aiKeyRoutes.post("/admin/ai-keys/:id/reset", ...gate, async (c) => {

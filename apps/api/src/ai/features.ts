@@ -1,10 +1,10 @@
-import { AI_FEATURES, isAiFeature, type AiFeatureId, type AiFeaturesOverview, type AiFeatureStatus } from "@peebee/shared";
+import { AI_FEATURES, aiFeatureLabel, isAiFeature, parseKeyLines, type AiFeatureId, type AiFeaturesOverview, type AiFeatureStatus, type AiKey, type AiKeysOverview } from "@peebee/shared";
 import { logActivity } from "../admin/activity.js";
 import type { RequestUser } from "../auth/middleware.js";
 import { getOption, setOptions } from "../lib/option-settings.js";
 import { hasColumn, hasTable } from "../lib/schema.js";
 import { getLugandaAudioSettings, setLugandaAudioSettings } from "../lib/settings.js";
-import { addKeys, keysSeparate, listKeys, setKeysSeparate, withGeminiKey, type AddResult, type Pool } from "../speech/ai-keys.js";
+import { addKeys, keysSeparate, listKeys, loadKeyUsage, moveKey, setKeysSeparate, withGeminiKey, type AddResult, type Pool } from "../speech/ai-keys.js";
 
 /**
  * AI features: one place that knows every feature that calls a model (the list is in packages/shared/src/ai-features.ts).
@@ -59,15 +59,19 @@ export async function aiFeaturesOverview(): Promise<AiFeaturesOverview> {
   const available = (await hasTable("ai_api_keys")) && (await featureColumn());
   const separate = await keysSeparate();
   const shared = (await listKeys(null)).filter((k) => k.enabled);
+  const sharedAll = await listKeys(null);
   const features: AiFeatureStatus[] = [];
   for (const f of AI_FEATURES) {
-    const own = available ? (await listKeys(f.id)).filter((k) => k.enabled) : [];
+    const ownAll = available ? await listKeys(f.id) : [];
+    const own = ownAll.filter((k) => k.enabled);
+    const drawsFrom = separate ? ownAll : sharedAll;
     features.push({
       id: f.id, label: f.label, description: f.description,
       enabled: await FEATURE_HOOKS[f.id].isEnabled(),
       pool: separate ? "own" : "shared",
       ownKeys: own.length, ownReady: own.filter((k) => k.status === "ready").length,
       needsKey: separate && own.length === 0,
+      keys: drawsFrom.map((k) => ({ id: k.id, label: k.label, status: k.status })),
     });
   }
   return { separate, separateAvailable: available, sharedKeys: shared.length, sharedReady: shared.filter((k) => k.status === "ready").length, features };
@@ -95,7 +99,7 @@ export async function setSeparate(separate: boolean, keys: Partial<Record<string
   const results: Partial<Record<AiFeatureId, AddResult[]>> = {};
   for (const [id, list] of Object.entries(keys)) {
     if (!isAiFeature(id) || !list?.length) continue;
-    results[id] = await addKeys(list.map((key) => ({ key })), createdBy, id);
+    results[id] = await addKeys(parseKeyLines(list.join("\n")), createdBy, id);
   }
   const missing: Array<{ id: AiFeatureId; label: string }> = [];
   for (const f of AI_FEATURES) {
@@ -116,4 +120,52 @@ export async function setFeatureEnabled(feature: AiFeatureId, enabled: boolean, 
     return { ok: false, status: 409, message: "The keys are separated, so add a key for this feature first." };
   }
   return FEATURE_HOOKS[feature].setEnabled(enabled, actor, ip);
+}
+
+/** Which features draw from a key right now, given whether the keys are separated and which features are on. */
+export function servedBy(key: Pick<AiKey, "feature" | "enabled">, separate: boolean, enabledFeatures: AiFeatureId[]): AiFeatureId[] {
+  if (!key.enabled) return [];
+  if (separate) return key.feature && isAiFeature(key.feature) && enabledFeatures.includes(key.feature) ? [key.feature] : [];
+  return key.feature ? [] : enabledFeatures;
+}
+
+/** Adds to each key what it serves now and what it has actually served, so the admin can see where every key is working. */
+export async function decorateKeys(keys: AiKey[]): Promise<AiKey[]> {
+  const [separate, usage] = await Promise.all([keysSeparate(), loadKeyUsage()]);
+  const enabled: AiFeatureId[] = [];
+  for (const f of AI_FEATURES) if (await FEATURE_HOOKS[f.id].isEnabled()) enabled.push(f.id);
+  return keys.map((k) => ({
+    ...k,
+    serves: servedBy(k, separate, enabled).map((id) => ({ id, label: aiFeatureLabel(id) })),
+    usage: (usage.get(k.id) ?? []).map((u) => ({ feature: u.feature, label: u.feature === "other" ? "Other uses" : aiFeatureLabel(u.feature), uses: u.uses, fails: u.fails, lastUsedAt: u.lastUsedAt })),
+  }));
+}
+
+/** One entry per pool ("Shared keys" and each AI feature) with its key count, for the role tabs. */
+export async function poolSummaries(): Promise<NonNullable<AiKeysOverview["pools"]>> {
+  const out: NonNullable<AiKeysOverview["pools"]> = [];
+  const shared = await listKeys(null);
+  out.push({ id: "shared", label: "Shared keys", keys: shared.length, ready: shared.filter((k) => k.status === "ready").length });
+  if (!(await hasColumn("ai_api_keys", "feature"))) return out;
+  for (const f of AI_FEATURES) {
+    const own = await listKeys(f.id);
+    out.push({ id: f.id, label: f.label, keys: own.length, ready: own.filter((k) => k.status === "ready").length });
+  }
+  return out;
+}
+
+/**
+ * Give an existing key a different role: the shared pool, or one AI feature. With the keys separated, the last working key of
+ * a feature that is on cannot be moved away, because that feature would stop working.
+ */
+export async function assignKey(keyId: string, target: string, keys: AiKey[]): Promise<{ ok: true } | { ok: false; status: 400 | 409; message: string }> {
+  if (target !== "shared" && !isAiFeature(target)) return { ok: false, status: 400, message: "Unknown role." };
+  const pool: Pool = target === "shared" ? null : target;
+  const key = keys.find((k) => k.id === keyId);
+  if (key && (await keysSeparate()) && key.feature && key.feature !== target && key.enabled && isAiFeature(key.feature) && (await FEATURE_HOOKS[key.feature].isEnabled())) {
+    const others = (await listKeys(key.feature)).filter((k) => k.enabled && k.id !== keyId);
+    if (others.length === 0) return { ok: false, status: 409, message: `This is the only working key for ${aiFeatureLabel(key.feature)}, which is on and uses its own keys. Add another key for it first.` };
+  }
+  const moved = await moveKey(keyId, pool);
+  return moved.ok ? { ok: true } : { ok: false, status: 409, message: moved.message };
 }
