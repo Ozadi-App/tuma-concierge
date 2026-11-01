@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 import type { HomeFeature } from "../../../lib/home-catalog";
 import { HOME_FEATURE_ICON } from "./home-icons";
 
-export type HomeFeatureLook = "tile" | "overlap" | "launcher" | "cell" | "story";
+export type HomeFeatureLook = "tile" | "overlap" | "launcher" | "cell" | "story" | "strip";
 
 function FeatureControl({
   feature,
@@ -85,6 +85,23 @@ export function HomeFeatureFace({
           <Icon className="h-5 w-5" strokeWidth={1.75} aria-hidden />
         </span>
         <span className="text-sm font-bold leading-tight text-ink">{feature.label}</span>
+      </FeatureControl>
+    );
+  }
+  if (look === "strip") {
+    return (
+      <FeatureControl
+        feature={feature}
+        onSelect={onSelect}
+        className="flex min-h-16 w-full items-center gap-3 rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] px-3 py-2 text-left shadow-[var(--shadow-card)]"
+      >
+        <span className={`${iconWrap} h-11 w-11 rounded-2xl`}>
+          <Icon className="h-5 w-5" strokeWidth={1.75} aria-hidden />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-base font-bold leading-tight text-ink">{feature.label}</span>
+          <span className="block truncate text-sm leading-snug text-ink-500">{feature.detail}</span>
+        </span>
       </FeatureControl>
     );
   }

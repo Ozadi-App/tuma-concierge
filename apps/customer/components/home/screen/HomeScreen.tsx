@@ -18,7 +18,7 @@ import { useHomeCatalog } from "./useHomeCatalog";
 type Sheet = "list" | "boda" | "parcel";
 
 export function HomeScreen() {
-  const { start, more } = useHomeCatalog();
+  const { start, clusters } = useHomeCatalog();
   const { variant, reviewing } = useHomeVariant();
   const [sheet, setSheet] = useState<Sheet | null>(null);
 
@@ -37,10 +37,10 @@ export function HomeScreen() {
   }
 
   const layout = variant === "b"
-    ? <LauncherHome start={start} more={more} onSelect={open} />
+    ? <LauncherHome start={start} clusters={clusters} onSelect={open} />
     : variant === "c"
-      ? <TodayHome start={start} more={more} onSelect={open} />
-      : <BrandHome start={start} more={more} onSelect={open} />;
+      ? <TodayHome start={start} clusters={clusters} onSelect={open} />
+      : <BrandHome start={start} clusters={clusters} onSelect={open} />;
 
   return (
     <div data-home-variant={variant} className="space-y-8 px-4 pb-6 pt-2">

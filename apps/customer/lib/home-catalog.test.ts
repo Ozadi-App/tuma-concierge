@@ -1,36 +1,18 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { DEFAULT_HOME_MENU } from "@peebee/shared";
-import { selectHomeFeatures, type HomeFeatureCopy, type HomeFeatureId } from "./home-catalog";
+import { selectHomeFeatures, type HomeClusterId, type HomeFeatureCopy, type HomeFeatureId } from "./home-catalog";
 
-const COPY = Object.fromEntries(
-  (
-    [
-      "shopping-list",
-      "boda",
-      "food",
-      "parcel",
-      "groceries",
-      "car",
-      "stores",
-      "clean",
-      "laundry",
-      "fix",
-      "pharmacy",
-      "learn",
-      "move",
-      "rideshare",
-      "selfdrive",
-      "workers",
-      "hire",
-      "luxury",
-      "ambulance",
-      "taxipress",
-      "spotlight",
-    ] as const
-  ).map((id) => [id, { label: id, detail: `${id} detail` } satisfies HomeFeatureCopy]),
-) as Record<HomeFeatureId, HomeFeatureCopy>;
+const IDS: HomeFeatureId[] = [
+  "shopping-list", "list", "boda", "food", "parcel", "groceries", "car", "stores", "pharmacy", "orders",
+  "restaurants", "kitchens", "streetfood", "juices", "bakeries",
+  "clean", "laundry", "fix", "my-class", "live", "tv", "discover", "connect",
+  "move", "rideshare", "selfdrive", "workers", "hire", "luxury", "ambulance", "taxipress",
+];
 
+const COPY = Object.fromEntries(IDS.map((id) => [id, { label: id, detail: `${id} detail` }])) as Record<HomeFeatureId, HomeFeatureCopy>;
+
+const labels: Record<HomeClusterId, string> = { ride: "Ride", buy: "Buy", eat: "Eat", learn: "Learn", work: "Work" };
 const shortcuts = DEFAULT_HOME_MENU.hive.shortcuts;
 
 function select(moduleOn: (key: string) => boolean, extra: Partial<Parameters<typeof selectHomeFeatures>[0]> = {}) {
@@ -38,87 +20,70 @@ function select(moduleOn: (key: string) => boolean, extra: Partial<Parameters<ty
     moduleOn,
     copy: COPY,
     hiveShortcuts: shortcuts,
-    learnLabel: "Learn",
+    clusterLabels: labels,
     hire: { hire: false, workers: false },
     special: { luxury: false, ambulance: false },
     taxipress: false,
-    channels: false,
     ...extra,
   });
 }
 
 const allOn = () => true;
+const shown = (extra?: Partial<Parameters<typeof selectHomeFeatures>[0]>) =>
+  select(allOn, { hire: { hire: true, workers: true }, special: { luxury: true, ambulance: true }, taxipress: true, ...extra });
 
-test("default order leads with shopping list, boda, food and parcel", () => {
-  const { start, more } = select(allOn);
+test("start here still leads with the shopping list, boda, food and parcel sheets", () => {
+  const { start } = select(allOn);
   assert.deepEqual(start.map((item) => item.id), ["shopping-list", "boda", "food", "parcel"]);
-  assert.deepEqual(more.map((item) => item.id), ["groceries", "car", "stores", "clean", "laundry", "fix", "pharmacy", "learn", "move", "rideshare", "selfdrive"]);
+  assert.equal(start[0]?.action, "list");
+  assert.equal(start[1]?.action, "boda");
+  assert.equal(start[3]?.action, "parcel");
+  assert.equal(start[2]?.href, "/food");
 });
 
-test("a switched-off feature drops out and the next one fills a large tile", () => {
+test("a switched-off start tile is filled by the next available task", () => {
   const off = new Set(["buy.shopping", "ride.boda"]);
-  const { start, more } = select((key) => !off.has(key));
+  const { start } = select((key) => !off.has(key));
   assert.deepEqual(start.map((item) => item.id), ["food", "parcel", "car", "stores"]);
-  assert.equal(more[0]?.id, "clean");
-  assert.equal(start.some((item) => item.id === "shopping-list" || item.id === "groceries" || item.id === "boda"), false);
 });
 
-test("hive shortcuts keep the admin name and order, and a switched-off shortcut is absent", () => {
+test("the five clusters list every subtype, including ones already in start here", () => {
+  const { clusters } = shown();
+  assert.deepEqual(clusters.map((group) => group.id), ["ride", "buy", "eat", "learn", "work"]);
+  assert.deepEqual(clusters[0]?.items.map((item) => item.id), ["boda", "car", "rideshare", "selfdrive", "move", "parcel", "luxury", "taxipress", "ambulance"]);
+  assert.equal(clusters[0]?.items.find((item) => item.id === "boda")?.href, "/ride/boda");
+  assert.deepEqual(clusters[1]?.items.map((item) => item.id), ["list", "groceries", "stores", "pharmacy", "orders"]);
+  assert.deepEqual(clusters[2]?.items.map((item) => item.id), ["food", "restaurants", "kitchens", "streetfood", "juices", "bakeries"]);
+  assert.deepEqual(clusters[3]?.items.map((item) => item.id), ["my-class", "live", "tv", "discover", "connect"]);
+  assert.deepEqual(clusters[4]?.items.map((item) => item.id), ["clean", "laundry", "fix", "workers", "hire"]);
+});
+
+test("admin defaults hide car, hire, vip and taxipress, and an empty cluster disappears", () => {
+  const off = new Set(["ride.car", "ride.car.carpool", "ride.car.selfdrive", "ride.taxipress", "hive.hire", "buy.food", "learn", "learn.live", "learn.tv"]);
+  const { clusters } = select((key) => !off.has(key));
+  assert.deepEqual(clusters.map((group) => group.id), ["ride", "buy", "work"]);
+  assert.deepEqual(clusters[0]?.items.map((item) => item.id), ["boda", "move", "parcel"]);
+  assert.deepEqual(clusters[2]?.items.map((item) => item.id), ["clean", "laundry", "fix"]);
+});
+
+test("hive shortcuts keep the admin name and order", () => {
   const hiveShortcuts = [
     { id: "laundry" as const, label: "Wash", enabled: true },
     { id: "fix" as const, label: "Repair", enabled: false },
     { id: "clean" as const, label: "Sparkle", enabled: true },
-    { id: "workers" as const, label: "Hands", enabled: true },
     { id: "hire" as const, label: "Contracts", enabled: true },
+    { id: "workers" as const, label: "Hands", enabled: true },
   ];
-  const { more } = select(allOn, { hiveShortcuts, hire: { hire: true, workers: true } });
-  const ids = more.map((item) => item.id);
-  assert.deepEqual(
-    more.filter((item) => item.id === "laundry" || item.id === "clean" || item.id === "fix").map((item) => [item.id, item.label]),
-    [
-      ["laundry", "Wash"],
-      ["clean", "Sparkle"],
-    ],
-  );
-  assert.ok(ids.indexOf("laundry") < ids.indexOf("clean"));
-  assert.equal(ids.includes("fix"), false);
-  assert.deepEqual(
-    more.filter((item) => item.id === "workers" || item.id === "hire").map((item) => item.label),
-    ["Hands", "Contracts"],
-  );
+  const work = shown({ hiveShortcuts }).clusters.find((group) => group.id === "work");
+  assert.deepEqual(work?.items.map((item) => [item.id, item.label]), [
+    ["laundry", "Wash"],
+    ["clean", "Sparkle"],
+    ["hire", "Contracts"],
+    ["workers", "Hands"],
+  ]);
 });
 
-test("hire, luxury, taxipress and spotlight stay hidden until their own switches are on", () => {
-  const hidden = select(allOn);
-  for (const id of ["workers", "hire", "luxury", "ambulance", "taxipress", "spotlight"] as const) {
-    assert.equal([...hidden.start, ...hidden.more].some((item) => item.id === id), false, id);
-  }
-  const shown = select(allOn, {
-    hire: { hire: true, workers: true },
-    special: { luxury: true, ambulance: true },
-    taxipress: true,
-    channels: true,
-  });
-  assert.deepEqual(shown.more.slice(-6).map((item) => item.id), ["workers", "hire", "luxury", "ambulance", "taxipress", "spotlight"]);
-});
-
-test("learn uses the admin cluster name, and sheets are actions rather than links", () => {
-  const { start } = select(allOn, { learnLabel: "Classes" });
-  const learn = select(allOn, { learnLabel: "Classes" }).more.find((item) => item.id === "learn");
-  assert.equal(learn?.label, "Classes");
-  assert.equal(learn?.href, "/learn");
-  const list = start.find((item) => item.id === "shopping-list");
-  const boda = start.find((item) => item.id === "boda");
-  const parcel = start.find((item) => item.id === "parcel");
-  assert.equal(list?.action, "list");
-  assert.equal(list?.href, undefined);
-  assert.equal(boda?.action, "boda");
-  assert.equal(parcel?.action, "parcel");
-});
-
-test("fewer than four available features still fill Start here and leave Also empty", () => {
-  const on = new Set(["buy.food", "deliver.parcel"]);
-  const { start, more } = select((key) => on.has(key));
-  assert.deepEqual(start.map((item) => item.id), ["food", "parcel"]);
-  assert.deepEqual(more, []);
+test("cluster titles use the admin names", () => {
+  const { clusters } = select(allOn, { clusterLabels: { ride: "Go", buy: "Shop", eat: "Meals", learn: "Classes", work: "Jobs" } });
+  assert.deepEqual(clusters.map((group) => group.label), ["Go", "Shop", "Meals", "Classes", "Jobs"]);
 });

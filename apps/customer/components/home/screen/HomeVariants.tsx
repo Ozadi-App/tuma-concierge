@@ -2,13 +2,13 @@
 
 import { MapPin } from "lucide-react";
 import { useEffect, useState } from "react";
-import type { HomeFeature } from "../../../lib/home-catalog";
+import type { HomeCluster, HomeFeature } from "../../../lib/home-catalog";
 import { parseHomeVariant, type HomeVariant } from "../../../lib/home-variant";
 import { useAuth } from "../../../lib/auth-context";
 import { useTranslate } from "../../../lib/i18n";
 import { useLocationLabel } from "../../../lib/use-location-label";
 import { HomeFeatureFace, HomeFeatureRow, HomePrimaryAction } from "./HomeFeature";
-import { HomeSection, HomeStatus } from "./HomeSection";
+import { HomeSection, HomeStatus, homePanel } from "./HomeSection";
 
 export function useHomeVariant(): { variant: HomeVariant; reviewing: boolean } {
   const [variant, setVariant] = useState<HomeVariant>("a");
@@ -56,11 +56,11 @@ function promptFor(feature: HomeFeature, t: ReturnType<typeof useTranslate>) {
 
 export function BrandHome({
   start,
-  more,
+  clusters,
   onSelect,
 }: {
   start: HomeFeature[];
-  more: HomeFeature[];
+  clusters: HomeCluster[];
   onSelect: (feature: HomeFeature) => void;
 }) {
   const { firstName, location, t } = useHomeGreeting();
@@ -99,18 +99,18 @@ export function BrandHome({
           )}
         </div>
       </header>
-      <AlsoList more={more} onSelect={onSelect} />
+      <ClusterGroups clusters={clusters} onSelect={onSelect} look="brand" />
     </div>
   );
 }
 
 export function LauncherHome({
   start,
-  more,
+  clusters,
   onSelect,
 }: {
   start: HomeFeature[];
-  more: HomeFeature[];
+  clusters: HomeCluster[];
   onSelect: (feature: HomeFeature) => void;
 }) {
   const { firstName, location, t } = useHomeGreeting();
@@ -132,26 +132,18 @@ export function LauncherHome({
           ))}
         </div>
       )}
-      {more.length > 0 && (
-        <HomeSection title={t("home_also")} sectionId="also">
-          <div className="grid grid-cols-4 gap-1">
-            {more.map((feature) => (
-              <HomeFeatureFace key={feature.id} feature={feature} onSelect={onSelect} look="cell" />
-            ))}
-          </div>
-        </HomeSection>
-      )}
+      <ClusterGroups clusters={clusters} onSelect={onSelect} look="launcher" />
     </div>
   );
 }
 
 export function TodayHome({
   start,
-  more,
+  clusters,
   onSelect,
 }: {
   start: HomeFeature[];
-  more: HomeFeature[];
+  clusters: HomeCluster[];
   onSelect: (feature: HomeFeature) => void;
 }) {
   const { firstName, location, dayPart, t } = useHomeGreeting();
@@ -191,24 +183,52 @@ export function TodayHome({
       ) : (
         <HomeStatus kind="empty" title={t("home_nothing_on")} />
       )}
-      <AlsoList more={more} onSelect={onSelect} />
+      <ClusterGroups clusters={clusters} onSelect={onSelect} look="today" />
     </div>
   );
 }
 
-function AlsoList({ more, onSelect }: { more: HomeFeature[]; onSelect: (feature: HomeFeature) => void }) {
-  const t = useTranslate();
-  if (more.length === 0) return null;
+function ClusterGroups({
+  clusters,
+  onSelect,
+  look,
+}: {
+  clusters: HomeCluster[];
+  onSelect: (feature: HomeFeature) => void;
+  look: "brand" | "launcher" | "today";
+}) {
+  if (clusters.length === 0) return null;
   return (
-    <HomeSection title={t("home_also")} sectionId="also">
-      <ul className="divide-y divide-[var(--border-faint)]">
-        {more.map((feature) => (
-          <li key={feature.id}>
-            <HomeFeatureRow feature={feature} onSelect={onSelect} />
-          </li>
-        ))}
-      </ul>
-    </HomeSection>
+    <div className="space-y-6">
+      {clusters.map((cluster) => (
+        <section key={cluster.id} data-home-section={`cluster-${cluster.id}`} className={look === "brand" ? `${homePanel} space-y-1 p-4` : "space-y-2"}>
+          <h2 className="text-lg font-bold text-ink">{cluster.label}</h2>
+          {look === "launcher" ? (
+            <div className="grid grid-cols-4 gap-1">
+              {cluster.items.map((feature) => (
+                <HomeFeatureFace key={feature.id} feature={feature} onSelect={onSelect} look="cell" />
+              ))}
+            </div>
+          ) : look === "today" ? (
+            <ul className="space-y-2">
+              {cluster.items.map((feature) => (
+                <li key={feature.id}>
+                  <HomeFeatureFace feature={feature} onSelect={onSelect} look="strip" />
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <ul className="divide-y divide-[var(--border-faint)]">
+              {cluster.items.map((feature) => (
+                <li key={feature.id}>
+                  <HomeFeatureRow feature={feature} onSelect={onSelect} />
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      ))}
+    </div>
   );
 }
 
