@@ -1,5 +1,6 @@
 import { GEMINI_TTS_VOICES, DEFAULT_GEMINI_VOICE } from "@peebee/shared";
-import { GeminiApiError, withGeminiKey } from "./ai-keys.js";
+import { withFeatureKey } from "../ai/features.js";
+import { GeminiApiError } from "./ai-keys.js";
 
 /**
  * Google AI Studio (the Gemini API) — translates shopping-list text into
@@ -19,7 +20,7 @@ type GeminiResponse = {
 };
 
 async function generate(model: string, body: unknown, what: string): Promise<GeminiResponse> {
-  return withGeminiKey(model, async (apiKey) => {
+  return withFeatureKey("translation", model, async (apiKey) => {
     const res = await fetch(`${BASE_URL}/models/${model}:generateContent`, {
       method: "POST",
       headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },
