@@ -163,6 +163,8 @@ export type FareBreakdown = {
   minimumApplied: boolean;
   maximumApplied: boolean;
   total: number;
+  /** The fare before rounding, when rounding changed it (and a minimum or highest fare did not decide it): for the "rounded up from…" note. */
+  roundedFrom: number | null;
 };
 
 /** Distance charge using tapering bands. Each km is charged at the rate of the band it falls in. */
@@ -273,7 +275,8 @@ export function computeFare(cfg: PricingConfig, input: FareInput): FareBreakdown
   const max = profile.maximumFare > 0 ? Math.max(floor500(profile.maximumFare), ceil500(1)) : 0;
   if (max > 0 && total > max) { total = max; maximumApplied = true; }
   total = Math.max(total, min && !maximumApplied ? min : 0);
-  return { service: input.service, distanceKm: distance, lines, multiplier, multiplierParts: parts, subtotal, minimumApplied, maximumApplied, total };
+  const roundedFrom = !minimumApplied && !maximumApplied && Math.round(subtotal) !== total ? Math.round(subtotal) : null;
+  return { service: input.service, distanceKm: distance, lines, multiplier, multiplierParts: parts, subtotal, minimumApplied, maximumApplied, total, roundedFrom };
 }
 
 // ---------------------------------------------------------------------------

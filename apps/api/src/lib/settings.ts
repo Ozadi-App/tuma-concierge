@@ -102,6 +102,11 @@ const DEFAULTS = {
    * keeps today's behavior (first rider to claim wins) until an admin
    * turns anything else on. */
   matching_modes_enabled: '["first_to_claim"]',
+  /** Whether the app may hand a live order to a rider who has not accepted it. Off (the default): a live order
+   * stays unassigned until a rider claims it, or applies and is chosen, so the customer only ever sees the name
+   * of a rider who said yes. On restores the old behaviour, where the nearest online rider is assigned
+   * automatically. Sandbox orders (the demo world) always auto-assign, whatever this says. */
+  auto_assign_without_acceptance: "0",
   /** How long an order in "nearest_window" mode waits to collect applicants
    * before the app auto-assigns whichever is nearest. */
   nearest_window_seconds: "90",
@@ -1318,16 +1323,19 @@ export async function getMatchingSettings(): Promise<{
   enabledModes: MatchingMode[];
   nearestWindowSeconds: number;
   maxAssignmentMinutes: number;
+  autoAssignWithoutAcceptance: boolean;
 }> {
-  const [modesRaw, windowRaw, maxRaw] = await Promise.all([
+  const [modesRaw, windowRaw, maxRaw, autoRaw] = await Promise.all([
     getSetting("matching_modes_enabled"),
     getSetting("nearest_window_seconds"),
     getSetting("max_assignment_minutes"),
+    getSetting("auto_assign_without_acceptance"),
   ]);
   return {
     enabledModes: parseEnabledModes(modesRaw),
     nearestWindowSeconds: Number(windowRaw) || Number(DEFAULTS.nearest_window_seconds),
     maxAssignmentMinutes: Number(maxRaw) || Number(DEFAULTS.max_assignment_minutes),
+    autoAssignWithoutAcceptance: autoRaw === "1",
   };
 }
 

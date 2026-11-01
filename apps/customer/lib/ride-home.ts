@@ -86,6 +86,13 @@ export function bodaFare(distanceKm: number | null, ratePerKm: number | null | u
   return roundFare(distanceKm * ratePerKm, minimum ?? undefined);
 }
 
+/** The same estimate before rounding (null when a minimum fare decided it), for the "rounded up from…" note. */
+export function bodaExact(distanceKm: number | null, ratePerKm: number | null | undefined, minimum: number | null | undefined): number | null {
+  if (distanceKm == null || ratePerKm == null || !Number.isFinite(ratePerKm)) return null;
+  const exact = distanceKm * ratePerKm;
+  return exact > (minimum ?? 0) ? Math.round(exact) : null;
+}
+
 /** Local fallback for a per-km category fare when /v1/car/quote can't answer. */
 export function categoryFare(distanceKm: number | null, ratePerKm: number, minimum: number): number {
   return distanceKm == null ? minimum : roundFare(distanceKm * ratePerKm, minimum);

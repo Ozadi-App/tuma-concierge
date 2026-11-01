@@ -1,3 +1,4 @@
+import { patchSchema } from "../lib/patch-schema.js";
 import { Hono } from "hono";
 import { z } from "zod";
 import { logActivity } from "../admin/activity.js";
@@ -303,8 +304,9 @@ laundryRoutes.post("/laundry/orders", async (c) => {
 // Admin: settings, items and packages
 // ---------------------------------------------------------------------------
 
+const laundryPricingMode = z.enum(["fixed", "estimate"]).optional();
 const settingsSchema = z.object({
-  pricing: z.object(Object.fromEntries(LAUNDRY_SERVICES.map((s) => [s, z.enum(["fixed", "estimate"]).optional()])) as Record<(typeof LAUNDRY_SERVICES)[number], z.ZodOptional<z.ZodEnum<["fixed", "estimate"]>>>).optional(),
+  pricing: z.object(Object.fromEntries(LAUNDRY_SERVICES.map((s) => [s, laundryPricingMode])) as Record<(typeof LAUNDRY_SERVICES)[number], typeof laundryPricingMode>).optional(),
   offerMinPercent: z.number().int().min(1).max(100).optional(),
   offerMaxPercent: z.number().int().min(100).max(500).optional(),
   offerStepUgx: z.number().int().min(500).max(50_000).refine((n) => n % 500 === 0, "The step moves in multiples of 500.").optional(),
@@ -365,7 +367,7 @@ laundryRoutes.patch("/admin/laundry/items/:id", requirePermission("work.manage")
   const id = c.req.param("id") as string;
   const before = (await db.execute({ sql: "SELECT * FROM laundry_items WHERE id = ?", args: [id] })).rows[0] as Row | undefined;
   if (!before) return c.json({ error: "not_found", message: "Item not found." }, 404);
-  const parsed = z.object(itemFields).partial().safeParse(await c.req.json().catch(() => ({})));
+  const parsed = patchSchema(z.object(itemFields)).safeParse(await c.req.json().catch(() => ({})));
   if (!parsed.success) return c.json({ error: "invalid_body", issues: parsed.error.issues }, 400);
   const d = parsed.data;
   // A price can be cleared (null) to stop offering that treatment, so "present" is tested by key, not value.
@@ -392,7 +394,7 @@ laundryRoutes.patch("/admin/laundry/packages/:id", requirePermission("work.manag
   const id = c.req.param("id") as string;
   const before = (await db.execute({ sql: "SELECT * FROM laundry_packages WHERE id = ?", args: [id] })).rows[0] as Row | undefined;
   if (!before) return c.json({ error: "not_found", message: "Package not found." }, 404);
-  const parsed = z.object(packageFields).partial().safeParse(await c.req.json().catch(() => ({})));
+  const parsed = patchSchema(z.object(packageFields)).safeParse(await c.req.json().catch(() => ({})));
   if (!parsed.success) return c.json({ error: "invalid_body", issues: parsed.error.issues }, 400);
   const d = parsed.data;
   if (d.active === true && !((d.priceUgx ?? Number(before.price_ugx)) > 0)) return c.json({ error: "invalid_package", message: "Set a price before switching a package on." }, 400);

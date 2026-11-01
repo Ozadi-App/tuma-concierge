@@ -1,3 +1,4 @@
+import { patchSchema } from "../lib/patch-schema.js";
 import { Hono, type Context } from "hono";
 import { z } from "zod";
 import { logActivity } from "../admin/activity.js";
@@ -211,7 +212,7 @@ const bookSchema = z.object({
   payment: z.enum(["app", "cash"]).optional(),
   adults: z.number().int().min(1).max(18).optional(),
   children: z.number().int().min(0).max(17).optional(),
-  luggage: z.record(z.enum(LUGGAGE_TYPES as [string, ...string[]]), z.number().int().min(0).max(10)).optional(),
+  luggage: z.partialRecord(z.enum(LUGGAGE_TYPES as [string, ...string[]]), z.number().int().min(0).max(10)).optional(),
   assistance: z.enum(["none", "boarding", "priority", "mobility"]).nullable().optional(),
   language: z.string().trim().min(2).max(20).nullable().optional(),
   forSomeoneElse: z.boolean().optional(),
@@ -261,7 +262,7 @@ taxipressRoutes.get("/admin/taxipress/settings", requirePermission("settings.man
   return c.json({ settings: await getTaxipressSettings(), ready: await taxipressReady() });
 });
 
-const settingsSchema = z.object({
+const settingsSchema = patchSchema(z.object({
   enabled: z.boolean(),
   departureRule: z.enum(["full_only", "driver_choice", "after_wait"]),
   sellFreeSeatsOnRoad: z.boolean(),
@@ -306,7 +307,7 @@ const settingsSchema = z.object({
   openTicketValidityDays: z.number().int().min(0).max(3650),
   openTicketRefundPercent: z.number().min(0).max(100),
   showStops: z.boolean(),
-}).partial();
+}));
 
 taxipressRoutes.put("/admin/taxipress/settings", requirePermission("settings.manage"), async (c) => {
   const parsed = settingsSchema.safeParse(await c.req.json().catch(() => ({})));
@@ -358,11 +359,11 @@ taxipressRoutes.post("/admin/taxipress/routes", requirePermission("settings.mana
   return c.json({ id }, 201);
 });
 
-const updateSchema = z.object({
+const updateSchema = patchSchema(z.object({
   farePerSeat: z.number().int().min(0).max(1_000_000),
   stopPricingEnabled: z.boolean(),
   active: z.boolean(),
-}).partial();
+}));
 
 taxipressRoutes.patch("/admin/taxipress/routes/:id", requirePermission("settings.manage"), async (c) => {
   if (!(await taxipressReady())) return c.json(notReady, 503);
@@ -391,11 +392,11 @@ taxipressRoutes.patch("/admin/taxipress/routes/:id", requirePermission("settings
 
 taxipressRoutes.get("/admin/taxipress/taxis", requirePermission("riders.view"), async (c) => c.json({ taxis: await listTaxis() }));
 
-const taxiPatch = z.object({
+const taxiPatch = patchSchema(z.object({
   status: z.enum(["pending", "approved", "suspended"]),
   passengersEnabled: z.boolean(),
   parcelsEnabled: z.boolean(),
-}).partial();
+}));
 
 taxipressRoutes.post("/admin/taxipress/taxis/:id", requirePermission("riders.verify"), async (c) => {
   const parsed = taxiPatch.safeParse(await c.req.json().catch(() => ({})));

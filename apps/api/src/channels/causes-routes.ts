@@ -1,3 +1,4 @@
+import { patchSchema } from "../lib/patch-schema.js";
 import { Hono } from "hono";
 import { z } from "zod";
 import { requireAuth } from "../auth/middleware.js";
@@ -43,7 +44,7 @@ causesRoutes.post("/creator/causes", requireAuth, async (c) => {
 
 causesRoutes.patch("/creator/causes/:id", requireAuth, async (c) => {
   try {
-    const body = causeSchema.partial().safeParse(await c.req.json().catch(() => ({})));
+    const body = patchSchema(causeSchema).safeParse(await c.req.json().catch(() => ({})));
     if (!body.success) throw new ChannelsError("invalid_body", "Check the details and try again.", 400);
     const cause = await updateCause(c.get("user").sub, c.req.param("id") as string, body.data);
     return c.json({ cause: await serializeCause(cause, originOf(c), { owner: true }) });

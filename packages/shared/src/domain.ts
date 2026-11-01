@@ -159,6 +159,8 @@ export type RideStopInput = { area?: string; address?: string; lat: number; lng:
 /** The app's quote for a boda ride through any stops, plus the Name-your-fare band. */
 export type RideQuote = {
   quote: number;
+  /** The fare before rounding, when rounding changed it ("rounded up from 24,600"). */
+  roundedFrom?: number | null;
   base: number;
   stopFees: number;
   stopFee: number;
@@ -842,6 +844,8 @@ export type DeliverySettings = {
   enabledModes: MatchingMode[];
   nearestWindowSeconds: number;
   maxAssignmentMinutes: number;
+  /** false (default): a live order is only ever given to a rider who accepted it. true: the nearest online rider is assigned automatically. */
+  autoAssignWithoutAcceptance: boolean;
   paymentsActiveProviders: PaymentProviderIdentity[];
   /** Demo/sandbox mode — every payment runs through the mock adapters
    * regardless of saved credentials. See PaymentProviderInfo/IntegrationsStatus. */

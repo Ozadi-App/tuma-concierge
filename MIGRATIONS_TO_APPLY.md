@@ -14,7 +14,15 @@ options on in Admin → Settings → Commerce options. The code keeps working wi
 | `apps/api/src/db/migrations/0143_merchant_plans.sql` | Merchant plans: marks every existing store as keeping its current access, and records which plan a subscription bought |
 | `apps/api/src/db/migrations/0147_offers_incentives_credit.sql` | Offers (promo codes, discounts, ride packs, cashback), invitations, the rider discount wallet, rider incentives and online-time tracking, long-pickup distance, and customer wallet credit (bonus money). Admin → Offers shows "needs migration 0147" until it is applied; nothing in it takes effect before then |
 | `apps/api/src/db/migrations/0148_costing.sql` | The costing mechanism: each order's fare breakdown, the payment-splits report (Admin → Money flow), top-up fee/bonus columns, and customer withdrawals. Fares, quotes and settlement all keep working without it; the report stays empty and withdrawals answer 503 until it is applied |
-| `apps/api/src/db/migrations/0149_support_chat.sql` | Website support chat: chats and messages for the AI assistant and the hand-over to the support team (Admin → Support chat). Until it is applied the website chat keeps its built-in demo replies and the inbox shows "migration pending" |
+| `apps/api/src/db/migrations/0149_demo_accounts.sql` | Test accounts that live only in the sandbox and practice: `users.is_demo`. A marked account is left out of live matching and live lists and stays available in the sandbox and in practice. Nothing changes until an account is marked (see below); without the migration, accounts are told apart by id prefix only |
+| `apps/api/src/db/migrations/0150_support_chat.sql` | Website support chat: chats and messages for the AI assistant and the hand-over to the support team (Admin → Support chat). Until it is applied the website chat keeps its built-in demo replies and the inbox shows "migration pending" |
+
+After applying 0149, mark the hand-made test accounts (check the list first, then run it):
+
+```sql
+SELECT id, name, role FROM users WHERE name LIKE 'LIVETEST %';
+UPDATE users SET is_demo = 1 WHERE name LIKE 'LIVETEST %';
+```
 
 Each file is safe to read before running: they only add tables, columns and indexes. Run them one at a time and check
 the Admin → Commerce options page — an option whose migration is missing is shown as unavailable and cannot be chosen.

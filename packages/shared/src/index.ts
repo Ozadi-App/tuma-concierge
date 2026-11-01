@@ -1,7 +1,7 @@
 export { OrderStage, ORDER_STAGES } from "./order-stage.js";
 export type { OrderStage as OrderStageValue } from "./order-stage.js";
 export { PaymentRail } from "./payment-rail.js";
-export { roundFare, round500, roundNearest, floor500, ceil500, snap500, roundWith, setRoundingRule, getRoundingRule, normaliseRoundingRule, DEFAULT_ROUNDING_RULE } from "./fare.js";
+export { roundedFromNote, roundFare, round500, roundNearest, floor500, ceil500, snap500, roundWith, setRoundingRule, getRoundingRule, normaliseRoundingRule, DEFAULT_ROUNDING_RULE } from "./fare.js";
 export type { RoundingRule } from "./fare.js";
 export { haversineKm } from "./geo.js";
 export { DEFAULT_TIME_FEES, timeFeePolicy, timeFeeNotice } from "./time-fees.js";

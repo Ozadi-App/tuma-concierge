@@ -89,3 +89,14 @@ export function snap500(amount: number): number {
 export function roundFare(amount: number, minimum = 500): number {
   return Math.max(round500(amount), ceil500(Math.max(minimum, active.enabled ? 500 : 0)));
 }
+
+/**
+ * The small note shown under a rounded amount: "rounded up from 24,600". Null when nothing was rounded
+ * (the amount is what it was, or it is a minimum fare, where the caller passes no `from`).
+ */
+export function roundedFromNote(from: number | null | undefined, amount: number | null | undefined): string | null {
+  if (from == null || amount == null || !Number.isFinite(from) || !Number.isFinite(amount)) return null;
+  const exact = Math.round(from);
+  if (exact === amount) return null;
+  return `rounded ${amount > exact ? "up" : "down"} from ${exact.toLocaleString("en-UG")}`;
+}

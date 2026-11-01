@@ -1,3 +1,4 @@
+import { patchSchema } from "../lib/patch-schema.js";
 import { MODULE_NOTICE_MESSAGE_MAX } from "@peebee/shared";
 import { Hono } from "hono";
 import { getRoadSettings } from "../lib/road-distance.js";
@@ -412,8 +413,8 @@ const updateSchema = z.object({
   rideTracking: rideTrackingSchema.optional(),
   rideRatePerKm: z.number().positive().max(1_000_000).optional(),
   rideMinimumFare: z.number().int().nonnegative().max(1_000_000).optional(),
-  services: z.object({ shopping: z.boolean(), parcel: z.boolean(), ride: z.boolean(), food: z.boolean() }).partial().optional(),
-  gas: z
+  services: patchSchema(z.object({ shopping: z.boolean(), parcel: z.boolean(), ride: z.boolean(), food: z.boolean() })).optional(),
+  gas: patchSchema(z
     .object({
       enabled: z.boolean(),
       dailyLimitUgx: z.number().int().min(0).max(10_000_000),
@@ -423,18 +424,16 @@ const updateSchema = z.object({
       pinMaxAttempts: z.number().int().min(3).max(20),
       withdrawalMinUgx: z.number().int().min(1000).max(100_000_000),
       voucherLookupsPer5Min: z.number().int().min(5).max(200),
-    })
-    .partial()
+    }))
     .optional(),
-  pharmacy: z
+  pharmacy: patchSchema(z
     .object({
       enabled: z.boolean(),
       maxImageMb: z.number().int().min(1).max(20),
       submissionsPerHour: z.number().int().min(1).max(100),
-    })
-    .partial()
+    }))
     .optional(),
-  work: z
+  work: patchSchema(z
     .object({
       enabled: z.boolean(),
       serviceTypes: z.array(z.enum(WORK_SERVICE_TYPES)),
@@ -475,10 +474,9 @@ const updateSchema = z.object({
       scheduleQuickMinutes: z.array(z.number().int().min(5).max(4320)).max(4),
       scheduleTomorrowEnabled: z.boolean(),
       scheduleTomorrowTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
-    })
-    .partial()
+    }))
     .optional(),
-  marketplace: z
+  marketplace: patchSchema(z
     .object({
       enabled: z.boolean(),
       liveEnabled: z.boolean(),
@@ -521,14 +519,14 @@ const updateSchema = z.object({
     eliteLmsSyncEnabled: z.boolean(),
     eliteMaxCourses: z.number().int().min(1).max(1000),
     eliteMaxDigitalProducts: z.number().int().min(1).max(5000),
-    })
-    .partial()
+    }))
     .optional(),
   rideForOtherEnabled: z.boolean().optional(),
   rideForOtherDistanceM: z.number().int().min(50).max(50_000).optional(),
   enabledModes: z.array(z.enum(["first_to_claim", "nearest_window", "customer_selects"])).optional(),
   nearestWindowSeconds: z.number().int().positive().max(3600).optional(),
   maxAssignmentMinutes: z.number().int().positive().max(120).optional(),
+  autoAssignWithoutAcceptance: z.boolean().optional(),
   paymentsActiveProviders: z.array(z.enum(["yo", "flutterwave", "mtn", "airtel"])).min(1).max(4).optional(),
   paymentsDemoMode: z.boolean().optional(),
   paymentsFlutterwaveDirectMobileMoney: z.boolean().optional(),
@@ -703,6 +701,9 @@ settingsRoutes.put(
     }
     if (parsed.data.maxAssignmentMinutes != null) {
       await setSetting("max_assignment_minutes", String(parsed.data.maxAssignmentMinutes));
+    }
+    if (parsed.data.autoAssignWithoutAcceptance != null) {
+      await setSetting("auto_assign_without_acceptance", parsed.data.autoAssignWithoutAcceptance ? "1" : "0");
     }
     if (parsed.data.paymentsActiveProviders != null) {
       await setActiveProviders(parsed.data.paymentsActiveProviders as PaymentProviderIdentity[]);
@@ -1331,7 +1332,7 @@ settingsRoutes.put(
   },
 );
 
-const patchMarketplaceSettingsSchema = z
+const patchMarketplaceSettingsSchema = patchSchema(z
   .object({
     enabled: z.boolean(),
     liveEnabled: z.boolean(),
@@ -1366,8 +1367,7 @@ const patchMarketplaceSettingsSchema = z
     elitePurchaseOrdersEnabled: z.boolean(),
     eliteBundlesEnabled: z.boolean(),
     eliteWinbackEnabled: z.boolean(),
-  })
-  .partial();
+  }));
 
 settingsRoutes.get(
   "/admin/marketplace-settings",

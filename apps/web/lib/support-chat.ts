@@ -1,7 +1,7 @@
 /**
  * Support chat adapter. The UI in components/SupportChat.tsx only talks to `supportChat`.
  * `liveAdapter` talks to the Peebee API (AI assistant, then the support team's inbox in Admin → Support chat).
- * While chat is switched off, or its migration (0149_support_chat.sql) is not applied, `supportChat` keeps using
+ * While chat is switched off, or its migration (0150_support_chat.sql) is not applied, `supportChat` keeps using
  * `mockAdapter`, the built-in demo replies, so the website never shows a broken chat.
  */
 export type Sender = "user" | "ai" | "agent" | "system";

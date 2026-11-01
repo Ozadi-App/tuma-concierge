@@ -1,5 +1,7 @@
 "use client";
 
+import { RoundedNote } from "../RoundedNote";
+import { bodaExact } from "../../lib/ride-home";
 import { useModules } from "../../lib/modules";
 import { DEFAULT_RIDE_TRACKING_SETTINGS, roundFare } from "@peebee/shared";
 import type { CarCategory, RidePassenger, RideStopInput, SavedPassenger } from "@peebee/shared";
@@ -105,7 +107,7 @@ export function RideModal({
   const [tierPricing, setTierPricing] = useState<{ ratePerKm: number; minimumFare: number; comfortPremiumPercent: number; xlPremiumPercent: number; xlMinSeats: number } | null>(null);
   const [tier, setTier] = useState<"convenient" | "comfort">(initialTier);
   const [vehicleSize, setVehicleSize] = useState<"normal" | "large">(initialSize);
-  const [tierOptions, setTierOptions] = useState<Array<{ size: "normal" | "large"; tier: "convenient" | "comfort"; fare: number; nearby: number }>>([]);
+  const [tierOptions, setTierOptions] = useState<Array<{ size: "normal" | "large"; tier: "convenient" | "comfort"; fare: number; roundedFrom?: number | null; nearby: number }>>([]);
   const [categories, setCategories] = useState<CarCategory[]>([]);
   const [carSubMode, setCarSubMode] = useState<"passenger" | "cargo" | "luxury" | "ambulance">(initialService ?? (initialCargo ? "cargo" : "passenger"));
   const [configLoaded, setConfigLoaded] = useState(false);
@@ -594,7 +596,7 @@ export function RideModal({
                   const selectedOption = tierOptions.find((option) => option.size === vehicleSize && option.tier === tier);
                   return selectedOption ? <div className="flex items-center justify-between gap-2 pt-1">
                     <span className="text-xs text-ink-500">{selectedOption.nearby > 0 ? `${selectedOption.nearby} available` : "No cars nearby"}{tier === "comfort" ? ` · ${tierPricing.comfortPremiumPercent}% comfort premium` : " · standard fare"}{vehicleSize === "large" ? ` · ${tierPricing.xlPremiumPercent}% large-car premium` : ""}</span>
-                    <span className="shrink-0 text-sm font-bold text-ink">UGX {selectedOption.fare.toLocaleString("en-UG")}</span>
+                    <span className="shrink-0 text-right text-sm font-bold text-ink">UGX {selectedOption.fare.toLocaleString("en-UG")}<RoundedNote amount={selectedOption.fare} from={selectedOption.roundedFrom} /></span>
                   </div> : <p className="text-xs text-ink-500">Checking availability and fare…</p>;
                 })()}
               </div>
@@ -613,6 +615,7 @@ export function RideModal({
             <p className="text-sm text-ink">
               <span className="font-bold">UGX {liveEstimate.toLocaleString("en-UG")}</span> {t("ride_estimated_fare")} ·{" "}
               {distanceKm!.toFixed(1)} km
+              <RoundedNote amount={liveEstimate} from={bodaExact(distanceKm, pricing?.ratePerKm, pricing?.minimum)} />
             </p>
           </div>
         ) : !carMenuOpen ? (

@@ -85,7 +85,7 @@ supportChatRoutes.get("/support-chat/config", async (c) => {
 });
 
 supportChatRoutes.post("/support-chat", async (c) => {
-  const pending = await migrationPending(c, "0149_support_chat.sql", ...TABLES);
+  const pending = await migrationPending(c, "0150_support_chat.sql", ...TABLES);
   if (pending) return pending;
   const o = await getOptions(["support_chat_enabled", "support_chat_ai_enabled", "support_chat_human_enabled"]);
   if (o.support_chat_enabled !== true) return c.json({ error: "disabled", message: "Chat is switched off." }, 503);
@@ -188,7 +188,7 @@ const gate = [requireAuth, requireRole("admin"), requirePermission("chat.view_su
 const staffName = (c: Context) => String(c.get("user").name || "Support agent");
 
 supportChatRoutes.get("/admin/support-chats", ...gate, async (c) => {
-  const pending = await migrationPending(c, "0149_support_chat.sql", ...TABLES);
+  const pending = await migrationPending(c, "0150_support_chat.sql", ...TABLES);
   if (pending) return pending;
   await closeIdleChats();
   const view = c.req.query("view") === "all" ? "all" : "open";
@@ -213,7 +213,7 @@ supportChatRoutes.get("/admin/support-chats", ...gate, async (c) => {
 });
 
 supportChatRoutes.get("/admin/support-chats/:id", ...gate, async (c) => {
-  const pending = await migrationPending(c, "0149_support_chat.sql", ...TABLES);
+  const pending = await migrationPending(c, "0150_support_chat.sql", ...TABLES);
   if (pending) return pending;
   const chat = (await db.execute({ sql: "SELECT * FROM support_chats WHERE id = ?", args: [idOf(c)] })).rows[0] as Row | undefined;
   if (!chat) return c.json({ error: "not_found" }, 404);
@@ -225,7 +225,7 @@ supportChatRoutes.get("/admin/support-chats/:id", ...gate, async (c) => {
 });
 
 supportChatRoutes.post("/admin/support-chats/:id/claim", ...gate, async (c) => {
-  const pending = await migrationPending(c, "0149_support_chat.sql", ...TABLES);
+  const pending = await migrationPending(c, "0150_support_chat.sql", ...TABLES);
   if (pending) return pending;
   const user = c.get("user");
   // Only a waiting chat can be claimed, and only once: the first agent to press the button wins.
@@ -239,7 +239,7 @@ supportChatRoutes.post("/admin/support-chats/:id/claim", ...gate, async (c) => {
 });
 
 supportChatRoutes.post("/admin/support-chats/:id/messages", ...gate, async (c) => {
-  const pending = await migrationPending(c, "0149_support_chat.sql", ...TABLES);
+  const pending = await migrationPending(c, "0150_support_chat.sql", ...TABLES);
   if (pending) return pending;
   const parsed = z.object({ text: z.string().trim().min(1).max(2000) }).safeParse(await c.req.json().catch(() => ({})));
   if (!parsed.success) return c.json({ error: "invalid_body" }, 400);
@@ -250,7 +250,7 @@ supportChatRoutes.post("/admin/support-chats/:id/messages", ...gate, async (c) =
 });
 
 supportChatRoutes.post("/admin/support-chats/:id/close", ...gate, async (c) => {
-  const pending = await migrationPending(c, "0149_support_chat.sql", ...TABLES);
+  const pending = await migrationPending(c, "0150_support_chat.sql", ...TABLES);
   if (pending) return pending;
   const res = await db.execute({
     sql: "UPDATE support_chats SET status = 'closed', closed_at = datetime('now'), updated_at = datetime('now') WHERE id = ? AND status IN ('waiting', 'human') RETURNING id",

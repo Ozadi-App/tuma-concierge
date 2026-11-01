@@ -1,3 +1,4 @@
+import { patchSchema } from "../lib/patch-schema.js";
 /**
  * Menu management — Phase 2 of food ordering (see restaurants/routes.ts
  * for Phase 1's business-account context). Owner-only CRUD for now;
@@ -121,7 +122,7 @@ menuRoutes.patch("/restaurants/me/menu/categories/:id", requireAuth, requireRole
   const id = c.req.param("id") as string;
   const restaurantId = await ownedRestaurantId(user.sub);
   if (!restaurantId) return c.json({ error: "not_found" }, 404);
-  const parsed = categorySchema.partial().safeParse(await c.req.json().catch(() => ({})));
+  const parsed = patchSchema(categorySchema).safeParse(await c.req.json().catch(() => ({})));
   if (!parsed.success) return c.json({ error: "invalid_body", issues: parsed.error.issues }, 400);
 
   const owned = await db.execute({
@@ -230,7 +231,7 @@ menuRoutes.patch("/restaurants/me/menu/items/:id", requireAuth, requireRole("cus
   const id = c.req.param("id") as string;
   const restaurantId = await ownedRestaurantId(user.sub);
   if (!restaurantId) return c.json({ error: "not_found" }, 404);
-  const parsed = itemSchema.partial().extend({
+  const parsed = patchSchema(itemSchema).extend({
     description: itemSchema.shape.description.unwrap().nullable().optional(),
     prepTimeMinutes: itemSchema.shape.prepTimeMinutes.unwrap().nullable().optional(),
   }).safeParse(await c.req.json().catch(() => ({})));

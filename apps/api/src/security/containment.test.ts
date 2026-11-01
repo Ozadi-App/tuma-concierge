@@ -1,7 +1,7 @@
 import { setPlatformEnvironment } from "../lib/settings.js";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { addMerchantStore, addUser, anonymous, app, freshDatabase } from "../test-support/db.js";
+import { addAdmin, addMerchantStore, addUser, anonymous, app, freshDatabase } from "../test-support/db.js";
 import { sha256Hex } from "../marketplace/digital-sales.js";
 
 const json = async (res: Response) => (await res.json()) as any;
@@ -91,6 +91,7 @@ test("B2B inquiries are priced from the catalogue", async () => {
 
 test("digital download tokens: viewing is free, the file request is counted atomically, expiry, unlimited, revoke", async () => {
   const client = await freshDatabase();
+  await (await addAdmin(client)).setOptions({ digital_proxy_trusted_hosts: ["files.example"] });
   const seller = await addMerchantStore(client, "u_dl_seller");
   await client.execute({ sql: "INSERT INTO store_digital_products (id, store_id, title, price_ugx, file_url) VALUES ('dig_dl', ?, 'Guide', 5000, 'https://files.example/a.pdf')", args: [seller.storeId] });
   const make = async (id: string, max: number, expires: string | null, status = "active") =>

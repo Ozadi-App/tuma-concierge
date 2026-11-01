@@ -86,7 +86,7 @@ const offerSchema = z.object({
       packRides: z.number().int().min(1).max(1000).optional(),
       packPrice: z.number().int().min(0).max(100_000_000).optional(),
     })
-    .default({}),
+    .prefault({}),
 }).superRefine((o, ctx) => {
   if (o.discountType === "percent" && o.value > 100) ctx.addIssue({ code: "custom", path: ["value"], message: "A percentage can't be more than 100." });
   if (o.kind === "promo_code" && !o.code) ctx.addIssue({ code: "custom", path: ["code"], message: "A promo code offer needs a code." });

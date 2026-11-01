@@ -1,3 +1,4 @@
+import { patchSchema } from "../lib/patch-schema.js";
 import { Hono } from "hono";
 import { z } from "zod";
 import { EDUCATION_STREAM_IDS } from "@peebee/shared";
@@ -25,7 +26,7 @@ educationAdminRoutes.use("/admin/learn-demo/*", requireAuth, requireRole("admin"
 
 const STREAMS = EDUCATION_STREAM_IDS as readonly [string, ...string[]];
 
-const settingsPatch = z
+const settingsPatch = patchSchema(z
   .object({
     enabled: z.boolean(),
     streams: z.array(z.enum(STREAMS)),
@@ -101,8 +102,7 @@ const settingsPatch = z
     homeToolsEnabled: z.boolean(),
     homeFreeRailEnabled: z.boolean(),
     homeRailSize: z.number().int().min(3).max(20),
-  })
-  .partial();
+  }));
 
 educationAdminRoutes.get("/admin/learn-settings", requirePermission("settings.view"), async (c) => {
   return c.json({ learn: await getLearnSettings() });

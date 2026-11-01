@@ -1,4 +1,4 @@
--- Migration 0149: website support chat — an AI assistant first, with a hand-over to a person from the support team.
+-- Migration 0150: website support chat — an AI assistant first, with a hand-over to a person from the support team.
 -- Additive only (two new tables). Apply by hand to the live D1 database; the deploy does not run it.
 -- The code works without it: the website chat keeps its built-in demo replies and the admin inbox shows
 -- "migration pending" until it is applied.

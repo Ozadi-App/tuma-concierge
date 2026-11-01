@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { consume, hashKey } from "../lib/ratelimit.js";
 import { publicRateLimit } from "../lib/guards.js";
-import { newCode, makeChallenge, redeemChallenge } from "../lib/phone-proof.js";
+import { newCode, makeChallenge, redeemChallenge, phoneChallengeIdentity } from "../lib/phone-proof.js";
 import { sendSms, smsIsReal } from "../lib/sms-gateway.js";
 import { normalizePhone } from "../lib/validation.js";
 
@@ -31,7 +31,11 @@ phoneProofRoutes.post("/public/phone-proof/verify", async (c) => {
   const parsed = verifySchema.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: "invalid_body", message: "Enter the 6-digit code." }, 400);
   // A challenge allows a handful of guesses, however many addresses they come from.
-  const attempts = await consume(`pub:proof-verify:${await hashKey(parsed.data.challenge)}`, 5, 600);
+  const identity = phoneChallengeIdentity(parsed.data.challenge);
+  if (!identity) return c.json({ error: "wrong_code", message: "That code isn't right." }, 400);
+  const limited = await publicRateLimit(c, "proof-verify", null, "rate_limit_token_download_per_minute", 60);
+  if (limited) return limited;
+  const attempts = await consume(`pub:proof-verify:${await hashKey(identity)}`, 5, 600);
   if (!attempts.allowed) {
     c.header("Retry-After", String(attempts.retryAfterSeconds));
     return c.json({ error: "rate_limited", message: "Too many attempts. Request a new code." }, 429);

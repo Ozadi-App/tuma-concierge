@@ -1,4 +1,4 @@
-import { ridersForThisWorld } from "../practice/people.js";
+import { primeDemoAccounts, ridersForThisWorld } from "../practice/people.js";
 import { settleLoyalty } from "../marketplace/loyalty.js";
 import { Hono, type Context } from "hono";
 import { roadKm } from "../lib/road-distance.js";
@@ -1129,6 +1129,7 @@ async function findAutoMatchCandidate(
   const subscriptionGate = (await getMonetizationSettings()).subscriptionEnabled
     ? "AND r.subscription_status = 'active' AND r.subscription_paid_through >= datetime('now')"
     : "";
+  await primeDemoAccounts();
   const eligible = await db.execute({
     sql: `SELECT u.id, u.name, r.stage_lat, r.stage_lng, r.area${ownRangeColumn} FROM riders r JOIN users u ON u.id = r.user_id
           WHERE r.verified = 1 AND r.is_online = 1 AND ${ridersForThisWorld("r.user_id")}
@@ -1203,6 +1204,9 @@ orderRoutes.post("/orders/:id/match", async (c) => {
   if (await isBundleWindowOpen(order)) return c.json({ error: "bundle_window_open", message: "Choose whether to add another pickup or continue with this order first." }, 409);
 
   const mode = order.matching_mode as MatchingMode;
+  // A live order is only ever given to a rider who said yes (claimed it, or applied and was chosen) — unless the admin
+  // allows automatic assignment. The sandbox world has no real riders to wait for, so its demo orders always auto-assign.
+  const mayAssignUnaccepted = order.environment === "sandbox" || (await getMatchingSettings()).autoAssignWithoutAcceptance;
 
   if (mode === "customer_selects") {
     // The customer picks (see /orders/:id/applicants) — this poll only ever
@@ -1212,6 +1216,8 @@ orderRoutes.post("/orders/:id/match", async (c) => {
     if (!deadline || Date.now() < parseDbTimestamp(deadline).getTime()) {
       return c.json({ order });
     }
+    // The safety net would hand the order to someone who never applied; without permission it keeps waiting for applicants.
+    if (!mayAssignUnaccepted) return c.json({ order });
   }
 
   if (mode === "nearest_window") {
@@ -1243,13 +1249,17 @@ orderRoutes.post("/orders/:id/match", async (c) => {
     const { maxAssignmentMinutes, nearestWindowSeconds } = await getMatchingSettings();
     const ceilingReached =
       Date.now() - parseDbTimestamp(order.created_at as string).getTime() > maxAssignmentMinutes * 60 * 1000;
-    if (!ceilingReached) {
+    if (!ceilingReached || !mayAssignUnaccepted) {
       await touchOrder(id, { matching_deadline_at: new Date(Date.now() + nearestWindowSeconds * 1000).toISOString() });
       return c.json({ order: await getOrder(id) });
     }
     // Ceiling reached with zero applicants — fall through to the general
     // auto-match fallback below rather than leaving the customer stuck.
   }
+
+  // first_to_claim: riders take the job themselves from their job list (/orders/:id/claim). Without permission to assign
+  // an unaccepted rider, the order simply waits for one to do that, and the customer sees no rider until then.
+  if (!mayAssignUnaccepted) return c.json({ order });
 
   // first_to_claim's own auto-poll backstop, and the fallback for
   // nearest_window/customer_selects once their safety net is reached.
@@ -2436,9 +2446,16 @@ orderRoutes.get("/rides/quote", async (c) => {
   const engineCfg = await getPricingConfig();
   const rates = { ratePerKm: delivery.rideRatePerKm, minimumFare: delivery.rideMinimumFare };
   const demandRatio = engineCfg.multipliers.demand.enabled ? await currentDemandRatio() : null;
-  const quote = rideQuote({ pickup, destination, stops }, { ...rates, stopFee: settings.stopFee }, (km) => computeFare(engineCfg, { service: "boda", rates, distanceKm: km, now: new Date(), pickup, dropoff: destination, demandRatio }).total);
+  const held: { fare: FareBreakdown | null } = { fare: null };
+  const quote = rideQuote({ pickup, destination, stops }, { ...rates, stopFee: settings.stopFee }, (km) => {
+    held.fare = computeFare(engineCfg, { service: "boda", rates, distanceKm: km, now: new Date(), pickup, dropoff: destination, demandRatio });
+    return held.fare.total;
+  });
+  // What the fare was before rounding, for the "rounded up from…" note.
+  const roundedFrom = held.fare?.roundedFrom != null ? held.fare.roundedFrom + quote.stopFees : null;
   return c.json({
     quote: quote.total,
+    roundedFrom,
     base: quote.base,
     stopFees: quote.stopFees,
     stopFee: settings.stopFee,
