@@ -14,7 +14,7 @@
  * Pure data and helpers only (no database access) so it can be imported anywhere, including settings defaults.
  */
 
-export type OptionModule = "storefront" | "portal" | "plans" | "digital" | "lms" | "services" | "platform";
+export type OptionModule = "storefront" | "portal" | "plans" | "digital" | "lms" | "services" | "platform" | "support";
 
 export type OptionRequirement = {
   tables?: string[];
@@ -418,6 +418,17 @@ export const OPTION_SETTINGS: SettingDef[] = [
       opt("free_text_request", "Request a date and time, the provider confirms", true),
     ],
   },
+
+
+  // ------------------------------------------------------------------ Website support chat
+  { key: "support_chat_enabled", module: "support", kind: "bool", label: "Website support chat", description: "The live chat on the website. Off keeps the built-in demo replies.", default: true },
+  { key: "support_chat_ai_enabled", module: "support", kind: "bool", label: "AI assistant answers first", description: "Off sends every visitor straight to the queue for a person.", default: true },
+  { key: "support_chat_human_enabled", module: "support", kind: "bool", label: "Talk to a person", description: "Lets a visitor ask for the support team. Off hides the button and the AI handles everything.", default: true },
+  { key: "support_chat_ai_context_messages", module: "support", kind: "int", label: "Messages the AI reads", description: "How many of the latest messages the assistant sees when it answers.", default: 12, min: 2, max: 40 },
+  { key: "support_chat_max_messages", module: "support", kind: "int", label: "Messages per chat", description: "A visitor cannot send more than this in one chat.", default: 200, min: 10, max: 2000 },
+  { key: "support_chat_idle_close_minutes", module: "support", kind: "int", label: "Close idle person chats after", description: "Queued or person-handled chats with no message for this long are closed.", default: 120, min: 5, max: 1440, unit: "minutes" },
+  { key: "rate_limit_support_chat_messages_per_minute", module: "support", kind: "int", label: "Chat messages per visitor per minute", description: "Per network address.", default: 20, min: 1, max: 600 },
+  { key: "rate_limit_support_chat_starts_per_hour", module: "support", kind: "int", label: "New chats per visitor per hour", description: "Per network address.", default: 10, min: 1, max: 1000 },
 
   // ------------------------------------------------------------------ Cross-cutting
   { key: "rate_limit_public_booking_per_hour", module: "platform", kind: "int", label: "Public bookings per person per hour", description: "Per phone and per network address.", default: 10, min: 1, max: 1000 },

@@ -1,7 +1,8 @@
 /**
  * Support chat adapter. The UI in components/SupportChat.tsx only talks to `supportChat`.
- * To go live, replace `mockAdapter` with one that calls the real AI and the agent queue
- * (e.g. a Worker endpoint plus a websocket for agent messages). Nothing else needs to change.
+ * `liveAdapter` talks to the Peebee API (AI assistant, then the support team's inbox in Admin → Support chat).
+ * While chat is switched off, or its migration (0150_support_chat.sql) is not applied, `supportChat` keeps using
+ * `mockAdapter`, the built-in demo replies, so the website never shows a broken chat.
  */
 export type Sender = "user" | "ai" | "agent" | "system";
 export type ChatMessage = { id: string; from: Sender; text: string; at: number; agentName?: string };
@@ -20,6 +21,8 @@ export interface SupportChatAdapter {
   sendToAgent(text: string): Promise<void>;
   /** Leave the person and go back to the AI. */
   endAgent(): void;
+  /** What this chat can do right now (admin can switch "Talk to a person" off). */
+  capabilities(): Promise<{ humanEnabled: boolean }>;
 }
 
 const uid = () => Math.random().toString(36).slice(2, 10);
@@ -50,6 +53,113 @@ export const mockAdapter: SupportChatAdapter = {
     /* demo: the mock agent does not reply further */
   },
   endAgent() {},
+  async capabilities() { return { humanEnabled: true }; },
 };
 
-export const supportChat: SupportChatAdapter = mockAdapter;
+// ------------------------------------------------------------------------------------------------ live
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "https://api.peebee.online";
+const POLL_MS = 3000;
+const POLL_HIDDEN_MS = 15000;
+
+type ServerMessage = { id: number; from: Sender; text: string; at: string; agentName?: string };
+type Session = { id: string; secret: string };
+
+const toChat = (m: ServerMessage): ChatMessage => ({ id: `s${m.id}`, from: m.from, text: m.text, at: Date.parse(`${m.at.replace(" ", "T")}Z`) || Date.now(), agentName: m.agentName });
+
+async function call<T>(path: string, init: { method?: string; secret?: string; body?: unknown } = {}): Promise<T> {
+  const res = await fetch(`${API_BASE}/v1/support-chat${path}`, {
+    method: init.method ?? "GET",
+    headers: { "Content-Type": "application/json", ...(init.secret ? { "X-Chat-Secret": init.secret } : {}) },
+    body: init.body === undefined ? undefined : JSON.stringify(init.body),
+  });
+  const data = (await res.json().catch(() => ({}))) as T & { message?: string };
+  if (!res.ok) throw Object.assign(new Error(data.message ?? "Request failed"), { status: res.status });
+  return data;
+}
+
+function createLiveAdapter(): SupportChatAdapter {
+  let session: Promise<Session> | null = null;
+  let lastId = 0;
+  const open = () => (session ??= call<Session>("", { method: "POST", body: { page: typeof location === "undefined" ? undefined : location.pathname } }).catch((e) => { session = null; throw e; }));
+
+  return {
+    async askAI(text) {
+      try {
+        const s = await open();
+        const res = await call<{ messages: ServerMessage[] }>(`/${s.id}/messages`, { method: "POST", secret: s.secret, body: { text } });
+        lastId = Math.max(lastId, ...res.messages.map((m) => m.id));
+        const reply = res.messages.find((m) => m.from === "ai");
+        return reply ? toChat(reply) : msg("ai", "Thanks. Tap \"Talk to a person\" if you would like someone from the team.");
+      } catch (e) {
+        const limited = (e as { status?: number }).status === 429;
+        return msg("ai", limited ? "You are sending messages very fast. Please wait a moment and try again." : "Sorry, I could not reach Peebee just now. Check your connection and try again, or tap \"Talk to a person\".");
+      }
+    },
+    requestAgent(_history, on) {
+      let stopped = false;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      let joined = false;
+      (async () => {
+        try {
+          const s = await open();
+          const first = await call<{ status: string }>(`/${s.id}/handoff`, { method: "POST", secret: s.secret });
+          if (stopped) return;
+          if (first.status === "waiting") on({ type: "queued" });
+          const tick = async () => {
+            if (stopped) return;
+            try {
+              const poll = await call<{ status: string; agentName: string | null; messages: ServerMessage[] }>(`/${s.id}?after=${lastId}`, { secret: s.secret });
+              if (stopped) return;
+              for (const m of poll.messages) lastId = Math.max(lastId, m.id);
+              if (poll.status === "human" && !joined) { joined = true; on({ type: "joined", agentName: poll.agentName ?? "Support agent" }); }
+              for (const m of poll.messages) if (m.from === "agent") on({ type: "message", message: toChat(m) });
+              if (poll.status === "closed") { on({ type: "ended" }); return; }
+              if (poll.status === "ai") return;
+            } catch { /* a dropped connection just waits for the next poll */ }
+            timer = setTimeout(tick, typeof document !== "undefined" && document.hidden ? POLL_HIDDEN_MS : POLL_MS);
+          };
+          void tick();
+        } catch {
+          if (!stopped) on({ type: "ended" });
+        }
+      })();
+      return () => { stopped = true; if (timer) clearTimeout(timer); };
+    },
+    async sendToAgent(text) {
+      const s = await open();
+      await call(`/${s.id}/messages`, { method: "POST", secret: s.secret, body: { text } }).then((r) => {
+        for (const m of (r as { messages: ServerMessage[] }).messages) lastId = Math.max(lastId, m.id);
+      }).catch(() => undefined);
+    },
+    endAgent() {
+      session?.then((s) => call(`/${s.id}/end`, { method: "POST", secret: s.secret })).catch(() => undefined);
+    },
+    async capabilities() {
+      const c = await call<{ humanEnabled: boolean }>("/config").catch(() => ({ humanEnabled: true }));
+      return { humanEnabled: c.humanEnabled };
+    },
+  };
+}
+
+/** Picks the live chat when the API says it is on, otherwise the demo, once per page load. */
+function createSupportChat(): SupportChatAdapter {
+  const live = createLiveAdapter();
+  let choice: Promise<SupportChatAdapter> | null = null;
+  const pick = () => (choice ??= call<{ live: boolean }>("/config").then((c) => (c.live ? live : mockAdapter)).catch(() => mockAdapter));
+  let current: SupportChatAdapter | null = null;
+  return {
+    async askAI(text, history) { current = await pick(); return current.askAI(text, history); },
+    requestAgent(history, on) {
+      let cancel: (() => void) | null = null;
+      let stopped = false;
+      pick().then((a) => { current = a; if (!stopped) cancel = a.requestAgent(history, on); });
+      return () => { stopped = true; cancel?.(); };
+    },
+    async sendToAgent(text) { return (current ?? (await pick())).sendToAgent(text); },
+    endAgent() { current?.endAgent(); },
+    async capabilities() { return (await pick()).capabilities(); },
+  };
+}
+
+export const supportChat: SupportChatAdapter = createSupportChat();
