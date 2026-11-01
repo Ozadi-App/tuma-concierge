@@ -427,6 +427,18 @@ export const OPTION_SETTINGS: SettingDef[] = [
   { key: "support_chat_apps", module: "support", kind: "multi", label: "Apps that show Help & support", description: "Where visitors and signed-in users can open the chat: the website and each app's Settings → Help & support.", default: SUPPORT_APPS.map((a) => a.id), options: SUPPORT_APPS.map((a) => opt(a.id, a.label, true)) },
   { key: "support_chat_ai_enabled", module: "support", kind: "bool", label: "AI assistant answers first", description: "Off sends every visitor straight to the queue for a person.", default: true },
   { key: "support_chat_human_enabled", module: "support", kind: "bool", label: "Talk to a person", description: "Lets a visitor ask for the support team. Off hides the button and the AI handles everything.", default: true },
+  {
+    key: "support_chat_ai_model", module: "support", kind: "enum", label: "AI model for the support assistant",
+    description: "A stronger model answers better and handles harder questions, but is slower and has smaller free limits. Each model has its own Google quota.",
+    default: "gemini-2.5-flash",
+    options: [
+      opt("gemini-2.5-flash", "Gemini 2.5 Flash: fast and capable", true, { recommended: true }),
+      opt("gemini-2.5-flash-lite", "Gemini 2.5 Flash-Lite: fastest, simplest", true),
+      opt("gemini-2.5-pro", "Gemini 2.5 Pro: smartest, slower", true, { hint: "Always reasons before answering, so replies take a few seconds longer." }),
+    ],
+  },
+  { key: "support_chat_ai_reply_tokens", module: "support", kind: "int", label: "Longest AI reply", description: "The most the assistant may write in one reply (a token is about three quarters of a word). A reply that reaches it ends at a full sentence.", default: 800, min: 100, max: 4000, unit: "tokens" },
+  { key: "support_chat_ai_thinking_budget", module: "support", kind: "int", label: "AI thinking before it answers", description: "0 answers straight away. More lets the assistant reason first, which helps it connect what someone says to the right Peebee service, but replies take a little longer. The Pro model always thinks at least a little.", default: 256, min: 0, max: 4096, unit: "tokens" },
   { key: "support_chat_ai_context_messages", module: "support", kind: "int", label: "Messages the AI reads", description: "How many of the latest messages the assistant sees when it answers.", default: 12, min: 2, max: 40 },
   { key: "support_chat_max_messages", module: "support", kind: "int", label: "Messages per chat", description: "A visitor cannot send more than this in one chat.", default: 200, min: 10, max: 2000 },
   { key: "support_chat_idle_close_minutes", module: "support", kind: "int", label: "Close idle person chats after", description: "Queued or person-handled chats with no message for this long are closed.", default: 120, min: 5, max: 1440, unit: "minutes" },

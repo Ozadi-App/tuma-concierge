@@ -12,7 +12,8 @@ import { getOptions } from "../lib/option-settings.js";
 import { clientIp, hashKey } from "../lib/ratelimit.js";
 import { hasColumn, hasTable } from "../lib/schema.js";
 import { getRawSetting, setRawSetting } from "../lib/settings.js";
-import { AI_UNAVAILABLE_REPLY, askAssistant, type ChatTurn } from "./ai.js";
+import { AI_UNAVAILABLE_REPLY, AI_OFF_REPLY, askAssistant, type ChatTurn } from "./ai.js";
+import { SUPPORT_KNOWLEDGE } from "./knowledge.js";
 
 /**
  * Website support chat. A visitor starts in "ai" with the assistant; "Talk to a person" moves the chat to "waiting"
@@ -167,13 +168,16 @@ supportChatRoutes.post("/support-chat/:id/messages", async (c) => {
   const created: PublicMessage[] = [mine];
   if (status === "ai") {
     if (o.support_chat_ai_enabled !== true) {
-      created.push(await addMessage(chatId, "ai", "The assistant is switched off right now. Tap \"Talk to a person\" and the support team will help you."));
+      created.push(await addMessage(chatId, "ai", AI_OFF_REPLY));
     } else {
       const recent = await db.execute({
         sql: "SELECT sender, body FROM support_messages WHERE chat_id = ? AND sender IN ('user', 'ai', 'agent') ORDER BY id DESC LIMIT ?",
         args: [chatId, Number(o.support_chat_ai_context_messages)],
       });
-      const history: ChatTurn[] = (recent.rows as Row[]).reverse().map((r) => ({ from: r.sender as ChatTurn["from"], text: String(r.body) }));
+      // The "trouble answering" and "switched off" notices are not things the assistant said: leave them out so it never learns from its own errors.
+      const history: ChatTurn[] = (recent.rows as Row[]).reverse()
+        .filter((r) => r.body !== AI_UNAVAILABLE_REPLY && r.body !== AI_OFF_REPLY)
+        .map((r) => ({ from: r.sender as ChatTurn["from"], text: String(r.body) }));
       let reply = AI_UNAVAILABLE_REPLY;
       try {
         reply = await askAssistant(history, (await getRawSetting(NOTES_KEY)) ?? "", supportAppLabel(own.chat.app as string | null));
@@ -296,7 +300,27 @@ supportChatRoutes.post("/admin/support-chats/:id/close", ...gate, async (c) => {
 
 // What the assistant is told beyond its built-in prompt (policies, opening hours, links). Plain text kept by the team.
 const notesGate = [requireAuth, requireRole("admin"), requirePermission("settings.manage")] as const;
-supportChatRoutes.get("/admin/support-chat/ai-notes", ...notesGate, async (c) => c.json({ notes: (await getRawSetting(NOTES_KEY)) ?? "", maxLength: 6000 }));
+supportChatRoutes.get("/admin/support-chat/ai-notes", ...notesGate, async (c) => c.json({ notes: (await getRawSetting(NOTES_KEY)) ?? "", maxLength: 6000, builtIn: SUPPORT_KNOWLEDGE }));
+
+/**
+ * "Try the assistant": ask it a question exactly as a visitor would, using the notes as typed (saved or not), without
+ * starting a chat. This is how the team checks what their notes change before saving them.
+ */
+supportChatRoutes.post("/admin/support-chat/ai-test", ...notesGate, async (c) => {
+  const parsed = z.object({
+    question: z.string().trim().min(1).max(MAX_TEXT),
+    notes: z.string().max(6000).optional(),
+    app: z.string().trim().max(30).optional(),
+  }).safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) return c.json({ error: "invalid_body" }, 400);
+  const notes = parsed.data.notes ?? (await getRawSetting(NOTES_KEY)) ?? "";
+  try {
+    const reply = await askAssistant([{ from: "user", text: parsed.data.question }], notes, supportAppLabel(isSupportApp(parsed.data.app) ? parsed.data.app : null));
+    return c.json({ reply });
+  } catch (err) {
+    return c.json({ error: "ai_failed", message: err instanceof Error ? err.message.slice(0, 300) : "The assistant could not answer." }, 502);
+  }
+});
 supportChatRoutes.put("/admin/support-chat/ai-notes", ...notesGate, async (c) => {
   const parsed = z.object({ notes: z.string().max(6000) }).safeParse(await c.req.json().catch(() => ({})));
   if (!parsed.success) return c.json({ error: "invalid_body", message: "Notes can be up to 6000 characters." }, 400);

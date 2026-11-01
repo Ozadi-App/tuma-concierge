@@ -184,12 +184,16 @@ function Conversation({ id, onChanged }: { id: string; onChanged: () => void | P
 
 function ChatSettings({ canManage }: { canManage: boolean }) {
   const [notes, setNotes] = useState<string | null>(null);
+  const [builtIn, setBuiltIn] = useState("");
+  const [question, setQuestion] = useState("");
+  const [reply, setReply] = useState<string | null>(null);
+  const [trying, setTrying] = useState(false);
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    adminRequest<{ notes: string }>("/admin/support-chat/ai-notes").then((r) => setNotes(r.notes)).catch((e) => setError(requestErrorMessage(e)));
+    adminRequest<{ notes: string; builtIn: string }>("/admin/support-chat/ai-notes").then((r) => { setNotes(r.notes); setBuiltIn(r.builtIn); }).catch((e) => setError(requestErrorMessage(e)));
   }, []);
 
   async function save() {
@@ -197,6 +201,14 @@ function ChatSettings({ canManage }: { canManage: boolean }) {
     try { await adminRequest("/admin/support-chat/ai-notes", { method: "PUT", body: { notes } }); setSaved(true); }
     catch (e) { setError(requestErrorMessage(e)); }
     finally { setBusy(false); }
+  }
+
+  async function tryIt() {
+    setTrying(true); setError(null); setReply(null);
+    try {
+      const res = await adminRequest<{ reply: string }>("/admin/support-chat/ai-test", { method: "POST", body: { question, notes: notes ?? "" } });
+      setReply(res.reply);
+    } catch (e) { setError(requestErrorMessage(e)); } finally { setTrying(false); }
   }
 
   return (
@@ -217,6 +229,28 @@ function ChatSettings({ canManage }: { canManage: boolean }) {
           </div>
         )}
       </section>
+
+      {canManage && (
+        <section className="space-y-2">
+          <h2 className="text-sm font-bold text-ink">Try the assistant</h2>
+          <p className="max-w-2xl text-xs text-ink-500">Ask it something a customer might ask. It answers with the notes exactly as typed above, even before you save them, so you can see what a note changes. Nothing is sent to a customer.</p>
+          <div className="flex items-center gap-2">
+            <div className="field-box min-w-0 flex-1 rounded-xl">
+              <input value={question} onChange={(e) => setQuestion(e.target.value)} maxLength={1000} aria-label="A question to try" placeholder="e.g. Can I join as a carpenter to get work?" className="w-full p-2.5 text-sm text-ink outline-none" onKeyDown={(e) => { if (e.key === "Enter" && question.trim() && !trying) void tryIt(); }} />
+            </div>
+            <button type="button" disabled={trying || !question.trim()} onClick={() => void tryIt()} className="min-h-10 rounded-full bg-gold px-5 text-xs font-bold text-ink disabled:opacity-50">{trying ? "Thinking…" : "Try it"}</button>
+          </div>
+          {reply && <p className="whitespace-pre-wrap rounded-2xl border border-[var(--border-faint)] p-3 text-sm text-ink" role="status">{reply}</p>}
+        </section>
+      )}
+
+      {builtIn && (
+        <details className="rounded-xl border border-[var(--border-faint)] p-3">
+          <summary className="cursor-pointer text-sm font-bold text-ink">What the assistant already knows (built in)</summary>
+          <p className="mt-2 text-xs text-ink-500">This is its starting knowledge about Peebee. Anything you write in the notes above is newer and wins when they differ.</p>
+          <pre className="mt-2 max-h-96 overflow-auto whitespace-pre-wrap text-xs text-ink">{builtIn}</pre>
+        </details>
+      )}
     </div>
   );
 }
