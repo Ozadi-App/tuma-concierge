@@ -1793,8 +1793,9 @@ export function createApiClient({ baseUrl, fetchImpl, getToken, onUnauthorized, 
     async adminAddAiKeys(keys: Array<{ label?: string; key: string; projectTag?: string }>, pool?: string) {
       return request<AiKeysOverview & { results: AiKeyAddResult[] }>("/v1/admin/ai-keys", { method: "POST", body: JSON.stringify({ keys, ...(pool && pool !== "shared" ? { pool } : {}) }) });
     },
-    async adminUpdateAiKey(id: string, input: { enabled?: boolean; label?: string; projectTag?: string | null }) {
-      return request<AiKeysOverview>(`/v1/admin/ai-keys/${id}`, { method: "PATCH", body: JSON.stringify(input) });
+    /** `assignTo` moves the key to a pool: "shared" or an AI feature id. `pool` is the pool the page is showing, so the reply matches it. */
+    async adminUpdateAiKey(id: string, input: { enabled?: boolean; label?: string; projectTag?: string | null; assignTo?: string }, pool?: string) {
+      return request<AiKeysOverview>(`/v1/admin/ai-keys/${id}${pool && pool !== "shared" ? `?pool=${encodeURIComponent(pool)}` : ""}`, { method: "PATCH", body: JSON.stringify(input) });
     },
     async adminResetAiKey(id: string) {
       return request<AiKeysOverview>(`/v1/admin/ai-keys/${id}/reset`, { method: "POST" });

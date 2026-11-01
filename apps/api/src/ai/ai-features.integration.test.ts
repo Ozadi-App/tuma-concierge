@@ -176,6 +176,76 @@ test("AI features: shared keys, separating them, and keeping each feature to its
       await call("DELETE", "/admin/ai-keys/none/master", "admin"); // the shared pool's master was only picked to allow paid mode
     });
 
+    await t.test("each key shows what it serves now and what it has actually served", async () => {
+      const shared = (await json(await call("GET", "/admin/ai-keys", "admin"))).keys[0];
+      assert.deepEqual(shared.serves, [], "separated, so the shared key serves nothing");
+      assert.deepEqual(shared.usage.map((u: any) => [u.feature, u.uses]).sort(), [["support_chat", 1], ["translation", 1]], "it served both before the keys were separated");
+      const tr = (await json(await call("GET", "/admin/ai-keys?pool=translation", "admin"))).keys[0];
+      assert.deepEqual(tr.serves.map((s: any) => s.id), ["translation"]);
+      assert.deepEqual(tr.usage.map((u: any) => u.feature), ["translation"], "its own key only ever served its own feature");
+      assert.ok(tr.usage[0].uses >= 2 && tr.usage[0].lastUsedAt);
+      const pools = (await json(await call("GET", "/admin/ai-keys", "admin"))).pools;
+      assert.deepEqual(pools.map((p: any) => [p.id, p.keys]), [["shared", 1], ["translation", 1], ["support_chat", 2]]);
+      const overview = (await json(await call("GET", "/admin/ai-features", "admin"))).features.find((f: any) => f.id === "translation");
+      assert.deepEqual(overview.keys.map((k: any) => k.status), ["ready"]);
+    });
+
+    await t.test("a key can be given your own name", async () => {
+      const key = (await json(await call("GET", "/admin/ai-keys", "admin"))).keys[0];
+      const res = await json(await call("PATCH", `/admin/ai-keys/${key.id}`, "admin", { label: "Spare key (Sharon)" }));
+      assert.equal(res.keys[0].label, "Spare key (Sharon)");
+      const log = await client.execute("SELECT summary FROM admin_activity_log WHERE action = 'ai_keys.update' ORDER BY rowid DESC LIMIT 1");
+      assert.match(String(log.rows[0].summary), /renamed to "Spare key \(Sharon\)"/);
+      await call("PATCH", `/admin/ai-keys/${key.id}`, "admin", { label: "Shared 1" });
+    });
+
+    await t.test("keys can be moved between roles, but not so a feature that is on is left without one", async () => {
+      const shared = (await json(await call("GET", "/admin/ai-keys", "admin"))).keys[0];
+      const tr = (await json(await call("GET", "/admin/ai-keys?pool=translation", "admin"))).keys[0];
+      assert.equal((await call("PATCH", `/admin/ai-keys/${shared.id}`, "admin", { assignTo: "nope" })).status, 400);
+      const only = await call("PATCH", `/admin/ai-keys/${tr.id}?pool=translation`, "admin", { assignTo: "shared" });
+      assert.equal(only.status, 409, "the only working key of translation");
+      assert.match((await json(only)).message, /only working key for Luganda translation/);
+
+      // Move the shared key into translation: the reply shows the group being viewed, now empty.
+      const moved = await json(await call("PATCH", `/admin/ai-keys/${shared.id}`, "admin", { assignTo: "translation" }));
+      assert.equal(moved.keys.length, 0);
+      assert.deepEqual((await json(await call("GET", "/admin/ai-keys?pool=translation", "admin"))).keys.map((k: any) => k.label).sort(), ["Key 2", "Shared 1"], "the renamed key kept its name when it moved");
+      assert.equal((await json(await call("GET", "/admin/ai-keys?pool=translation", "admin"))).keys.length, 2);
+
+      // With a second key, the master can move out; master status does not travel with it.
+      const trNow = (await json(await call("GET", "/admin/ai-keys?pool=translation", "admin"))).keys.find((k: any) => k.id === tr.id);
+      assert.equal(trNow.isMaster, true);
+      const out = await json(await call("PATCH", `/admin/ai-keys/${tr.id}?pool=translation`, "admin", { assignTo: "shared" }));
+      assert.equal(out.keys.length, 1);
+      const inShared = (await json(await call("GET", "/admin/ai-keys", "admin"))).keys.find((k: any) => k.id === tr.id);
+      assert.equal(inShared.isMaster, false);
+
+      // Put everything back where it was.
+      await call("PATCH", `/admin/ai-keys/${tr.id}`, "admin", { assignTo: "translation" });
+      await call("PATCH", `/admin/ai-keys/${shared.id}?pool=translation`, "admin", { assignTo: "shared" });
+      assert.deepEqual((await json(await call("GET", "/admin/ai-keys", "admin"))).pools.map((p: any) => [p.id, p.keys]), [["shared", 1], ["translation", 1], ["support_chat", 2]]);
+    });
+
+    await t.test("a master key cannot be moved away while paid mode depends on it", async () => {
+      const tr = (await json(await call("GET", "/admin/ai-keys?pool=translation", "admin"))).keys[0];
+      await call("PUT", `/admin/ai-keys/${tr.id}/master`, "admin");
+      await call("POST", "/admin/ai-keys", "admin", { keys: [{ label: "Second translation key", key: K("tr2") }], pool: "translation" });
+      const shared = (await json(await call("GET", "/admin/ai-keys", "admin"))).keys[0];
+      await call("PUT", `/admin/ai-keys/${shared.id}/master`, "admin");
+      const sup = (await json(await call("GET", "/admin/ai-keys?pool=support_chat", "admin"))).keys[0];
+      await call("PUT", `/admin/ai-keys/${sup.id}/master`, "admin");
+      assert.equal((await call("PUT", "/admin/ai-keys-mode", "admin", { mode: "paid" })).status, 200);
+      const refused = await call("PATCH", `/admin/ai-keys/${tr.id}?pool=translation`, "admin", { assignTo: "shared" });
+      assert.equal(refused.status, 409);
+      assert.match((await json(refused)).message, /Paid mode is on/);
+      await call("PUT", "/admin/ai-keys-mode", "admin", { mode: "test" });
+      // leave the shared pool as the next test expects: a plain key with no master, and no extra keys
+      await call("DELETE", "/admin/ai-keys/none/master", "admin");
+      const extra = (await json(await call("GET", "/admin/ai-keys?pool=translation", "admin"))).keys.find((k: any) => k.label === "Second translation key");
+      await call("DELETE", `/admin/ai-keys/${extra.id}`, "admin");
+    });
+
     await t.test("putting the keys back together makes both use the shared pool again, and keeps the separate keys", async () => {
       const res = await call("PUT", "/admin/ai-features/separate", "admin", { separate: false });
       assert.equal(res.status, 200);
