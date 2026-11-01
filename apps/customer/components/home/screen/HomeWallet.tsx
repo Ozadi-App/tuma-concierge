@@ -48,7 +48,7 @@ export function HomeWallet() {
   };
 
   return (
-    <HomeSection title={t("nav_wallet")}>
+    <HomeSection title={t("nav_wallet")} sectionId="wallet">
       {state.status === "loading" && <HomeStatus kind="loading" title={t("home_wallet_loading")} />}
       {state.status === "error" && <HomeStatus kind="error" title={t("home_wallet_error")} onRetry={retry} retryLabel={t("rider_retry")} />}
       {state.status === "empty" && <HomeStatus kind="empty" title={t("home_wallet_empty")} />}

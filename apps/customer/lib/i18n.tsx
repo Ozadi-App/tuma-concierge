@@ -193,6 +193,17 @@ const STRINGS: Record<string, { en: string; lg: string }> = {
   home_feature_taxipress_detail: { en: "A seat on the next taxi", lg: "Ekitebe ku takisi eddako" },
   home_feature_spotlight: { en: "Spotlight", lg: "Spotlight" },
   home_feature_spotlight_detail: { en: "Videos from people you follow", lg: "Vidiyo z'abo gw'ogoberera" },
+  home_open: { en: "Open", lg: "Ggulawo" },
+  home_or_else: { en: "Or start something else", lg: "Oba tandika ekirala" },
+  home_ready_list: { en: "Ready for your list?", lg: "Olukalala lwo luteekeddwa?" },
+  home_ready_boda: { en: "Need a boda?", lg: "Oyagala boda?" },
+  home_ready_food: { en: "Hungry?", lg: "Enjala ekuluma?" },
+  home_ready_parcel: { en: "Something to send?", lg: "Olina ky'osindika?" },
+  home_ready_generic: { en: "Ready for {name}?", lg: "Oteekeddwa {name}?" },
+  home_design_preview: { en: "Design preview", lg: "Endabika y'okukebera" },
+  home_variant_brand: { en: "Brand", lg: "Ekirango" },
+  home_variant_launcher: { en: "Launcher", lg: "Entandika" },
+  home_variant_today: { en: "Today", lg: "Leero" },
 
   // Home — wallet card
   wallet_escrow_title: { en: "Personal MoMo Escrow", lg: "Ensimbi zo ez'oku Layini" },

@@ -7,14 +7,16 @@ export const homePanel =
 export function HomeSection({
   title,
   action,
+  sectionId,
   children,
 }: {
   title: string;
   action?: { href: string; label: string };
+  sectionId?: string;
   children: React.ReactNode;
 }) {
   return (
-    <section className="space-y-3">
+    <section id={sectionId} data-home-section={sectionId} className="space-y-3">
       <div className="flex items-end justify-between gap-3">
         <h2 className="text-lg font-bold text-ink">{title}</h2>
         {action && (

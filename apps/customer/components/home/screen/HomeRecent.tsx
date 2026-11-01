@@ -66,7 +66,7 @@ export function HomeRecent() {
   }, [attempt]);
 
   return (
-    <HomeSection title={t("recent_lists_title")} action={{ href: "/orders", label: t("see_all") }}>
+    <HomeSection title={t("recent_lists_title")} sectionId="recent" action={{ href: "/orders", label: t("see_all") }}>
       {state.status === "loading" && <HomeStatus kind="loading" title={t("home_lists_loading")} />}
       {state.status === "error" && (
         <HomeStatus kind="error" title={t("home_lists_error")} onRetry={() => { setState({ status: "loading" }); setAttempt((n) => n + 1); }} retryLabel={t("rider_retry")} />

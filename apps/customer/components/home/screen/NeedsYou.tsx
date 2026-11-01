@@ -41,14 +41,14 @@ export function NeedsYou() {
 
   if (state.status === "loading") {
     return (
-      <HomeSection title={t("home_needs_you")}>
+      <HomeSection title={t("home_needs_you")} sectionId="needs">
         <HomeStatus kind="loading" title={t("home_order_loading")} />
       </HomeSection>
     );
   }
   if (state.status === "error") {
     return (
-      <HomeSection title={t("home_needs_you")}>
+      <HomeSection title={t("home_needs_you")} sectionId="needs">
         <HomeStatus kind="error" title={state.message || t("home_order_error")} onRetry={() => { setState({ status: "loading" }); setAttempt((n) => n + 1); }} retryLabel={t("rider_retry")} />
       </HomeSection>
     );
@@ -73,7 +73,7 @@ export function NeedsYou() {
   }
 
   return (
-    <HomeSection title={t("home_needs_you")}>
+    <HomeSection title={t("home_needs_you")} sectionId="needs">
       <div className="space-y-3">
         {showProposal && order && proposal && (
           <div className={`${homePanel} space-y-3 border-l-4 border-l-gold p-4`}>
