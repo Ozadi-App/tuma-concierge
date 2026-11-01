@@ -526,6 +526,7 @@ const updateSchema = z.object({
   enabledModes: z.array(z.enum(["first_to_claim", "nearest_window", "customer_selects"])).optional(),
   nearestWindowSeconds: z.number().int().positive().max(3600).optional(),
   maxAssignmentMinutes: z.number().int().positive().max(120).optional(),
+  autoAssignWithoutAcceptance: z.boolean().optional(),
   paymentsActiveProviders: z.array(z.enum(["yo", "flutterwave", "mtn", "airtel"])).min(1).max(4).optional(),
   paymentsDemoMode: z.boolean().optional(),
   paymentsFlutterwaveDirectMobileMoney: z.boolean().optional(),
@@ -700,6 +701,9 @@ settingsRoutes.put(
     }
     if (parsed.data.maxAssignmentMinutes != null) {
       await setSetting("max_assignment_minutes", String(parsed.data.maxAssignmentMinutes));
+    }
+    if (parsed.data.autoAssignWithoutAcceptance != null) {
+      await setSetting("auto_assign_without_acceptance", parsed.data.autoAssignWithoutAcceptance ? "1" : "0");
     }
     if (parsed.data.paymentsActiveProviders != null) {
       await setActiveProviders(parsed.data.paymentsActiveProviders as PaymentProviderIdentity[]);

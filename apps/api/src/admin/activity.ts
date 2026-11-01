@@ -83,6 +83,7 @@ const REVERT_HANDLERS: Record<string, (entityId: string, before: Row) => Promise
     if (before.enabledModes != null) await setMatchingModesEnabled(before.enabledModes as never);
     if (before.nearestWindowSeconds != null) await setSetting("nearest_window_seconds", String(before.nearestWindowSeconds));
     if (before.maxAssignmentMinutes != null) await setSetting("max_assignment_minutes", String(before.maxAssignmentMinutes));
+    if (before.autoAssignWithoutAcceptance != null) await setSetting("auto_assign_without_acceptance", before.autoAssignWithoutAcceptance ? "1" : "0");
   },
   "staff.role_change": async (entityId, before) => {
     await db.execute({
