@@ -14,6 +14,8 @@
  * Pure data and helpers only (no database access) so it can be imported anywhere, including settings defaults.
  */
 
+import { SUPPORT_APPS } from "@peebee/shared";
+
 export type OptionModule = "storefront" | "portal" | "plans" | "digital" | "lms" | "services" | "platform" | "support";
 
 export type OptionRequirement = {
@@ -422,6 +424,7 @@ export const OPTION_SETTINGS: SettingDef[] = [
 
   // ------------------------------------------------------------------ Website support chat
   { key: "support_chat_enabled", module: "support", kind: "bool", label: "Website support chat", description: "The live chat on the website. Off keeps the built-in demo replies.", default: true },
+  { key: "support_chat_apps", module: "support", kind: "multi", label: "Apps that show Help & support", description: "Where visitors and signed-in users can open the chat: the website and each app's Settings → Help & support.", default: SUPPORT_APPS.map((a) => a.id), options: SUPPORT_APPS.map((a) => opt(a.id, a.label, true)) },
   { key: "support_chat_ai_enabled", module: "support", kind: "bool", label: "AI assistant answers first", description: "Off sends every visitor straight to the queue for a person.", default: true },
   { key: "support_chat_human_enabled", module: "support", kind: "bool", label: "Talk to a person", description: "Lets a visitor ask for the support team. Off hides the button and the AI handles everything.", default: true },
   { key: "support_chat_ai_context_messages", module: "support", kind: "int", label: "Messages the AI reads", description: "How many of the latest messages the assistant sees when it answers.", default: 12, min: 2, max: 40 },

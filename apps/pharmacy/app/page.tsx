@@ -18,6 +18,8 @@ import {
   TrendingUp,
   Truck,
   UserCheck,
+  LifeBuoy,
+  ChevronRight,
 } from "lucide-react";
 import Link from "next/link";
 import type { PharmacyPrescription } from "@peebee/shared";
@@ -281,6 +283,15 @@ export default function PharmacyDashboardPage() {
           ))}
         </div>
       </section>
+
+      <Link
+        href="/help"
+        className="flex items-center gap-3 rounded-2xl border border-[var(--border-faint)] bg-[rgb(var(--surface-card))] p-3.5 text-sm font-bold text-ink shadow-sm"
+      >
+        <LifeBuoy className="h-5 w-5 text-gold" strokeWidth={1.75} aria-hidden />
+        <span className="flex-1">Help &amp; support</span>
+        <ChevronRight className="h-4 w-4 text-ink-500" aria-hidden />
+      </Link>
     </div>
   );
 }

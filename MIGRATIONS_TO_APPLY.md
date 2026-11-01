@@ -23,6 +23,7 @@ After applying 0149, mark the hand-made test accounts (check the list first, the
 SELECT id, name, role FROM users WHERE name LIKE 'LIVETEST %';
 UPDATE users SET is_demo = 1 WHERE name LIKE 'LIVETEST %';
 ```
+| `apps/api/src/db/migrations/0151_support_chat_identity.sql` | Support chat: records which app a chat came from and who was signed in (4 nullable columns on `support_chats`). Needs 0150 first. Until applied, chats work as before and the inbox shows "Not signed in" |
 
 Each file is safe to read before running: they only add tables, columns and indexes. Run them one at a time and check
 the Admin → Commerce options page — an option whose migration is missing is shown as unavailable and cannot be chosen.

@@ -81,7 +81,7 @@ async function call<T>(path: string, init: { method?: string; secret?: string; b
 function createLiveAdapter(): SupportChatAdapter {
   let session: Promise<Session> | null = null;
   let lastId = 0;
-  const open = () => (session ??= call<Session>("", { method: "POST", body: { page: typeof location === "undefined" ? undefined : location.pathname } }).catch((e) => { session = null; throw e; }));
+  const open = () => (session ??= call<Session>("", { method: "POST", body: { app: "website", page: typeof location === "undefined" ? undefined : location.pathname } }).catch((e) => { session = null; throw e; }));
 
   return {
     async askAI(text) {
@@ -136,7 +136,7 @@ function createLiveAdapter(): SupportChatAdapter {
       session?.then((s) => call(`/${s.id}/end`, { method: "POST", secret: s.secret })).catch(() => undefined);
     },
     async capabilities() {
-      const c = await call<{ humanEnabled: boolean }>("/config").catch(() => ({ humanEnabled: true }));
+      const c = await call<{ humanEnabled: boolean }>("/config?app=website").catch(() => ({ humanEnabled: true }));
       return { humanEnabled: c.humanEnabled };
     },
   };
@@ -146,7 +146,7 @@ function createLiveAdapter(): SupportChatAdapter {
 function createSupportChat(): SupportChatAdapter {
   const live = createLiveAdapter();
   let choice: Promise<SupportChatAdapter> | null = null;
-  const pick = () => (choice ??= call<{ live: boolean }>("/config").then((c) => (c.live ? live : mockAdapter)).catch(() => mockAdapter));
+  const pick = () => (choice ??= call<{ live: boolean }>("/config?app=website").then((c) => (c.live ? live : mockAdapter)).catch(() => mockAdapter));
   let current: SupportChatAdapter | null = null;
   return {
     async askAI(text, history) { current = await pick(); return current.askAI(text, history); },
