@@ -1,6 +1,8 @@
 "use client";
 
-import { LogOut } from "lucide-react";
+import Link from "next/link";
+
+import { LogOut, LifeBuoy, ChevronRight } from "lucide-react";
 import { useAuth } from "../../lib/auth-context";
 
 export default function AccountPage() {
@@ -27,6 +29,11 @@ export default function AccountPage() {
           </div>
         </section>
       )}
+      <Link href="/help" className="home-card flex items-center gap-3 !rounded-2xl !py-3 text-sm font-semibold text-ink">
+        <LifeBuoy className="h-5 w-5 text-gold" strokeWidth={1.75} aria-hidden />
+        <span className="flex-1">Help &amp; support</span>
+        <ChevronRight className="h-4 w-4 shrink-0 text-ink-500/60" strokeWidth={1.75} aria-hidden />
+      </Link>
       <button type="button" onClick={logout} className="flex w-full items-center justify-center gap-2 rounded-2xl border border-[var(--border-faint)] py-3 text-sm font-black text-ink transition active:scale-[0.98]">
         <LogOut className="h-4 w-4" aria-hidden />Sign out
       </button>

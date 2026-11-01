@@ -22,9 +22,10 @@ export const BASE_PROMPT = [
 
 export type ChatTurn = { from: "user" | "ai" | "agent"; text: string };
 
-export function buildSystemPrompt(notes: string): string {
+export function buildSystemPrompt(notes: string, appLabel = ""): string {
   const clean = notes.trim().slice(0, 6000);
-  return clean ? `${BASE_PROMPT}\n\nFacts and policies from the support team (trust these):\n${clean}` : BASE_PROMPT;
+  const where = appLabel && appLabel !== "Peebee" ? `\n\nThe visitor is using the ${appLabel}. Answer for what people do in that app.` : "";
+  return (clean ? `${BASE_PROMPT}\n\nFacts and policies from the support team (trust these):\n${clean}` : BASE_PROMPT) + where;
 }
 
 /** Turns for Gemini: user messages are "user"; everything the assistant or a person said is "model". Consecutive turns of the same role are merged. */
@@ -40,7 +41,7 @@ export function toContents(history: ChatTurn[]): Array<{ role: "user" | "model";
   return out;
 }
 
-export async function askAssistant(history: ChatTurn[], notes: string): Promise<string> {
+export async function askAssistant(history: ChatTurn[], notes: string, appLabel = ""): Promise<string> {
   const contents = toContents(history);
   if (!contents.length) throw new Error("Nothing to answer");
   const model = process.env.GEMINI_TEXT_MODEL || DEFAULT_MODEL;
@@ -49,7 +50,7 @@ export async function askAssistant(history: ChatTurn[], notes: string): Promise<
       method: "POST",
       headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },
       body: JSON.stringify({
-        systemInstruction: { parts: [{ text: buildSystemPrompt(notes) }] },
+        systemInstruction: { parts: [{ text: buildSystemPrompt(notes, appLabel) }] },
         contents,
         generationConfig: { temperature: 0.4, maxOutputTokens: 400 },
       }),

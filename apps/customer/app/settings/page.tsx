@@ -1,5 +1,9 @@
 "use client";
 
+import Link from "next/link";
+
+import { LifeBuoy, ChevronRight } from "lucide-react";
+
 import { AppearanceSettings } from "../../components/AppearanceSettings";
 import { ChangePasswordPanel } from "../../components/ChangePasswordPanel";
 import { LanguageSettings } from "../../components/LanguageSettings";
@@ -16,6 +20,11 @@ export default function SettingsPage() {
       <LanguageSettings />
       <MatchingPreference />
       <PracticeModeCard role="customer" />
+      <Link href="/help" className="home-card flex items-center gap-3 !rounded-2xl !py-3 text-sm font-semibold text-ink">
+        <LifeBuoy className="h-5 w-5 text-gold" strokeWidth={1.75} aria-hidden />
+        <span className="flex-1">Help &amp; support</span>
+        <ChevronRight className="h-4 w-4 shrink-0 text-ink-500/60" strokeWidth={1.75} aria-hidden />
+      </Link>
       <ChangePasswordPanel />
     </div>
   );

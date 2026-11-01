@@ -1,8 +1,10 @@
 "use client";
 
+import Link from "next/link";
+
 import { FOOD_BUSINESS_TYPES, type FoodBusinessType } from "@peebee/shared";
 import type { Restaurant } from "@peebee/shared";
-import { LogOut, MapPin, Store, User } from "lucide-react";
+import { LogOut, MapPin, Store, User, LifeBuoy, ChevronRight } from "lucide-react";
 import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
 import { AppearanceSettings } from "../../components/AppearanceSettings";
@@ -250,6 +252,11 @@ export default function AccountPage() {
         </button>
       </form>
 
+      <Link href="/help" className="home-card flex items-center gap-3 !rounded-2xl !py-3 text-sm font-semibold text-ink">
+        <LifeBuoy className="h-5 w-5 text-gold" strokeWidth={1.75} aria-hidden />
+        <span className="flex-1">Help &amp; support</span>
+        <ChevronRight className="h-4 w-4 shrink-0 text-ink-500/60" strokeWidth={1.75} aria-hidden />
+      </Link>
       <PracticeModeCard role="restaurant" />
       {!restaurant&&<AppearanceSettings />}
       <LanguageSettings />

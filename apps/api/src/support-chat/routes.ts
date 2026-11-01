@@ -1,14 +1,16 @@
 import { Hono, type Context } from "hono";
 import { z } from "zod";
+import { isSupportApp, supportAppLabel } from "@peebee/shared";
 import { logActivity } from "../admin/activity.js";
 import { requirePermission } from "../admin/permissions.js";
+import { verifyToken } from "../auth/jwt.js";
 import { requireAuth, requireRole } from "../auth/middleware.js";
 import { db } from "../db/client.js";
 import { migrationPending, publicRateLimit } from "../lib/guards.js";
 import { newId } from "../lib/ids.js";
 import { getOptions } from "../lib/option-settings.js";
 import { clientIp, hashKey } from "../lib/ratelimit.js";
-import { hasTable } from "../lib/schema.js";
+import { hasColumn, hasTable } from "../lib/schema.js";
 import { getRawSetting, setRawSetting } from "../lib/settings.js";
 import { AI_UNAVAILABLE_REPLY, askAssistant, type ChatTurn } from "./ai.js";
 
@@ -29,6 +31,26 @@ const shaHex = async (value: string) =>
   Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)))).map((b) => b.toString(16).padStart(2, "0")).join("");
 
 const idOf = (c: Context) => c.req.param("id") ?? "";
+/** Which apps may show the chat (Admin → Support chat → Settings). A call with no app is the website. */
+async function appEnabled(app: string | null): Promise<boolean> {
+  const apps = (await getOptions(["support_chat_apps"])).support_chat_apps as string[];
+  return apps.includes(app ?? "website");
+}
+
+/** Who is signed in, if the request carries a valid token. Never fails the request: a bad or missing token is just an anonymous visitor. */
+async function signedInPerson(c: Context): Promise<{ id: string; name: string; role: string } | null> {
+  const header = c.req.header("Authorization") ?? "";
+  if (!header.startsWith("Bearer ")) return null;
+  try {
+    const payload = await verifyToken(header.slice(7));
+    if (payload.practice || payload.guestOrderId) return null;
+    const row = (await db.execute({ sql: "SELECT name, role, admin_role FROM users WHERE id = ? AND status = 'active'", args: [payload.sub] })).rows[0] as Row | undefined;
+    return row ? { id: payload.sub, name: String(row.name ?? ""), role: row.admin_role ? "staff" : String(row.role) } : null;
+  } catch {
+    return null;
+  }
+}
+
 const tablesReady = async () => (await Promise.all(TABLES.map(hasTable))).every(Boolean);
 
 export type PublicMessage = { id: number; from: "user" | "ai" | "agent" | "system"; text: string; at: string; agentName?: string };
@@ -80,7 +102,8 @@ async function loadOwnChat(c: Context): Promise<{ chat: Row } | { error: Respons
 
 supportChatRoutes.get("/support-chat/config", async (c) => {
   const o = await getOptions(["support_chat_enabled", "support_chat_ai_enabled", "support_chat_human_enabled"]);
-  const ready = o.support_chat_enabled === true && (await tablesReady());
+  const app = c.req.query("app") ?? null;
+  const ready = o.support_chat_enabled === true && (await tablesReady()) && (await appEnabled(app));
   return c.json({ live: ready, aiEnabled: ready && o.support_chat_ai_enabled === true, humanEnabled: ready && o.support_chat_human_enabled === true });
 });
 
@@ -91,7 +114,10 @@ supportChatRoutes.post("/support-chat", async (c) => {
   if (o.support_chat_enabled !== true) return c.json({ error: "disabled", message: "Chat is switched off." }, 503);
   const limited = await publicRateLimit(c, "support_chat_start", null, "rate_limit_support_chat_starts_per_hour", 3600);
   if (limited) return limited;
-  const body = z.object({ page: z.string().trim().max(200).optional() }).safeParse(await c.req.json().catch(() => ({})));
+  const body = z.object({ page: z.string().trim().max(200).optional(), app: z.string().trim().max(30).optional() }).safeParse(await c.req.json().catch(() => ({})));
+  const app = body.success && isSupportApp(body.data.app) ? body.data.app : null;
+  if (!(await appEnabled(app))) return c.json({ error: "disabled", message: "Chat is switched off here." }, 503);
+  const person = await signedInPerson(c);
   const id = newId("sch");
   const secret = `${crypto.randomUUID()}${crypto.randomUUID()}`.replace(/-/g, "");
   // A chat with the assistant switched off starts in the queue.
@@ -100,6 +126,10 @@ supportChatRoutes.post("/support-chat", async (c) => {
     sql: `INSERT INTO support_chats (id, secret_hash, status, page, ip_hash, handoff_at) VALUES (?, ?, ?, ?, ?, ${toQueue ? "datetime('now')" : "NULL"})`,
     args: [id, await shaHex(secret), toQueue ? "waiting" : "ai", body.success ? (body.data.page ?? null) : null, await hashKey(clientIp(c))],
   });
+  // Which app and who: written separately so chats still start before migration 0151 is applied.
+  if (await hasColumn("support_chats", "app")) {
+    await db.execute({ sql: "UPDATE support_chats SET app = ?, user_id = ?, user_name = ?, user_role = ? WHERE id = ?", args: [app, person?.id ?? null, person?.name ?? null, person?.role ?? null, id] });
+  }
   if (toQueue) await addMessage(id, "system", "Connecting you to a support agent…");
   return c.json({ id, secret, status: toQueue ? "waiting" : "ai", aiEnabled: o.support_chat_ai_enabled === true, humanEnabled: o.support_chat_human_enabled === true }, 201);
 });
@@ -146,7 +176,7 @@ supportChatRoutes.post("/support-chat/:id/messages", async (c) => {
       const history: ChatTurn[] = (recent.rows as Row[]).reverse().map((r) => ({ from: r.sender as ChatTurn["from"], text: String(r.body) }));
       let reply = AI_UNAVAILABLE_REPLY;
       try {
-        reply = await askAssistant(history, (await getRawSetting(NOTES_KEY)) ?? "");
+        reply = await askAssistant(history, (await getRawSetting(NOTES_KEY)) ?? "", supportAppLabel(own.chat.app as string | null));
       } catch (err) {
         console.error("support chat AI failed", err instanceof Error ? err.message : err);
       }
@@ -192,8 +222,9 @@ supportChatRoutes.get("/admin/support-chats", ...gate, async (c) => {
   if (pending) return pending;
   await closeIdleChats();
   const view = c.req.query("view") === "all" ? "all" : "open";
+  const identity = await hasColumn("support_chats", "app");
   const res = await db.execute(
-    `SELECT c.id, c.status, c.agent_id, c.agent_name, c.page, c.handoff_at, c.created_at, c.updated_at,
+    `SELECT c.id, c.status, c.agent_id, c.agent_name, c.page, c.handoff_at, c.created_at, c.updated_at, ${identity ? "c.app, c.user_name, c.user_role," : "NULL AS app, NULL AS user_name, NULL AS user_role,"}
             (SELECT body FROM support_messages m WHERE m.chat_id = c.id AND m.sender != 'system' ORDER BY m.id DESC LIMIT 1) AS last_text,
             (SELECT sender FROM support_messages m WHERE m.chat_id = c.id AND m.sender != 'system' ORDER BY m.id DESC LIMIT 1) AS last_from,
             (SELECT COUNT(*) FROM support_messages m WHERE m.chat_id = c.id AND m.sender = 'user') AS visitor_messages
@@ -206,6 +237,7 @@ supportChatRoutes.get("/admin/support-chats", ...gate, async (c) => {
   return c.json({
     chats: (res.rows as Row[]).map((r) => ({
       id: r.id, status: r.status, agentName: r.agent_name ?? null, mine: r.agent_id === me, page: r.page ?? null,
+      app: r.app ?? null, appLabel: supportAppLabel(r.app as string | null), person: r.user_name ? `${r.user_name}${r.user_role ? ` (${r.user_role})` : ""}` : null,
       waitingSince: r.handoff_at ?? null, startedAt: r.created_at, updatedAt: r.updated_at,
       lastText: r.last_text ?? null, lastFrom: r.last_from ?? null, visitorMessages: Number(r.visitor_messages),
     })),
@@ -220,6 +252,7 @@ supportChatRoutes.get("/admin/support-chats/:id", ...gate, async (c) => {
   const after = Math.max(0, Number(c.req.query("after")) || 0);
   return c.json({
     id: chat.id, status: chat.status, agentName: chat.agent_name ?? null, mine: chat.agent_id === c.get("user").sub, page: chat.page ?? null,
+    appLabel: supportAppLabel((chat.app as string | null) ?? null), person: chat.user_name ? `${chat.user_name}${chat.user_role ? ` (${chat.user_role})` : ""}` : null,
     messages: await messagesAfter(String(chat.id), after, 500),
   });
 });

@@ -25,7 +25,8 @@
     "./business-theme": "./src/BusinessTheme.tsx",
     "./practice-ui": "./src/PracticeUI.tsx",
     "./qr": "./src/qr.ts",
-    "./qr-code": "./src/QrCode.tsx"
+    "./qr-code": "./src/QrCode.tsx",
+    "./help-support": "./src/HelpSupport.tsx"
   },
   "scripts": {
     "lint": "tsc --noEmit",

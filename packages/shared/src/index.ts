@@ -355,3 +355,6 @@ export * from "./education/demo-data.js";
 
 export * from "./offers.js";
 export * from "./pricing.js";
+
+export { SUPPORT_APPS, isSupportApp, supportAppLabel } from "./support-chat.js";
+export type { SupportAppId } from "./support-chat.js";

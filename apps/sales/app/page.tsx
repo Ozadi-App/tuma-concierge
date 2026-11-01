@@ -31,6 +31,7 @@ import {
   Store,
   UserRound,
   Utensils,
+  LifeBuoy,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BottomNav } from "../components/BottomNav";
@@ -477,6 +478,15 @@ export default function Sales() {
             >
               {me?.user.name}
             </span>
+            <a
+              href="/help"
+              aria-label="Help and support"
+              className={`rounded-full p-2 transition ${
+                isDarkMode ? "text-black hover:bg-black/10" : "text-white hover:bg-white/10"
+              }`}
+            >
+              <LifeBuoy size={18} />
+            </a>
             <button
               aria-label="Sign out"
               onClick={() => {

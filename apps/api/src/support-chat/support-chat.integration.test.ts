@@ -158,6 +158,41 @@ test("support chat: assistant, hand-over to a person, and back", async (t) => {
       invalidateSettingsCache();
     });
 
+    await t.test("a signed-in app user is recorded, and the AI is told which app they are in", async () => {
+      const res = await app.request("/v1/support-chat", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${tokens.cust}`, "cf-connecting-ip": "5.6.7.8" }, body: JSON.stringify({ app: "rider", page: "/help" }) });
+      assert.equal(res.status, 201);
+      const made = await json(res);
+      await visitor("POST", `/${made.id}/messages`, { text: "My job is stuck" }, made.secret);
+      assert.match(aiBody.systemInstruction.parts[0].text, /Rider app/);
+      await visitor("POST", `/${made.id}/handoff`, undefined, made.secret);
+      const inbox = await json(await staff("a1", "GET", "/admin/support-chats"));
+      const row = inbox.chats.find((c: any) => c.id === made.id);
+      assert.deepEqual([row.appLabel, row.person], ["Rider app", "cust (customer)"]);
+      await staff("a1", "POST", `/admin/support-chats/${made.id}/close`);
+    });
+
+    await t.test("a bad token is just an anonymous visitor, and an unknown app is the website", async () => {
+      const res = await app.request("/v1/support-chat", { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer nonsense", "cf-connecting-ip": "9.9.9.9" }, body: JSON.stringify({ app: "not-an-app" }) });
+      assert.equal(res.status, 201);
+      const made = await json(res);
+      await visitor("POST", `/${made.id}/handoff`, undefined, made.secret);
+      const row = (await json(await staff("a1", "GET", "/admin/support-chats"))).chats.find((c: any) => c.id === made.id);
+      assert.deepEqual([row.app, row.person], [null, null]);
+    });
+
+    await t.test("admin can switch the chat off for one app", async () => {
+      const { invalidateSettingsCache } = await import("../lib/settings.js");
+      await client.execute({ sql: "INSERT INTO settings (key, value) VALUES ('support_chat_apps', ?)", args: [JSON.stringify(["website", "customer"])] });
+      invalidateSettingsCache();
+      assert.equal((await json(await app.request("/v1/support-chat/config?app=rider"))).live, false);
+      assert.equal((await json(await app.request("/v1/support-chat/config?app=customer"))).live, true);
+      assert.equal((await json(await app.request("/v1/support-chat/config"))).live, true, "the website");
+      const res = await app.request("/v1/support-chat", { method: "POST", headers: { "Content-Type": "application/json", "cf-connecting-ip": "4.4.4.4" }, body: JSON.stringify({ app: "rider" }) });
+      assert.equal(res.status, 503);
+      await client.execute("DELETE FROM settings WHERE key = 'support_chat_apps'");
+      invalidateSettingsCache();
+    });
+
     await t.test("AI notes are saved for the assistant and logged", async () => {
       assert.equal((await staff("a1", "PUT", "/admin/support-chat/ai-notes", { notes: "Support hours: 8am to 8pm." })).status, 403, "support managers cannot change settings");
       await client.execute("UPDATE users SET admin_role = 'super_admin' WHERE id = 'a2'");

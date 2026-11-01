@@ -1,7 +1,7 @@
 "use client";
 
 import { exitPracticeMode, isPracticeMode, launchPractice } from "@peebee/shared";
-import { ChevronRight, FlaskConical, Laptop, LogOut, Moon, Sun } from "lucide-react";
+import { ChevronRight, FlaskConical, Laptop, LogOut, Moon, Sun, LifeBuoy } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Button, Chip, cardCls } from "../../components/ui";
@@ -121,6 +121,11 @@ export default function AccountPage() {
         </div>
       </section>
 
+      <Link href="/help" className="home-card flex items-center gap-3 !rounded-2xl !py-3 text-sm font-semibold text-ink">
+        <LifeBuoy className="h-5 w-5 text-gold" strokeWidth={1.75} aria-hidden />
+        <span className="flex-1">Help &amp; support</span>
+        <ChevronRight className="h-4 w-4 shrink-0 text-ink-500/60" strokeWidth={1.75} aria-hidden />
+      </Link>
       <Button variant="danger" className="w-full" onClick={logout}>
         <LogOut className="h-4 w-4" aria-hidden /> Sign out
       </Button>
