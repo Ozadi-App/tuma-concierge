@@ -957,6 +957,10 @@ export type AiKey = {
   createdAt: string;
   /** Which AI feature this key is reserved for; null = the shared pool. */
   feature?: string | null;
+  /** What this key has actually served, per AI feature (needs migration 0153). */
+  usage?: Array<{ feature: string; label: string; uses: number; fails: number; lastUsedAt: string | null }>;
+  /** The AI features that draw from this key right now, given the current settings. */
+  serves?: Array<{ id: string; label: string }>;
 };
 export type AiKeyMode = "test" | "paid";
 export type AiKeysOverview = {
@@ -973,6 +977,8 @@ export type AiKeysOverview = {
   separate?: boolean;
   /** The pool these keys belong to: "shared" or an AI feature id. */
   pool?: string;
+  /** Every pool with its key count, for the role tabs. */
+  pools?: Array<{ id: string; label: string; keys: number; ready: number }>;
 };
 export type AiKeyAddResult = { label: string; hint: string; status: "added" | "duplicate" | "rejected"; detail?: string };
 

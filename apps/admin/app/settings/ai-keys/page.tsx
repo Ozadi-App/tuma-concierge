@@ -1,8 +1,9 @@
 "use client";
 
 import { AI_FEATURES, aiFeatureLabel, type AiKey, type AiKeyAddResult, type AiKeysOverview } from "@peebee/shared";
-import { Crown, KeyRound, RefreshCw, Trash2 } from "lucide-react";
+import { Crown, KeyRound, Pencil, RefreshCw, Trash2 } from "lucide-react";
 import Link from "next/link";
+import { Select } from "@peebee/shared/select";
 import { useEffect, useState } from "react";
 import { SettingsPageShell } from "../../../components/SettingsPageShell";
 import { api, errorMessage } from "../../../lib/api";
@@ -17,9 +18,24 @@ function Badge({ children, tone }: { children: React.ReactNode; tone: "gold" | "
   return <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${cls}`}>{children}</span>;
 }
 
-function KeyRow({ k, busy, run, setNote, pool }: {
+function roleLabel(feature: string | null | undefined): string {
+  return feature ? aiFeatureLabel(feature) : "Shared keys";
+}
+
+/** Why a key is not serving anything right now, in words an admin can act on. */
+function notServing(k: AiKey, separate: boolean): string {
+  if (!k.enabled) return "Nothing: this key is turned off.";
+  if (separate) return k.feature ? `Nothing right now: ${aiFeatureLabel(k.feature)} is switched off.` : "Nothing: the keys are separated. Give this key a role below, or merge them in AI features.";
+  return k.feature ? `Nothing yet: reserved for ${aiFeatureLabel(k.feature)}, used once the keys are separated in AI features.` : "Nothing yet: no AI feature is switched on.";
+}
+
+function KeyRow({ k, busy, run, setNote, pool, separate, roles }: {
   k: AiKey;
   pool: string;
+  /** Each feature uses only keys of its own (Admin → AI features). */
+  separate: boolean;
+  /** Where this key can be placed: the shared keys, or one AI feature. Empty until migration 0152. */
+  roles: Array<{ id: string; label: string }>;
   busy: boolean;
   run: <T extends AiKeysOverview>(action: () => Promise<T>, after?: (result: T) => void) => Promise<void>;
   setNote: (note: string | null) => void;
@@ -29,10 +45,26 @@ function KeyRow({ k, busy, run, setNote, pool }: {
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-sm font-bold text-ink">{k.label}</span>
           <span className="text-xs text-ink-500">{k.hint}</span>
+          {roles.length > 1 && <Badge tone="grey">{roleLabel(k.feature)}</Badge>}
           {k.isMaster && <Badge tone="gold">Master</Badge>}
           {k.status === "ready" && <Badge tone="green">Ready</Badge>}
           {k.status === "cooling" && <Badge tone="red">At its limit</Badge>}
           {k.status === "disabled" && <Badge tone="grey">Off</Badge>}
+        </div>
+        <div className="space-y-1 text-xs">
+          <p className="text-ink">
+            <span className="font-bold">Serving: </span>
+            {k.serves && k.serves.length > 0 ? k.serves.map((f) => f.label).join(", ") : <span className="text-ink-500">{notServing(k, separate)}</span>}
+          </p>
+          {k.usage && k.usage.length > 0 && (
+            <ul className="space-y-0.5 text-ink-500">
+              {k.usage.map((u) => (
+                <li key={u.feature}>
+                  {u.label}: {u.uses} request{u.uses === 1 ? "" : "s"}{u.fails > 0 ? ` · ${u.fails} failed` : ""}{u.lastUsedAt ? ` · last ${when(u.lastUsedAt)}` : ""}
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
         {k.projectTag && <p className="text-xs text-ink-500">Google project: {k.projectTag}</p>}
         {k.limits.length > 0 ? (
@@ -67,7 +99,18 @@ function KeyRow({ k, busy, run, setNote, pool }: {
               Not master
             </button>
           )}
-          <button type="button" disabled={busy} onClick={() => void run(() => api.adminUpdateAiKey(k.id, { enabled: !k.enabled }))} className="min-h-8 rounded-full border border-[var(--border-faint)] px-3 text-xs font-bold text-ink">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              const next = window.prompt("Name this key so you can recognise it, for example “Support chat key” or “Sharon's spare”.", k.label);
+              if (next !== null && next.trim() && next.trim() !== k.label) void run(() => api.adminUpdateAiKey(k.id, { label: next.trim() }, pool));
+            }}
+            className="flex min-h-8 items-center gap-1 rounded-full border border-[var(--border-faint)] px-3 text-xs font-bold text-ink"
+          >
+            <Pencil className="h-3.5 w-3.5" aria-hidden /> Rename
+          </button>
+          <button type="button" disabled={busy} onClick={() => void run(() => api.adminUpdateAiKey(k.id, { enabled: !k.enabled }, pool))} className="min-h-8 rounded-full border border-[var(--border-faint)] px-3 text-xs font-bold text-ink">
             {k.enabled ? "Turn off" : "Turn on"}
           </button>
           <button
@@ -75,7 +118,7 @@ function KeyRow({ k, busy, run, setNote, pool }: {
             disabled={busy}
             onClick={() => {
               const next = window.prompt("Which Google project is this key from? Keys from the same project share one limit. Leave empty if it has its own project.", k.projectTag ?? "");
-              if (next !== null) void run(() => api.adminUpdateAiKey(k.id, { projectTag: next.trim() || null }));
+              if (next !== null) void run(() => api.adminUpdateAiKey(k.id, { projectTag: next.trim() || null }, pool));
             }}
             className="min-h-8 rounded-full border border-[var(--border-faint)] px-3 text-xs font-bold text-ink"
           >
@@ -101,6 +144,20 @@ function KeyRow({ k, busy, run, setNote, pool }: {
             <Trash2 className="h-4 w-4" aria-hidden />
           </button>
         </div>
+        {roles.length > 1 && (
+          <label className="flex flex-wrap items-center gap-2 text-xs font-bold text-ink">
+            Used for
+            <Select
+              aria-label={`Role of ${k.label}`}
+              value={k.feature ?? "shared"}
+              disabled={busy}
+              onValueChange={(value) => { if (value !== (k.feature ?? "shared")) void run(() => api.adminUpdateAiKey(k.id, { assignTo: value }, pool)); }}
+              className="min-h-9 rounded-xl border border-[var(--border-faint)] px-3 text-xs font-semibold"
+            >
+              {roles.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
+            </Select>
+          </label>
+        )}
       </div>
     );
   }
@@ -169,6 +226,7 @@ export default function AiKeysPage() {
     );
   }
 
+  const roles = (data?.pools ?? []).map((p) => ({ id: p.id, label: p.label }));
   const master = data?.keys.find((k) => k.isMaster);
   const testKeys = data?.keys.filter((k) => !k.isMaster) ?? [];
   const readyTest = testKeys.filter((k) => k.status === "ready").length;
@@ -178,18 +236,18 @@ export default function AiKeysPage() {
     <SettingsPageShell title="Google AI keys" loading={loading}>
       {data && (
         <div className="space-y-5">
-          {data.separate ? (
-            <div role="tablist" aria-label="Which keys" className="flex flex-wrap gap-2">
-              {[{ id: "shared", label: "Shared keys" }, ...AI_FEATURES.map((f) => ({ id: f.id as string, label: f.label }))].map((t) => (
+          {roles.length > 1 && (
+            <div role="tablist" aria-label="Keys by role" className="flex flex-wrap gap-2">
+              {(data.pools ?? []).map((t) => (
                 <button key={t.id} type="button" role="tab" aria-selected={pool === t.id} disabled={busy} onClick={() => void load(t.id)} className={`min-h-9 rounded-full border px-3 text-xs font-bold ${pool === t.id ? "border-gold bg-gold/15 text-ink" : "border-ink/10 text-ink-600"}`}>
-                  {t.label}
+                  {t.label} ({t.keys})
                 </button>
               ))}
             </div>
-          ) : null}
+          )}
           {pool !== "shared" && (
             <p className="rounded-lg bg-[rgb(var(--surface-muted))] px-3 py-2 text-xs text-ink">
-              These keys are used only by <span className="font-bold">{aiFeatureLabel(pool)}</span>. Manage which features have their own keys in <Link href="/settings/ai-features" className="font-bold underline">AI features</Link>.
+              These keys are reserved for <span className="font-bold">{aiFeatureLabel(pool)}</span>{data.separate ? ", and used only by it." : ". They start working once the keys are separated in "}{!data.separate && <Link href="/settings/ai-features" className="font-bold underline">AI features</Link>}{!data.separate && "."} {data.separate && <>Manage this in <Link href="/settings/ai-features" className="font-bold underline">AI features</Link>.</>}
             </p>
           )}
           {!data.tableReady && (
@@ -249,7 +307,7 @@ export default function AiKeysPage() {
             <div>
               <h2 className="text-sm font-bold text-ink">Add keys</h2>
               <p className="mt-1 text-xs text-ink-500">
-                Paste Google AI Studio keys, one per line (optionally <code>Name: key</code>). Add as many as you like. Each is checked with Google before it&apos;s saved and stored encrypted; it can&apos;t be read back.
+                Paste Google AI Studio keys, one per line (optionally <code>Name: key</code>, so you can call a key anything you like, like “Support chat key”). Add as many as you like. Each is checked with Google before it&apos;s saved and stored encrypted; it can&apos;t be read back.
               </p>
             </div>
             <textarea
@@ -285,7 +343,7 @@ export default function AiKeysPage() {
 
           <section className="space-y-2">
             <h2 className="text-sm font-bold text-ink">Master key</h2>
-            {master ? <KeyRow k={master} pool={pool} busy={busy} run={run} setNote={setNote} /> : <p className="text-xs text-ink-500">None yet. Pick one from the list below with &ldquo;Make master&rdquo;.</p>}
+            {master ? <KeyRow k={master} pool={pool} separate={Boolean(data.separate)} roles={roles} busy={busy} run={run} setNote={setNote} /> : <p className="text-xs text-ink-500">None yet. Pick one from the list below with &ldquo;Make master&rdquo;.</p>}
           </section>
 
           <section className="space-y-2">
@@ -295,7 +353,7 @@ export default function AiKeysPage() {
                 No keys yet.{data.envKeyPresent ? " The GEMINI_API_KEY secret is being used for now." : " Add one above."}
               </p>
             ) : (
-              testKeys.map((k) => <KeyRow key={k.id} k={k} pool={pool} busy={busy} run={run} setNote={setNote} />)
+              testKeys.map((k) => <KeyRow key={k.id} k={k} pool={pool} separate={Boolean(data.separate)} roles={roles} busy={busy} run={run} setNote={setNote} />)
             )}
           </section>
         </div>

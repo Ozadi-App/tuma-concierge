@@ -242,8 +242,20 @@ async function setLimit(keyId: string, model: string, until: Date, reason: strin
   }
 }
 
-async function markFailure(id: string, model: string, kind: KeyFailure, err: GeminiApiError | string): Promise<void> {
+/** Counts one request against the feature that made it, so the admin can see which feature each key is actually serving. */
+async function recordUsage(keyId: string, feature: string | undefined, ok: boolean, detail?: string): Promise<void> {
+  if (!feature || !(await hasTable("ai_key_usage"))) return;
+  await db.execute({
+    sql: `INSERT INTO ai_key_usage (key_id, feature, uses, fails, last_used_at, last_error) VALUES (?, ?, ?, ?, ?, ?)
+          ON CONFLICT(key_id, feature) DO UPDATE SET uses = uses + excluded.uses, fails = fails + excluded.fails,
+            last_used_at = CASE WHEN excluded.uses > 0 THEN excluded.last_used_at ELSE last_used_at END, last_error = excluded.last_error`,
+    args: [keyId, feature, ok ? 1 : 0, ok ? 0 : 1, new Date().toISOString(), ok ? null : (detail ?? "").slice(0, 300)],
+  });
+}
+
+async function markFailure(id: string, model: string, kind: KeyFailure, err: GeminiApiError | string, feature?: string): Promise<void> {
   const detail = typeof err === "string" ? err : err.message;
+  await recordUsage(id, feature, false, detail);
   const retryMs = typeof err === "string" ? null : retryDelayMs(err.body);
   const cd = cooldownFor(kind, new Date(), retryMs);
   const isQuota = kind.startsWith("quota");
@@ -260,11 +272,12 @@ async function markFailure(id: string, model: string, kind: KeyFailure, err: Gem
   }
 }
 
-async function markSuccess(id: string): Promise<void> {
+async function markSuccess(id: string, feature?: string): Promise<void> {
   await db.execute({
     sql: `UPDATE ai_api_keys SET use_count = use_count + 1, last_used_at = ?, last_error = NULL WHERE id = ?`,
     args: [new Date().toISOString(), id],
   });
+  await recordUsage(id, feature, true);
 }
 
 // ---------------------------------------------------------------------------
@@ -316,10 +329,10 @@ export async function withGeminiKey<T>(model: string, use: (apiKey: string) => P
     const { id, secret } = await decrypted(String(master.id), String(master.key_encrypted));
     try {
       const out = await use(secret);
-      await markSuccess(id);
+      await markSuccess(id, feature ?? "other");
       return out;
     } catch (err) {
-      if (err instanceof GeminiApiError) await markFailure(id, model, classifyFailure(err.status, err.body), err);
+      if (err instanceof GeminiApiError) await markFailure(id, model, classifyFailure(err.status, err.body), err, feature ?? "other");
       throw err;
     }
   }
@@ -350,14 +363,14 @@ export async function withGeminiKey<T>(model: string, use: (apiKey: string) => P
     const { id, secret } = await decrypted(String(row.id), String(row.key_encrypted));
     try {
       const out = await use(secret);
-      await markSuccess(id);
+      await markSuccess(id, feature ?? "other");
       return out;
     } catch (err) {
       lastError = err;
       if (!(err instanceof GeminiApiError)) throw err;
       const kind = classifyFailure(err.status, err.body);
       if (kind === "other") throw err; // not this key's fault (e.g. Google is busy) — don't burn through the rest
-      await markFailure(id, model, kind, err);
+      await markFailure(id, model, kind, err, feature ?? "other");
     }
   }
   throw new NoUsableKeyError(`Every test key is at its limit for ${model} right now (last error: ${lastError instanceof Error ? lastError.message.slice(0, 200) : "unknown"}). Add more keys in Settings → Google AI keys.`);
@@ -464,4 +477,36 @@ export async function removeKey(id: string): Promise<void> {
 
 export async function setProjectTag(id: string, tag: string | null): Promise<void> {
   if (await hasColumn("ai_api_keys", "project_tag")) await db.execute({ sql: "UPDATE ai_api_keys SET project_tag = ? WHERE id = ?", args: [tag?.trim() || null, id] });
+}
+
+// ---------------------------------------------------------------------------
+// Roles: which pool a key belongs to, and what it has served
+// ---------------------------------------------------------------------------
+
+/** Moves a key to a pool (null is the shared pool, an AI feature id is that feature's own). Master status does not travel with it. */
+export async function moveKey(id: string, pool: Pool): Promise<{ ok: true } | { ok: false; message: string }> {
+  const row = await getKeyRow(id);
+  if (!row) return { ok: false, message: "That key no longer exists." };
+  if (!(await hasColumn("ai_api_keys", "feature"))) return { ok: false, message: "Assigning keys is being set up (0152_ai_key_features.sql is not applied yet)." };
+  if (((row.feature as string | null | undefined) ?? null) === pool) return { ok: true };
+  if (Number(row.is_master) === 1 && (await getKeyMode()) === "paid") {
+    return { ok: false, message: "Paid mode is on and this is a master key. Pick another master for its group first." };
+  }
+  await db.execute({ sql: "UPDATE ai_api_keys SET feature = ?, is_master = 0 WHERE id = ?", args: [pool, id] });
+  return { ok: true };
+}
+
+export type KeyUsageRow = { keyId: string; feature: string; uses: number; fails: number; lastUsedAt: string | null };
+
+/** What every key has served, per AI feature. Empty until migration 0153 is applied. */
+export async function loadKeyUsage(): Promise<Map<string, KeyUsageRow[]>> {
+  const map = new Map<string, KeyUsageRow[]>();
+  if (!(await hasTable("ai_key_usage"))) return map;
+  const res = await db.execute("SELECT key_id, feature, uses, fails, last_used_at FROM ai_key_usage ORDER BY last_used_at DESC");
+  for (const r of res.rows as Row[]) {
+    const list = map.get(String(r.key_id)) ?? [];
+    list.push({ keyId: String(r.key_id), feature: String(r.feature), uses: Number(r.uses) || 0, fails: Number(r.fails) || 0, lastUsedAt: (r.last_used_at as string | null) ?? null });
+    map.set(String(r.key_id), list);
+  }
+  return map;
 }

@@ -24,6 +24,14 @@ export type AiFeatureId = (typeof AI_FEATURES)[number]["id"];
 export const isAiFeature = (value: unknown): value is AiFeatureId => AI_FEATURES.some((f) => f.id === value);
 export const aiFeatureLabel = (id: string | null | undefined): string => AI_FEATURES.find((f) => f.id === id)?.label ?? "Shared keys";
 
+/** "Name: key" or just "key", one per line, as pasted into the admin key boxes. */
+export function parseKeyLines(text: string): Array<{ label?: string; key: string }> {
+  return text.split("\n").map((l) => l.trim()).filter(Boolean).map((l) => {
+    const named = /^(.{1,60}?)\s*:\s*(\S+)$/.exec(l);
+    return named ? { label: named[1], key: named[2] } : { key: l };
+  });
+}
+
 export type AiFeatureStatus = {
   id: AiFeatureId;
   label: string;
@@ -36,6 +44,8 @@ export type AiFeatureStatus = {
   ownReady: number;
   /** In separate mode this feature cannot work until it has a key of its own. */
   needsKey: boolean;
+  /** The keys it draws from right now (its own, or the shared ones), by the names the admin gave them. */
+  keys?: Array<{ id: string; label: string; status: "ready" | "cooling" | "disabled" }>;
 };
 
 export type AiFeaturesOverview = {

@@ -1,6 +1,6 @@
 "use client";
 
-import type { AiFeatureId, AiFeaturesOverview, AiFeatureStatus, AiKeyAddResult } from "@peebee/shared";
+import { parseKeyLines, type AiFeatureId, type AiFeaturesOverview, type AiFeatureStatus, type AiKeyAddResult } from "@peebee/shared";
 import { KeyRound } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -20,7 +20,7 @@ function KeyBox({ id, label, value, onChange }: { id: string; label: string; val
     <div className="space-y-1">
       <label htmlFor={id} className="text-xs font-bold text-ink">{label}</label>
       <div className="field-box rounded-xl">
-        <textarea id={id} rows={2} value={value} onChange={(e) => onChange(e.target.value)} placeholder="AIza…  (one key per line)" spellCheck={false} autoComplete="off" className="w-full p-2.5 font-mono text-xs text-ink outline-none" />
+        <textarea id={id} rows={2} value={value} onChange={(e) => onChange(e.target.value)} placeholder={"AIza…   or   Support chat key: AIza…\n(one key per line; a name is optional)"} spellCheck={false} autoComplete="off" className="w-full p-2.5 font-mono text-xs text-ink outline-none" />
       </div>
     </div>
   );
@@ -101,7 +101,7 @@ export default function AiFeaturesPage() {
   }
 
   function addOwnKeys(f: AiFeatureStatus) {
-    const entries = lines(addDrafts[f.id] ?? "").map((key) => ({ key }));
+    const entries = parseKeyLines(addDrafts[f.id] ?? "");
     if (entries.length === 0) return;
     void guarded(async () => {
       const res = await api.adminAddAiKeys(entries, f.id);
@@ -185,8 +185,17 @@ export default function AiFeaturesPage() {
                     <span className="mt-0.5 block text-xs text-ink-500">{f.description}</span>
                   </span>
                 </label>
+                {f.keys && f.keys.length > 0 && (
+                  <ul className="flex flex-wrap gap-1.5" aria-label={`Keys used by ${f.label}`}>
+                    {f.keys.map((k) => (
+                      <li key={k.id} className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${k.status === "ready" ? "bg-green-100 text-green-800 dark:bg-green-950/40 dark:text-green-200" : k.status === "cooling" ? "bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-200" : "bg-[rgb(var(--surface-muted))] text-ink-500"}`}>
+                        {k.label}{k.status === "cooling" ? " · at its limit" : k.status === "disabled" ? " · off" : ""}
+                      </li>
+                    ))}
+                  </ul>
+                )}
                 {f.pool === "shared" ? (
-                  <p className="text-xs text-ink-500">Uses the shared keys ({data.sharedReady} of {data.sharedKeys} ready).</p>
+                  <p className="text-xs text-ink-500">Uses the shared keys ({data.sharedReady} of {data.sharedKeys} ready). <Link href="/settings/ai-keys" className="font-bold underline">Manage keys</Link></p>
                 ) : (
                   <div className="space-y-2">
                     <p className={`text-xs ${f.needsKey ? "font-bold text-red-600" : "text-ink-500"}`}>
