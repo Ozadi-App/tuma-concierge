@@ -98,10 +98,12 @@ const DEFAULTS = {
   max_order_value: "5000000",
   /** Which rider-matching modes are on offer platform-wide — see
    * ../orders/matching.ts. JSON array of MatchingMode values. A customer's
-   * own preference only takes effect if it's in this set; the default
-   * keeps today's behavior (first rider to claim wins) until an admin
-   * turns anything else on. */
-  matching_modes_enabled: '["first_to_claim"]',
+   * own preference only takes effect if it's in this set. Both of the
+   * customer's choices are on by default: "Auto accept" (first_to_claim: the
+   * first rider to claim wins) and "Approve" (customer_selects: riders apply
+   * and the customer approves one). A customer who never chooses gets the
+   * first listed, so today's behavior is unchanged for them. */
+  matching_modes_enabled: '["first_to_claim","customer_selects"]',
   /** Whether the app may hand a live order to a rider who has not accepted it. Off (the default): a live order
    * stays unassigned until a rider claims it, or applies and is chosen, so the customer only ever sees the name
    * of a rider who said yes. On restores the old behaviour, where the nearest online rider is assigned
